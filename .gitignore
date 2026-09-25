@@ -1,0 +1,31 @@
+# build artifacts: EVERYTHING the build produces lives in out/ (see Makefile)
+/out/
+
+# editor/OS
+.DS_Store
+*~
+
+# benchmarks and their results: intentionally NOT tracked (hidden for now,
+# the results are negative; a full README copy is kept in README.full.md)
+/bench/
+/BENCHMARKS.md
+/README.full.md
+/COMPARISON.md
+
+# python bytecode (created importing bench/*.py)
+__pycache__/
+*.pyc
+
+# internal docs (kept locally, never published)
+/TODO.md
+/gap.md
+/AGENTS.md
+
+# header template (dev aid, redundant with the headers already in every file)
+/LICENSE-HEADER
+
+# per-machine CLI agent permissions (never published)
+/.qoder/settings.local.json
+
+# ralph-loop state (local, never published)
+/.opencode/ralph-loop.local.md
