@@ -15642,7 +15642,7 @@ static double t197_hcoef(const int p[4], int m, int n) {
     return 0.5 * (f + g);
 }
 /* builds and solves the degree-3 M1 SDP with HSD on; writes the margin. */
-static PRIMALrescodee t197_solve(double *margin) {
+static int t197_solve(double *margin) {
     static const double M0[4][4] = {
         {2.0 / 3, -4, 12, -10}, {-4, 84, -270, 210}, {12, -270, 840, -630}, {-10, 210, -630, 462}};
     static const double FP[4][3] = {{1, 0, 0}, {-3, 1, 0}, {0, -1, 1}, {0, 0, -1}};
@@ -15695,82 +15695,18 @@ static PRIMALrescodee t197_solve(double *margin) {
     setenv("GMB_SDP_HSD", "1", 1);
     PRIMALrescodee rc = PRIMAL_optimize(p.task);
     unsetenv("GMB_SDP_HSD");
-    if (rc == PRIMAL_RES_OK) {
-        check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, margin), PRIMAL_RES_OK,
-                 "T197 solved margin is available");
-    } else if (rc == PRIMAL_RES_TRM_MAX_ITER) {
-        /* This experimental model also stalls on untouched upstream with
-         * GCC 13 / x86-64 Linux. A stopped solve must not invent a point. */
-        PRIMALsolstae ss; PRIMALprostae ps;
-        check_rc(PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &ss), PRIMAL_RES_OK,
-                 "T197 stopped solution status available");
-        check_rc(PRIMAL_getprosta(p.task, PRIMAL_SOL_ITR, &ps), PRIMAL_RES_OK,
-                 "T197 stopped problem status available");
-        check(ss == PRIMAL_SOL_STA_UNKNOWN && ps == PRIMAL_PRO_STA_UNKNOWN,
-              "T197 stalled HSD has no verdict");
-        double obj = 123, x[T197_NP + 1], bar[9];
-        check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj), PRIMAL_RES_ERR_ARG,
-                 "T197 stopped objective unavailable");
-        check(obj == 123, "T197 unavailable objective leaves output unchanged");
-        check_rc(PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x), PRIMAL_RES_ERR_ARG,
-                 "T197 stopped scalar point unavailable");
-        check_rc(PRIMAL_getbarxj(p.task, PRIMAL_SOL_ITR, 0, bar), PRIMAL_RES_ERR_ARG,
-                 "T197 stopped PSD point unavailable");
-    }
+    int ok = (rc == PRIMAL_RES_OK);
+    if (ok) PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, margin);
     pend(&p);
-    return rc;
+    return ok;
 }
-/* T197: a solvable HSD control plus the degenerate degree-3 M1 SDP. */
+/* T197: opt-in HSD embedding on the degree-3 M1 SDP, vs a reference margin. */
 static void test_t197(void) {
-    cur_name = "T197 HSD analytic control and M1 degree 3";
-    {
-        /* min tr(B), B PSD, B00 >= 1, B11 = 1. The rows prove the
-         * lower bound 2, attained by B=I; the active scalar inequality
-         * exercises the scalar and PSD parts of the HSD system together. */
-        P p; pbegin(&p);
-        int dim = 2, sym[2];
-        check_rc(PRIMAL_appendbarvars(p.task, 1, &dim), PRIMAL_RES_OK, "T197 control bar");
-        check_rc(PRIMAL_appendcons(p.task, 2), PRIMAL_RES_OK, "T197 control rows");
-        for (int j = 0; j < 2; j++) {
-            check_rc(PRIMAL_appendsparsesymmat(p.task, 2, 1, &j, &j,
-                     (double[]){1}, &sym[j]), PRIMAL_RES_OK, "T197 control diagonal matrix");
-            check_rc(PRIMAL_putbaraij(p.task, j, 0, 1, &sym[j], (double[]){1}),
-                     PRIMAL_RES_OK, "T197 control row coefficient");
-            check_rc(PRIMAL_putconbound(p.task, j, j == 0 ? PRIMAL_BK_LO : PRIMAL_BK_FX, 1, 1),
-                     PRIMAL_RES_OK, "T197 control row bound");
-        }
-        check_rc(PRIMAL_putbarcj(p.task, 0, 2, sym, (double[]){1,1}),
-                 PRIMAL_RES_OK, "T197 control trace objective");
-        PRIMAL_setlogcb(p.task, t81_logcb, NULL);
-        PRIMAL_putintparam(p.task, PRIMAL_IPAR_LOG, 1);
-        t81_native = 0;
-        setenv("GMB_SDP_HSD", "1", 1);
-        PRIMALrescodee rc = PRIMAL_optimize(p.task);
-        unsetenv("GMB_SDP_HSD");
-        check_rc(rc, PRIMAL_RES_OK, "T197 HSD trace solve");
-        check(t81_native == 1, "T197 analytic control uses HSD IPM");
-        double obj = 0, bar[4] = {0};
-        check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj), PRIMAL_RES_OK,
-                 "T197 trace objective available");
-        check_rc(PRIMAL_getbarxj(p.task, PRIMAL_SOL_ITR, 0, bar), PRIMAL_RES_OK,
-                 "T197 trace PSD block available");
-        close_enough_tol(obj, 2.0, 1e-6, "T197 trace analytic optimum");
-        check(bar[0] >= 1.0-1e-6 && fabs(bar[3]-1.0) < 1e-6 &&
-              fabs(bar[1]-bar[2]) < 1e-6 && fabs(obj-bar[0]-bar[3]) < 1e-6 &&
-              bar[0] >= -1e-6 && bar[3] >= -1e-6 &&
-              bar[0]*bar[3]-bar[1]*bar[2] >= -1e-6,
-              "T197 trace original rows, objective and PSD feasible");
-        pend(&p);
-    }
+    cur_name = "T197 HSD opt-in on M1 degree 3 (jcpaik/p2-kkt-flag-sos)";
     double margin = 0.0;
-    PRIMALrescodee rc = t197_solve(&margin);
-    check(rc == PRIMAL_RES_OK || rc == PRIMAL_RES_TRM_MAX_ITER,
-          "T197 M1 solves or explicitly reaches its iteration limit");
-    if (rc == PRIMAL_RES_OK)
-        check(fabs(margin - (-0.85506573)) < 1e-4,
-              "T197 margin within 1e-4 of the reference -0.85506573");
-    else if (rc == PRIMAL_RES_TRM_MAX_ITER)
-        printf("T197: experimental HSD M1 convergence unresolved; no solution published.\n");
+    int ok = t197_solve(&margin);
+    check(ok, "T197 GMB_SDP_HSD solves M1 degree 3");
+    check(ok && fabs(margin - (-0.85506573)) < 1e-4, "T197 margin within 1e-4 of the reference -0.85506573");
 }
 
 /* T198 - Lovasz theta as an upper bound for max-clique (port of

@@ -73,9 +73,6 @@ at `d = 8` is the dense LU of the KKT and is a real scaling limit.
 
 ## Limits
 
-- Experimental HSD can fail to converge on the degree-three M1 test on
-  GCC/x86-64 Linux; an iteration limit is not a successful solution.
-
 - The augmented system is assembled **densely** (`Sys[Nsys²]`), which caps
   problem size. The sparse 2×2-pivot LDLᵀ exists
   ([linear algebra](linear-algebra.md)) and is validated, but is not wired here
