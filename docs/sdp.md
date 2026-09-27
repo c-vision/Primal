@@ -73,6 +73,8 @@ at `d = 8` is the dense LU of the KKT and is a real scaling limit.
 
 ## Limits
 
+- Experimental HSD convergence on degenerate SDPs can depend on build settings;
+  an iteration limit does not provide a solution.
 - The augmented system is assembled **densely** (`Sys[Nsys²]`), which caps
   problem size. The sparse 2×2-pivot LDLᵀ exists
   ([linear algebra](linear-algebra.md)) and is validated, but is not wired here
