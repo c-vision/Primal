@@ -78,12 +78,19 @@ static PRIMALrescodee mip_shadow_copy(PRIMALtask_t t, PRIMALenv_t env2,
                 if (v == 0.0) continue;
                 if (n == cap) {
                     cap *= 2;
+                    /* Grow one array at a time and update the pointer right
+                     * away: realloc frees the old block on success, so freeing
+                     * both the old and the new pointer (as the batched form
+                     * did) double-frees whichever realloc succeeded. */
                     int *i2 = (int *)realloc(qi, (size_t)cap * sizeof(int));
+                    if (!i2) { free(qi); free(qj); free(qv); PRIMAL_deletetask(&sh); return PRIMAL_RES_ERR_ALLOC; }
+                    qi = i2;
                     int *j2 = (int *)realloc(qj, (size_t)cap * sizeof(int));
+                    if (!j2) { free(qi); free(qj); free(qv); PRIMAL_deletetask(&sh); return PRIMAL_RES_ERR_ALLOC; }
+                    qj = j2;
                     double *v2 = (double *)realloc(qv, (size_t)cap * sizeof(double));
-                    if (!i2 || !j2 || !v2) { free(qi); free(qj); free(qv); free(i2); free(j2); free(v2);
-                        PRIMAL_deletetask(&sh); return PRIMAL_RES_ERR_ALLOC; }
-                    qi = i2; qj = j2; qv = v2;
+                    if (!v2) { free(qi); free(qj); free(qv); PRIMAL_deletetask(&sh); return PRIMAL_RES_ERR_ALLOC; }
+                    qv = v2;
                 }
                 qi[n] = a; qj[n] = b; qv[n] = v; n++;
             }
