@@ -119,17 +119,24 @@ def _rng(seed):
         yield ((st >> 16) & 0x7FFF) / 32767.0
 
 
-def sdp_data(d, seed):
+def sdp_data(d, seed, order="colmajor"):
     """Same SDP as conic_bench.c run_sdp: min <C,X>, X_ii=1, X>=0, C=-vv'.
-    Returns (L, c, A, b, dim, expected) in the svec (lower-tri) convention."""
+    Returns (L, c, A, b, dim, expected) in the svec convention. order selects
+    the triangle: "colmajor" (SCS) or "rowmajor" (Clarabel)."""
     g = _rng(seed)
     v = [next(g) * 2.0 - 1.0 for _ in range(d)]
     expected = -sum(abs(x) for x in v) ** 2
     idx, k = {}, 0
-    for j in range(d):
-        for i in range(j, d):
-            idx[(i, j)] = k
-            k += 1
+    if order == "rowmajor":
+        for i in range(d):
+            for j in range(i + 1):
+                idx[(i, j)] = k
+                k += 1
+    else:
+        for j in range(d):
+            for i in range(j, d):
+                idx[(i, j)] = k
+                k += 1
     L = k
 
     def svec(M):
@@ -166,6 +173,25 @@ def solve_scs_sdp(d, seed):
         return None, None, None
 
 
+def solve_clarabel_sdp(d, seed):
+    try:
+        import clarabel
+    except Exception:
+        return None, None, None
+    L, c, A, b, dim, expected = sdp_data(d, seed, order="rowmajor")
+    try:
+        st = clarabel.DefaultSettings()
+        st.verbose = False
+        cones = [clarabel.ZeroConeT(dim), clarabel.PSDTriangleConeT(dim)]
+        solver = clarabel.DefaultSolver(sparse.csc_matrix((L, L)), c, A, b, cones, st)
+        t = time.perf_counter()
+        sol = solver.solve()
+        dt = time.perf_counter() - t
+        return dt, float(sol.obj_val), expected
+    except Exception:
+        return None, None, None
+
+
 def main():
     print("| n | K | PrimalSolver (s) | Clarabel (s) | SCS (s) | obj (expected 1/sqrt2) |")
     print("|---|---|---|---|---|---|")
@@ -184,13 +210,16 @@ def main():
                ("%.8f %s" % (oc, "OK" if abs(oc - ref) < 1e-4 else "DIFF"))
                if oc is not None else ("N/A" if not ok else "%.8f" % os_)))
     print()
-    print("| d | PrimalSolver (s) | SCS (s) | obj SCS | chiuso |")
-    print("|---|---|---|---|---|")
+    print("| d | PrimalSolver (s) | Clarabel (s) | SCS (s) | obj | chiuso |")
+    print("|---|---|---|---|---|---|")
     for d in range(4, 9):
-        ts, os_, exp = solve_scs_sdp(d, 200 + d)
-        print("| %d | — | %s | %s | %.8g |" %
-              (d, "%.4f" % ts if ts is not None else "N/A",
-               "%.8g" % os_ if os_ is not None else "N/A", exp))
+        tc, oc, exp = solve_clarabel_sdp(d, 200 + d)
+        ts, os_, _ = solve_scs_sdp(d, 200 + d)
+        ob = oc if oc is not None else os_
+        print("| %d | — | %s | %s | %s | %.8g |" %
+              (d, "%.4f" % tc if tc is not None else "N/A",
+               "%.4f" % ts if ts is not None else "N/A",
+               "%.8g" % ob if ob is not None else "N/A", exp))
 
 
 if __name__ == "__main__":
