@@ -5887,8 +5887,13 @@ static void t100_case(char letter, int cse, int cuts) {
         break;
     }
     case 3: {                       /* large entries, but NOT on the cap: 2r */
-        double po = 0.0, dob = 0.0, pinf = -1.0;
+        double po = 0.0, dob = 0.0, pinf = -1.0, x[2], B[4];
         t100_barcone(t, 1.0, 1000.0);
+        /* Request the absolute accuracy checked below on this scaled model. */
+        check_rc(PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_TOL_NEAR_REL, 1), PRIMAL_RES_OK, "strict near factor");
+        check_rc(PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_CO_TOL_PFEAS, 1e-12), PRIMAL_RES_OK, "strict primal tolerance");
+        check_rc(PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_CO_TOL_DFEAS, 1e-12), PRIMAL_RES_OK, "strict dual tolerance");
+        check_rc(PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_CO_TOL_REL_GAP, 1e-12), PRIMAL_RES_OK, "strict gap tolerance");
         rc = PRIMAL_optimize(t);
         check_rc(rc, PRIMAL_RES_OK, "1e3 is not 1e6: the guard must not fire");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
@@ -5897,6 +5902,15 @@ static void t100_case(char letter, int cse, int cuts) {
         close_enough_tol(dob, 2000.0, 1e-3, "dobj = 2000");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "pinf");
         check(pinf >= 0.0 && pinf <= 1e-6, "and the point lies inside the cone");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
+        check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "getbarxj");
+        check(fabs(B[0]-x[0]) <= 1e-6 && fabs(B[3]-x[1]) <= 1e-6 &&
+              fabs(B[1]-1000) <= 1e-6 && fabs(B[2]-1000) <= 1e-6,
+              "original rows and symmetry hold independently");
+        double mineig = 0.5*(B[0]+B[3]-hypot(B[0]-B[3],B[1]+B[2]));
+        check(mineig >= -1e-6, "analytic two-by-two eigenvalue is feasible");
+        check(fabs(po-2000) <= 1e-6 && fabs(po-x[0]-x[1]) <= 1e-6,
+              "objective attains the AM-GM bound");
         break;
     }
     default: {         /* lower extreme not reached: cap, not ray */
