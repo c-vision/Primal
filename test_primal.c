@@ -3693,7 +3693,12 @@ static void test_t83(void) {
             PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
             double wu = (c == 0) ? 1.5 : 2.0;
             check(t83_native == 1, "T83 A the native path answered");
-            close_enough_tol(x[1], wu, 1e-6, "T83 A u == the bound that solves it");
+            /* c==1: u>=-1 with the cone, the optimum sits at u=2 where the
+             * objective u*exp(2/u) is flat (derivative zero), so the gate
+             * promises the variable only to O(sqrt(mu)) ~ a few 1e-6 (the same
+             * reasoning as the boundary case of T81); c==0 pins u on the cap. */
+            close_enough_tol(x[1], wu, (c == 0) ? 1e-6 : 1e-5,
+                             "T83 A u == the bound that solves it");
             close_enough_tol(x[0], wu * exp(2.0 / wu), 1e-6, "T83 A t == u*exp(v/u)");
             close_enough_tol(po, x[0], 1e-6, "T83 A pobj");
             close_enough_tol(dob, po, 1e-6, "T83 A strong duality");
