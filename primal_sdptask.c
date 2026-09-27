@@ -1174,20 +1174,6 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                     }
                 }
 
-                /* Per-round progress measure, so the stall rule can be read off a
-                 * trace instead of only from the line where it fires.
-                 *
-                 * viol is tolv - lambda_min, a MARGIN to the cone boundary, not a
-                 * violation: it is about tolv when the block sits just outside,
-                 * about tolv again when it is well inside, and it only falls as
-                 * lambda_min rises. So "progress" means "this number is going
-                 * down", and its absolute value says nothing about how far the
-                 * block is from feasible. Do not read it as a residual. */
-                if (getenv("GMB_DBG")) fprintf(stderr,
-                    "  [cut] round=%d ncuts=%d viol=%.4g viol_prev=%.4g ratio=%.3g\n",
-                    round, ncuts, viol, viol_prev,
-                    viol_prev < 1e299 && viol_prev > 0.0 ? viol / viol_prev : 0.0);
-
                 /* ---------- does the cut loop still make progress? ----------
                  * viol is the worst (tolv - lambda_min) over the bars -- a margin
                  * to the boundary, so a tangent cut that does not push it down
