@@ -5,9 +5,8 @@
 .DS_Store
 *~
 
-# benchmarks and their results: intentionally NOT tracked (hidden for now,
-# the results are negative; a full README copy is kept in README.full.md)
-/bench/
+# benchmark harness: tracked (the Makefile builds bench/, so a clone needs it).
+# The result write-ups stay local for now.
 /BENCHMARKS.md
 /README.full.md
 /COMPARISON.md
