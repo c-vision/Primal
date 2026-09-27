@@ -59,8 +59,10 @@ int main(void) {
     PRIMAL_maketask(env, 0, 0, &t);
     PRIMAL_appendvars(t, NV);
     PRIMAL_appendcons(t, (NPTS + NF) + 1 + 1 + 2 * NF);   /* W links + HT + card + |b|<=u */
+    /* With at most one nonzero coefficient the loss is 6-6b+2b^2.
+     * A point improving on b=0 therefore has |b|<=3, giving finite DJC bounds. */
     for (int i = 0; i < NF; i++) {
-        PRIMAL_putvarbound(t, B + i, PRIMAL_BK_FR, -INFINITY, INFINITY);
+        PRIMAL_putvarbound(t, B + i, PRIMAL_BK_RA, -3.0, 3.0);
         PRIMAL_putvarbound(t, U + i, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putvarbound(t, Z + i, PRIMAL_BK_RA, 0.0, 1.0);
         PRIMAL_putvartype(t, Z + i, PRIMAL_VAR_TYPE_INT_BIN);

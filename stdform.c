@@ -50,10 +50,14 @@ static int tri_add(Tri *t, int r, int c, double v) {
     if (t->n == t->cap) {
         int nc = t->cap ? t->cap * 2 : 256;
         int *nr = (int *)realloc(t->r, (size_t)nc * sizeof(int));
+        if (!nr) return -1;
+        t->r = nr;
         int *ncol = (int *)realloc(t->c, (size_t)nc * sizeof(int));
+        if (!ncol) return -1;
+        t->c = ncol;
         double *nv = (double *)realloc(t->v, (size_t)nc * sizeof(double));
-        if (!nr || !ncol || !nv) { free(nr); free(ncol); free(nv); return -1; }
-        t->r = nr; t->c = ncol; t->v = nv; t->cap = nc;
+        if (!nv) return -1;
+        t->v = nv; t->cap = nc;
     }
     t->r[t->n] = r; t->c[t->n] = c; t->v[t->n] = v; t->n++;
     return 0;
@@ -341,9 +345,6 @@ a_fail:
     stdform_free(sf);
     return NULL;
 qfail:
-    /* csr_* , lc3 and uc3 are already released above (line 313), before the Q
-     * block runs: every goto qfail is downstream of that free, so freeing them
-     * again here was a double free. tri_free(&tq) is done by each goto site. */
     stdform_free(sf);
     return NULL;
 }

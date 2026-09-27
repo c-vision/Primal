@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_misc.c - newsolution setters, basis solve, cholesky, clonetask, dual/infeasible problems.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -327,6 +327,7 @@ PRIMALrescodee PRIMAL_putcone(PRIMALtask_t t, int k, PRIMALconetypee ct, PRIMALr
     int *m = (int *)malloc((size_t)(nummem > 0 ? nummem : 1) * sizeof(int));
     if (!m) return PRIMAL_RES_ERR_ALLOC;
     for (int i = 0; i < nummem; i++) m[i] = submem[i];
+    model_changed(t);
     free(t->cone_mem[k]);
     t->cone_mem[k] = m; t->cone_nmem[k] = nummem;
     t->cone_type[k] = ct; t->cone_param[k] = conepar;
@@ -346,6 +347,7 @@ PRIMALrescodee PRIMAL_putbararowlist(PRIMALtask_t t, int num, const int *subi,
         int row = subi[k];
         if (row < 0 || row >= t->numcon) return PRIMAL_RES_ERR_ARG;
         /* clear the row's terms */
+        model_changed(t);
         int w = 0;
         for (int e = 0; e < t->nbarA; e++)
             if (t->barA_con[e] != row) {
@@ -765,7 +767,7 @@ PRIMALrescodee PRIMAL_computesparsecholesky(PRIMALenv_t env, int numthreads, int
  * counts set to what was done. */
 PRIMALrescodee PRIMAL_utf8towchar(size_t outputlen, size_t *len, size_t *conv,
                                   PRIMALwchart *output, const char *input) {
-    if (!len || !conv || !input) return PRIMAL_RES_ERR_NULL;
+    if (!len || !conv || !input || (!output && outputlen)) return PRIMAL_RES_ERR_NULL;
     size_t ilen = strlen(input), in = 0, out = 0;
     while (in < ilen) {
         unsigned char b = (unsigned char)input[in];
@@ -784,10 +786,7 @@ PRIMALrescodee PRIMAL_utf8towchar(size_t outputlen, size_t *len, size_t *conv,
         output[out++] = (PRIMALwchart)cp;
         in += (size_t)n;
     }
-    /* NUL-terminate when there is room. PRIMAL_wchartoutf8 scans its input up
-     * to a NUL, so an output without a terminator is not a string it can read
-     * back: the round trip read whatever followed in the caller's buffer. */
-    if (out < outputlen) output[out] = 0;
+    if (output && out < outputlen) output[out] = 0;
     *len = out; *conv = in;
     return PRIMAL_RES_OK;
 }
@@ -919,6 +918,12 @@ PRIMALrescodee PRIMAL_clonetask(PRIMALtask_t t, PRIMALtask_t *clonedtask) {
         free(mem);
         if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
     }
+    for (int k = 0; k < t->numsos; k++) {
+        rc = t->sos_type[k] == 1
+            ? PRIMAL_appendsos1(d, t->sos_n[k], t->sos_mem[k], t->sos_w[k])
+            : PRIMAL_appendsos2(d, t->sos_n[k], t->sos_mem[k], t->sos_w[k]);
+        if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
+    }
     rc = bar_copy(t, d);
     if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
     rc = clone_domains(t, d);
@@ -936,11 +941,20 @@ PRIMALrescodee PRIMAL_clonetask(PRIMALtask_t t, PRIMALtask_t *clonedtask) {
                 PRIMAL_putafefrow(d, i, nz, vi, vv);
             free(vi); free(vv);
         }
-        int ne = 0; PRIMAL_getafebarfnumrowentries(t, i, &ne);
-        for (int e = 0; e < ne; e++) {
-            int bj[1]; PRIMALint64t ptr[1], ntm[1], tidx[64]; double tw[64];
-            if (PRIMAL_getafebarfrow(t, i, bj, ptr, ntm, tidx, tw) == PRIMAL_RES_OK && ntm[0] <= 64)
-                PRIMAL_putafebarfentry(d, i, bj[0], ntm[0], tidx, tw);
+        for (int bj = 0; bj < t->numbarvar; bj++) {
+            int count = 0;
+            for (int e = 0; e < t->afe_barnz[i]; e++) if (t->afe_baridx[i][e] == bj) count++;
+            if (!count) continue;
+            PRIMALint64t *ids = (PRIMALint64t *)malloc((size_t)count*sizeof(PRIMALint64t));
+            double *weights = (double *)malloc((size_t)count*sizeof(double));
+            if (!ids || !weights) { free(ids); free(weights); PRIMAL_deletetask(&d); return PRIMAL_RES_ERR_ALLOC; }
+            int w = 0;
+            for (int e = 0; e < t->afe_barnz[i]; e++) if (t->afe_baridx[i][e] == bj) {
+                ids[w] = t->afe_barsym[i][e]; weights[w++] = t->afe_barcoef[i][e];
+            }
+            rc = PRIMAL_putafebarfentry(d,i,bj,count,ids,weights);
+            free(ids); free(weights);
+            if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
         }
     }
     PRIMALint64t nacc64 = 0; PRIMAL_getnumacc(t, &nacc64);
@@ -954,35 +968,14 @@ PRIMALrescodee PRIMAL_clonetask(PRIMALtask_t t, PRIMALtask_t *clonedtask) {
         if (!al || !bb) { free(al); free(bb); PRIMAL_deletetask(&d); return PRIMAL_RES_ERR_ALLOC; }
         PRIMAL_getaccafeidxlist(t, a, al);
         PRIMAL_getaccb(t, a, bb);
-        rc = PRIMAL_appendacc(d, dom, na, al, bb);
+        rc = acc_store(d, dom, na, al, bb, t->acc_rowbase[a], t->acc_varbase[a]);
         free(al); free(bb);
         if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
     }
-    PRIMALint64t ndjc64 = 0; PRIMAL_getnumdjc(t, &ndjc64);
-    int ndjc = (int)ndjc64;
-    if (ndjc > 0) {
-        PRIMAL_appenddjcs(d, ndjc);
-        for (int a = 0; a < ndjc; a++) {
-            PRIMALint64t nd2 = 0, na2 = 0, nt2 = 0;
-            PRIMAL_getdjcnumdomain(t, a, &nd2);
-            PRIMAL_getdjcnumafe(t, a, &na2);
-            PRIMAL_getdjcnumterm(t, a, &nt2);
-            PRIMALint64t *dl = (PRIMALint64t *)malloc((size_t)(nd2 > 0 ? nd2 : 1) * sizeof(PRIMALint64t));
-            PRIMALint64t *al = (PRIMALint64t *)malloc((size_t)(na2 > 0 ? na2 : 1) * sizeof(PRIMALint64t));
-            double *bb = (double *)malloc((size_t)(na2 > 0 ? na2 : 1) * sizeof(double));
-            PRIMALint64t *ts = (PRIMALint64t *)malloc((size_t)(nt2 > 0 ? nt2 : 1) * sizeof(PRIMALint64t));
-            if (!dl || !al || !bb || !ts) { free(dl); free(al); free(bb); free(ts);
-                PRIMAL_deletetask(&d); return PRIMAL_RES_ERR_ALLOC; }
-            PRIMAL_getdjcdomainidxlist(t, a, dl);
-            PRIMAL_getdjcafeidxlist(t, a, al);
-            PRIMAL_getdjcb(t, a, bb);
-            PRIMAL_getdjctermsizelist(t, a, ts);
-            rc = PRIMAL_putdjc(d, a, nd2, dl, na2, al, bb, nt2, ts);
-            free(dl); free(al); free(bb); free(ts);
-            if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
-        }
-    }
+    rc = djc_copy(t,d);
+    if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(&d); return rc; }
     PRIMAL_getcfix(t, &cf);
+    param_copy(d,t);
     *clonedtask = d;
     return PRIMAL_RES_OK;
 }
@@ -1070,15 +1063,9 @@ PRIMALrescodee PRIMAL_getinfeasiblesubproblem(PRIMALtask_t t, PRIMALsolt which,
     return PRIMAL_RES_OK;
 }
 
-/* ======================================================================
- * Information items (reference MSKdinfiteme/MSKiinfiteme/MSKliinfiteme,
- * MSKinftypee). The indices are those of reference 11.2.4, read from
- * constants.html on 2026-09-19 (DINF 0..115, IINF 0..136, LIINF 0..21, all
- * contiguous); END is the table limit. The whole reading surface is here; the
- * items this solver does not measure (times of phases it does not have, MIO
- * cut counters, iterations of unused engines) answer 0 -- a deviation declared
- * in README/primal.h, not an invented value.
- * ====================================================================== */
+/* Information item indices follow the reference tables. Unmeasured items
+ * return ERR_ARG without changing the caller's output; zero is a measured
+ * value, not a placeholder for missing data. */
 const char *const dinf_names[PRIMAL_DINF_END] = {
     "MSK_DINF_ANA_PRO_SCALARIZED_CONSTRAINT_MATRIX_DENSITY", "MSK_DINF_BI_CLEAN_TIME",
     "MSK_DINF_BI_DUAL_TIME", "MSK_DINF_BI_PRIMAL_TIME", "MSK_DINF_BI_TIME",
@@ -1259,11 +1246,15 @@ static int inf_vartype_count(PRIMALtask_t t, PRIMALvariabletypee vt) {
     return c;
 }
 
-/* Return the value of a double info item; items this solver does not measure
- * answer 0. */
-PRIMALrescodee PRIMAL_getdouinf(PRIMALtask_t t, PRIMALdinfiteme which, PRIMALrealt *value) {
-    if (!t || !value) return PRIMAL_RES_ERR_NULL;
+/* Return a measured double info item; unavailable items return ERR_ARG. */
+PRIMALrescodee PRIMAL_getdouinf(PRIMALtask_t t, PRIMALdinfiteme which, PRIMALrealt *output) {
+    if (!t || !output) return PRIMAL_RES_ERR_NULL;
+    PRIMALrealt measured = 0, *value = &measured;
     if ((int)which < 0 || (int)which >= PRIMAL_DINF_END) return PRIMAL_RES_ERR_ARG;
+    if ((which == PRIMAL_DINF_MIO_OBJ_BOUND || which == PRIMAL_DINF_MIO_OBJ_ABS_GAP ||
+         which == PRIMAL_DINF_MIO_OBJ_REL_GAP) &&
+        (!t->mip_result || !t->mip_bound_defined ||
+         (which != PRIMAL_DINF_MIO_OBJ_BOUND && !t->has_sol))) return PRIMAL_RES_ERR_ARG;
     *value = 0.0;
     PRIMALrealt pobj = 0, dobj = 0, pvc = 0, pvv = 0, pvb = 0, pvco = 0, pvitg = 0;
     PRIMALrealt dvc = 0, dvv = 0, dvb = 0, dvco = 0;
@@ -1275,45 +1266,45 @@ PRIMALrescodee PRIMAL_getdouinf(PRIMALtask_t t, PRIMALdinfiteme which, PRIMALrea
     int haven2 = (PRIMAL_getdualsolutionnorms(t, PRIMAL_SOL_ITR, &ny, &nslc, &nsuc, &nslx,
                                               &nsux, &nsnx, &nbars) == PRIMAL_RES_OK);
     switch (which) {
-    case PRIMAL_DINF_INTPNT_PRIMAL_OBJ:   *value = t->pobj; break;
-    case PRIMAL_DINF_INTPNT_DUAL_OBJ:     *value = t->dobj; break;
-    case PRIMAL_DINF_SIM_OBJ:             *value = t->pobj; break;
-    case PRIMAL_DINF_MIO_OBJ_INT:         *value = t->pobj; break;
-    case PRIMAL_DINF_MIO_OBJ_BOUND:       *value = t->dobj; break;
-    case PRIMAL_DINF_MIO_OBJ_ABS_GAP:     *value = fabs(t->pobj - t->dobj); break;
+    case PRIMAL_DINF_INTPNT_PRIMAL_OBJ:   if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG; *value = t->pobj; break;
+    case PRIMAL_DINF_INTPNT_DUAL_OBJ:     if (!t->has_sol || t->result_stale || t->mip_result) return PRIMAL_RES_ERR_ARG; *value = t->dobj; break;
+    case PRIMAL_DINF_SIM_OBJ:             if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG; *value = t->pobj; break;
+    case PRIMAL_DINF_MIO_OBJ_INT:         if (!t->mip_result || !t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG; *value = t->pobj; break;
+    case PRIMAL_DINF_MIO_OBJ_BOUND:       *value = t->mip_bound; break;
+    case PRIMAL_DINF_MIO_OBJ_ABS_GAP:     *value = fabs(t->pobj - t->mip_bound); break;
     case PRIMAL_DINF_MIO_OBJ_REL_GAP:
-        *value = fabs(t->pobj - t->dobj) / (1.0 + fabs(t->pobj)); break;
-    case PRIMAL_DINF_SOL_ITR_PRIMAL_OBJ:  *value = t->pobj; break;
-    case PRIMAL_DINF_SOL_ITR_DUAL_OBJ:    *value = t->dobj; break;
-    case PRIMAL_DINF_SOL_ITG_PRIMAL_OBJ:  *value = t->pobj; break;
-    case PRIMAL_DINF_SOL_BAS_PRIMAL_OBJ:  *value = t->pobj; break;
-    case PRIMAL_DINF_SOL_BAS_DUAL_OBJ:    *value = t->dobj; break;
-    case PRIMAL_DINF_SOL_ITR_PVIOLCON:    *value = have ? pvc : 0; break;
-    case PRIMAL_DINF_SOL_ITR_PVIOLVAR:    *value = have ? pvv : 0; break;
-    case PRIMAL_DINF_SOL_ITR_PVIOLBARVAR: *value = have ? pvb : 0; break;
-    case PRIMAL_DINF_SOL_ITR_PVIOLCONES:  *value = have ? pvco : 0; break;
-    case PRIMAL_DINF_SOL_ITR_DVIOLCON:    *value = have ? dvc : 0; break;
-    case PRIMAL_DINF_SOL_ITR_DVIOLVAR:    *value = have ? dvv : 0; break;
-    case PRIMAL_DINF_SOL_ITR_DVIOLBARVAR: *value = have ? dvb : 0; break;
-    case PRIMAL_DINF_SOL_ITR_DVIOLCONES:  *value = have ? dvco : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_XC:      *value = haven ? nxc : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_XX:      *value = haven ? nxx : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_BARX:    *value = haven ? nbx : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_Y:       *value = haven2 ? ny : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_SLC:     *value = haven2 ? nslc : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_SUC:     *value = haven2 ? nsuc : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_SLX:     *value = haven2 ? nslx : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_SUX:     *value = haven2 ? nsux : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_SNX:     *value = haven2 ? nsnx : 0; break;
-    case PRIMAL_DINF_SOL_ITR_NRM_BARS:    *value = haven2 ? nbars : 0; break;
-    case PRIMAL_DINF_SOL_ITG_PVIOLCON:    *value = have ? pvc : 0; break;
-    case PRIMAL_DINF_SOL_ITG_PVIOLVAR:    *value = have ? pvv : 0; break;
-    case PRIMAL_DINF_SOL_ITG_PVIOLBARVAR: *value = have ? pvb : 0; break;
-    case PRIMAL_DINF_SOL_ITG_PVIOLCONES:  *value = have ? pvco : 0; break;
-    case PRIMAL_DINF_SOL_ITG_PVIOLITG:    *value = have ? pvitg : 0; break;
-    case PRIMAL_DINF_SOL_ITG_NRM_XX:      *value = haven ? nxx : 0; break;
-    case PRIMAL_DINF_SOL_ITG_NRM_XC:      *value = haven ? nxc : 0; break;
-    case PRIMAL_DINF_SOL_ITG_NRM_BARX:    *value = haven ? nbx : 0; break;
+        *value = fabs(t->pobj - t->mip_bound) / (1.0 + fabs(t->pobj)); break;
+    case PRIMAL_DINF_SOL_ITR_PRIMAL_OBJ:  if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG; *value = t->pobj; break;
+    case PRIMAL_DINF_SOL_ITR_DUAL_OBJ:    if (!t->has_sol || t->result_stale || t->mip_result) return PRIMAL_RES_ERR_ARG; *value = t->dobj; break;
+    case PRIMAL_DINF_SOL_ITG_PRIMAL_OBJ:  if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG; *value = t->pobj; break;
+    case PRIMAL_DINF_SOL_BAS_PRIMAL_OBJ:  if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG; *value = t->pobj; break;
+    case PRIMAL_DINF_SOL_BAS_DUAL_OBJ:    if (!t->has_sol || t->result_stale || t->mip_result) return PRIMAL_RES_ERR_ARG; *value = t->dobj; break;
+    case PRIMAL_DINF_SOL_ITR_PVIOLCON:    if (!have) return PRIMAL_RES_ERR_ARG; *value = pvc; break;
+    case PRIMAL_DINF_SOL_ITR_PVIOLVAR:    if (!have) return PRIMAL_RES_ERR_ARG; *value = pvv; break;
+    case PRIMAL_DINF_SOL_ITR_PVIOLBARVAR: if (!have) return PRIMAL_RES_ERR_ARG; *value = pvb; break;
+    case PRIMAL_DINF_SOL_ITR_PVIOLCONES:  if (!have) return PRIMAL_RES_ERR_ARG; *value = pvco; break;
+    case PRIMAL_DINF_SOL_ITR_DVIOLCON:    if (!have) return PRIMAL_RES_ERR_ARG; *value = dvc; break;
+    case PRIMAL_DINF_SOL_ITR_DVIOLVAR:    if (!have) return PRIMAL_RES_ERR_ARG; *value = dvv; break;
+    case PRIMAL_DINF_SOL_ITR_DVIOLBARVAR: if (!have) return PRIMAL_RES_ERR_ARG; *value = dvb; break;
+    case PRIMAL_DINF_SOL_ITR_DVIOLCONES:  if (!have) return PRIMAL_RES_ERR_ARG; *value = dvco; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_XC:      if (!haven) return PRIMAL_RES_ERR_ARG; *value = nxc; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_XX:      if (!haven) return PRIMAL_RES_ERR_ARG; *value = nxx; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_BARX:    if (!haven) return PRIMAL_RES_ERR_ARG; *value = nbx; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_Y:       if (!haven2) return PRIMAL_RES_ERR_ARG; *value = ny; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_SLC:     if (!haven2) return PRIMAL_RES_ERR_ARG; *value = nslc; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_SUC:     if (!haven2) return PRIMAL_RES_ERR_ARG; *value = nsuc; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_SLX:     if (!haven2) return PRIMAL_RES_ERR_ARG; *value = nslx; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_SUX:     if (!haven2) return PRIMAL_RES_ERR_ARG; *value = nsux; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_SNX:     if (!haven2) return PRIMAL_RES_ERR_ARG; *value = nsnx; break;
+    case PRIMAL_DINF_SOL_ITR_NRM_BARS:    if (!haven2) return PRIMAL_RES_ERR_ARG; *value = nbars; break;
+    case PRIMAL_DINF_SOL_ITG_PVIOLCON:    if (!have) return PRIMAL_RES_ERR_ARG; *value = pvc; break;
+    case PRIMAL_DINF_SOL_ITG_PVIOLVAR:    if (!have) return PRIMAL_RES_ERR_ARG; *value = pvv; break;
+    case PRIMAL_DINF_SOL_ITG_PVIOLBARVAR: if (!have) return PRIMAL_RES_ERR_ARG; *value = pvb; break;
+    case PRIMAL_DINF_SOL_ITG_PVIOLCONES:  if (!have) return PRIMAL_RES_ERR_ARG; *value = pvco; break;
+    case PRIMAL_DINF_SOL_ITG_PVIOLITG:    if (!have) return PRIMAL_RES_ERR_ARG; *value = pvitg; break;
+    case PRIMAL_DINF_SOL_ITG_NRM_XX:      if (!haven) return PRIMAL_RES_ERR_ARG; *value = nxx; break;
+    case PRIMAL_DINF_SOL_ITG_NRM_XC:      if (!haven) return PRIMAL_RES_ERR_ARG; *value = nxc; break;
+    case PRIMAL_DINF_SOL_ITG_NRM_BARX:    if (!haven) return PRIMAL_RES_ERR_ARG; *value = nbx; break;
     case PRIMAL_DINF_OPTIMIZER_TIME:      *value = t->opt_time; break;
     case PRIMAL_DINF_SIM_TIME:            *value = t->opt_time; break;
     case PRIMAL_DINF_MIO_TIME:            *value = t->opt_time; break;
@@ -1323,14 +1314,16 @@ PRIMALrescodee PRIMAL_getdouinf(PRIMALtask_t t, PRIMALdinfiteme which, PRIMALrea
         *value = (nv > 0 && nc > 0) ? (double)nz / ((double)nv * (double)nc) : 0.0;
         break;
     }
-    default: break;   /* not measured by this solver: 0 */
+    default: return PRIMAL_RES_ERR_ARG;   /* not measured by this solver */
     }
+    *output = measured;
     return PRIMAL_RES_OK;
 }
 
-/* Return the value of an int info item; unmeasured items answer 0. */
-PRIMALrescodee PRIMAL_getintinf(PRIMALtask_t t, PRIMALiinfiteme which, int *value) {
-    if (!t || !value) return PRIMAL_RES_ERR_NULL;
+/* Return the value of an int info item; unmeasured items return ERR_ARG without changing the output. */
+PRIMALrescodee PRIMAL_getintinf(PRIMALtask_t t, PRIMALiinfiteme which, int *output) {
+    if (!t || !output) return PRIMAL_RES_ERR_NULL;
+    int measured = 0, *value = &measured;
     if ((int)which < 0 || (int)which >= PRIMAL_IINF_END) return PRIMAL_RES_ERR_ARG;
     *value = 0;
     PRIMALprostae ps = PRIMAL_PRO_STA_UNKNOWN; PRIMALsolstae ss = PRIMAL_SOL_STA_UNKNOWN;
@@ -1354,6 +1347,7 @@ PRIMALrescodee PRIMAL_getintinf(PRIMALtask_t t, PRIMALiinfiteme which, int *valu
     case PRIMAL_IINF_ANA_PRO_NUM_VAR_CONT:     *value = inf_vartype_count(t, PRIMAL_VAR_TYPE_CONT); break;
     case PRIMAL_IINF_OPT_NUMCON:               *value = t->numcon; break;
     case PRIMAL_IINF_OPT_NUMVAR:               *value = t->numvar; break;
+    case PRIMAL_IINF_MIO_OBJ_BOUND_DEFINED:   *value = t->mip_result && t->mip_bound_defined; break;
     case PRIMAL_IINF_OPTIMIZE_RESPONSE:        *value = (int)t->last_rc; break;
     case PRIMAL_IINF_SOL_ITR_PROSTA:           *value = (int)ps; break;
     case PRIMAL_IINF_SOL_ITR_SOLSTA:           *value = (int)ss; break;
@@ -1372,14 +1366,16 @@ PRIMALrescodee PRIMAL_getintinf(PRIMALtask_t t, PRIMALiinfiteme which, int *valu
         *value = (int)pt;
         break;
     }
-    default: break;   /* not measured: 0 */
+    default: return PRIMAL_RES_ERR_ARG;   /* not measured */
     }
+    *output = measured;
     return PRIMAL_RES_OK;
 }
 
-/* Return the value of a 64-bit info item; unmeasured items answer 0. */
-PRIMALrescodee PRIMAL_getlintinf(PRIMALtask_t t, PRIMALliinfiteme which, PRIMALint64t *value) {
-    if (!t || !value) return PRIMAL_RES_ERR_NULL;
+/* Return the value of a 64-bit info item; unmeasured items return ERR_ARG without changing the output. */
+PRIMALrescodee PRIMAL_getlintinf(PRIMALtask_t t, PRIMALliinfiteme which, PRIMALint64t *output) {
+    if (!t || !output) return PRIMAL_RES_ERR_NULL;
+    PRIMALint64t measured = 0, *value = &measured;
     if ((int)which < 0 || (int)which >= PRIMAL_LIINF_END) return PRIMAL_RES_ERR_ARG;
     *value = 0;
     switch (which) {
@@ -1387,8 +1383,9 @@ PRIMALrescodee PRIMAL_getlintinf(PRIMALtask_t t, PRIMALliinfiteme which, PRIMALi
     case PRIMAL_LIINF_RD_NUMQNZ:  { int n = 0; PRIMAL_getnumqobjnz(t, &n); *value = n; break; }
     case PRIMAL_LIINF_RD_NUMACC:  { PRIMALint64t n = 0; PRIMAL_getnumacc(t, &n); *value = n; break; }
     case PRIMAL_LIINF_RD_NUMDJC:  { PRIMALint64t n = 0; PRIMAL_getnumdjc(t, &n); *value = n; break; }
-    default: break;   /* not measured: 0 */
+    default: return PRIMAL_RES_ERR_ARG;   /* not measured */
     }
+    *output = measured;
     return PRIMAL_RES_OK;
 }
 
@@ -1409,4 +1406,3 @@ PRIMALrescodee PRIMAL_getnaintinf(PRIMALtask_t t, const char *name, int *value) 
         return PRIMAL_RES_ERR_ARG;
     return PRIMAL_getintinf(t, (PRIMALiinfiteme)idx, value);
 }
-

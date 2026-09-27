@@ -98,7 +98,8 @@ mixed GMI variant is not implemented.
 `PRIMAL_IPAR_NUM_THREADS > 1` enables parallel probing, parallel strong
 branching and a two-thread root decomposition. Each child thread solves a
 **clone** with its own bounds and one thread, and the two children partition
-the root region — so the best of the two is the optimum. The default is one
+the root region. Their bounds and termination statuses must also justify any
+optimality claim. Failed thread creation runs the job synchronously. The default is one
 thread; the corpus is identical either way.
 
 ## Cap and status
@@ -113,11 +114,16 @@ it trips:
 Publishing an incumbent as optimal at the cap is exactly the claim the status
 cannot support.
 
+Repairing a rounded incumbent does not replace a node's relaxation bound.
+`MIO_OBJ_BOUND` reports the global numerical bound, including the objective
+constant; `getdualobj` is unavailable for integer solutions. An unresolved
+relaxation also prevents an optimal status, even when an incumbent is retained.
+
 ## Measured
 
-`sched` (the largest sample) does not close: 100 000 nodes, 27 left open, and
-an incumbent of 97.328509 which is the true optimum but is **not proven**. The
-sample asserts that status rather than pretending otherwise.
+`sched` checks an incumbent of 97.328509 against its assignment and load
+constraints. This equals the longest task, an independent lower bound. Search
+termination still determines whether the solver can claim integer optimality.
 
 ## Limits
 

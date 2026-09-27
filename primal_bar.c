@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_bar.c - bar variables, symmetric store, A-bar/C-bar triplets.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -141,6 +141,7 @@ PRIMALrescodee PRIMAL_appendbarvars(PRIMALtask_t t, int num, const int *dim) {
         t->barsj[t->numbarvar + k] = (double *)calloc((size_t)dim[k] * (size_t)dim[k], sizeof(double));
         if (!t->barx[t->numbarvar + k] || !t->barsj[t->numbarvar + k]) return PRIMAL_RES_ERR_ALLOC;
     }
+    if (num) model_changed(t);
     t->numbarvar += num;
     /* Published bars are one per block: an added block grows as zero,
      * and a zero nobody has solved is not an answer of the model. */
@@ -163,6 +164,7 @@ PRIMALrescodee PRIMAL_removebarvars(PRIMALtask_t t, int num, const int *subset) 
     int *remap = (int *)malloc((size_t)(oldn > 0 ? oldn : 1) * sizeof(int));
     if (!del || !remap) { free(del); free(remap); return PRIMAL_RES_ERR_ALLOC; }
     for (int a = 0; a < num; a++) del[subset[a]] = 1;
+    if (num) model_changed(t);
     int w = 0;
     for (int j = 0; j < oldn; j++) {
         if (del[j]) {
@@ -200,6 +202,18 @@ PRIMALrescodee PRIMAL_removebarvars(PRIMALtask_t t, int num, const int *subset) 
         wc++;
     }
     t->nbarC = wc;
+    for (int a = 0; a < t->numafe; a++) {
+        int count = 0;
+        for (int e = 0; e < t->afe_barnz[a]; e++) {
+            int j = t->afe_baridx[a][e];
+            if (j >= 0 && j < oldn && remap[j] >= 0) {
+                t->afe_baridx[a][count] = remap[j];
+                t->afe_barsym[a][count] = t->afe_barsym[a][e];
+                t->afe_barcoef[a][count++] = t->afe_barcoef[a][e];
+            }
+        }
+        t->afe_barnz[a] = count;
+    }
     free(del); free(remap);
     if (num > 0) model_resized(t);
     return PRIMAL_RES_OK;
@@ -226,6 +240,7 @@ PRIMALrescodee PRIMAL_putbaraij(PRIMALtask_t t, int i, int j, int num,
         if (!a1 || !a2 || !a3 || !a4) { free(a1); free(a2); free(a3); free(a4); return PRIMAL_RES_ERR_ALLOC; }
         t->barA_con = a1; t->barA_bar = a2; t->barA_sym = a3; t->barA_coef = a4; t->capbarA = nc;
     }
+    if (num) model_changed(t);
     for (int k = 0; k < num; k++) {
         t->barA_con[t->nbarA] = i;
         t->barA_bar[t->nbarA] = j;
@@ -526,10 +541,6 @@ PRIMALrescodee PRIMAL_getbarcblocktriplet(PRIMALtask_t t, PRIMALint64t maxnum, P
  * Same per-block semantics as putbaraij; appends instead of replacing. */
 PRIMALrescodee PRIMAL_putbarablockij(PRIMALtask_t t, int i, int j, int num,
                                const int *blk_sub, const double *blk_val) {
-    /* The clone represents each term as (con, bar, sym, coef): the
-     * block (i,j) is the matrix list for the pair (i,j) -- same
-     * semantics as putbaraij (which is already per-block). PRIMAL deviation:
-     * appends to the existing terms instead of replacing them. */
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (i < 0 || i >= t->numcon || j < 0 || j >= t->numbarvar ||
         num < 0 || (num > 0 && (!blk_sub || !blk_val))) return PRIMAL_RES_ERR_ARG;
@@ -547,6 +558,7 @@ PRIMALrescodee PRIMAL_putbarablockij(PRIMALtask_t t, int i, int j, int num,
         if (!a1 || !a2 || !a3 || !a4) { free(a1); free(a2); free(a3); free(a4); return PRIMAL_RES_ERR_ALLOC; }
         t->barA_con = a1; t->barA_bar = a2; t->barA_sym = a3; t->barA_coef = a4; t->capbarA = nc;
     }
+    if (num) model_changed(t);
     for (int k = 0; k < num; k++) {
         t->barA_con[t->nbarA] = i;
         t->barA_bar[t->nbarA] = j;
@@ -577,6 +589,7 @@ PRIMALrescodee PRIMAL_putbarcj(PRIMALtask_t t, int j, int num,
         if (!a1 || !a2 || !a3) { free(a1); free(a2); free(a3); return PRIMAL_RES_ERR_ALLOC; }
         t->barC_bar = a1; t->barC_sym = a2; t->barC_coef = a3; t->capbarC = nc;
     }
+    if (num) result_changed(t);
     for (int k = 0; k < num; k++) {
         t->barC_bar[t->nbarC] = j;
         t->barC_sym[t->nbarC] = sub[k];

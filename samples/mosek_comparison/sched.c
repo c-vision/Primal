@@ -92,25 +92,21 @@ int main(void) {
     }
 
 
-    /* Measurement on this model (default cap 100000 nodes): the tree does not
-     * close -- 100000 nodes explored, 27 still open, incumbent 97.328509.
-     * The value IS the optimum (no processor can go below the largest task),
-     * but it is not *proven* optimal, and the reference distinguishes the two:
-     * table 7.3, feasible integer point not proven optimal =
-     * prosta PRIM_FEAS + solsta PRIM_FEAS, with a termination code for the
-     * cap (MSK_RES_TRM_MIO_NUM_BRANCHES in the reference numbering).
-     * So here rc != OK IS the correct answer: an INTEGER_OPTIMAL on a tree
-     * cut off by the counter would assert a proof that never happened. */
+    /* The longest task bounds every feasible makespan below by 97.328509.
+     * Check both the solver status and a feasible assignment attaining it. */
     PRIMALrescodee rc = PRIMAL_optimize(task);
 
-    double xx[M * N + 1], obj;
-    PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx);
-    PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj);
+    double xx[M * N + 1] = {0}, obj = NAN;
+    if (PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx) != PRIMAL_RES_OK ||
+        PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj) != PRIMAL_RES_OK) {
+        fprintf(stderr, "No scheduling incumbent (return=%d)\n", rc);
+        PRIMAL_deletetask(&task); PRIMAL_deleteenv(&env); return 1;
+    }
     PRIMALsolstae sta; PRIMALprostae pro;
     PRIMAL_getsolsta(task, PRIMAL_SOL_ITR, &sta);
     PRIMAL_getprosta(task, PRIMAL_SOL_ITR, &pro);
     printf("rc = %d, prosta = %d, solsta = %d\n", (int)rc, (int)pro, (int)sta);
-    printf("Optimal makespan: %.4f\n", xx[M * N]);
+    printf("Incumbent makespan: %.4f\n", xx[M * N]);
     for (int i = 0; i < M; i++) {
         double load = 0.0;
         for (int j = 0; j < N; j++)

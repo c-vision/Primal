@@ -161,7 +161,8 @@ static double min_eig(int d, const double *A) {
     for (int i = 0; i < d * d; i++) W[i] = A[i];
     double fnorm2 = 0.0;
     for (int i = 0; i < d * d; i++) fnorm2 += A[i] * A[i];
-    double tol = 1e-28 * fnorm2;
+    /* An overflowing squared norm must not make every iterate converged. */
+    double tol = isfinite(fnorm2) ? 1e-28 * fnorm2 : 1e-30;
     for (int sweep = 0; sweep < 100; sweep++) {
         double off = 0.0;
         for (int p = 0; p < d; p++)
@@ -1316,7 +1317,10 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                  * annihilates (|rp + A d| back to 1e-12 on every iteration).
                  * Not the default: alone it loses logistic (mosek_comparison),
                  * which the elimination solves. */
-                int augx = secant && nep > 0 && nb == 0 && n > 0;
+                /* Also retain scalar increments for mixed PSD/SOC models:
+                 * recovering dx through x/s near a cone face loses feasibility. */
+                int augx = n > 0 && ((secant && nep > 0 && nb == 0) ||
+                                     (nb > 0 && nsoc > 0 && nep == 0));
                 int bx = m + K + Ke;
                 int Nsys = bx + (augx ? n : 0);
                 double *Sys = (double *)calloc((size_t)Nsys * (size_t)Nsys, sizeof(double));

@@ -425,7 +425,8 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
      * need -- while letting the sweep stop as soon as it truly converges. */
     double fnorm2 = 0.0;
     for (int i = 0; i < n * n; i++) fnorm2 += A[i] * A[i];
-    double tol = 1e-28 * fnorm2;
+    /* An overflowing squared norm must not make every iterate converged. */
+    double tol = isfinite(fnorm2) ? 1e-28 * fnorm2 : 1e-30;
     for (int sweep = 0; sweep < 100; sweep++) {
         double off = 0.0;
         for (int p = 0; p < n; p++)
@@ -490,7 +491,7 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
     int *mark = (int *)calloc((size_t)n, sizeof(int));
     int *touched = (int *)malloc((size_t)n * sizeof(int));
     if (!ci || !cv || !cn || !cc || !ri || !rv || !rn || !rc || !w || !mark || !touched) {
-        for (int j = 0; j < n; j++) { free(ci[j]); free(cv[j]); free(ri[j]); free(rv[j]); }
+        for (int j = 0; j < n; j++) { if (ci) free(ci[j]); if (cv) free(cv[j]); if (ri) free(ri[j]); if (rv) free(rv[j]); }
         free(ci); free(cv); free(cn); free(cc);
         free(ri); free(rv); free(rn); free(rc);
         free(w); free(mark); free(touched);
@@ -529,8 +530,10 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
         if (cc[j] < nt + 1) {
             int cap = nt + 2;
             int *ti = (int *)realloc(ci[j], (size_t)cap * sizeof(int));
-            double *tv = (double *)realloc(cv[j], (size_t)cap * sizeof(double));
-            if (!ti || !tv) { free(ti); free(tv);
+            if (ti) ci[j] = ti;
+            double *tv = ti ? (double *)realloc(cv[j], (size_t)cap * sizeof(double)) : NULL;
+            if (tv) cv[j] = tv;
+            if (!ti || !tv) {
                 for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
                 free(ci); free(cv); free(cn); free(cc);
                 free(ri); free(rv); free(rn); free(rc);
@@ -550,8 +553,10 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
             if (rc[i] == rn[i]) {
                 int cap = rc[i] ? rc[i] * 2 : 4;
                 int *ti = (int *)realloc(ri[i], (size_t)cap * sizeof(int));
-                double *tv = (double *)realloc(rv[i], (size_t)cap * sizeof(double));
-                if (!ti || !tv) { free(ti); free(tv);
+                if (ti) ri[i] = ti;
+                double *tv = ti ? (double *)realloc(rv[i], (size_t)cap * sizeof(double)) : NULL;
+                if (tv) rv[i] = tv;
+                if (!ti || !tv) {
                     for (int q2 = 0; q2 < n; q2++) { free(ci[q2]); free(cv[q2]); free(ri[q2]); free(rv[q2]); }
                     free(ci); free(cv); free(cn); free(cc);
                     free(ri); free(rv); free(rn); free(rc);
@@ -715,7 +720,7 @@ int spchol_solve_ord(const SpChol *L, double *rhs) {
 /* Release a sparse Cholesky factor and its ordering. NULL-safe. */
 void spchol_free(SpChol *L) {
     if (!L) return;
-    free(L->Lp); free(L->Li); free(L->Lx);
+    free(L->Lp); free(L->Li); free(L->Lx); free(L->perm);
     free(L);
 }
 
@@ -782,7 +787,7 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
     int *nbr = (int *)malloc((size_t)n * sizeof(int));
     int *perm = (int *)malloc((size_t)n * sizeof(int));
     if (!adj || !deg || !cap || !rem || !seen || !nbr || !perm) {
-        for (int i = 0; i < n; i++) free(adj[i]);
+        if (adj) for (int i = 0; i < n; i++) free(adj[i]);
         free(adj); free(deg); free(cap); free(rem); free(seen); free(nbr); free(perm);
         return NULL;
     }
@@ -857,7 +862,7 @@ SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
         rows[i].cap = rc[i] > 0 ? rc[i] : 1; rows[i].nz = 0;
         rows[i].ci = (int *)malloc((size_t)rows[i].cap * sizeof(int));
         rows[i].cv = (double *)malloc((size_t)rows[i].cap * sizeof(double));
-        if (!rows[i].ci || !rows[i].cv) { free(rc); for (int q=0;q<=i;q++){free(rows[q].ci);free(rows[q].cv);} free(rows); free(F); return NULL; }
+        if (!rows[i].ci || !rows[i].cv) { free(iperm); free(rc); for (int q=0;q<=i;q++){free(rows[q].ci);free(rows[q].cv);} free(rows); splu_free(F); return NULL; }
     }
     for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) {
         int i = Ai[p]; rows[i].ci[rows[i].nz] = iperm[j]; rows[i].cv[rows[i].nz] = Ax[p]; rows[i].nz++;
@@ -902,9 +907,11 @@ SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
             if (need > rows[i].cap) {
                 int nc = need * 2 + 4;
                 int *ni = (int *)realloc(rows[i].ci, (size_t)nc * sizeof(int));
+                if (!ni) { singular = 2; break; }
+                rows[i].ci = ni;
                 double *nv = (double *)realloc(rows[i].cv, (size_t)nc * sizeof(double));
-                if (!ni || !nv) { free(ni); free(nv); singular = 2; break; }
-                rows[i].ci = ni; rows[i].cv = nv; rows[i].cap = nc;
+                if (!nv) { singular = 2; break; }
+                rows[i].cv = nv; rows[i].cap = nc;
             }
             for (int a = 0; a < nt; a++) { int col = touch[a]; double v = w[col]; if (v != 0.0) { rows[i].ci[newnz] = col; rows[i].cv[newnz] = v; newnz++; } }
             rows[i].nz = newnz;
@@ -1013,20 +1020,25 @@ void splu_free(SpluFact *F) {
  * the backward error ||Kx-b||/(||K|||x||+||b||) on random indefinite matrices
  * with structural zero diagonals (test_primal.c T253). */
 SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
+    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
     /* --- greedy symmetric matching on off-diagonal nonzeros --- */
     int *pair = (int *)malloc((size_t)n * sizeof(int));
     int *adjc = (int *)calloc((size_t)(n + 1), sizeof(int));
+    if (!pair || !adjc) { free(pair); free(adjc); return NULL; }
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) { int i = Ki[p]; if (i > j) { adjc[j+1]++; adjc[i+1]++; } }
     /* adjacency CSR, fully symmetric (both directions of each edge) */
     int *arp = (int *)malloc((size_t)(n + 1) * sizeof(int));
+    if (!arp) { free(pair); free(adjc); return NULL; }
     arp[0] = 0; for (int j = 0; j < n; j++) arp[j+1] = arp[j] + adjc[j+1];
     int *ari = (int *)malloc((size_t)(arp[n] > 0 ? arp[n] : 1) * sizeof(int));
     int *cur = (int *)calloc((size_t)n, sizeof(int));
+    if (!ari || !cur) { free(pair); free(adjc); free(arp); free(ari); free(cur); return NULL; }
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) { int i = Ki[p]; if (i > j) { ari[arp[j] + cur[j]++] = i; ari[arp[i] + cur[i]++] = j; } }
     free(cur);
     for (int k = 0; k < n; k++) pair[k] = -1;
     if (!getenv("NO2")) {
         double *diag = (double *)calloc((size_t)n, sizeof(double)), maxd = 0.0;
+        if (!diag) { free(pair); free(adjc); free(arp); free(ari); return NULL; }
         for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) if (Ki[p] == j) { diag[j] = Kx[p]; if (fabs(Kx[p]) > maxd) maxd = fabs(Kx[p]); }
         double thr = 1e-12 * (maxd > 0 ? maxd : 1.0);
         for (int u = 0; u < n; u++) {
@@ -1044,12 +1056,14 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     /* --- perm: pairs first (adjacent), then singletons --- */
     int *perm = (int *)malloc((size_t)n * sizeof(int));
     int *ip = (int *)malloc((size_t)n * sizeof(int));
+    if (!perm || !ip) { free(perm); free(ip); free(pair); return NULL; }
     int pos = 0;
     for (int u = 0; u < n; u++) if (pair[u] != -1 && u < pair[u]) { perm[pos++] = u; perm[pos++] = pair[u]; }
     for (int u = 0; u < n; u++) if (pair[u] == -1) perm[pos++] = u;
     for (int k = 0; k < n; k++) ip[perm[k]] = k;
     /* static pair in permuted order: is k the first of a 2x2? */
     int *piv2 = (int *)calloc((size_t)n, sizeof(int));
+    if (!piv2) { free(perm); free(ip); free(pair); return NULL; }
     for (int k = 0; k + 1 < n; k++) {
         int u = perm[k], v = perm[k+1];
         if (pair[u] == v) { piv2[k] = 1; k++; }
@@ -1057,6 +1071,7 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
 
     /* --- permuted lower CSC of K --- */
     int *Pp = (int *)calloc((size_t)(n + 1), sizeof(int));
+    if (!Pp) { free(perm); free(ip); free(pair); free(piv2); return NULL; }
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) {
         int a = ip[Ki[p]], b = ip[j];      /* original (row=Ki[p]>=j) */
         int col = a < b ? a : b; Pp[col+1]++;
@@ -1066,6 +1081,7 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     int *Pi = (int *)malloc((size_t)(pn > 0 ? pn : 1) * sizeof(int));
     double *Pv = (double *)malloc((size_t)(pn > 0 ? pn : 1) * sizeof(double));
     int *f = (int *)calloc((size_t)n, sizeof(int));
+    if (!Pi || !Pv || !f) { free(perm); free(ip); free(pair); free(piv2); free(Pp); free(Pi); free(Pv); free(f); return NULL; }
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) {
         int a = ip[Ki[p]], b = ip[j];
         int col = a < b ? a : b, row = a < b ? b : a;
@@ -1091,11 +1107,13 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     int *touched = (int *)malloc((size_t)n * sizeof(int));
     int *touched2 = (int *)malloc((size_t)n * sizeof(int));
 #define ENSURE(P,V,CAP,NEED) do { if ((CAP) < (int)(NEED)) { int nc=(CAP)?(CAP):4; while(nc<(int)(NEED)) nc*=2; \
-    int *a=(int*)realloc(P,(size_t)nc*sizeof(int)); double *b=(double*)realloc(V,(size_t)nc*sizeof(double)); \
-    if(!a||!b){free(a);free(b);FAIL();} (P)=a;(V)=b;(CAP)=nc; } } while(0)
+    int *a=(int*)realloc(P,(size_t)nc*sizeof(int)); if(!a){FAIL();} (P)=a; \
+    double *b=(double*)realloc(V,(size_t)nc*sizeof(double)); if(!b){FAIL();} (V)=b;(CAP)=nc; } } while(0)
 
 #define FAIL() do { ok = 0; goto done; } while (0)
     int ok = 1;
+    if (!ci || !cv || !cn || !cc || !ri || !rv || !rn || !rc || !w || !w2 || !d || !Doff ||
+        !mark || !bseen || !touched || !touched2) FAIL();
     int stamp = 0;
     for (int c = 0; c < n && ok; ) {
         /* ---- updated column c ---- */
@@ -1198,13 +1216,14 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     }
 done:
     if (!ok) {
-        for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
+        for (int q = 0; q < n; q++) { if (ci) free(ci[q]); if (cv) free(cv[q]); if (ri) free(ri[q]); if (rv) free(rv[q]); }
         free(ci); free(cv); free(cn); free(cc); free(ri); free(rv); free(rn); free(rc);
         free(w); free(w2); free(d); free(Doff); free(mark); free(bseen); free(touched); free(touched2);
         free(Pp); free(Pi); free(Pv); free(perm); free(ip); free(piv2); free(pair);
         return NULL;
     }
-    SpLdl *L = (SpLdl *)malloc(sizeof(SpLdl));
+    SpLdl *L = (SpLdl *)calloc(1,sizeof(SpLdl));
+    if (!L) FAIL();
     int total = 0; for (int j = 0; j < n; j++) total += cn[j];
     L->n = n;
     L->Lp = (int *)malloc((size_t)(n+1)*sizeof(int));
@@ -1214,11 +1233,14 @@ done:
     L->piv2 = (int *)malloc((size_t)n*sizeof(int));
     L->Doff = (double *)malloc((size_t)n*sizeof(double));
     L->perm = (int *)malloc((size_t)n*sizeof(int));
+    if (!L->Lp || !L->Li || !L->Lx || !L->D || !L->piv2 || !L->Doff || !L->perm) {
+        spldl_free(L); FAIL();
+    }
     int off = 0;
     for (int j = 0; j < n; j++) { L->Lp[j] = off; for (int p = 0; p < cn[j]; p++) { L->Li[off] = ci[j][p]; L->Lx[off] = cv[j][p]; off++; } }
     L->Lp[n] = off;
     for (int j = 0; j < n; j++) { L->D[j] = d[j]; L->piv2[j] = piv2[j]; L->Doff[j] = Doff[j]; L->perm[j] = perm[j]; }
-    for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
+    for (int q = 0; q < n; q++) { if (ci) free(ci[q]); if (cv) free(cv[q]); if (ri) free(ri[q]); if (rv) free(rv[q]); }
     free(ci); free(cv); free(cn); free(cc); free(ri); free(rv); free(rn); free(rc);
     free(w); free(w2); free(d); free(Doff); free(mark); free(bseen); free(touched); free(touched2);
     free(Pp); free(Pi); free(Pv); free(perm); free(ip); free(piv2); free(pair);
@@ -1230,9 +1252,10 @@ done:
 /* Solve K u = rhs in place through forward, block-diagonal, backward sweeps.
  * Applies the stored permutation forth and back. Returns 0 ok, -1 on failure. */
 int spldl_solve(const SpLdl *L, double *rhs) {
+    if (!L || !rhs) return -1;
     int n = L->n;
     double *buf = rhs;
-    if (L->perm) { buf = (double *)malloc((size_t)n*sizeof(double)); for (int i = 0; i < n; i++) buf[i] = rhs[L->perm[i]]; }
+    if (L->perm) { buf = (double *)malloc((size_t)n*sizeof(double)); if (!buf) return -1; for (int i = 0; i < n; i++) buf[i] = rhs[L->perm[i]]; }
     for (int k = 0; k < n; ) {
         if (L->piv2[k]) {
             double y0 = buf[k], y1 = buf[k+1];

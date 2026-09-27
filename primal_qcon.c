@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_qcon.c - quadratic constraint terms (putqconk family).
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -96,6 +96,7 @@ PRIMALrescodee PRIMAL_putqconk(PRIMALtask_t t, int k, int numqcnz,
     int had = 0;
     for (int e = 0; e < t->numvar * t->numvar; e++) if (t->qcon[k][e] != 0.0) { had = 1; break; }
     /* replace semantics: clear row k first (PRIMAL putqconk overwrites) */
+    model_changed(t);
     if (had) memset(t->qcon[k], 0, (size_t)t->numvar * (size_t)t->numvar * sizeof(double));
     for (int e = 0; e < numqcnz; e++) {
         int i = qsubi[e], j = qsubj[e];
@@ -158,12 +159,14 @@ PRIMALrescodee PRIMAL_putqcon(PRIMALtask_t t, int numqcnz,
         if (qcval[e] != qcval[e]) return PRIMAL_RES_ERR_ARG;    /* NaN */
     }
     if (numqcnz == 0) {
+        model_changed(t);
         if (t->qcon) for (int k = 0; k < t->qcon_cap; k++) { free(t->qcon[k]); t->qcon[k] = NULL; }
         t->has_qcon = 0;
         return PRIMAL_RES_OK;
     }
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
     if (!qcon_alloc(t)) return PRIMAL_RES_ERR_ALLOC;
+    model_changed(t);
     for (int k = 0; k < t->numcon; k++)
         if (t->qcon[k]) memset(t->qcon[k], 0, (size_t)t->numvar * (size_t)t->numvar * sizeof(double));
     t->has_qcon = 0;
@@ -328,4 +331,3 @@ PRIMALrescodee PRIMAL_getqconk64(PRIMALtask_t t, int k, int *qi, int *qj, double
     *numret = w;
     return PRIMAL_RES_OK;
 }
-

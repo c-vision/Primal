@@ -19,8 +19,8 @@
 # which is gitignored. Never write binaries into the repo root or samples/.
 CC      = gcc
 AR      = ar
-CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2
-LDLIBS  = -lm
+CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2 -pthread
+LDLIBS  = -lm -pthread
 
 OUT     = out
 HEADERS = primal.h linalg.h stdform.h simplex.h ipm.h socp.h sdp.h expcone.h \
@@ -51,14 +51,20 @@ $(OUT)/example_lp: example_lp.c $(OBJS)
 $(OUT)/run_tests: test_primal.c $(OBJS)
 	$(CC) $(CFLAGS) -o $@ test_primal.c $(OBJS) $(LDLIBS)
 
-test: $(OUT)/run_tests
+REGRESSIONS = test_contracts test_review test_models
+
+$(OUT)/test_%: tests/test_%.c $(LIB_A)
+	$(CC) $(CFLAGS) -I. -o $@ $< $(LIB_A) $(LDLIBS)
+
+test: $(OUT)/run_tests $(REGRESSIONS:%=$(OUT)/%)
 	./$(OUT)/run_tests
+	@for t in $(REGRESSIONS); do ./$(OUT)/$$t || exit 1; done
 
 example: $(OUT)/example_lp
 	./$(OUT)/example_lp
 
 # ---- sanitizer (ASan+UBSan): objects and binaries under out/san/ ----
-SANFLAGS = -std=c99 -Wall -Wextra -pedantic -O2 -g -fno-omit-frame-pointer
+SANFLAGS = -std=c99 -Wall -Wextra -pedantic -O2 -g -fno-omit-frame-pointer -pthread
 SAN      = -fsanitize=address,undefined
 SANOBJS  = $(addprefix $(OUT)/san/,linalg.o stdform.o simplex.o ipm.o socp.o \
             sdp.o expcone.o mpsio.o cbf.o scaling.o presolve.o $(PRIMAL_OBJS))
@@ -66,7 +72,8 @@ SAN_SAMPLES = samples/logistic_large.c samples/finance/market_impact.c \
            samples/cvx_regression.c samples/maxcut_sdp.c samples/socp_robust.c \
            samples/lp_large.c samples/finance/portfolio_mgmt.c \
            samples/mosek_comparison/logistic.c samples/mosek_comparison/sdo2.c \
-           samples/mosek_comparison/qcqo1.c
+           samples/mosek_comparison/qcqo1.c samples/secure_beamforming.c \
+           samples/total_variation.c
 
 $(OUT)/san:
 	mkdir -p $(OUT)/san $(OUT)/san/samples
@@ -79,8 +86,12 @@ $(OUT)/san/run_tests: test_primal.c $(SANOBJS) | $(OUT)/san
 
 # The leak check does not exist on macOS ("LeakSanitizer is not supported"):
 # ASAN_OPTIONS=detect_leaks=0 is required or the process aborts at exit.
-sanitize: $(OUT)/san/run_tests
+$(OUT)/san/test_%: tests/test_%.c $(SANOBJS) | $(OUT)/san
+	$(CC) $(SANFLAGS) $(SAN) -I. -o $@ $< $(SANOBJS) $(LDLIBS)
+
+sanitize: $(OUT)/san/run_tests $(REGRESSIONS:%=$(OUT)/san/%)
 	ASAN_OPTIONS=detect_leaks=0 ./$(OUT)/san/run_tests
+	@for t in $(REGRESSIONS); do ASAN_OPTIONS=detect_leaks=0 ./$(OUT)/san/$$t || exit 1; done
 
 sanitize-samples: $(SANOBJS) | $(OUT)/san
 	@for f in $(SAN_SAMPLES); do \
@@ -197,3 +208,17 @@ $(OUT)/bench/expcone_ipm_probe: bench/expcone_ipm_probe.c $(LIB_A) | $(OUT)
 	$(CC) $(CFLAGS) -I. bench/expcone_ipm_probe.c $(LIB_A) $(LDLIBS) -o $@
 
 .PHONY: bench
+
+# Compile separate objects for allocation and thread-creation failure injection.
+FAULTOBJS = $(patsubst %.c,$(OUT)/fault/%.o,$(LIBSRCS))
+$(OUT)/fault/%.o: %.c $(HEADERS) tests/fault_hooks.h
+	mkdir -p $(OUT)/fault
+	$(CC) $(CFLAGS) -include tests/fault_hooks.h -c $< -o $@
+
+$(OUT)/test_faults: tests/test_faults.c tests/fault_hooks.c tests/fault_hooks.h $(FAULTOBJS)
+	$(CC) $(CFLAGS) -I. -Itests tests/test_faults.c tests/fault_hooks.c $(FAULTOBJS) $(LDLIBS) -o $@
+
+fault-test: $(OUT)/test_faults
+	./$(OUT)/test_faults
+
+.PHONY: fault-test

@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_put.c - model input: columns/rows, objective, bounds.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -44,6 +44,7 @@ PRIMALrescodee PRIMAL_putcj(PRIMALtask_t t, int j, double cj) {
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (j < 0 || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
+    result_changed(t);
     t->c[j] = cj;
     return PRIMAL_RES_OK;
 }
@@ -77,6 +78,7 @@ PRIMALrescodee PRIMAL_putclist(PRIMALtask_t t, int num, const int *subj, const P
     for (int k = 0; k < num; k++)
         if (subj[k] < 0 || subj[k] >= t->numvar) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
+    if (num) result_changed(t);
     for (int k = 0; k < num; k++) t->c[subj[k]] = val[k];
     return PRIMAL_RES_OK;
 }
@@ -106,6 +108,7 @@ PRIMALrescodee PRIMAL_putcslice(PRIMALtask_t t, int first, int last, const PRIMA
     if (!t || !c) return PRIMAL_RES_ERR_NULL;
     if (first < 0 || last > t->numvar || first > last) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
+    if (last > first) result_changed(t);
     for (int j = first; j < last; j++) t->c[j] = c[j - first];
     return PRIMAL_RES_OK;
 }
@@ -133,6 +136,7 @@ PRIMALrescodee PRIMAL_putcslice(PRIMALtask_t t, int first, int last, const PRIMA
  */
 PRIMALrescodee PRIMAL_putcfix(PRIMALtask_t t, double cfix) {
     if (!t) return PRIMAL_RES_ERR_NULL;
+    result_changed(t);
     t->cfix = cfix;
     return PRIMAL_RES_OK;
 }
@@ -180,6 +184,7 @@ PRIMALrescodee PRIMAL_putacol(PRIMALtask_t t, int j, int nz, const int *sub, con
         if (!s2 || !v2) return PRIMAL_RES_ERR_ALLOC;
         c->sub = s2; c->val = v2; c->cap = nz;
     }
+    model_changed(t);
     c->nz = nz;
     for (int k = 0; k < nz; k++) { c->sub[k] = sub[k]; c->val[k] = val[k]; }
     return PRIMAL_RES_OK;
@@ -221,6 +226,7 @@ PRIMALrescodee PRIMAL_putarow(PRIMALtask_t t, int i, int nz, const int *sub, con
     for (int k = 0; k < nz; k++)
         if (sub[k] < 0 || sub[k] >= t->numvar) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
+    model_changed(t);
     /* replace semantics: clear row i from every column, then set */
     for (int j = 0; j < t->numvar; j++) {
         Col *c = &t->cols[j];
@@ -234,9 +240,11 @@ PRIMALrescodee PRIMAL_putarow(PRIMALtask_t t, int i, int nz, const int *sub, con
         if (c->nz == c->cap) {
             int ncap = c->cap ? c->cap * 2 : 4;
             int *s2 = (int *)realloc(c->sub, (size_t)ncap * sizeof(int));
+            if (!s2) return PRIMAL_RES_ERR_ALLOC;
+            c->sub = s2;
             double *v2 = (double *)realloc(c->val, (size_t)ncap * sizeof(double));
-            if (!s2 || !v2) return PRIMAL_RES_ERR_ALLOC;
-            c->sub = s2; c->val = v2; c->cap = ncap;
+            if (!v2) return PRIMAL_RES_ERR_ALLOC;
+            c->val = v2; c->cap = ncap;
         }
         c->sub[c->nz] = i; c->val[c->nz] = val[k]; c->nz++;
     }
@@ -644,6 +652,7 @@ PRIMALrescodee PRIMAL_putaij(PRIMALtask_t t, int i, int j, double aij) {
     if (i < 0 || i >= t->numcon || j < 0 || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
     Col *c = &t->cols[j];
+    model_changed(t);
     int w = 0;
     for (int k = 0; k < c->nz; k++)
         if (c->sub[k] != i) { c->sub[w] = c->sub[k]; c->val[w] = c->val[k]; w++; }
@@ -652,9 +661,11 @@ PRIMALrescodee PRIMAL_putaij(PRIMALtask_t t, int i, int j, double aij) {
         if (c->nz == c->cap) {
             int ncap = c->cap ? c->cap * 2 : 4;
             int *s2 = (int *)realloc(c->sub, (size_t)ncap * sizeof(int));
+            if (!s2) return PRIMAL_RES_ERR_ALLOC;
+            c->sub = s2;
             double *v2 = (double *)realloc(c->val, (size_t)ncap * sizeof(double));
-            if (!s2 || !v2) return PRIMAL_RES_ERR_ALLOC;
-            c->sub = s2; c->val = v2; c->cap = ncap;
+            if (!v2) return PRIMAL_RES_ERR_ALLOC;
+            c->val = v2; c->cap = ncap;
         }
         c->sub[c->nz] = i; c->val[c->nz] = aij; c->nz++;
     }
@@ -792,12 +803,17 @@ double *scaled_qvals(PRIMALtask_t t, double s, const double *ds) {
 PRIMALrescodee PRIMAL_putqobj(PRIMALtask_t t, int numqcnz, const int *qi, const int *qj, const double *qoval) {
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numqcnz < 0) return PRIMAL_RES_ERR_ARG;
+    if (numqcnz > 0 && (!qi || !qj || !qoval)) return PRIMAL_RES_ERR_NULL;
     for (int k = 0; k < numqcnz; k++) {
         if (qi[k] < 0 || qi[k] >= t->numvar || qj[k] < 0 || qj[k] >= t->numvar)
             return PRIMAL_RES_ERR_ARG;
         if (qoval[k] != qoval[k]) return PRIMAL_RES_ERR_ARG; /* NaN */
     }
-    if (numqcnz == 0) { t->has_qobj = 0; t->qt_n = 0; free(t->qobj); t->qobj = NULL; return PRIMAL_RES_OK; }
+    if (numqcnz == 0) {
+        result_changed(t);
+        t->has_qobj = 0; t->qt_n = 0; free(t->qobj); t->qobj = NULL;
+        return PRIMAL_RES_OK;
+    }
     if (t->qt_n + numqcnz > t->qt_cap) {
         int nc = t->qt_cap ? t->qt_cap : 16;
         while (nc < t->qt_n + numqcnz) nc *= 2;
@@ -807,6 +823,7 @@ PRIMALrescodee PRIMAL_putqobj(PRIMALtask_t t, int numqcnz, const int *qi, const 
         if (!ni || !nj || !nv) { free(ni); free(nj); free(nv); return PRIMAL_RES_ERR_ALLOC; }
         t->qt_i = ni; t->qt_j = nj; t->qt_v = nv; t->qt_cap = nc;
     }
+    result_changed(t);
     for (int k = 0; k < numqcnz; k++) {
         t->qt_i[t->qt_n] = qi[k]; t->qt_j[t->qt_n] = qj[k]; t->qt_v[t->qt_n] = qoval[k]; t->qt_n++;
     }
@@ -848,6 +865,7 @@ PRIMALrescodee PRIMAL_putqobjij(PRIMALtask_t t, int i, int j, double qoij) {
     if (i < 0 || j < 0 || i >= t->numvar || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     if (qoij != qoij) return PRIMAL_RES_ERR_ARG;   /* NaN */
     if (i < j) return PRIMAL_RES_ERR_ARG;          /* only lower triangle */
+    result_changed(t);
     int w = 0;
     for (int k = 0; k < t->qt_n; k++) {
         int a = t->qt_i[k], b = t->qt_j[k];
@@ -931,6 +949,7 @@ PRIMALrescodee PRIMAL_putvarbound(PRIMALtask_t t, int j, PRIMALboundkeye bk, dou
     if (j < 0 || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     if (!bound_ok(bk, bl, bu)) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
+    model_changed(t);
     t->bkx[j] = bk;
     switch (bk) {
         case PRIMAL_BK_LO: t->blx[j] = bl; t->bux[j] = INF; break;
@@ -976,6 +995,7 @@ PRIMALrescodee PRIMAL_putconbound(PRIMALtask_t t, int i, PRIMALboundkeye bk, dou
     if (i < 0 || i >= t->numcon) return PRIMAL_RES_ERR_ARG;
     if (!bound_ok(bk, bl, bu)) return PRIMAL_RES_ERR_ARG;
     PRIMALrescodee rc = ensure_size(t); if (rc != PRIMAL_RES_OK) return rc;
+    model_changed(t);
     t->bkc[i] = bk;
     switch (bk) {
         case PRIMAL_BK_LO: t->blc[i] = bl; t->buc[i] = INF; break;
@@ -1348,7 +1368,7 @@ PRIMALrescodee PRIMAL_putconboundsliceconst(PRIMALtask_t t, int first, int last,
 PRIMALrescodee PRIMAL_putobjsense(PRIMALtask_t t, PRIMALobjsensee sense) {
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (sense != PRIMAL_OPTIMIZE_MINIMIZE && sense != PRIMAL_OPTIMIZE_MAXIMIZE) return PRIMAL_RES_ERR_ARG;
+    result_changed(t);
     t->sense = sense;
     return PRIMAL_RES_OK;
 }
-

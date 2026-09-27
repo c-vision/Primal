@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_sdptask.c - conic/SDP conversion, unified IPM leg, SDP outer approximation.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -89,7 +89,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
      *   QUAD  z_a = x_{mem[a]};
      *   RQUAD z_0=(u+v)/sqrt2, z_1=(u-v)/sqrt2, z_{2+j}=w_j;
      *   PEXP/PPOW/RPOW  z_a = x_{mem[a]}  (barrier block, expcone.c);
-     *   DEXP            z_a = -x_{mem[a]} (DEXP = -PEXP). ---- */
+     *   DEXP            z = (e*x_{mem[0]}, -x_{mem[2]}, -x_{mem[1]}). ---- */
     int nsoc = 0, nSocVar = 0, nep = 0;
     int *socdim = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
     int *socOf  = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
@@ -97,9 +97,8 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     int *ekind  = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
     double *ealpha = (double *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(double));
     int *eOf  = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
-    int *eSgn = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
-    if (!socdim || !socOf || !socCone || !ekind || !ealpha || !eOf || !eSgn) {
-        free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(eSgn);
+    if (!socdim || !socOf || !socCone || !ekind || !ealpha || !eOf) {
+        free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf);
         return PRIMAL_RES_ERR_ALLOC;
     }
     for (int k = 0; k < t->numcones; k++) {
@@ -113,15 +112,14 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             ekind[nep] = (ct == PRIMAL_CT_PPOW) ? EXPCONE_PPOW :
                          (ct == PRIMAL_CT_RPOW) ? EXPCONE_RPOW : EXPCONE_PEXP;
             ealpha[nep] = t->cone_param[k];
-            eSgn[nep] = (ct == PRIMAL_CT_DEXP) ? -1 : 1;
             nep++;
-        } else { free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(eSgn);
+        } else { free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf);
             return PRIMAL_RES_ERR_ARG; }
     }
 
     /* ---- compressed upper-triangle coefficients of the matrix store ---- */
     double **symPq = (double **)malloc((size_t)(t->nsym > 0 ? t->nsym : 1) * sizeof(double *));
-    if (!symPq) { free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(eSgn);
+    if (!symPq) { free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf);
         return PRIMAL_RES_ERR_ALLOC; }
     for (int m = 0; m < t->nsym; m++) symPq[m] = NULL;
     for (int m = 0; m < t->nsym; m++) {
@@ -303,13 +301,13 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             }
         }
     }
-    /* ---- exp/power linking rows: z_a = sg * x_{mem[a]}, sg = -1 for DEXP
-     * (DEXP = -PEXP) and +1 for PEXP/PPOW/RPOW ---- */
+    /* Link the exponential/power triples, mapping DEXP to PEXP coordinates. */
     for (int i = 0; i < nep; i++) {
         const int *mem = t->cone_mem[eOf[i]];
-        const double sg = (double)eSgn[i];
+        int ct = t->cone_type[eOf[i]];
         for (int a = 0; a < 3; a++) {
-            int r = m2 + nSocVar + 3 * i + a, v = mem[a];
+            double sg = exp_factor(ct, a);
+            int r = m2 + nSocVar + 3 * i + a, v = mem[exp_member(ct, a)];
             Aexp[(size_t)r * nep + i][a] = 1.0;
             b2[r] = sg * vConst[v];
             for (int p = 0; p < vN[v]; p++) E2[(size_t)r * nv2 + vIdx[2*v+p]] -= sg * vCoef[2*v+p];
@@ -458,8 +456,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     for (int i = 0; i < nsoc; i++) { free(Csoc[i]); for (int r = 0; r < mTot; r++) free(Asoc[(size_t)r * nsoc + i]); }
     for (int i = 0; i < nep; i++) { free(Cexp[i]); for (int r = 0; r < mTot; r++) free(Aexp[(size_t)r * nep + i]); }
     free(Csoc); free(Asoc); free(Cexp); free(Aexp);
-    free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(eSgn);
-    free(vN); free(vIdx); free(vCoef); free(vConst); free(Arow);
+    free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(vN); free(vIdx); free(vCoef); free(vConst); free(Arow);
     free(varRow); free(varSlack); free(varCap);
     free(rowOf); free(rowSlack);
     for (int j = 0; j < nb; j++) free(Cbar[j]);
@@ -487,7 +484,7 @@ fail_cbar:
 fail_sym:
     for (int m = 0; m < t->nsym; m++) free(symPq[m]);
     free(symPq);
-    free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(eSgn);
+    free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf);
     return PRIMAL_RES_ERR_ALLOC;
 }
 
@@ -737,10 +734,10 @@ int model_lp_witness(PRIMALtask_t t, int s, double **symPq, int mode,
                 /* What membership IMPLIES, linearly. QUAD: t >= 0 and t >= |u_i|,
                  * one row per sign. The other kinds have nothing beyond their
                  * domain faces t >= 0, u >= 0 (and PEXP adds none on v), and
-                 * DEXP = -PEXP, so its faces are those two negated -- which is
+                 * DEXP maps to PEXP as (e*x0,-x2,-x1), which determines
                  * all `g` carries. A superset of each cone: infeasible here is
                  * infeasible in the model. */
-                double g = (ct == PRIMAL_CT_DEXP) ? -1.0 : 1.0;
+                /* DEXP implies s0 >= 0 and s2 <= 0. */
                 if (ct == PRIMAL_CT_QUAD) {
                     for (int i = 1; i < nk && r < nrowlp; i++) {
                         for (int sg = 0; sg < 2 && r < nrowlp; sg++, r++) {
@@ -758,7 +755,7 @@ int model_lp_witness(PRIMALtask_t t, int s, double **symPq, int mode,
                            ct == PRIMAL_CT_DEXP   || ct == PRIMAL_CT_PPOW ||
                            ct == PRIMAL_CT_RPOW) {
                     for (int i = 0; i < 2 && r < nrowlp; i++, r++) {
-                        A[(size_t)r * ntot + mi[i]] += g;
+                        A[(size_t)r * ntot + mi[exp_member(ct, i)]] += exp_factor(ct, i);
                         lc[r] = 0.0; uc[r] = INF;
                     }
                 }
@@ -1158,7 +1155,10 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                         cw->bar = j; cw->n = barPq[j];
                         cw->sub = (int *)malloc((size_t)cw->n * sizeof(int));
                         cw->val = (double *)calloc((size_t)cw->n, sizeof(double));
-                        if (!cw->sub || !cw->val) { rc = PRIMAL_RES_ERR_ALLOC; break; }
+                        if (!cw->sub || !cw->val) {
+                            free(cw->sub); free(cw->val);
+                            rc = PRIMAL_RES_ERR_ALLOC; break;
+                        }
                         for (int e = 0; e < cw->n; e++) cw->sub[e] = barOff[j] + e;
                         double proj0 = 0.0;
                         for (int p = 0; p < d; p++)
@@ -1174,14 +1174,6 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                     }
                 }
 
-                /* ---------- does the cut loop still make progress? ----------
-                 * viol is the worst (tolv - lambda_min) over the bars -- a margin
-                 * to the boundary, so a tangent cut that does not push it down
-                 * measurably is not separating the iterate.
-                 * Count the rounds without a real improvement and leave early:
-                 * the verdict is the same one running out of rounds produces
-                 * (TRM_MAX_ITER, no solution claimed), reached in a fraction of
-                 * the budget. */
                 /* Per-round progress measure: how far the worst bar is from the
                  * cone boundary, and how it moved. The loop itself is NOT
                  * stopped by this -- it runs to SDP_MAXROUND and reports
@@ -1225,6 +1217,7 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                 free(c); free(lx); free(ux); free(lc); free(uc);
                 free(Arow); free(ptr); free(sub); free(val);
                 if (caprc != PRIMAL_RES_OK) { rc = caprc; break; }
+                if (rc != PRIMAL_RES_OK) break;
 
                 if (anycut) continue;
 
@@ -1441,15 +1434,22 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
     if (status == 0) {
         stdform_map_x(sf, xt, xout);
         for (int j = 0; j < nvar; j++) xout[j] *= ds[j];   /* descale the columns */
-        double p = 0.0;
+        double p = s * t->cfix;
         for (int j = 0; j < nvar; j++) p += (s * t->c[j]) * xout[j];
         if (t->has_qobj) {
             double qq = task_xQx(t, xout);
             p += 0.5 * s * qq;   /* min-form quadratic term (s on 1/2 x'Qx) */
         }
-        *pmin = p;
+        double dual = s * t->cfix + sf->cfix;
+        for (int i = 0; i < sf->m; i++) dual += sf->b[i] * ystd[i];
+        if (sf->Qptr) for (int j = 0; j < sf->n; j++)
+            for (int k = sf->Qptr[j]; k < sf->Qptr[j+1]; k++) {
+                int i = sf->Qrow[k];
+                dual -= (i == j ? 0.5 : 1.0) * sf->Qval[k] * xt[i] * xt[j];
+            }
+        *pmin = isfinite(p) && isfinite(dual) ? fmin(p, dual) : NAN;
+        if (!isfinite(*pmin)) status = 3;
     }
     free(xt); free(ystd); free(zst); stdform_free(sf); free(ci); free(ds);
     return status;
 }
-

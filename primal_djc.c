@@ -16,133 +16,129 @@
  * under the License.
  */
 /* primal_djc.c - disjunctive constraints (reference-style DJC over big-M).
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
-/* ---- disjunctive constraints: OR of linear systems, via big-M MIP ----
- * Internal encoder: for each disjunction d (nrow_d rows sum_j a_ij x_j <= b_i)
- * the binary z_d is introduced together with the rows a_ij'x + M*z_d <= b_i + M,
- * plus the selection sum_d z_d >= 1. A disjunction with 0 rows is always
- * satisfied (a clause with no constrained component): its binary stays in the
- * selection sum, which is satisfiable, so the constraint adds nothing.
- * With free x the big-M holds only with finite user bounds (documented
- * deviation). It is no longer public API: it is the backend of PRIMAL_putdjc. */
-#define DJC_BIGM 1e6
-/* Backend of PRIMAL_putdjc: extends the model with a selection binary per
- * clause and the big-M rows that enforce each clause's linear domains. */
-static PRIMALrescodee djc_encode(PRIMALtask_t t, int ndis, const int *disj_start,
-                          const int *rows_per_disj, const int *ncoef,
-                          const int *varidx, const double *rowcoefs,
-                          const double *rhs) {
-    if (!t) return PRIMAL_RES_ERR_NULL;
-    if (ndis <= 0 || !disj_start || !rows_per_disj || !ncoef) return PRIMAL_RES_ERR_NULL;
-    int nz_all = 0, nrow_all = 0;
-    for (int d = 0; d < ndis; d++) {
-        if (rows_per_disj[d] < 0) return PRIMAL_RES_ERR_ARG;
-        if (disj_start[d] < 0) return PRIMAL_RES_ERR_ARG;
-        nrow_all += rows_per_disj[d];
-    }
-    /* ncoef/rhs are flat per global row (nrow_all entries); disj_start[d]
-     * points at the first row of disjunction d and must be consistent with
-     * the sequential layout (checked at the end) */
-    {
-        int acc = 0;
-        for (int d = 0; d < ndis; d++) {
-            if (disj_start[d] != acc) return PRIMAL_RES_ERR_ARG;
-            acc += rows_per_disj[d];
+/* Generated rows are refreshed before solving. Big-M is derived only from
+ * explicit variable bounds and external scalar singleton rows. An unsupported
+ * unbounded relaxation is an argument error, never a guessed finite box. */
+static int djc_generated_row(PRIMALtask_t t, int row) {
+    for (int k = 0; k < t->numdjc; k++)
+        if (t->djc_numterm[k] && row >= t->djc_rowbase[k] &&
+            row < t->djc_rowbase[k] + t->djc_nrow[k]) return 1;
+    return 0;
+}
+
+static PRIMALrescodee djc_box(PRIMALtask_t t, double *lo, double *up) {
+    int m = t->numcon;
+    int *count = calloc((size_t)(m ? m : 1), sizeof(int));
+    int *col = calloc((size_t)(m ? m : 1), sizeof(int));
+    double *coef = calloc((size_t)(m ? m : 1), sizeof(double));
+    if (!count || !col || !coef) { free(count); free(col); free(coef); return PRIMAL_RES_ERR_ALLOC; }
+    for (int j = 0; j < t->numvar; j++) {
+        bound_range(t->bkx[j], t->blx[j], t->bux[j], &lo[j], &up[j]);
+        if (t->vartype[j] == PRIMAL_VAR_TYPE_SEMI_CONT || t->vartype[j] == PRIMAL_VAR_TYPE_SEMI_INT) {
+            lo[j] = fmin(lo[j], 0); up[j] = fmax(up[j], 0);
+        }
+        for (int e = 0; e < t->cols[j].nz; e++) {
+            int r = t->cols[j].sub[e]; double a = t->cols[j].val[e];
+            if (a == 0) continue;
+            count[r]++; col[r] = j; coef[r] = a;
         }
     }
-    for (int i = 0; i < nrow_all; i++) {
-        if (ncoef[i] < 0) return PRIMAL_RES_ERR_ARG;
-        nz_all += ncoef[i];
+    for (int e = 0; e < t->nbarA; e++) count[t->barA_con[e]] = 2;
+    for (int r = 0; r < m; r++) {
+        if (count[r] != 1 || djc_generated_row(t,r) || (t->qcon && t->qcon[r])) continue;
+        int j = col[r]; double a = coef[r], l, u;
+        if (!isfinite(a)) continue;
+        bound_range(t->bkc[r],t->blc[r],t->buc[r],&l,&u);
+        double nl = nextafter((a > 0 ? l : u)/a, -INFINITY);
+        double nu = nextafter((a > 0 ? u : l)/a, INFINITY);
+        lo[j] = fmax(lo[j],nl); up[j] = fmin(up[j],nu);
     }
-    if ((nz_all > 0 && (!varidx || !rowcoefs)) ||
-        (nrow_all > 0 && !rhs)) return PRIMAL_RES_ERR_NULL;
-    /* flat layout: row i of disjunction d uses ncoef[row_global] entries
-     * from the flat arrays varidx/rowcoefs, sequentially across ALL rows */
-    int ridx = 0;
-    int cidx = 0;
-    for (int d = 0; d < ndis; d++)
-        for (int i = 0; i < rows_per_disj[d]; i++) {
-            int n = ncoef[ridx];
-            for (int k = 0; k < n; k++) {
-                if (varidx[cidx] < 0 || varidx[cidx] >= t->numvar)
-                    return PRIMAL_RES_ERR_ARG;
-                if (rowcoefs[cidx] != rowcoefs[cidx]) return PRIMAL_RES_ERR_ARG;
-                cidx++;
-            }
-            ridx++;
-        }
-    /* 1) binaries z_d */
-    int zbase = t->numvar;
-    PRIMALrescodee rc = PRIMAL_appendvars(t, ndis);
-    if (rc != PRIMAL_RES_OK) return rc;
-    for (int d = 0; d < ndis; d++) {
-        PRIMAL_putvarbound(t, zbase + d, PRIMAL_BK_RA, 0.0, 1.0);
-        PRIMAL_putvartype(t, zbase + d, PRIMAL_VAR_TYPE_INT_BIN);
-    }
-    /* 2) big-M rows: one per (d, i) */
-    int rbase = t->numcon;
-    rc = PRIMAL_appendcons(t, nrow_all + 1);
-    if (rc != PRIMAL_RES_OK) return rc;
-    ridx = 0; cidx = 0;
-    int row = rbase;
-    for (int d = 0; d < ndis; d++)
-        for (int i = 0; i < rows_per_disj[d]; i++) {
-            int n = ncoef[ridx];
-            /* cap: max(1, n)+1 entries (n coefs + z_d) */
-            int cap = n + 1;
-            int *sub = (int *)malloc((size_t)cap * sizeof(int));
-            double *val = (double *)malloc((size_t)cap * sizeof(double));
-            if (!sub || !val) { free(sub); free(val); return PRIMAL_RES_ERR_ALLOC; }
-            int w = 0;
-            for (int k = 0; k < n; k++) {
-                sub[w] = varidx[cidx];
-                val[w] = rowcoefs[cidx];
-                w++; cidx++;
-            }
-            sub[w] = zbase + d;
-            /* Tight big-M from the user bounds when they are finite: a
-             * constant 1e6 on a row whose variables live in [0,1] makes the
-             * matrix coefficients 1e6 and destroys the conic IPM's scaling
-             * (it then loses the relaxation).  M = max over the box of the
-             * row's left-hand side minus its rhs, or the global fallback when
-             * some variable is unbounded in the growing direction. */
-            {
-                double lhsmax = 0.0; int finite = 1;
-                for (int k = 0; k < n; k++) {
-                    int j = varidx[cidx - n + k];
-                    double a = rowcoefs[cidx - n + k];
-                    double lb = t->blx[j], ub = t->bux[j];
-                    double tmax = (a >= 0.0) ? a * ub : a * lb;
-                    if (!isfinite(tmax)) { finite = 0; break; }
-                    lhsmax += tmax;
-                }
-                double M;
-                if (!finite) M = DJC_BIGM;
-                else { M = lhsmax - rhs[ridx]; if (M < 0.0) M = 0.0; }
-                val[w] = M;
-                rc = PRIMAL_putarow(t, row, w + 1, sub, val);
-                free(sub); free(val);
-                if (rc != PRIMAL_RES_OK) return rc;
-                PRIMAL_putconbound(t, row, PRIMAL_BK_UP, -INF, rhs[ridx] + M);
-            }
-            row++;
-            ridx++;
-        }
-    /* 3) selection: sum z >= 1 */
-    {
-        int *sub = (int *)malloc((size_t)ndis * sizeof(int));
-        double *val = (double *)malloc((size_t)ndis * sizeof(double));
-        if (!sub || !val) { free(sub); free(val); return PRIMAL_RES_ERR_ALLOC; }
-        for (int d = 0; d < ndis; d++) { sub[d] = zbase + d; val[d] = 1.0; }
-        rc = PRIMAL_putarow(t, row, ndis, sub, val);
-        free(sub); free(val);
-        if (rc != PRIMAL_RES_OK) return rc;
-        PRIMAL_putconbound(t, row, PRIMAL_BK_LO, 1.0, INF);
-    }
+    free(count); free(col); free(coef);
     return PRIMAL_RES_OK;
+}
+
+static PRIMALrescodee djc_encode(PRIMALtask_t t, int k, int ndis,
+        const int *rows_per_disj, const int *ncoef, const int *varidx,
+        const double *rowcoefs, const double *rhs, int create) {
+    int nr = 0, always = 0;
+    for (int d = 0; d < ndis; d++) { nr += rows_per_disj[d]; if (!rows_per_disj[d]) always = 1; }
+    if (create) {
+        if (ndis > INT_MAX-t->numvar || nr >= INT_MAX-t->numcon) return PRIMAL_RES_ERR_ARG;
+        int rb = t->numcon, vb = t->numvar;
+        PRIMALrescodee rc = PRIMAL_appendcons(t,nr+1);
+        if (rc != PRIMAL_RES_OK) return rc;
+        rc = PRIMAL_appendvars(t,ndis);
+        if (rc != PRIMAL_RES_OK) { t->numcon = rb; return rc; }
+        for (int d = 0; d < ndis; d++) {
+            PRIMAL_putvarbound(t,vb+d,PRIMAL_BK_RA,0,1);
+            PRIMAL_putvartype(t,vb+d,PRIMAL_VAR_TYPE_INT_BIN);
+        }
+        t->djc_rowbase[k] = rb; t->djc_varbase[k] = vb; t->djc_nrow[k] = nr+1;
+        return PRIMAL_RES_OK;
+    }
+    int rb = t->djc_rowbase[k], vb = t->djc_varbase[k];
+    if (rb < 0 || nr+1 != t->djc_nrow[k] || rb > t->numcon-nr-1 || vb < 0 || vb > t->numvar-ndis)
+        return PRIMAL_RES_ERR_ARG;
+    for (int d = 0; d < ndis; d++) {
+        double l, u; bound_range(t->bkx[vb+d],t->blx[vb+d],t->bux[vb+d],&l,&u);
+        if (t->vartype[vb+d] != PRIMAL_VAR_TYPE_INT_BIN || l < 0 || u > 1) return PRIMAL_RES_ERR_ARG;
+    }
+    double *lo = malloc((size_t)t->numvar*sizeof(double));
+    double *up = malloc((size_t)t->numvar*sizeof(double));
+    double *M = calloc((size_t)(nr ? nr : 1),sizeof(double));
+    int cap = ndis;
+    for (int r = 0; r < nr; r++) if (ncoef[r]+1 > cap) cap = ncoef[r]+1;
+    int *sub = malloc((size_t)cap*sizeof(int));
+    double *val = malloc((size_t)cap*sizeof(double));
+    PRIMALrescodee rc = PRIMAL_RES_ERR_ALLOC;
+    if (!lo || !up || !M || !sub || !val) goto done;
+    rc = djc_box(t,lo,up);
+    if (rc != PRIMAL_RES_OK) goto done;
+    int pos = 0;
+    for (int r = 0; r < nr; r++) {
+        long double lhs = 0;
+        for (int e = 0; e < ncoef[r]; e++) {
+            int j = varidx[pos]; double a = rowcoefs[pos++];
+            if (a != 0) lhs = nextafterl(lhs + nextafterl((long double)a*(a > 0 ? up[j] : lo[j]),INFINITY), INFINITY);
+        }
+        if (!always && ndis > 1) {
+            if (!isfinite(lhs)) { rc = PRIMAL_RES_ERR_ARG; goto done; }
+            M[r] = fmax(0,nextafter((double)(lhs-(long double)rhs[r]),INFINITY));
+            /* Round upward to a power of two. This keeps the relaxation
+             * valid and avoids tiny coefficients/right-hand sides caused by
+             * cancellation at a tight box boundary. */
+            if (M[r] > 0 && isfinite(M[r])) {
+                int exponent;
+                frexp(fmax(1,M[r]),&exponent);
+                M[r] = ldexp(1,exponent);
+            }
+            if (!isfinite(M[r]) || !isfinite(rhs[r]+M[r])) {
+                tlog(t,"DJC requires finite relaxation bounds; supply finite variable bounds or scalar singleton rows.\n");
+                rc = PRIMAL_RES_ERR_ARG; goto done;
+            }
+        }
+    }
+    pos = 0;
+    int r = 0;
+    for (int d = 0; d < ndis; d++) for (int e = 0; e < rows_per_disj[d]; e++, r++) {
+        int n = ncoef[r];
+        for (int q = 0; q < n; q++, pos++) { sub[q] = varidx[pos]; val[q] = rowcoefs[pos]; }
+        sub[n] = vb+d; val[n] = M[r];
+        rc = PRIMAL_putarow(t,rb+r,always ? 0 : n+1,sub,val);
+        if (rc != PRIMAL_RES_OK) goto done;
+        rc = PRIMAL_putconbound(t,rb+r,always ? PRIMAL_BK_FR : PRIMAL_BK_UP,-INF,rhs[r]+M[r]);
+        if (rc != PRIMAL_RES_OK) goto done;
+    }
+    for (int d = 0; d < ndis; d++) { sub[d] = vb+d; val[d] = 1; }
+    rc = PRIMAL_putarow(t,rb+nr,ndis,sub,val);
+    if (rc == PRIMAL_RES_OK) rc = PRIMAL_putconbound(t,rb+nr,PRIMAL_BK_LO,1,INF);
+ done:
+    free(lo); free(up); free(M); free(sub); free(val);
+    return rc;
 }
 
 /* ---- reference-style disjunctive constraints (DJC) ----
@@ -160,20 +156,19 @@ static PRIMALrescodee djc_encode(PRIMALtask_t t, int ndis, const int *disj_start
  * appenddjcs pre-allocates EMPTY slots (numterm == 0) and putdjc fills them.
  * Declared deviation: the backend represents only LINEAR domains
  * (R/RZERO/RPLUS/RMINUS); a conic domain in a DJC is refused with ERR_ARG (no
- * conic MIP in this solver), and the big-M M = 1e6 holds only with finite user
- * bounds, as for every MIP of this solver. */
+ * conic big-M encoding here). Finite bounds are checked before solving. */
 
 /* Complete validation with no side effects. */
 static PRIMALrescodee djc_validate(PRIMALtask_t t, PRIMALint64t numdomidx,
         const PRIMALint64t *domidxlist, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidxlist, const PRIMALrealt *b,
         PRIMALint64t numterms, const PRIMALint64t *termsizelist) {
-    if (numdomidx < 0 || numafeidx < 0 || numterms < 1) return PRIMAL_RES_ERR_ARG;
+    if (numdomidx < 0 || numdomidx > INT_MAX || numafeidx < 0 || numafeidx > INT_MAX/2 || numterms < 1 || numterms > INT_MAX) return PRIMAL_RES_ERR_ARG;
     if ((numdomidx > 0 && !domidxlist) || (numafeidx > 0 && !afeidxlist) ||
         !termsizelist) return PRIMAL_RES_ERR_NULL;
     PRIMALint64t tsum = 0;
     for (PRIMALint64t i = 0; i < numterms; i++) {
-        if (termsizelist[i] < 0) return PRIMAL_RES_ERR_ARG;
+        if (termsizelist[i] < 0 || termsizelist[i] > numdomidx-tsum) return PRIMAL_RES_ERR_ARG;
         tsum += termsizelist[i];
     }
     if (tsum != numdomidx) return PRIMAL_RES_ERR_ARG;
@@ -185,12 +180,22 @@ static PRIMALrescodee djc_validate(PRIMALtask_t t, PRIMALint64t numdomidx,
         if (ty != PRIMAL_DOMAIN_R && ty != PRIMAL_DOMAIN_RZERO &&
             ty != PRIMAL_DOMAIN_RPLUS && ty != PRIMAL_DOMAIN_RMINUS)
             return PRIMAL_RES_ERR_ARG;   /* deviation: linear domains only */
+        if (t->dom_n[dom] > numafeidx-dimsum) return PRIMAL_RES_ERR_ARG;
         dimsum += t->dom_n[dom];
     }
     if (dimsum != numafeidx) return PRIMAL_RES_ERR_ARG;
     for (PRIMALint64t e = 0; e < numafeidx; e++) {
         if (afeidxlist[e] < 0 || afeidxlist[e] >= t->numafe) return PRIMAL_RES_ERR_ARG;
-        if (b && b[e] != b[e]) return PRIMAL_RES_ERR_ARG;
+        if (b && !isfinite(b[e])) return PRIMAL_RES_ERR_ARG;
+        int a = (int)afeidxlist[e];
+        if (t->afe_barnz[a] || !isfinite(t->afeg[a]) || !isfinite(t->afeg[a]-(b ? b[e] : 0))) return PRIMAL_RES_ERR_ARG;
+        for (int q = 0; q < t->afe_nz[a]; q++) {
+            if (!isfinite(t->afe_val[a][q])) return PRIMAL_RES_ERR_ARG;
+            int j = t->afe_sub[a][q];
+            for (int k = 0; k < t->numdjc; k++)
+                if (t->djc_numterm[k] && j >= t->djc_varbase[k] && j < t->djc_varbase[k]+t->djc_numterm[k])
+                    return PRIMAL_RES_ERR_ARG;
+        }
     }
     return PRIMAL_RES_OK;
 }
@@ -201,13 +206,12 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
         PRIMALint64t numdomidx, const PRIMALint64t *domidxlist,
         PRIMALint64t numafeidx, const PRIMALint64t *afeidxlist,
         const PRIMALrealt *b, PRIMALint64t numterms,
-        const PRIMALint64t *termsizelist) {
+        const PRIMALint64t *termsizelist, int create) {
     int ndis = (int)numterms;
     int *rpd = (int *)calloc((size_t)ndis, sizeof(int));
-    int *disj_start = (int *)malloc((size_t)ndis * sizeof(int));
-    if (!rpd || !disj_start) { free(rpd); free(disj_start); return PRIMAL_RES_ERR_ALLOC; }
+    if (!rpd) return PRIMAL_RES_ERR_ALLOC;
     /* first pass: how many rows per term and how many coefficients in total */
-    int afe_cur = 0, dom_cur = 0, nrow_all = 0, nz_all = 0, st = 0;
+    int afe_cur = 0, dom_cur = 0, nrow_all = 0, nz_all = 0;
     for (int i = 0; i < ndis; i++) {
         int nrows = 0;
         for (int q = 0; q < (int)termsizelist[i]; q++) {
@@ -217,19 +221,23 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
             for (int c = 0; c < n; c++) {
                 int a = (int)afeidxlist[afe_cur++];
                 int nz = t->afe_nz[a];
+                int mult = ty == PRIMAL_DOMAIN_RZERO ? 2 : ty == PRIMAL_DOMAIN_R ? 0 : 1;
+                if (mult && nz > (INT_MAX-nz_all)/mult) {
+                    free(rpd); return PRIMAL_RES_ERR_ARG;
+                }
                 if (ty == PRIMAL_DOMAIN_R) continue;
                 if (ty == PRIMAL_DOMAIN_RZERO) { nrows += 2; nz_all += 2 * nz; }
                 else { nrows += 1; nz_all += nz; }
             }
         }
-        disj_start[i] = st; rpd[i] = nrows; st += nrows; nrow_all += nrows;
+        rpd[i] = nrows; nrow_all += nrows;
     }
     int *ncoef = (int *)malloc((size_t)(nrow_all > 0 ? nrow_all : 1) * sizeof(int));
     double *rhs = (double *)malloc((size_t)(nrow_all > 0 ? nrow_all : 1) * sizeof(double));
     int *varidx = (int *)malloc((size_t)(nz_all > 0 ? nz_all : 1) * sizeof(int));
     double *rowcoefs = (double *)malloc((size_t)(nz_all > 0 ? nz_all : 1) * sizeof(double));
     if (!ncoef || !rhs || !varidx || !rowcoefs) {
-        free(rpd); free(disj_start); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
+        free(rpd); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
         return PRIMAL_RES_ERR_ALLOC;
     }
     /* second pass: fill. expr = F x + g - bv; RPLUS -> -expr <= 0,
@@ -274,48 +282,74 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
             }
         }
     }
-    /* metadata: the exact description, for the getters. Allocated locally and
-     * published only on success, so a failed allocation does not leave the slot
-     * marked as written. */
-    int k = (int)djcidx;
-    size_t nbd = (size_t)(numdomidx > 0 ? numdomidx : 1);
-    size_t nba = (size_t)(numafeidx > 0 ? numafeidx : 1);
-    PRIMALint64t *md = (PRIMALint64t *)malloc(nbd * sizeof(PRIMALint64t));
-    PRIMALint64t *ma = (PRIMALint64t *)malloc(nba * sizeof(PRIMALint64t));
-    double *mb = (double *)malloc(nba * sizeof(double));
-    PRIMALint64t *mt = (PRIMALint64t *)malloc((size_t)ndis * sizeof(PRIMALint64t));
-    if (!md || !ma || !mb || !mt) {
-        free(md); free(ma); free(mb); free(mt);
-        free(rpd); free(disj_start); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
-        return PRIMAL_RES_ERR_ALLOC;
-    }
-    for (PRIMALint64t e = 0; e < numdomidx; e++) md[e] = domidxlist[e];
-    for (PRIMALint64t e = 0; e < numafeidx; e++) {
-        ma[e] = afeidxlist[e];
-        mb[e] = b ? b[e] : 0.0;
-    }
-    for (int i = 0; i < ndis; i++) mt[i] = termsizelist[i];
-    t->djc_ndom[k] = numdomidx;
-    t->djc_nafe[k] = numafeidx;
-    t->djc_dom[k] = md;
-    t->djc_afe[k] = ma;
-    t->djc_b[k] = mb;
-    t->djc_termsize[k] = mt;
-    t->djc_numterm[k] = numterms;   /* last: it is the "written" marker */
-    PRIMALrescodee rc = djc_encode(t, ndis, disj_start, rpd, ncoef, varidx, rowcoefs, rhs);
-    free(rpd); free(disj_start); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
+    PRIMALrescodee rc;
+    if (create) {
+        /* Allocate metadata before extending the physical model. */
+        size_t nd = (size_t)(numdomidx ? numdomidx : 1), na = (size_t)(numafeidx ? numafeidx : 1);
+        PRIMALint64t *md = malloc(nd*sizeof(*md)), *ma = malloc(na*sizeof(*ma));
+        double *mb = malloc(na*sizeof(*mb));
+        PRIMALint64t *mt = malloc((size_t)ndis*sizeof(*mt));
+        if (!md || !ma || !mb || !mt) { free(md); free(ma); free(mb); free(mt); rc = PRIMAL_RES_ERR_ALLOC; }
+        else {
+            for (PRIMALint64t e = 0; e < numdomidx; e++) md[e] = domidxlist[e];
+            for (PRIMALint64t e = 0; e < numafeidx; e++) { ma[e] = afeidxlist[e]; mb[e] = b ? b[e] : 0; }
+            for (int e = 0; e < ndis; e++) mt[e] = termsizelist[e];
+            rc = djc_encode(t,(int)djcidx,ndis,rpd,ncoef,varidx,rowcoefs,rhs,1);
+            if (rc == PRIMAL_RES_OK) {
+                t->djc_ndom[djcidx] = numdomidx; t->djc_nafe[djcidx] = numafeidx;
+                t->djc_dom[djcidx] = md; t->djc_afe[djcidx] = ma; t->djc_b[djcidx] = mb;
+                t->djc_termsize[djcidx] = mt; t->djc_numterm[djcidx] = numterms;
+            } else { free(md); free(ma); free(mb); free(mt); }
+        }
+    } else rc = djc_encode(t,(int)djcidx,ndis,rpd,ncoef,varidx,rowcoefs,rhs,0);
+    free(rpd); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
     return rc;
+}
+
+PRIMALrescodee djc_sync(PRIMALtask_t t) {
+    for (int k = 0; k < t->numdjc; k++) if (t->djc_numterm[k]) {
+        PRIMALrescodee rc = djc_validate(t,t->djc_ndom[k],t->djc_dom[k],t->djc_nafe[k],
+            t->djc_afe[k],t->djc_b[k],t->djc_numterm[k],t->djc_termsize[k]);
+        if (rc != PRIMAL_RES_OK) return rc;
+        rc = djc_apply(t,k,t->djc_ndom[k],t->djc_dom[k],t->djc_nafe[k],t->djc_afe[k],
+            t->djc_b[k],t->djc_numterm[k],t->djc_termsize[k],0);
+        if (rc != PRIMAL_RES_OK) return rc;
+    }
+    return PRIMAL_RES_OK;
+}
+
+PRIMALrescodee djc_copy(PRIMALtask_t s, PRIMALtask_t d) {
+    PRIMALrescodee rc = PRIMAL_appenddjcs(d,s->numdjc);
+    if (rc != PRIMAL_RES_OK) return rc;
+    for (int k = 0; k < s->numdjc; k++) {
+        if (s->djcname[k]) { rc = PRIMAL_putdjcname(d,k,s->djcname[k]); if (rc != PRIMAL_RES_OK) return rc; }
+        if (!s->djc_numterm[k]) continue;
+        size_t nd = (size_t)(s->djc_ndom[k] ? s->djc_ndom[k] : 1);
+        size_t na = (size_t)(s->djc_nafe[k] ? s->djc_nafe[k] : 1), nt = (size_t)s->djc_numterm[k];
+        d->djc_dom[k] = malloc(nd*sizeof(PRIMALint64t));
+        d->djc_afe[k] = malloc(na*sizeof(PRIMALint64t));
+        d->djc_b[k] = malloc(na*sizeof(double));
+        d->djc_termsize[k] = malloc(nt*sizeof(PRIMALint64t));
+        if (!d->djc_dom[k] || !d->djc_afe[k] || !d->djc_b[k] || !d->djc_termsize[k]) return PRIMAL_RES_ERR_ALLOC;
+        d->djc_ndom[k] = s->djc_ndom[k]; d->djc_nafe[k] = s->djc_nafe[k]; d->djc_numterm[k] = s->djc_numterm[k];
+        memcpy(d->djc_dom[k],s->djc_dom[k],(size_t)s->djc_ndom[k]*sizeof(PRIMALint64t));
+        memcpy(d->djc_afe[k],s->djc_afe[k],(size_t)s->djc_nafe[k]*sizeof(PRIMALint64t));
+        memcpy(d->djc_b[k],s->djc_b[k],(size_t)s->djc_nafe[k]*sizeof(double));
+        memcpy(d->djc_termsize[k],s->djc_termsize[k],nt*sizeof(PRIMALint64t));
+        d->djc_rowbase[k] = s->djc_rowbase[k]; d->djc_varbase[k] = s->djc_varbase[k]; d->djc_nrow[k] = s->djc_nrow[k];
+    }
+    return PRIMAL_RES_OK;
 }
 
 /* Append `num` empty DJC slots for later putdjc calls. */
 PRIMALrescodee PRIMAL_appenddjcs(PRIMALtask_t t, PRIMALint64t num) {
     if (!t) return PRIMAL_RES_ERR_NULL;
-    if (num < 0 || num > INT_MAX) return PRIMAL_RES_ERR_ARG;
+    if (num < 0 || num > INT_MAX-t->numdjc) return PRIMAL_RES_ERR_ARG;
     if (num == 0) return PRIMAL_RES_OK;
     int want = t->numdjc + (int)num;
     if (want > t->djccap) {
         int nc = t->djccap ? t->djccap : 4;
-        while (nc < want) nc *= 2;
+        while (nc < want) { if (nc > INT_MAX/2) { nc = want; break; } nc *= 2; }
         PRIMALint64t *n1 = (PRIMALint64t *)malloc((size_t)nc * sizeof(PRIMALint64t));
         PRIMALint64t *n2 = (PRIMALint64t *)malloc((size_t)nc * sizeof(PRIMALint64t));
         PRIMALint64t *n3 = (PRIMALint64t *)malloc((size_t)nc * sizeof(PRIMALint64t));
@@ -324,26 +358,31 @@ PRIMALrescodee PRIMAL_appenddjcs(PRIMALtask_t t, PRIMALint64t num) {
         double **n6 = (double **)malloc((size_t)nc * sizeof(double *));
         PRIMALint64t **n7 = (PRIMALint64t **)malloc((size_t)nc * sizeof(PRIMALint64t *));
         char **n8 = (char **)malloc((size_t)nc * sizeof(char *));
-        if (!n1 || !n2 || !n3 || !n4 || !n5 || !n6 || !n7 || !n8) {
-            free(n1); free(n2); free(n3); free(n4); free(n5); free(n6); free(n7); free(n8);
+        int *n9 = malloc((size_t)nc*sizeof(int)), *n10 = malloc((size_t)nc*sizeof(int)), *n11 = malloc((size_t)nc*sizeof(int));
+        if (!n9 || !n10 || !n11 || !n1 || !n2 || !n3 || !n4 || !n5 || !n6 || !n7 || !n8) {
+            free(n9); free(n10); free(n11); free(n1); free(n2); free(n3); free(n4); free(n5); free(n6); free(n7); free(n8);
             return PRIMAL_RES_ERR_ALLOC;
         }
         for (int i = 0; i < t->numdjc; i++) {
             n1[i] = t->djc_ndom[i]; n2[i] = t->djc_nafe[i]; n3[i] = t->djc_numterm[i];
             n4[i] = t->djc_dom[i]; n5[i] = t->djc_afe[i]; n6[i] = t->djc_b[i];
             n7[i] = t->djc_termsize[i]; n8[i] = t->djcname[i];
+            n9[i] = t->djc_rowbase[i]; n10[i] = t->djc_varbase[i]; n11[i] = t->djc_nrow[i];
         }
         free(t->djc_ndom); free(t->djc_nafe); free(t->djc_numterm);
         free(t->djc_dom); free(t->djc_afe); free(t->djc_b); free(t->djc_termsize);
-        free(t->djcname);
+        free(t->djcname); free(t->djc_rowbase); free(t->djc_varbase); free(t->djc_nrow);
         t->djc_ndom = n1; t->djc_nafe = n2; t->djc_numterm = n3;
         t->djc_dom = n4; t->djc_afe = n5; t->djc_b = n6; t->djc_termsize = n7;
         t->djcname = n8; t->djccap = nc;
+        t->djc_rowbase = n9; t->djc_varbase = n10; t->djc_nrow = n11;
     }
+    model_changed(t);
     for (int i = t->numdjc; i < want; i++) {
         t->djc_ndom[i] = 0; t->djc_nafe[i] = 0; t->djc_numterm[i] = 0;
         t->djc_dom[i] = NULL; t->djc_afe[i] = NULL; t->djc_b[i] = NULL;
         t->djc_termsize[i] = NULL; t->djcname[i] = NULL;
+        t->djc_rowbase[i] = t->djc_varbase[i] = -1; t->djc_nrow[i] = 0;
     }
     t->numdjc = want;
     return PRIMAL_RES_OK;
@@ -362,7 +401,7 @@ PRIMALrescodee PRIMAL_putdjc(PRIMALtask_t t, PRIMALint64t djcidx,
                                      afeidxlist, b, numterms, termsizelist);
     if (rc != PRIMAL_RES_OK) return rc;
     return djc_apply(t, djcidx, numdomidx, domidxlist, numafeidx, afeidxlist,
-                     b, numterms, termsizelist);
+                     b, numterms, termsizelist, 1);
 }
 
 /* putdjcslice: idxlast-idxfirst consecutive DJCs, termsindjc[i] = number of
@@ -379,10 +418,11 @@ PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
     if (idxfirst < 0 || idxlast < idxfirst || idxlast > t->numdjc) return PRIMAL_RES_ERR_ARG;
     PRIMALint64t L = idxlast - idxfirst;
     if (L == 0) return PRIMAL_RES_OK;
-    if (!termsindjc) return PRIMAL_RES_ERR_NULL;
+    if (!termsindjc || !termsizelist) return PRIMAL_RES_ERR_NULL;
+    if (numdomidx < 0 || numafeidx < 0 || numterms < 0) return PRIMAL_RES_ERR_ARG;
     PRIMALint64t tsum = 0;
     for (PRIMALint64t i = 0; i < L; i++) {
-        if (termsindjc[i] < 1) return PRIMAL_RES_ERR_ARG;
+        if (termsindjc[i] < 1 || termsindjc[i] > numterms-tsum) return PRIMAL_RES_ERR_ARG;
         tsum += termsindjc[i];
     }
     if (tsum != numterms) return PRIMAL_RES_ERR_ARG;
@@ -399,7 +439,7 @@ PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
         PRIMALint64t nt = termsindjc[i];
         PRIMALint64t nd = 0, na = 0;
         for (PRIMALint64t q = 0; q < nt; q++) {
-            if (termsizelist[tc + q] < 0) return PRIMAL_RES_ERR_ARG;
+            if (termsizelist[tc + q] < 0 || termsizelist[tc + q] > numdomidx-dc-nd) return PRIMAL_RES_ERR_ARG;
             nd += termsizelist[tc + q];
         }
         for (PRIMALint64t d = 0; d < nd; d++) {
@@ -409,6 +449,7 @@ PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
             if (ty != PRIMAL_DOMAIN_R && ty != PRIMAL_DOMAIN_RZERO &&
                 ty != PRIMAL_DOMAIN_RPLUS && ty != PRIMAL_DOMAIN_RMINUS)
                 return PRIMAL_RES_ERR_ARG;
+            if (t->dom_n[dom] > numafeidx-ac-na) return PRIMAL_RES_ERR_ARG;
             na += t->dom_n[dom];
         }
         const PRIMALint64t *dsub = nd > 0 ? domidxlist + dc : NULL;
@@ -418,7 +459,7 @@ PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
         if (rc != PRIMAL_RES_OK) return rc;
         tc += nt; dc += nd; ac += na;
     }
-    if (tc != numdomidx) return PRIMAL_RES_ERR_ARG;
+    if (dc != numdomidx) return PRIMAL_RES_ERR_ARG;
     if (ac != numafeidx) return PRIMAL_RES_ERR_ARG;
     /* apply */
     tc = 0; dc = 0; ac = 0;
@@ -431,54 +472,47 @@ PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
         const PRIMALint64t *asub = na > 0 ? afeidxlist + ac : NULL;
         const PRIMALrealt *bsub = (b && na > 0) ? b + ac : NULL;
         PRIMALrescodee rc = djc_apply(t, idxfirst + i, nd, dsub, na, asub, bsub, nt,
-                                      termsizelist + tc);
+                                      termsizelist + tc, 1);
         if (rc != PRIMAL_RES_OK) return rc;
         tc += nt; dc += nd; ac += na;
     }
     return PRIMAL_RES_OK;
 }
 
-/* Primal violation of a DJC (reference getpvioldjc). The violation of a
- * disjunction is min_i(max_j viol(T_ij)): the minimum over the terms of the
- * maximum over the components. For a linear domain on an affine expression
- * expr = F x + g - b: R none, RZERO |expr|, RPLUS max(0,-expr),
- * RMINUS max(0,expr). The measure reads the PUBLISHED point and the CURRENT
- * model, as getpviolcon/getpviolvar do (T113). */
+/* Measure the original OR-of-ANDs independently of the generated big-M rows. */
+double djc_violation(PRIMALtask_t t, int d, const double *x) {
+    PRIMALint64t domc = 0, afec = 0;
+    double best = HUGE_VAL;
+    if (!t->djc_numterm[d]) return 0;
+    for (PRIMALint64t term = 0; term < t->djc_numterm[d]; term++) {
+        double worst = 0;
+        for (PRIMALint64t q = 0; q < t->djc_termsize[d][term]; q++) {
+            PRIMALint64t dom = t->djc_dom[d][domc++];
+            int ty = t->dom_type[dom];
+            for (PRIMALint64t c = 0; c < t->dom_n[dom]; c++, afec++) {
+                int afe = (int)t->djc_afe[d][afec];
+                if (ty == PRIMAL_DOMAIN_R) continue;
+                if (t->afe_barnz[afe]) return HUGE_VAL;
+                double expr = t->afeg[afe]-t->djc_b[d][afec];
+                for (int e = 0; e < t->afe_nz[afe]; e++) expr += t->afe_val[afe][e]*x[t->afe_sub[afe][e]];
+                if (!isfinite(expr)) return HUGE_VAL;
+                double v = ty == PRIMAL_DOMAIN_RZERO ? fabs(expr) :
+                    ty == PRIMAL_DOMAIN_RPLUS ? fmax(0,-expr) : fmax(0,expr);
+                worst = fmax(worst,v);
+            }
+        }
+        best = fmin(best,worst);
+    }
+    return best;
+}
+
 PRIMALrescodee PRIMAL_getpvioldjc(PRIMALtask_t t, PRIMALsolt which,
         PRIMALint64t numdjcidx, const PRIMALint64t *djcidxlist, PRIMALrealt *viol) {
-    (void)which;
-    if (!t || !viol) return PRIMAL_RES_ERR_NULL;
-    if (numdjcidx < 0 || (numdjcidx > 0 && !djcidxlist)) return PRIMAL_RES_ERR_NULL;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
-    for (PRIMALint64t k = 0; k < numdjcidx; k++) {
-        PRIMALint64t d = djcidxlist[k];
-        if (d < 0 || d >= t->numdjc) return PRIMAL_RES_ERR_ARG;
-        PRIMALint64t domc = 0, afec = 0;
-        double best = HUGE_VAL;
-        for (PRIMALint64t term = 0; term < t->djc_numterm[d]; term++) {
-            double worst = 0.0;
-            for (PRIMALint64t q = 0; q < t->djc_termsize[d][term]; q++) {
-                PRIMALint64t dom = t->djc_dom[d][domc++];
-                int ty = t->dom_type[dom];
-                PRIMALint64t n = t->dom_n[dom];
-                for (PRIMALint64t c = 0; c < n; c++) {
-                    PRIMALint64t afe = t->djc_afe[d][afec];
-                    double bv = t->djc_b[d][afec];
-                    afec++;
-                    double expr = t->afeg[afe] - bv;
-                    for (int e = 0; e < t->afe_nz[afe]; e++)
-                        expr += t->afe_val[afe][e] * t->x[t->afe_sub[afe][e]];
-                    double vv = 0.0;
-                    if (ty == PRIMAL_DOMAIN_RZERO) vv = fabs(expr);
-                    else if (ty == PRIMAL_DOMAIN_RPLUS) vv = expr < 0.0 ? -expr : 0.0;
-                    else if (ty == PRIMAL_DOMAIN_RMINUS) vv = expr > 0.0 ? expr : 0.0;
-                    if (vv > worst) worst = vv;
-                }
-            }
-            if (worst < best) best = worst;
-        }
-        viol[k] = isfinite(best) ? best : 0.0;
-    }
+    if (!t || !viol || (numdjcidx > 0 && !djcidxlist)) return PRIMAL_RES_ERR_NULL;
+    if (numdjcidx < 0 || !sol_key_ok(which) || !t->has_sol) return PRIMAL_RES_ERR_ARG;
+    for (PRIMALint64t k = 0; k < numdjcidx; k++)
+        if (djcidxlist[k] < 0 || djcidxlist[k] >= t->numdjc) return PRIMAL_RES_ERR_ARG;
+    for (PRIMALint64t k = 0; k < numdjcidx; k++) viol[k] = djc_violation(t,(int)djcidxlist[k],t->x);
     return PRIMAL_RES_OK;
 }
 

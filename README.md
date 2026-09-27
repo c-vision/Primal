@@ -1,7 +1,7 @@
 # PrimalSolver
 
 A convex optimization solver written from scratch in portable C99. No external
-dependencies — `libc` and `libm`, nothing else.
+numerical dependencies — `libc`, `libm` and POSIX threads.
 
 It solves **LP, MILP, QP, QCQP, SOCP, SDP, exponential and power cones, and
 mixed-integer conic problems**, and it hands back the primal point, the dual
@@ -47,6 +47,10 @@ actually solved, and a `*_CER` status never appears without the vector that
 proves it. Where no vector can exist the verdict is in `PRIMAL_getprosta`, the
 status is `UNKNOWN`, and the getters refuse rather than hand over a zero vector.
 [Details and the exceptions](docs/certificates.md).
+
+Model edits invalidate result statuses and objectives until the next solve;
+imported solution vectors are unverified. For MIP, use `MIO_OBJ_BOUND` rather
+than `getdualobj`, and check for a feasible incumbent when a limit is reached.
 
 ## Example
 

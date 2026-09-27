@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_std.c - standard-form solvers, LP/QP route helpers, Farkas vectors on stdform.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -550,6 +550,24 @@ int ray_publish(PRIMALtask_t t, const StdForm *sf,
              ray_representable(sf, yray);
     int px = (status != STD_OPT && status != STD_MEMORY) &&
              xray && prim_ray_measured(sf->Aptr, sf->Arow, sf->Aval, sf->c, sf->m, sf->n, xray);
+    if (px && sf->Qptr) {
+        double *qd = (double *)calloc((size_t)(sf->n > 0 ? sf->n : 1), sizeof(double));
+        if (!qd) px = 0;
+        else {
+            double scale = 1.0;
+            for (int j = 0; j < sf->n; j++)
+                for (int k = sf->Qptr[j]; k < sf->Qptr[j+1]; k++) {
+                    int i = sf->Qrow[k]; double a = sf->Qval[k];
+                    qd[i] += a*xray[j];
+                    if (i != j) qd[j] += a*xray[i];
+                    scale += fabs(a);
+                }
+            for (int j = 0; j < sf->n; j++)
+                if (!isfinite(qd[j]) || fabs(qd[j]) > 1e-8*scale) px = 0;
+            free(qd);
+        }
+        if (!px && claim_unb) { claim_unb = 0; status = STD_STALLED; }
+    }
     if (!claim_inf && !claim_unb && !dy && !px) return status;
     if (dy) {
         double *ymin = (double *)calloc((size_t)(sf->ncon > 0 ? sf->ncon : 1), sizeof(double));

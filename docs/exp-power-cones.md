@@ -11,12 +11,16 @@ approximated.
 
 | Type | Membership | Note |
 |---|---|---|
-| `PEXP` | `t ≥ u·e^(v/u)`, `u, v ≥ 0` | the exponential cone |
-| `DEXP` | as `PEXP` with `u ≤ 0` | its mirror |
+| `PEXP` | `t ≥ u·e^(v/u)`, `u > 0`; or `u = 0, t ≥ 0, v ≤ 0` | closed exponential cone |
+| `DEXP` | `t ≥ −v·e^(u/v−1)`, `v < 0`; or `v = 0, t ≥ 0, u ≥ 0` | mathematical dual of `PEXP` |
 | `PPOW(a)` | `t^a·u^(1−a) ≥ \|v\|` | 0 < a < 1, power cone |
 | `RPOW(a)` | `√2·t^a·u^(1−a) ≥ \|v\|` | rotated power cone |
 
 `RPOW(1/2)` coincides with `RQUAD`, which is why both exist.
+
+`DEXP` corrects the former mirrored-cone interpretation; models using that
+interpretation must be reformulated. The native and cut routes use this same
+coordinate convention.
 
 ## What the file provides
 

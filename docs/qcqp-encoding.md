@@ -9,11 +9,12 @@ rewriting, and the place where a **non-convex** model is refused.
 ## The rewriting
 
 For a row with a quadratic part `Q`, find the eigendecomposition `Q = V Λ Vᵀ`.
-An indefinite `Q` on a convex model splits into a positive and a negative
-part, and the positive part is absorbed into a rotated cone, giving the form
+An upper-bounded row requires positive-semidefinite `Q`; a lower-bounded row
+is negated and requires negative-semidefinite `Q`. The accepted quadratic
+part is absorbed into a rotated cone, giving the form
 
 ```
-(Q⁺) + rotated-cone constraint  ≡  original row
+rotated-cone constraint  ≡  original convex quadratic row
 ```
 
 The mapping is **exact** — it is an eigendecomposition, not an approximation
@@ -48,5 +49,5 @@ rows in the same task is one solve, not two.
   programs; a non-convex domain is an error, not a slower answer.
 - The dense symmetric block per quadratic row is `numvar × numvar`
   ([standard form](standard-form.md)).
-- Only convex `Q` is representable on a `<=` row; equality and ranged quadratic
-  rows are not encoded.
+- Nonzero equality and ranged quadratic rows are rejected, as are indefinite
+  rows; their quadratic terms are never silently dropped.

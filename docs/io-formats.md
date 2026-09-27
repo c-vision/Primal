@@ -84,6 +84,16 @@ table with it would give CBF a rule the other three do not have.
 A `POW*CONES` section is refused rather than skipped — skipping it would
 produce an incomplete model that looks fine.
 
+## Solution files
+
+Text, native binary and JSON solution imports require complete, finite data
+matching the task dimensions. Malformed imports leave the previous result
+unchanged. Imported vectors can be inspected, but statuses are `UNKNOWN` and
+objective getters remain unavailable until optimization. Binary compression
+is unsupported and nonzero compression arguments are rejected.
+The original ten-key JSON format remains readable for scalar solutions;
+it contains no bar-matrix data.
+
 ## Limits
 
 - No compression, on read or write.
