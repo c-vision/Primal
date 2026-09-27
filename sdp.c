@@ -150,14 +150,45 @@ static void mmul(int d, const double *A, const double *B, double *C) {
 /* Smallest eigenvalue of a symmetric matrix -- the cone margin of a PSD block.
  * Copies first because dmat_eig_jacobi overwrites its argument: the callers feed
  * it the PUBLISHED Xbar/Sbar blocks, and a spectrally deformed block would be
- * reported as the solution. */
+ * reported as the solution. Eigenvalues ONLY: the Jacobi rotations on the
+ * eigenvector matrix are a third of the work and are not needed to read the
+ * smallest eigenvalue (Clarabel keeps the same eigvals/eig split). */
 static double min_eig(int d, const double *A) {
+    int nn = d > 0 ? d : 1;
+    double *W = (double *)calloc((size_t)nn * (size_t)nn, sizeof(double));
     double *ev = (double *)malloc((size_t)d * sizeof(double));
-    double *V  = (double *)malloc((size_t)d * d * sizeof(double));
-    double *Ac = (double *)malloc((size_t)d * d * sizeof(double));
-    double lo = 0.0;
-    if (ev && V && Ac) { memcpy(Ac, A, sizeof(double) * (size_t)d * d); dmat_eig_jacobi(d, Ac, ev, V); lo = ev[0]; for (int k = 1; k < d; k++) if (ev[k] < lo) lo = ev[k]; }
-    free(ev); free(V); free(Ac); return lo;
+    if (!W || !ev) { free(W); free(ev); return 0.0; }
+    for (int i = 0; i < d * d; i++) W[i] = A[i];
+    double fnorm2 = 0.0;
+    for (int i = 0; i < d * d; i++) fnorm2 += A[i] * A[i];
+    double tol = 1e-28 * fnorm2;
+    for (int sweep = 0; sweep < 100; sweep++) {
+        double off = 0.0;
+        for (int p = 0; p < d; p++)
+            for (int q = p + 1; q < d; q++) off += W[p * d + q] * W[p * d + q];
+        if (off <= tol) break;
+        for (int p = 0; p < d; p++)
+            for (int q = p + 1; q < d; q++) {
+                double apq = W[p * d + q];
+                if (fabs(apq) < 1e-32) continue;
+                double theta = (W[q * d + q] - W[p * d + p]) / (2.0 * apq);
+                double t = (theta >= 0.0 ? 1.0 : -1.0) / (fabs(theta) + sqrt(theta * theta + 1.0));
+                double c = 1.0 / sqrt(t * t + 1.0), sn = t * c;
+                for (int k = 0; k < d; k++) {
+                    double wp = W[p * d + k], wq = W[q * d + k];
+                    W[p * d + k] = c * wp - sn * wq;
+                    W[q * d + k] = sn * wp + c * wq;
+                }
+                for (int k = 0; k < d; k++) {
+                    double wp = W[k * d + p], wq = W[k * d + q];
+                    W[k * d + p] = c * wp - sn * wq;
+                    W[k * d + q] = sn * wp + c * wq;
+                }
+            }
+    }
+    double lo = W[0];
+    for (int k = 1; k < d; k++) if (W[k * d + k] < lo) lo = W[k * d + k];
+    free(W); free(ev); return lo;
 }
 /* tr(A B) = <A,B>, the inner product the PSD cone pairs blocks with.  B is read
  * with its indices swapped, not because B is symmetric (the blocks are, but a
