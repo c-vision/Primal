@@ -1174,14 +1174,6 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                     }
                 }
 
-                /* ---------- does the cut loop still make progress? ----------
-                 * viol is the worst (tolv - lambda_min) over the bars -- a margin
-                 * to the boundary, so a tangent cut that does not push it down
-                 * measurably is not separating the iterate.
-                 * Count the rounds without a real improvement and leave early:
-                 * the verdict is the same one running out of rounds produces
-                 * (TRM_MAX_ITER, no solution claimed), reached in a fraction of
-                 * the budget. */
                 /* Per-round progress measure: how far the worst bar is from the
                  * cone boundary, and how it moved. The loop itself is NOT
                  * stopped by this -- it runs to SDP_MAXROUND and reports

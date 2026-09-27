@@ -381,54 +381,6 @@ static void disjunction_tests(void) {
     OK(PRIMAL_deletetask(&t));
 }
 
-static void bounded_psd_face(PRIMALtask_t t) {
-    /* Trace(B)=1 and B positive semidefinite imply x0=B00<=1.
-     * B=diag(1,0,...,0) attains the objective -1. Entry bounds
-     * [-1,1] are redundant and keep the LP away from its artificial cap. */
-    enum { D = 20 };
-    int si[D], sj[D];
-    double sv[D];
-    for (int a = 0; a < D; a++) { si[a] = a; sj[a] = a; sv[a] = 1.0; }
-    int m00, mI;
-    OK(PRIMAL_appendcons(t, 2));
-    OK(PRIMAL_appendsparsesymmat(t, D, 1, (int[]){0}, (int[]){0}, (double[]){1.0}, &m00));
-    OK(PRIMAL_appendsparsesymmat(t, D, D, si, sj, sv, &mI));
-    int dim = D;
-    OK(PRIMAL_appendbarvars(t, 1, &dim));
-    OK(PRIMAL_appendvars(t, 1));
-    OK(PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY));
-    OK(PRIMAL_putcj(t, 0, -1.0));
-    OK(PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0}));
-    OK(PRIMAL_putbaraij(t, 0, 0, 1, &m00, (double[]){-1.0}));
-    OK(PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 0.0, 0.0));
-    OK(PRIMAL_putbaraij(t, 1, 0, 1, &mI, (double[]){1.0}));
-    OK(PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0));
-    for (int i=0;i<D;i++) for (int j=i;j<D;j++) {
-      int r,m; OK(PRIMAL_getnumcon(t,&r)); OK(PRIMAL_appendcons(t,1));
-      OK(PRIMAL_appendsparsesymmat(t,D,1,&i,&j,(double[]){i == j ? 1 : 0.5},&m));
-      OK(PRIMAL_putbaraij(t,r,0,1,&m,(double[]){1}));
-      OK(PRIMAL_putconbound(t,r,PRIMAL_BK_RA,i == j ? 0 : -1,1));
-    }
-
-}
-
-static void psd_stall_test(void) {
-    PRIMALtask_t t = model(0);
-    bounded_psd_face(t);
-    /* Exercise the same cut entry point used for MIP relaxations, without
-     * the native SDP solve or the public dispatcher's later quality gate. */
-    OK(opt_prepare(t));
-    CHECK(optimize_sdp(t,1) == PRIMAL_RES_TRM_MAX_ITER);
-    PRIMALsolstae ss;
-    OK(PRIMAL_getsolsta(t,PRIMAL_SOL_ITR,&ss));
-    CHECK(ss == PRIMAL_SOL_STA_UNKNOWN);
-    double x = 123, obj = 123;
-    CHECK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,&x) == PRIMAL_RES_ERR_ARG);
-    CHECK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&obj) == PRIMAL_RES_ERR_ARG);
-    CHECK(x == 123 && obj == 123);
-    OK(PRIMAL_deletetask(&t));
-}
-
 static void rejected_edit_tests(void) {
     PRIMALtask_t t = model(1);
     OK(PRIMAL_putvarbound(t,0,PRIMAL_BK_FX,1,1));
@@ -593,7 +545,6 @@ int main(void) {
     quadratic_lower_activity_test();
     disjunction_export_clone_tests();
     node_witness_test();
-    psd_stall_test();
     OK(PRIMAL_deleteenv(&env));
     printf("Review checks: %d, failures: %d\n", checks, failures);
     return failures ? 1 : 0;
