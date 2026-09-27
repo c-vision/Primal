@@ -18,6 +18,7 @@
 # All build artifacts (objects, binaries, compiled samples) go into out/,
 # which is gitignored. Never write binaries into the repo root or samples/.
 CC      = gcc
+AR      = ar
 CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2
 LDLIBS  = -lm
 
@@ -144,19 +145,30 @@ LIBSRCS = linalg.c stdform.c simplex.c ipm.c socp.c sdp.c expcone.c mpsio.c cbf.
           primal_mip.c primal_mip_opt.c primal_conicopt.c primal_quad.c primal_solio.c primal_std.c \
           primal_verdict.c primal_optimize.c primal_misc.c primal_info.c
 
-samples: $(MOSEK_SAMPLES:%=$(OUT)/samples/%) $(COMPLEX_SAMPLES:%=$(OUT)/samples/%) $(FINANCE_SAMPLES:%=$(OUT)/samples/%) $(BOOK_SAMPLES:%=$(OUT)/samples/%)
+LIB_A    = $(OUT)/libprimal.a
 
-$(MOSEK_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/mosek_comparison/%.c $(LIBSRCS) | $(OUT)
-	$(CC) $(CFLAGS) -I. $< $(LIBSRCS) -lm -o $@
+samples: $(LIB_A) $(MOSEK_SAMPLES:%=$(OUT)/samples/%) $(COMPLEX_SAMPLES:%=$(OUT)/samples/%) $(FINANCE_SAMPLES:%=$(OUT)/samples/%) $(BOOK_SAMPLES:%=$(OUT)/samples/%)
 
-$(COMPLEX_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/%.c $(LIBSRCS) | $(OUT)
-	$(CC) $(CFLAGS) -I. $< $(LIBSRCS) -lm -o $@
+# Archive the library once and link each sample against it. Compiling $(LIBSRCS)
+# per sample meant 171 x 34 = 5814 compilations instead of 33 + 171, and it made
+# every sample depend on every library source: touching one .c invalidated the
+# whole corpus (issue #5). The objects are exactly the ones `lib` already builds,
+# so there is no second way to compile the library.
+$(LIB_A): $(OBJS)
+	rm -f $@
+	$(AR) rcs $@ $(OBJS)
 
-$(FINANCE_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/finance/%.c $(LIBSRCS) | $(OUT)
-	$(CC) $(CFLAGS) -I. $< $(LIBSRCS) -lm -o $@
+$(MOSEK_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/mosek_comparison/%.c $(LIB_A) | $(OUT)
+	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
-$(BOOK_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/books/%.c $(LIBSRCS) | $(OUT)
-	$(CC) $(CFLAGS) -I. $< $(LIBSRCS) -lm -o $@
+$(COMPLEX_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/%.c $(LIB_A) | $(OUT)
+	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
+
+$(FINANCE_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/finance/%.c $(LIB_A) | $(OUT)
+	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
+
+$(BOOK_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/books/%.c $(LIB_A) | $(OUT)
+	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
 .PHONY: run-samples
 run-samples: samples
