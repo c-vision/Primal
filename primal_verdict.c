@@ -616,10 +616,12 @@ int bound_tighten(PRIMALtask_t t, int nvar, int ncon,
                     double nbl = jint ? ceil(nb) : nb;
                     if (a > 0.0) {
                         if (nbu < ux[j] && nbu >= lx[j]) { ux[j] = nbu; tightened++;
-                            if (up_row) up_row[j] = i; if (up_coef) up_coef[j] = a; }
+                            if (up_row) up_row[j] = i;
+                            if (up_coef) up_coef[j] = a; }
                     } else {
                         if (nbl > lx[j] && nbl <= ux[j]) { lx[j] = nbl; tightened++;
-                            if (lo_row) lo_row[j] = i; if (lo_coef) lo_coef[j] = a; }
+                            if (lo_row) lo_row[j] = i;
+                            if (lo_coef) lo_coef[j] = a; }
                     }
                 }
                 if (flo) {
@@ -629,10 +631,12 @@ int bound_tighten(PRIMALtask_t t, int nvar, int ncon,
                     double nbl = jint ? ceil(nb) : nb;
                     if (a > 0.0) {
                         if (nbl > lx[j] && nbl <= ux[j]) { lx[j] = nbl; tightened++;
-                            if (lo_row) lo_row[j] = i; if (lo_coef) lo_coef[j] = a; }
+                            if (lo_row) lo_row[j] = i;
+                            if (lo_coef) lo_coef[j] = a; }
                     } else {
                         if (nbu < ux[j] && nbu >= lx[j]) { ux[j] = nbu; tightened++;
-                            if (up_row) up_row[j] = i; if (up_coef) up_coef[j] = a; }
+                            if (up_row) up_row[j] = i;
+                            if (up_coef) up_coef[j] = a; }
                     }
                 }
             }

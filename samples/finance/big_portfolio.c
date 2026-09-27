@@ -64,7 +64,7 @@ static const double MU[N] = {
 static const double X0[N] = {
     0.10000000, 0.10000000, 0.10000000, 0.10000000, 0.07500000, 0.06500000, 0.05000000, 0.05000000, 0.05000000, 0.05000000, 0.05000000, 0.05000000, 0.05000000, 0.02500000, 0.01000000, 0.02500000, 0.02500000, 0.01000000
 };
-static const double SIG[N][N] = {
+static double SIG[N][N] = {
     {7.8693177181e-01, 2.6803537860e-02, 5.6538149846e-02, -1.0901486761e-02, 3.2487564874e-06, 2.9919522273e-02, 8.0130282213e-03, 2.1544668156e-01, 3.9915837454e-02, -8.7715806493e-04, 2.1050625025e-02, 2.6609613869e-02, -5.3455522446e-02, 4.8313824939e-02, 1.0499183179e-01, -3.6500946465e-02, 2.4902557447e-02, 1.3222599613e-01},
     {2.6803537860e-02, 4.5928309389e-01, 1.9088877991e-02, -1.0061816532e-02, -1.7632197774e-05, 7.4229946741e-03, -7.0077694055e-03, 1.4311364548e-02, 4.2593072806e-02, 5.3360311065e-03, 2.0762686147e-03, 1.9391039637e-02, 2.1180310268e-02, 1.5037878828e-02, 2.0166003415e-02, 3.5629773995e-02, 2.9537667670e-02, -1.3758533343e-02},
     {5.6538149846e-02, 1.9088877991e-02, 2.5066126592e-01, 1.1813502943e-01, 9.6443250392e-05, 1.3240649054e-03, -1.0765482295e-02, 7.0614340589e-03, 6.0627095032e-02, 2.1869705589e-02, 3.7913336317e-02, 6.5549905806e-02, 1.5194369470e-02, 5.8940340094e-02, 9.5462362195e-02, 2.1598452995e-01, 2.6458674616e-01, 6.4507143109e-02},
@@ -92,21 +92,21 @@ static const int PAIRS[][2] = {
 #define NPAIR ((int)(sizeof(PAIRS)/sizeof(PAIRS[0])))
 
 /* Convert a covariance matrix to its correlation matrix. */
-static void corr_from_cov(const double S[N][N], double C[N][N]) {
+static void corr_from_cov(double S[N][N], double C[N][N]) {
     double d[N];
     for (int i = 0; i < N; i++) d[i] = sqrt(S[i][i]);
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++) C[i][j] = S[i][j] / (d[i] * d[j]);
 }
 /* Rebuild a covariance matrix from a correlation matrix and the variances of S. */
-static void cov_from_corr(const double S[N][N], const double C[N][N], double Ss[N][N]) {
+static void cov_from_corr(double S[N][N], double C[N][N], double Ss[N][N]) {
     double d[N];
     for (int i = 0; i < N; i++) d[i] = sqrt(S[i][i]);
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++) Ss[i][j] = d[i] * d[j] * C[i][j];
 }
 /* Cholesky factor G with S = G G'; returns 0 if S is not positive definite. */
-static int chol(const double S[N][N], double G[N][N]) {
+static int chol(double S[N][N], double G[N][N]) {
     for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) G[i][j] = 0.0;
     for (int i = 0; i < N; i++)
         for (int j = 0; j <= i; j++) {
@@ -118,7 +118,7 @@ static int chol(const double S[N][N], double G[N][N]) {
     return 1;
 }
 /* Portfolio variance x'S x. */
-static double port_var(const double x[N], const double S[N][N]) {
+static double port_var(const double x[N], double S[N][N]) {
     double v = 0.0;
     for (int i = 0; i < N; i++) { double t = 0.0;
         for (int j = 0; j < N; j++) t += S[i][j] * x[j];
@@ -127,7 +127,7 @@ static double port_var(const double x[N], const double S[N][N]) {
 }
 
 /* --- min risk at a target return (SOCP) ---------------------------------- */
-static int min_risk(const double G[N][N], double target, double *vol, double xo[N + 1]) {
+static int min_risk(double G[N][N], double target, double *vol, double xo[N + 1]) {
     PRIMALenv_t env; PRIMALtask_t t;
     /* vars 0..N-1 x, N c, N+1 t, N+2..2N+1 y = G'x */
     int nv = 2 * N + 2, nc = N + 2;
@@ -161,7 +161,7 @@ static int min_risk(const double G[N][N], double target, double *vol, double xo[
 }
 
 /* --- max return at a risk limit (SOCP) ----------------------------------- */
-static int max_return(const double G[N][N], double risk, double *ret) {
+static int max_return(double G[N][N], double risk, double *ret) {
     PRIMALenv_t env; PRIMALtask_t t;
     /* vars 0..N-1 x, N c, N+1..2N y, 2N+1 rb */
     int nv = 2 * N + 2, nc = N + 1;
@@ -191,7 +191,7 @@ static int max_return(const double G[N][N], double risk, double *ret) {
 }
 
 /* --- nearest valid stressed correlation matrix (SDP) --------------------- */
-static int stress_corr(const double C[N][N], double Cs[N][N]) {
+static int stress_corr(double C[N][N], double Cs[N][N]) {
     PRIMALenv_t env; PRIMALtask_t t;
     int NP = N * (N - 1) / 2;
     int *mark = (int *)malloc((size_t)N * N * sizeof(int));
@@ -259,7 +259,7 @@ static int stress_corr(const double C[N][N], double Cs[N][N]) {
 /* Run the observed, min-risk, max-return and correlation-stress pipeline. */
 int main(void) {
     double G[N][N], C[N][N], Cs[N][N], Ss[N][N], Gs[N][N];
-    double R0, var0, vol0, vols_base, Rrisk, volstr, mult, vols_str;
+    double R0, var0, vol0, vols_base, Rrisk = 0.0, volstr, mult, vols_str;
     double xb[N + 1], xs[N + 1];
     int ok = 1;
 

@@ -199,20 +199,22 @@ PRIMALrescodee PRIMAL_readbsolution(PRIMALtask_t t, const char *filename, int co
     if (rc != PRIMAL_RES_OK) { fclose(f); return rc; }
     t->has_sol = 1;
     int iv = 0;
-    fread(&iv, sizeof(int), 1, f); t->solsta = (PRIMALsolstae)iv;
-    fread(&iv, sizeof(int), 1, f); t->prosta = (PRIMALprostae)iv;
-    fread(&t->pobj, sizeof(double), 1, f);
-    fread(&t->dobj, sizeof(double), 1, f);
-    fread(t->x, sizeof(double), (size_t)t->numvar, f);
-    fread(t->y, sizeof(double), (size_t)t->numcon, f);
-    fread(t->slc, sizeof(double), (size_t)t->numcon, f);
-    fread(t->suc, sizeof(double), (size_t)t->numcon, f);
-    fread(t->slx, sizeof(double), (size_t)t->numvar, f);
-    fread(t->sux, sizeof(double), (size_t)t->numvar, f);
+    if (fread(&iv, sizeof(int), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    t->solsta = (PRIMALsolstae)iv;
+    if (fread(&iv, sizeof(int), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    t->prosta = (PRIMALprostae)iv;
+    if (fread(&t->pobj, sizeof(double), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (fread(&t->dobj, sizeof(double), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (t->numvar > 0 && fread(t->x, sizeof(double), (size_t)t->numvar, f) != (size_t)t->numvar) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (t->numcon > 0 && fread(t->y, sizeof(double), (size_t)t->numcon, f) != (size_t)t->numcon) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (t->numcon > 0 && fread(t->slc, sizeof(double), (size_t)t->numcon, f) != (size_t)t->numcon) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (t->numcon > 0 && fread(t->suc, sizeof(double), (size_t)t->numcon, f) != (size_t)t->numcon) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (t->numvar > 0 && fread(t->slx, sizeof(double), (size_t)t->numvar, f) != (size_t)t->numvar) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+    if (t->numvar > 0 && fread(t->sux, sizeof(double), (size_t)t->numvar, f) != (size_t)t->numvar) { fclose(f); return PRIMAL_RES_ERR_FILE; }
     for (int j = 0; j < t->numbarvar; j++) {
         int d = t->barDim[j];
-        if (t->barx[j]) fread(t->barx[j], sizeof(double), (size_t)d * d, f);
-        if (t->barsj[j]) fread(t->barsj[j], sizeof(double), (size_t)d * d, f);
+        if (t->barx[j] && fread(t->barx[j], sizeof(double), (size_t)d * d, f) != (size_t)d * d) { fclose(f); return PRIMAL_RES_ERR_FILE; }
+        if (t->barsj[j] && fread(t->barsj[j], sizeof(double), (size_t)d * d, f) != (size_t)d * d) { fclose(f); return PRIMAL_RES_ERR_FILE; }
     }
     fclose(f);
     return PRIMAL_RES_OK;

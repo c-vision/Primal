@@ -51,7 +51,7 @@
 #define NMAX 5
 
 /* theta(Gbar) for a graph on n vertices given by symmetric adj[n][n] */
-static double theta_sdp(int n, const int adj[NMAX][NMAX], int *ok_out, double *X_out) {
+static double theta_sdp(int n, int adj[NMAX][NMAX], int *ok_out, double *X_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
     PRIMAL_maketask(env, 0, 0, &t);
@@ -116,7 +116,7 @@ static double min_eig(int n, const double *X) {
 }
 
 /* verify tr(X)=1, X⪰0, X_ij=0 on non-edges; returns 1 if all hold */
-static int check_X(int n, const int adj[NMAX][NMAX], const double *X, double tol) {
+static int check_X(int n, int adj[NMAX][NMAX], const double *X, double tol) {
     double tr = 0.0;
     for (int i = 0; i < n; i++) tr += X[i * n + i];
     if (fabs(tr - 1.0) > 1e-6) return 0;

@@ -1262,8 +1262,11 @@ PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f) {
                     objA.d, objA.n, bobj, objF.d, objF.n,
                     ac.d, ac.n, bc.d, bc.n, fc.d, fc.n,
                     hc.d, hc.n, dc.d, dc.n, psdcon, npsdcon);
-    if (rc == PRIMAL_RES_OK && idx < nl && PEEK() && !strcmp(PEEK(), "CHANGE"))
-        rc = read_change(t, lines, nl, &idx);
+    if (rc == PRIMAL_RES_OK && idx < nl) {
+        const char *pk = PEEK();
+        if (pk && !strcmp(pk, "CHANGE"))
+            rc = read_change(t, lines, nl, &idx);
+    }
     for (int i = 0; i < nl; i++) free(lines[i]);
     free(vgrp); free(cgrp); free(ints); free(psdvar); free(psdcon);
     free(objA.d); free(ac.d); free(bc.d); free(objF.d);

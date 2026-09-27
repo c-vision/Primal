@@ -65,7 +65,7 @@ static const double XS[5]  = {0.08, 0.11, 0.15, 0.18, 0.22};
 static const double XB[5]  = {0.17, 0.21, 0.24, 0.28, 0.31};
 
 /* Invert a 3x3 matrix in place into inv. */
-static void invert3(const double a[3][3], double inv[3][3]) {
+static void invert3(double a[3][3], double inv[3][3]) {
     double d = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
              - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
              + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);

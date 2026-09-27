@@ -97,8 +97,8 @@ static int cover(int R, int C, int ns, const int h[MAXS], const int w[MAXS],
 
 /* Solve the domino and 2x2-square exact-cover instances and check both. */
 int main(void) {
-    int h1[2] = {1, 2}, w1[2] = {2, 1};      /* dominoes        */
-    int h2[1] = {2},   w2[1] = {2};          /* 2x2 squares     */
+    int h1[MAXS] = {1, 2}, w1[MAXS] = {2, 1};      /* dominoes        */
+    int h2[MAXS] = {2}, w2[MAXS] = {2};      /* 2x2 squares     */
     int nb = 0;
     int a = cover(2, 3, 2, h1, w1, &nb);
     int na = nb;

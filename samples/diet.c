@@ -79,9 +79,9 @@ int main(void) {
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     }
     /* nutrient totals at xp and the deficit */
-    double nut[NN], mindef = 0;
+    double mindef = 0;
     for (int i = 0; i < NN; i++) { double s = 0; for (int j = 0; j < NF; j++) s += N[i][j]*xp[j];
-        nut[i] = s; if (BB[i]-s > mindef) mindef = BB[i]-s; }
+        if (BB[i]-s > mindef) mindef = BB[i]-s; }
     int good = ok && fabs(cost - 5.0) < 1e-7 && fabs(xp[0]-1.0) < 1e-7 &&
                fabs(xp[1]-2.0) < 1e-7 && fabs(xp[2]-1.0) < 1e-7 && mindef < 1e-9;
     printf("  primal: cost=%.6f (expected 5)  x=(%.4f,%.4f,%.4f)  deficit=%.2e  %s\n",

@@ -149,7 +149,8 @@ int main(void) {
 
     double gv[4];
     for (int i = 0; i < 4; i++) { double s = 0;
-        for (int j = 0; j < 4; j++) s += G[i][j] * vstar[j]; gv[i] = s; }
+        for (int j = 0; j < 4; j++) s += G[i][j] * vstar[j];
+        gv[i] = s; }
     double gvmax = 0.0;
     for (int i = 0; i < 4; i++) if (fabs(gv[i]) > gvmax) gvmax = fabs(gv[i]);
     int corner_ok = 1;

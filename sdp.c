@@ -434,7 +434,8 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
  for(int u=n;u<q;u++)for(int v=n;v<q;v++)if(bj[u]==bj[v]){
   int j=bj[u],d=dims[j],a=bi[u],b=bl[u],c=bi[v],e=bl[v];const double *W=Wi+(size_t)j*d2;
   double h=W[a*d+c]*W[e*d+b];if(c!=e)h+=W[a*d+e]*W[c*d+b];
-  if(c!=e)h/=sqrt(2.0);if(a!=b)h*=sqrt(2.0);
+  if(c!=e)h/=sqrt(2.0);
+  if(a!=b)h*=sqrt(2.0);
   K[(size_t)(m+u)*N+m+v]=-h;
  }
  for(int i=0;i<N;i++){double mx=0;for(int j=0;j<N;j++)if(fabs(K[(size_t)i*N+j])>mx)mx=fabs(K[(size_t)i*N+j]);double rs=mx>0?1/mx:1;r[i]*=rs;for(int j=0;j<N;j++)K[(size_t)i*N+j]*=rs;}
@@ -451,7 +452,8 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
   for(int i=0;i<N;i++)if(!isfinite(r[i]))ok=0;
  }
  if(ok){
-  for(int i=0;i<N;i++)r[i]*=cs[i];for(int k=0;k<m;k++)dy[k]=r[k];
+  for(int i=0;i<N;i++)r[i]*=cs[i];
+  for(int k=0;k<m;k++)dy[k]=r[k];
   for(int i=0;i<n;i++){dx[i]=r[m+i];double v=-rd[i];for(int k=0;k<m;k++)v-=A[k*n+i]*dy[k];ds[i]=v;}
   for(int u=n;u<q;u++){int j=bj[u],d=dims[j],a=bi[u],b=bl[u];double v=r[m+u]/(a==b?1:sqrt(2.0));Dx[(size_t)j*d2+a*d+b]=Dx[(size_t)j*d2+b*d+a]=v;}
   for(int j=0;j<nb;j++){int d=dims[j];for(int a=0;a<d*d;a++){double v=Cb[j][a]-Sb[j][a];for(int k=0;k<m;k++)v-=Ab[k*nb+j][a]*(y[k]+dy[k]);Ds[(size_t)j*d2+a]=v;}}
@@ -1496,7 +1498,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                     sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld = min_eig(d, t3); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
-                if (ap > 1) ap = 1; if (ad > 1) ad = 1;
+                if (ap > 1) ap = 1;
+                if (ad > 1) ad = 1;
                 double mua = 0;
                 for (int i = 0; i < n; i++) mua += (xs[i] + ap * dx[i]) * (ss[i] + ad * ds[i]);
                 for (int j = 0; j < nb; j++) { int d = dims[j]; for (int a = 0; a < d * d; a++) t1[a] = Xbar[j][a] + ap * Dx[j * dmax2 + a]; for (int a = 0; a < d * d; a++) t2[a] = Sbar[j][a] + ad * Ds[j * dmax2 + a]; mua += trAB(d, t1, t2); }
@@ -1504,7 +1507,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 for (int a = 0; a < Ke; a++) mua += (ez[a] + ap * Dez[a]) * (es[a] + ad * Des[a]);
                 mua /= (double)(ntot > 0 ? ntot : 1);
                 sigma = (mu > 0) ? (mua / mu) : 0; sigma = sigma * sigma * sigma;
-                if (!(sigma > 0.1)) sigma = 0.1; if (sigma > 1) sigma = 1;
+                if (!(sigma > 0.1)) sigma = 0.1;
+                if (sigma > 1) sigma = 1;
                 if (polish_center) sigma = 1.0;
             } else {
                 /* Rescue for a MULTI-BLOCK PSD path whose Schur elimination lost
@@ -1528,7 +1532,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                     sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld = min_eig(d, t3); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
-                if (ap > 1) ap = 1; if (ad > 1) ad = 1;
+                if (ap > 1) ap = 1;
+                if (ad > 1) ad = 1;
                 /* SECANT mode: one step length for both sides.  The secant
                  * scaling is a primal-dual (NT-type) scaling, whose
                  * complementarity prediction assumes it: with ap != ad the
@@ -1746,7 +1751,8 @@ int sdp_ipm(int m, int n, const double *A, const double *b, const double *c,
             int fb0 = fb_ok ? *fb_ok : 0;
 #define SDP_CP(p, cnt, out) do { size_t k_ = (size_t)(cnt);                                   \
             if (out) memcpy(save + o, (p), k_ * sizeof(double));                               \
-            else memcpy((p), save + o, k_ * sizeof(double)); o += k_; } while (0)
+            else memcpy((p), save + o, k_ * sizeof(double)); \
+            o += k_; } while (0)
 #define SDP_ALL(out) do { o = 0; SDP_CP(x, n, out); SDP_CP(y, m, out);                       \
             for (int i = 0; i < nsoc; i++) { SDP_CP(Zsoc[i], socdims[i], out); SDP_CP(Ssoc[i], socdims[i], out); } \
             for (int i = 0; i < nep; i++) { SDP_CP(Zexp[i], 3, out); SDP_CP(Sexp[i], 3, out); } } while (0)

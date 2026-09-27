@@ -953,13 +953,15 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         }
         if (!L0) { IPMQP_FREE(); return IPM_SINGULAR; }
         for (int i = 0; i < m; i++) { double s = b[i];
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) s -= rval[p]; tmpm[i] = s; }
+            for (int p = rptr[i]; p < rptr[i + 1]; p++) s -= rval[p];
+            tmpm[i] = s; }
         if (spchol_solve_ord(L0, tmpm)) { spchol_free(L0); IPMQP_FREE(); return IPM_SINGULAR; }
         for (int j = 0; j < n; j++) x[j] = 1.0;
         for (int j = 0; j < n; j++)
             for (int p = Aptr[j]; p < Aptr[j + 1]; p++) x[j] += Aval[p] * tmpm[Arow[p]];
         for (int i = 0; i < m; i++) { double s = 0.0;
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * c[ridx[p]]; tmpm[i] = s; }
+            for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * c[ridx[p]];
+            tmpm[i] = s; }
         if (spchol_solve_ord(L0, tmpm)) { spchol_free(L0); IPMQP_FREE(); return IPM_SINGULAR; }
         for (int i = 0; i < m; i++) y[i] = tmpm[i];
         spchol_free(L0);
@@ -1060,7 +1062,8 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         if (spchol_solve(Lk, tmpm)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
         for (int i = 0; i < m; i++) dyA[i] = tmpm[i];
         for (int j = 0; j < n; j++) { double s = u[j];
-            for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * dyA[i]; dxA[j] = s; }
+            for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * dyA[i];
+            dxA[j] = s; }
         /* dzA = Q dxA - A'dyA + rd */
         for (int j = 0; j < n; j++) Atdy[j] = 0.0;
         for (int j = 0; j < n; j++)
@@ -1082,7 +1085,8 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int j = 0; j < n; j++) mu_aff += (x[j] + ap_aff*dxA[j]) * (z[j] + ad_aff*dzA[j]);
         mu_aff /= (double)n;
         double sigma = (mu > 0.0) ? (mu_aff / mu) : 0.0; sigma = sigma*sigma*sigma;
-        if (!(sigma > 1e-8)) sigma = 1e-8; if (sigma > 1.0) sigma = 1.0;
+        if (!(sigma > 1e-8)) sigma = 1e-8;
+        if (sigma > 1.0) sigma = 1.0;
 
         /* ---- corrector ---- */
         for (int j = 0; j < n; j++) u[j] = (sigma*mu - x[j]*z[j] - dxA[j]*dzA[j]) / (x[j] + dp) - rd[j];
@@ -1092,7 +1096,8 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
             tmpm[i] = -rp[i] - s; }
         if (spchol_solve(Lk, tmpm)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
         for (int j = 0; j < n; j++) { double s = u[j];
-            for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * tmpm[i]; dxC[j] = s; }
+            for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * tmpm[i];
+            dxC[j] = s; }
         for (int j = 0; j < n; j++) Atdy[j] = 0.0;
         for (int j = 0; j < n; j++)
             for (int p = Aptr[j]; p < Aptr[j + 1]; p++) Atdy[j] += Aval[p] * tmpm[Arow[p]];

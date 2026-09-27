@@ -42,7 +42,7 @@
 
 /* ---- SOCP (the reference formulation) ---- */
 /* Solve the minimum enclosing circle SOCP for k points. */
-static double socp_circle(int k, const double P[KMAX][ND], double c_out[ND], int *ok_out) {
+static double socp_circle(int k, double P[KMAX][ND], double c_out[ND], int *ok_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
     PRIMAL_maketask(env, 0, 0, &t);
@@ -75,7 +75,7 @@ static double socp_circle(int k, const double P[KMAX][ND], double c_out[ND], int
 
 /* ---- exact oracle: circumcircle of a pair / a triple ---- */
 /* Circumcircle of 2 (pair) or 3 (triple) indexed points. */
-static double circum(int m, const double P[KMAX][ND], int idx[3], double c[ND]) {
+static double circum(int m, double P[KMAX][ND], int idx[3], double c[ND]) {
     if (m == 2) {
         for (int d = 0; d < ND; d++) c[d] = 0.5 * (P[idx[0]][d] + P[idx[1]][d]);
         double s = 0; for (int d = 0; d < ND; d++) s += (P[idx[0]][d] - P[idx[1]][d]) * (P[idx[0]][d] - P[idx[1]][d]);
@@ -93,7 +93,7 @@ static double circum(int m, const double P[KMAX][ND], int idx[3], double c[ND]) 
     return sqrt(dx * dx + dy * dy);
 }
 /* True when the circle (c, r) contains all k points. */
-static int contains_all(int k, const double P[KMAX][ND], double c[ND], double r) {
+static int contains_all(int k, double P[KMAX][ND], double c[ND], double r) {
     for (int i = 0; i < k; i++) {
         double dx = P[i][0] - c[0], dy = P[i][1] - c[1];
         if (sqrt(dx * dx + dy * dy) > r + 1e-9) return 0;
@@ -101,7 +101,7 @@ static int contains_all(int k, const double P[KMAX][ND], double c[ND], double r)
     return 1;
 }
 /* Exact minimum enclosing circle by brute force over pairs/triples. */
-static double exact_circle(int k, const double P[KMAX][ND]) {
+static double exact_circle(int k, double P[KMAX][ND]) {
     double best = INFINITY;
     for (int i = 0; i < k; i++)
         for (int j = i + 1; j < k; j++) {

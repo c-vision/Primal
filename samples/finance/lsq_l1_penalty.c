@@ -123,7 +123,8 @@ static double qp_solve(int N, int M, const double *X, const double *b, double *w
     PRIMALrescodee rc = PRIMAL_optimize(t);
     double obj = -1.0;
     if (rc == PRIMAL_RES_OK) { double x[16]; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
-        for (int i = 0; i < M; i++) wout[i] = x[i]; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj); }
+        for (int i = 0; i < M; i++) wout[i] = x[i];
+        PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj); }
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return obj;
 }

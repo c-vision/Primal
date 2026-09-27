@@ -814,7 +814,7 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
                        names_get(&rows, T->tok[i], 0) >= 0 &&
                        parse_num(T->tok[i + 1], &(double){0.0})) {
                     int r = names_get(&rows, T->tok[i], 0);
-                    double v;
+                    double v = 0.0;
                     int oknum = parse_num(T->tok[i + 1], &v);
                     i += 2;
                     if (r < 0 || !oknum) continue;
@@ -836,7 +836,7 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
                     continue;
                 }
                 int r = names_get(&rows, T->tok[i], 0);
-                double v;
+                double v = 0.0;
                 parse_num(T->tok[i + 1], &v);
                 i += 2;
                 if (r == objrow) { cfix = -v; continue; }
@@ -857,7 +857,7 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
                     continue;
                 }
                 int r = names_get(&rows, T->tok[i], 0);
-                double v;
+                double v = 0.0;
                 parse_num(T->tok[i + 1], &v);
                 i += 2;
                 if (rty[r] == 'L') rlo[r] = rup[r] - fabs(v);
@@ -1462,7 +1462,8 @@ static int opf_name(Opf *o, char *out, int cap) {
     }
     if (!isalpha((unsigned char)*o->p)) return 0;
     while (*o->p && (isalnum((unsigned char)*o->p) || *o->p == '_' || *o->p == '{' || *o->p == '}')) {
-        if (n < cap-1) out[n++] = *o->p; o->p++;
+        if (n < cap-1) out[n++] = *o->p;
+        o->p++;
     }
     out[n] = 0; return 1;
 }
@@ -1499,7 +1500,7 @@ static void opf_to_bracket(Opf *o) {
 }
 /* Advance the cursor past the matching "[/tag]" of the given tag. */
 static void opf_skip(Opf *o, const char *tag) {
-    char close[OPF_NM]; snprintf(close, sizeof close, "[/%s]", tag);
+    char close[OPF_NM + 4]; snprintf(close, sizeof close, "[/%s]", tag);
     const char *q = strstr(o->p, close);
     if (q) o->p = q + strlen(close);
 }

@@ -15693,7 +15693,7 @@ static void test_t197(void) {
  * Hand cases: C5 (self-complementary) -> sqrt(5), K3 -> 3, E5 (empty) -> 1. */
 #define T198_NMAX 5
 /* solves the Lovasz theta SDP for the given graph; writes X and returns theta. */
-static double t198_theta_sdp(int n, const int adj[T198_NMAX][T198_NMAX], int *ok_out, double *X_out) {
+static double t198_theta_sdp(int n, int adj[T198_NMAX][T198_NMAX], int *ok_out, double *X_out) {
     P p; pbegin(&p);
     int dim = n;
     PRIMAL_appendbarvars(p.task, 1, &dim);
@@ -15737,7 +15737,7 @@ static double t198_theta_sdp(int n, const int adj[T198_NMAX][T198_NMAX], int *ok
     return th;
 }
 /* checks the returned X: trace 1, PSD, zero on the non-edges. */
-static int t198_X_ok(int n, const int adj[T198_NMAX][T198_NMAX], const double *X) {
+static int t198_X_ok(int n, int adj[T198_NMAX][T198_NMAX], const double *X) {
     double tr = 0.0;
     for (int i = 0; i < n; i++) tr += X[i * n + i];
     if (fabs(tr - 1.0) > 1e-6) return 0;
@@ -15954,7 +15954,7 @@ static void test_t200(void) {
  * points at distance d -> r=d/2; equilateral triangle of side a -> r=a/sqrt(3). */
 #define T201_ND 2
 /* solves the enclosing-ball SOCP for k points; returns the radius. */
-static double t201_ball(int k, const double pts[3][T201_ND], int *ok_out) {
+static double t201_ball(int k, double pts[3][T201_ND], int *ok_out) {
     P p; pbegin(&p);
     enum { PX = 0, PY = 1, R = 2, D = 3 };
     int nv = 3 + 2 * k;
@@ -16931,7 +16931,7 @@ static void test_t218(void) {
  * a deterministic pseudo-random 8-point set. */
 #define T219K 10
 /* solves the enclosing-circle SOCP for k points; writes center and radius. */
-static double t219_socp(int k, const double P[T219K][2], double c_out[2], int *ok_out) {
+static double t219_socp(int k, double P[T219K][2], double c_out[2], int *ok_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
     PRIMAL_maketask(env, 0, 0, &t);
@@ -16961,7 +16961,7 @@ static double t219_socp(int k, const double P[T219K][2], double c_out[2], int *o
     *ok_out = ok; return r;
 }
 /* circumcircle of the first m (2 or 3) indices; writes the center. */
-static double t219_circum(int m, const double P[T219K][2], int idx[3], double c[2]) {
+static double t219_circum(int m, double P[T219K][2], int idx[3], double c[2]) {
     if (m == 2) {
         for (int d = 0; d < 2; d++) c[d] = 0.5 * (P[idx[0]][d] + P[idx[1]][d]);
         double s = 0; for (int d = 0; d < 2; d++) s += (P[idx[0]][d]-P[idx[1]][d])*(P[idx[0]][d]-P[idx[1]][d]);
@@ -16976,12 +16976,12 @@ static double t219_circum(int m, const double P[T219K][2], int idx[3], double c[
     return sqrt((ax-c[0])*(ax-c[0])+(ay-c[1])*(ay-c[1]));
 }
 /* 1 if the circle (c,r) contains all k points. */
-static int t219_contains(int k, const double P[T219K][2], double c[2], double r) {
+static int t219_contains(int k, double P[T219K][2], double c[2], double r) {
     for (int i = 0; i < k; i++) { double dx=P[i][0]-c[0], dy=P[i][1]-c[1]; if (sqrt(dx*dx+dy*dy) > r+1e-9) return 0; }
     return 1;
 }
 /* exact minimum enclosing circle by trying all pairs and triples. */
-static double t219_exact(int k, const double P[T219K][2]) {
+static double t219_exact(int k, double P[T219K][2]) {
     double best = INFINITY;
     for (int i = 0; i < k; i++) for (int j = i+1; j < k; j++) {
         int idx[3]={i,j,0}; double c[2]; double r=t219_circum(2,P,idx,c);
@@ -17019,7 +17019,7 @@ static void test_t219(void) {
 typedef struct { double c[2]; double r; } T220Circ;
 /* circumcircle through m (0,1,2,3) boundary points. */
 static T220Circ t220_circ(int m, const double R[3][2]) {
-    T220Circ z;
+    T220Circ z = {{0.0, 0.0}, 0.0};
     if (m == 0) { z.c[0] = z.c[1] = 0; z.r = -1.0; return z; }
     if (m == 1) { z.c[0] = R[0][0]; z.c[1] = R[0][1]; z.r = 0.0; return z; }
     if (m == 2) {

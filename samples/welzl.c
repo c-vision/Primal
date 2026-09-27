@@ -45,7 +45,7 @@ typedef struct { double c[2]; double r; } Circ;
 /* ---- circle through 0, 1, 2 or 3 boundary points ---- */
 /* Circle through 0, 1, 2 or 3 boundary points. */
 static Circ circ_of(int m, const double R[3][2]) {
-    Circ z;
+    Circ z = {{0.0, 0.0}, 0.0};
     if (m == 0) { z.c[0] = z.c[1] = 0.0; z.r = -1.0; return z; }   /* empty: contains nothing */
     if (m == 1) { z.c[0] = R[0][0]; z.c[1] = R[0][1]; z.r = 0.0; return z; }
     if (m == 2) {

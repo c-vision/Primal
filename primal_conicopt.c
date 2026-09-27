@@ -728,8 +728,13 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             case CR_CUT:
                 {
                     int ci = q - r_cut;
-                    for (int i = 0; i < 3; i++)
-                        zmin[cutcol[3 * ci + i]] -= cuta[3 * ci + i] * lam;
+                    if (ci >= 0 && ci < nCutAll) {
+                        for (int i = 0; i < 3; i++) {
+                            int col = cutcol[3 * ci + i];
+                            if (col >= 0 && col < ntot)
+                                zmin[col] -= cuta[3 * ci + i] * lam;
+                        }
+                    }
                 }
                 break;
             case CR_PSDCUT:

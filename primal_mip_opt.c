@@ -107,7 +107,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         }
     }
     for (int k = 0; k < ncuts; k++) {
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getconbound(tc, ncon + k, &bk, &lo, &up);
         lc[ncon + k] = lo; uc[ncon + k] = up;
     }

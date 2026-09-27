@@ -820,7 +820,7 @@ static PRIMALrescodee clone_domains(PRIMALtask_t s, PRIMALtask_t d) {
     PRIMALint64t nd = 0;
     PRIMAL_getnumdomain(s, &nd);
     for (PRIMALint64t k = 0; k < nd; k++) {
-        PRIMALdomaintypee ty; PRIMALint64t n = 0, idx = -1;
+        PRIMALdomaintypee ty = (PRIMALdomaintypee)-1; PRIMALint64t n = 0, idx = -1;
         PRIMAL_getdomaintype(s, k, &ty);
         PRIMAL_getdomainn(s, k, &n);
         PRIMALrescodee rc = PRIMAL_RES_ERR_ARG;
@@ -866,14 +866,14 @@ PRIMALrescodee PRIMAL_clonetask(PRIMALtask_t t, PRIMALtask_t *clonedtask) {
     double cf = 0; PRIMAL_getcfix(t, &cf); PRIMAL_putcfix(d, cf);
     for (int j = 0; j < nv; j++) {
         double cj = 0; PRIMAL_getcj(t, j, &cj); PRIMAL_putcj(d, j, cj);
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getvarbound(t, j, &bk, &lo, &up); PRIMAL_putvarbound(d, j, bk, lo, up);
-        PRIMALvariabletypee vt; PRIMAL_getvartype(t, j, &vt); PRIMAL_putvartype(d, j, vt);
+        PRIMALvariabletypee vt = PRIMAL_VAR_TYPE_CONT; PRIMAL_getvartype(t, j, &vt); PRIMAL_putvartype(d, j, vt);
         const char *nm = NULL; PRIMAL_getvarnameidx(t, j, &nm);
         if (nm && nm[0]) PRIMAL_putvarname(d, j, nm);
     }
     for (int i = 0; i < nc; i++) {
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getconbound(t, i, &bk, &lo, &up); PRIMAL_putconbound(d, i, bk, lo, up);
         const char *nm = NULL; PRIMAL_getconnameidx(t, i, &nm);
         if (nm && nm[0]) PRIMAL_putconname(d, i, nm);
@@ -993,12 +993,12 @@ PRIMALrescodee PRIMAL_getdualproblem(PRIMALtask_t t, PRIMALtask_t *dualtask) {
     int nv = 0, nc = 0;
     PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
     for (int i = 0; i < nc; i++) {
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getconbound(t, i, &bk, &lo, &up);
         if (bk != PRIMAL_BK_FX) return PRIMAL_RES_ERR_ARG;   /* equalities only */
     }
     for (int j = 0; j < nv; j++) {
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getvarbound(t, j, &bk, &lo, &up);
         if (!(bk == PRIMAL_BK_LO && lo == 0.0 && !isfinite(up))) return PRIMAL_RES_ERR_ARG;
     }
@@ -1009,7 +1009,7 @@ PRIMALrescodee PRIMAL_getdualproblem(PRIMALtask_t t, PRIMALtask_t *dualtask) {
     PRIMAL_appendcons(d, nv);   /* A'y <= c */
     for (int i = 0; i < nc; i++) {
         PRIMAL_putvarbound(d, i, PRIMAL_BK_FR, -INFINITY, INFINITY);
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getconbound(t, i, &bk, &lo, &up);
         PRIMAL_putcj(d, i, -lo);   /* max b'y -> min -b'y */
     }
@@ -1021,7 +1021,7 @@ PRIMALrescodee PRIMAL_getdualproblem(PRIMALtask_t t, PRIMALtask_t *dualtask) {
         int nr = 0;
         PRIMAL_getacol(t, j, sub, val, cap, &nr);
         if (nr > 0) PRIMAL_putarow(d, j, nr, sub, val);
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getvarbound(t, j, &bk, &lo, &up);
         double cj = 0; PRIMAL_getcj(t, j, &cj);
         PRIMAL_putconbound(d, j, PRIMAL_BK_UP, -INFINITY, cj);
@@ -1059,7 +1059,7 @@ PRIMALrescodee PRIMAL_getinfeasiblesubproblem(PRIMALtask_t t, PRIMALsolt which,
         PRIMAL_appendcons(d, 1);
         int r = 0; PRIMAL_getnumcon(d, &r); r--;
         if (nr > 0) PRIMAL_putarow(d, r, nr, sub, val);
-        PRIMALboundkeye bk; double lo, up;
+        PRIMALboundkeye bk = PRIMAL_BK_FR; double lo = 0.0, up = 0.0;
         PRIMAL_getconbound(t, i, &bk, &lo, &up);
         PRIMAL_putconbound(d, r, bk, lo, up);
         free(sub); free(val);

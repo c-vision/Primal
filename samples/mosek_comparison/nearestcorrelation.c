@@ -47,7 +47,7 @@ static double A[N][N] = {{2.0, -1.0, 0.0},
                          {0.0, -1.0, 2.0}};
 
 /* Frobenius norm */
-static double fro(const double X[N][N]) {
+static double fro(double X[N][N]) {
     double s = 0.0;
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++) {

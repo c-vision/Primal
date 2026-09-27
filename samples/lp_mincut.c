@@ -51,7 +51,7 @@ static const double W[NE] = {0.5, 0.3, 0.4, 0.5};
 
 /* solve min-cut with an optional list of correlated arc pairs forced equal;
  * returns the cut value (or -1). */
-static double mincut(const int (*cor)[2], int ncor, double *dout) {
+static double mincut(int (*cor)[2], int ncor, double *dout) {
     int D0 = 0, P0 = NE, nv = NE + NN;
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 0, 0, &t);

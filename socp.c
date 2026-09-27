@@ -771,7 +771,10 @@ static void nt_sqrt(const double *v,int k,double *r){
  * augmented LU", not "the model is wrong". */
 static int nt_inv(const double *v,int k,double *r){
     double nb=0;for(int i=1;i<k;i++)nb+=v[i]*v[i];double D=v[0]*v[0]-nb;
-    if(!(D>0))return -1; r[0]=v[0]/D;for(int i=1;i<k;i++)r[i]=-v[i]/D;return 0;
+    if(!(D>0))return -1;
+    r[0]=v[0]/D;
+    for(int i=1;i<k;i++)r[i]=-v[i]/D;
+    return 0;
 }
 /* sqrt then inverse, through a private buffer: r may not alias v. */
 static int nt_invsqrt(const double *v,int k,double *r){double q[NT_MAXK];nt_sqrt(v,k,q);return nt_inv(q,k,r);}
@@ -962,9 +965,11 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         sp_colT(&SG,lm,t1,n);for(int j=0;j<n;j++)rd[j]-=t1[j];
         double mu=0;for(int k=0;k<K;k++)mu+=s[k]*lm[k];mu/=(double)(K>0?K:1);
         {int o=0;for(int k=0;k<ncones;k++){if(cones[k].type==0)for(int i=0;i<cones[k].nmem;i++)Asc[o+i]=s[o+i]*lm[o+i];
-            else arrow_mul(&s[o],&lm[o],cones[k].nmem,&Asc[o]);o+=cones[k].nmem;}}
+            else arrow_mul(&s[o],&lm[o],cones[k].nmem,&Asc[o]);
+            o+=cones[k].nmem;}}
         {int o=0;for(int k=0;k<ncones;k++){if(cones[k].type==0)for(int i=0;i<cones[k].nmem;i++)Alr[o+i]=lm[o+i]*rg[o+i];
-            else arrow_mul(&lm[o],&rg[o],cones[k].nmem,&Alr[o]);o+=cones[k].nmem;}}
+            else arrow_mul(&lm[o],&rg[o],cones[k].nmem,&Alr[o]);
+            o+=cones[k].nmem;}}
         double pobj=0;for(int j=0;j<n;j++)pobj+=c[j]*xs[j];
         double dobj=0;for(int i=0;i<p;i++)dobj-=d[i]*ys[i];for(int k=0;k<K;k++)dobj-=h[k]*lm[k];
         double feas_p=maxabs(rp,p)/dnorm;if(K){double a=maxabs(rg,K)/hnorm;if(a>feas_p)feas_p=a;}
@@ -1109,7 +1114,9 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         double sigma=(mu>0)?(mu_aff/mu):0;sigma=sigma*sigma*sigma;if(!(sigma>1e-8))sigma=1e-8;if(sigma>1)sigma=1;
         /* corrector: same factors, only the cone rhs changes (sigma > 0) */
         if(conic_dir(&dctx,sigma,mu,lm,rg,rd,rp,Asc,Alr,dx,dy,ds,dlm)){
-            if(Hchol)spchol_free(Hchol); if(Schol)spchol_free(Schol); if(f)splu_free(f);
+            if(Hchol)spchol_free(Hchol);
+            if(Schol)spchol_free(Schol);
+            if(f)splu_free(f);
             free(Mp);free(Mi);free(Mv); status=OPT_SINGULAR;goto done; }
         if(Hchol){spchol_free(Hchol);Hchol=NULL;}
         if(Schol){spchol_free(Schol);Schol=NULL;}
@@ -1120,7 +1127,9 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         double tau=1.0-mu*0.01;if(tau<0.99)tau=0.99;if(tau>0.99995)tau=0.99995;
         double apf=tau*apm,adf=tau*adm;if(apf>1)apf=1;if(adf>1)adf=1;
         if(apf<0.1*(tau*ap)||adf<0.1*(tau*ad)){apf=tau*ap;if(apf>1)apf=1;adf=tau*ad;if(adf>1)adf=1;
-            for(int j=0;j<n;j++)dx[j]=dxa[j];for(int i=0;i<p;i++)dy[i]=dya[i];for(int k2=0;k2<K;k2++){ds[k2]=dsa[k2];dlm[k2]=dlma[k2];}}
+            for(int j=0;j<n;j++)dx[j]=dxa[j];
+            for(int i=0;i<p;i++)dy[i]=dya[i];
+            for(int k2=0;k2<K;k2++){ds[k2]=dsa[k2];dlm[k2]=dlma[k2];}}
         if(apf<=1e-13&&adf<=1e-13){if(++no_progress>5)break;}else no_progress=0;
         for(int j=0;j<n;j++)xs[j]+=apf*dx[j];
         for(int i=0;i<p;i++)ys[i]+=adf*dy[i];

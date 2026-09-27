@@ -46,7 +46,7 @@
 /* smallest enclosing ball of the k points in P (row-major k x 2); returns
  * the radius and writes the center.  Variables: px, py, r, then a per-point
  * difference (dx_i, dy_i). */
-static double min_ball(int k, const double P[KMAX][ND], double c_out[ND], int *ok_out) {
+static double min_ball(int k, double P[KMAX][ND], double c_out[ND], int *ok_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
     PRIMAL_maketask(env, 0, 0, &t);
