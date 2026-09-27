@@ -1625,14 +1625,20 @@ refine:
     if (have_best) {
         ipm_state(snap, 0, IPM_STATE_PASS);
         status = 0;
-    } else if (fb_saved && nep > 0) {
-        /* The frozen point enters the outputs as a CANDIDATE only for
-         * exp/power models (nep>0): there the residual floor is known
-         * (T90/T91/logistic_large/risk_parity) and the cuts stay the first
-         * choice. On PSD/SOC models the T96 policy holds: a "not solved"
-         * verdict publishes nothing. status stays "not solved" so the gate
-         * judges it. */
+    } else if (fb_saved) {
+        /* The frozen point is offered to the gate on every route. For exp/power
+         * (nep>0) it stays a fallback CANDIDATE -- the native verdict is "not
+         * solved", the cuts remain the first choice, and this point only leaves
+         * when they also fail (T90/T91/logistic_large/risk_parity). For PSD/SOC
+         * (nep==0) there is no alternative route, so status is set to 0 and the
+         * gate's near-optimal rule judges it: inside the effective tolerance it
+         * is declared optimal, otherwise the gate forces status back to 1 (T96)
+         * and nothing is published. Without this a frozen PSD-only model fell
+         * straight to the tangent cuts (the pure-SDP `sdp_8` benchmark: the
+         * relative triple was inside the factor at it=25, but the point was
+         * never restored and the cut loop hit rc=1007). */
         ipm_state(fb_snap, 0, IPM_STATE_PASS);
+        if (nep == 0) status = 0;
     }
     /* Route selection, on the MEASURED quality of the point about to be handed
      * back and against the task's OWN interior-point tolerances: mu is the
