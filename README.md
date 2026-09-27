@@ -100,8 +100,9 @@ make clean         # remove out/
 
 Everything the build produces goes to `out/` (gitignored). **Portability**: POSIX
 C99 with `gcc` or `clang` on Linux, macOS and the BSDs. There is **no MSVC
-project and no `nmake` path** — on Windows use MinGW, or compile the `LIBSRCS`
-list from the Makefile with any C99 compiler. Clean under AddressSanitizer +
+project and no `nmake` path** — on Windows use MinGW
+([how to build on Windows](docs/windows.md)), or compile the `LIBSRCS` list from
+the Makefile with any C99 compiler. Clean under AddressSanitizer +
 UndefinedBehaviorSanitizer on the suite and on all samples.
 
 ## How it compares

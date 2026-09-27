@@ -37,6 +37,12 @@ for a specific route.
 | [api.md](api.md) | the map of the 547 public functions, parameters, callbacks |
 | [io-formats.md](io-formats.md) | MPS, LP, OPF, CBF — what is read, written, and refused |
 
+## Building
+
+| File | What it covers |
+|---|---|
+| [windows.md](windows.md) | building on Windows with MinGW-w64 (and why not MSVC yet) |
+
 ## Conventions
 
 Unless a page says otherwise:
