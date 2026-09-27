@@ -177,20 +177,20 @@ run-samples: samples
 # ---- benchmark harness (see bench/) ----
 bench: $(OUT)/bench/solve_mps $(OUT)/bench/conic_bench $(OUT)/bench/expcone_route_probe $(OUT)/bench/expcone_ipm_probe
 
-$(OUT)/bench/solve_mps: bench/solve_mps.c $(LIBSRCS) | $(OUT)
+$(OUT)/bench/solve_mps: bench/solve_mps.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench
-	$(CC) $(CFLAGS) -I. bench/solve_mps.c $(LIBSRCS) -lm -o $@
+	$(CC) $(CFLAGS) -I. bench/solve_mps.c $(LIB_A) $(LDLIBS) -o $@
 
-$(OUT)/bench/conic_bench: bench/conic_bench.c $(LIBSRCS) | $(OUT)
+$(OUT)/bench/conic_bench: bench/conic_bench.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench
-	$(CC) $(CFLAGS) -I. bench/conic_bench.c $(LIBSRCS) -lm -o $@
+	$(CC) $(CFLAGS) -I. bench/conic_bench.c $(LIB_A) $(LDLIBS) -o $@
 
-$(OUT)/bench/expcone_route_probe: bench/expcone_route_probe.c $(LIBSRCS) | $(OUT)
+$(OUT)/bench/expcone_route_probe: bench/expcone_route_probe.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench
-	$(CC) $(CFLAGS) -I. bench/expcone_route_probe.c $(LIBSRCS) -lm -o $@
+	$(CC) $(CFLAGS) -I. bench/expcone_route_probe.c $(LIB_A) $(LDLIBS) -o $@
 
-$(OUT)/bench/expcone_ipm_probe: bench/expcone_ipm_probe.c $(LIBSRCS) | $(OUT)
+$(OUT)/bench/expcone_ipm_probe: bench/expcone_ipm_probe.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench
-	$(CC) $(CFLAGS) -I. bench/expcone_ipm_probe.c $(LIBSRCS) -lm -o $@
+	$(CC) $(CFLAGS) -I. bench/expcone_ipm_probe.c $(LIB_A) $(LDLIBS) -o $@
 
 .PHONY: bench
