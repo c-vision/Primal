@@ -33,10 +33,11 @@ PRIMAL_OBJS = primal_core.o primal_put.o primal_qcon.o primal_vartype.o \
           primal_misc.o primal_info.o
 OBJS    = $(addprefix $(OUT)/,linalg.o stdform.o simplex.o ipm.o socp.o sdp.o \
           expcone.o mpsio.o cbf.o scaling.o presolve.o $(PRIMAL_OBJS))
+LIB_A   = $(OUT)/libprimal.a
 
 all: $(OUT)/example_lp $(OUT)/run_tests
 
-lib: $(OBJS)
+lib: $(LIB_A)
 
 $(OUT):
 	mkdir -p $(OUT) $(OUT)/samples
@@ -144,8 +145,6 @@ LIBSRCS = linalg.c stdform.c simplex.c ipm.c socp.c sdp.c expcone.c mpsio.c cbf.
           primal_meta.c primal_solution.c primal_afe.c primal_djc.c primal_bar.c primal_sdptask.c \
           primal_mip.c primal_mip_opt.c primal_conicopt.c primal_quad.c primal_solio.c primal_std.c \
           primal_verdict.c primal_optimize.c primal_misc.c primal_info.c
-
-LIB_A    = $(OUT)/libprimal.a
 
 samples: $(LIB_A) $(MOSEK_SAMPLES:%=$(OUT)/samples/%) $(COMPLEX_SAMPLES:%=$(OUT)/samples/%) $(FINANCE_SAMPLES:%=$(OUT)/samples/%) $(BOOK_SAMPLES:%=$(OUT)/samples/%)
 
