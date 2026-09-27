@@ -417,11 +417,20 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
     if (!W || !V) { free(W); free(V); return; }
     for (int i = 0; i < n * n; i++) W[i] = A[i];
     for (int i = 0; i < n; i++) V[i * n + i] = 1.0;
+    /* The convergence test is RELATIVE to ||A||_F. The old absolute 1e-30 was
+     * reachable in a few sweeps only when ||A|| was ~1; for any larger matrix
+     * the off-diagonal sum never gets below it and every call ran all 100
+     * sweeps. 1e-28 * ||A||_F^2 drives the off-diagonal to ~1e-14 of the matrix
+     * -- machine precision, so the eigenvalues keep the accuracy the solvers
+     * need -- while letting the sweep stop as soon as it truly converges. */
+    double fnorm2 = 0.0;
+    for (int i = 0; i < n * n; i++) fnorm2 += A[i] * A[i];
+    double tol = 1e-28 * fnorm2;
     for (int sweep = 0; sweep < 100; sweep++) {
         double off = 0.0;
         for (int p = 0; p < n; p++)
             for (int q = p + 1; q < n; q++) off += W[p * n + q] * W[p * n + q];
-        if (off < 1e-30) break;
+        if (off <= tol) break;
         for (int p = 0; p < n; p++) {
             for (int q = p + 1; q < n; q++) {
                 double apq = W[p * n + q];
