@@ -72,7 +72,8 @@ SAN_SAMPLES = samples/logistic_large.c samples/finance/market_impact.c \
            samples/cvx_regression.c samples/maxcut_sdp.c samples/socp_robust.c \
            samples/lp_large.c samples/finance/portfolio_mgmt.c \
            samples/mosek_comparison/logistic.c samples/mosek_comparison/sdo2.c \
-           samples/mosek_comparison/qcqo1.c
+           samples/mosek_comparison/qcqo1.c samples/secure_beamforming.c \
+           samples/total_variation.c
 
 $(OUT)/san:
 	mkdir -p $(OUT)/san $(OUT)/san/samples
