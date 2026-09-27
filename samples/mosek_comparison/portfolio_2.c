@@ -22,11 +22,11 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* portfolio_2.c — porting dell'esempio "portfolio_2_frontier.jl" della
- * MOSEK Julia API (docs.mosek.com/11.0/juliaapi): frontiera media-varianza.
- * Per una griglia di gamma si risolve il QP di Markowitz e si stampa la
- * coppia (rischio, rendimento atteso): il rischio deve decrescere al
- * crescere di gamma (trade-off rischio/rendimento).
+/* portfolio_2.c — port of the MOSEK Julia API "portfolio_2_frontier.jl"
+ * example (docs.mosek.com/11.0/juliaapi): mean-variance frontier.
+ * For a grid of gamma values it solves the Markowitz QP and prints the
+ * pair (risk, expected return): risk must decrease as gamma grows
+ * (risk/return trade-off).
  *
  *   max   r'x - gamma * x' Sigma x
  *   s.t.  sum(x) = 1,  x >= 0
@@ -37,6 +37,7 @@
 
 static PRIMALenv_t env;
 
+/* Solve the Markowitz QP for one gamma; writes x, risk and expected return. */
 static int solve_gamma(double gamma, double *x, double *risk, double *ret) {
     const int n = 3;
     const double r[3] = {0.10717, 0.07502, 0.11902};
@@ -80,6 +81,7 @@ static int solve_gamma(double gamma, double *x, double *risk, double *ret) {
     return 0;
 }
 
+/* Sweep a gamma grid and check the risk frontier is monotone. */
 int main(void) {
     PRIMAL_makeenv(&env, NULL);
 
@@ -94,15 +96,15 @@ int main(void) {
         if (solve_gamma(gammas[g], x, &risk, &ret)) { ok = 0; break; }
         printf("%8.2f %12.6f %12.6f   (%.4f, %.4f, %.4f)\n",
                gammas[g], risk, ret, x[0], x[1], x[2]);
-        /* ammissibilita' */
+        /* feasibility */
         if (fabs(x[0] + x[1] + x[2] - 1.0) > 1e-6) ok = 0;
         for (int j = 0; j < 3; j++) if (x[j] < -1e-9) ok = 0;
-        /* monotonia: il rischio non cresce al crescere di gamma.  Per gamma
-         * piccoli l'ottimo e' lo STESSO vertice, quindi la sequenza e' piatta a
-         * meno della precisione del solver: il rischio e' una forma quadratica
-         * e la tolleranza dichiarata del percorso conico (che serve il QP puro)
-         * e' 1e-8, quindi 1e-9 era piu' stretto di quanto il modello prometta.
-         * Si usa la stessa tolleranza dell'ammissibilita'. */
+        /* monotonicity: risk does not grow as gamma grows.  For small gamma
+         * the optimum is the SAME vertex, so the sequence is flat up to
+         * solver precision: risk is a quadratic form and the declared
+         * tolerance of the conic route (which serves the pure QP) is 1e-8, so
+         * 1e-9 was tighter than the model promises.  The same tolerance as
+         * feasibility is used. */
         if (risk > prev_risk + 1e-6) ok = 0;
         prev_risk = risk;
     }

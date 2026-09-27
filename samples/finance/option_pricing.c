@@ -37,6 +37,7 @@
 
 static const double STOCK[3] = {0.5, 1.0, 1.5};
 
+/* Solve the risk-neutral LP for the call price bound (min or max). */
 static double solve(PRIMALenv_t env, int maximize) {
     PRIMALtask_t t;
     PRIMAL_maketask(env, 0, 0, &t);
@@ -61,6 +62,7 @@ static double solve(PRIMALenv_t env, int maximize) {
     return obj;
 }
 
+/* Compute the lower and upper no-arbitrage price bounds and check them. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

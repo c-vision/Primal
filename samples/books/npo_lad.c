@@ -37,6 +37,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the L1 regression LP and check the book coefficients and sad. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     static const double y[10] = {

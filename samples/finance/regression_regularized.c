@@ -90,6 +90,7 @@
 #include "linalg.h"
 
 static unsigned st = 27182818u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
@@ -101,6 +102,7 @@ static double *X, *y, *w0;
 
 enum { REG_RIDGE = 0, REG_SPARSE = 1, REG_POW32 = 2 };
 
+/* Add the squared-residual QP terms Q = 2 X'X, c = -2 X'y, cfix = y'y. */
 static void put_qobj_residual(PRIMALtask_t t) {
     /* Q = 2 X'X (upper triangle), c = -2 X'y, cfix = y'y */
     int *qi = malloc((size_t)M * (M + 1) / 2 * sizeof(int));
@@ -126,6 +128,7 @@ static void put_qobj_residual(PRIMALtask_t t) {
     PRIMAL_putcfix(t, yy);
 }
 
+/* Build the ridge, sparse or 3/2 regularised regression model. */
 static PRIMALtask_t build(int kind, PRIMALenv_t env) {
     PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
     if (kind == REG_RIDGE) {
@@ -178,6 +181,7 @@ static PRIMALtask_t build(int kind, PRIMALenv_t env) {
     return t;
 }
 
+/* Solve ridge, sparse and 3/2 regression and verify each. */
 int main(int argc, char **argv) {
     N = argc > 1 ? atoi(argv[1]) : 30;
     M = argc > 2 ? atoi(argv[2]) : 4;

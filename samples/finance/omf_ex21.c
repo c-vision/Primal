@@ -44,6 +44,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the bond-portfolio LP and check x=(50,50), Z=350. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

@@ -41,6 +41,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the cash-flow matching LP and check the allocation and cost. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     static const double p[5] = {102.36, 110.83, 96.94, 114.65, 96.63};

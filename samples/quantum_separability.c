@@ -147,6 +147,7 @@ static int ppt_robustness_sdp(double *t_out) {
     return ok;
 }
 
+/* Run PPT/CCNR checks on the qutrit isotropic state and its threshold. */
 int main(void) {
     const double P = 0.5;                 /* entangled isotropic state */
     const double PCT = 0.25;              /* PPT separability threshold  */

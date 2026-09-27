@@ -22,29 +22,30 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* cqo1.c — porting dell'esempio "cqo1.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi/cqo1.html): problema conico piccolo con
- * un cono quadratico e uno ruotato.
+/* cqo1.c — port of the MOSEK Julia API "cqo1.jl" example
+ * (docs.mosek.com/11.0/juliaapi/cqo1.html): small conic problem with
+ * one quadratic and one rotated cone.
  *
- * NOTA: l'esempio Julia usa l'API ACC (appendafes/putafefentrylist/appendacc);
- * qui gli ACC sono coni su variabili dirette, quindi si usano le appendcone
- * equivalenti (l'API ACC del riferimento e' comunque disponibile).
+ * NOTE: the Julia example uses the ACC API (appendafes/putafefentrylist/appendacc);
+ * here the ACCs are cones over direct variables, so the equivalent
+ * appendcone calls are used (the reference ACC API is available anyway).
  *
  *   min  x3 + x4 + x5
  *   s.t. x0 + x1 + 2*x2 = 1
  *        (x3, x0, x1) in QUAD_3      -> x3 >= sqrt(x0^2 + x1^2)
  *        (x4, x5, x2) in RQUAD_3     -> 2*x4*x5 >= x2^2
- *        x0,x1,x2 >= 0; x3,x4,x5 libere
+ *        x0,x1,x2 >= 0; x3,x4,x5 free
  *
- * Ottimo noto (dalla docs MOSEK): obj = 1/sqrt(2) ≈ 0.7071.
- * La somma x3+x4+x5 e' costante = 1/sqrt(2) per ogni punto ottimo
- * (sqrt(x0^2+x1^2) >= (x0+x1)/sqrt2 e la parte RQUAD completa il resto),
- * quindi si verifica sia l'obiettivo sia l'adesione ai coni.
+ * Known optimum (from the MOSEK docs): obj = 1/sqrt(2) ≈ 0.7071.
+ * The sum x3+x4+x5 is constant = 1/sqrt(2) at every optimal point
+ * (sqrt(x0^2+x1^2) >= (x0+x1)/sqrt2 and the RQUAD part completes the rest),
+ * so both the objective and the cone membership are checked.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the cqo1 conic problem and check the 1/sqrt(2) optimum. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -85,7 +86,7 @@ int main(void) {
            x[0], x[1], x[2], x[3], x[4], x[5]);
     printf("obj = %.6f (atteso 1/sqrt(2) = %.6f)\n", po, 1.0 / sqrt(2.0));
 
-    /* verifica: uguaglianza, adesione ai coni, obiettivo */
+    /* check: equality, cone membership, objective */
     int ok = fabs(x[0] + x[1] + 2 * x[2] - 1.0) < 1e-6 &&
              fabs(po - 1.0 / sqrt(2.0)) < 1e-6 &&
              x[3] * x[3] >= x[0] * x[0] + x[1] * x[1] - 1e-8 &&

@@ -22,17 +22,18 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* parameters.c — porting dell'esempio "parameters.jl" della Julia API
- * MOSEK: lettura/scrittura dei parametri (putintparam/putdouparam e i getter).
+/* parameters.c — port of the MOSEK Julia API "parameters.jl" example:
+ * reading/writing parameters (putintparam/putdouparam and the getters).
  *
- * Verifica: ogni parametro impostato si rilegge con lo stesso valore; un
- * parametro non valido viene rifiutato (ERR_ARG); il cambio di
- * INTPNT_MAX_ITERATIONS limita davvero le iterazioni dell'IPM (TRM).
+ * Check: every parameter set is read back with the same value; an
+ * invalid parameter is rejected (ERR_ARG); changing
+ * INTPNT_MAX_ITERATIONS really limits the IPM iterations (TRM).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Round-trip parameters, reject invalid ones and check the iteration limit. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -65,19 +66,19 @@ int main(void) {
     PRIMAL_getdouparam(task, PRIMAL_DPAR_INTPNT_TOL_REL_GAP, &vd);
     rc += (fabs(vd - 3e-7) > 1e-15);
 
-    /* parametri non validi rifiutati: la validazione viene dai range della
-     * tabella dichiarativa (PRIMAL_getparaminfo), quindi un booleano fuori
-     * da 0/1 o una tolleranza <= 0 sono errori di API; 9999 non esiste in
-     * nessuno dei due namespace */
+    /* invalid parameters rejected: validation comes from the ranges of the
+     * declarative table (PRIMAL_getparaminfo), so a boolean outside
+     * 0/1 or a tolerance <= 0 are API errors; 9999 exists in
+     * neither namespace */
     rc += (PRIMAL_putintparam(task, 9999, 1) == PRIMAL_RES_OK ? 1 : 0);
     rc += (PRIMAL_putdouparam(task, 9999, 1.0) == PRIMAL_RES_OK ? 1 : 0);
-    /* il range di TOL_PFEAS e' [0,1] (riconciliato col riferimento): un valore
-     * FUORI range e' l'errore, non 0.0 che ora e' valido. */
+    /* the range of TOL_PFEAS is [0,1] (reconciled with the reference): a value
+     * OUTSIDE the range is the error, not 0.0 which is now valid. */
     rc += (PRIMAL_putdouparam(task, PRIMAL_DPAR_INTPNT_TOL_PFEAS, -1.0) == PRIMAL_RES_OK ? 1 : 0);
     rc += (PRIMAL_getintparam(task, 9999, &vi) == PRIMAL_RES_OK ? 1 : 0);
 
-    /* INTPNT_MAX_ITERATIONS come limite reale: QP con 1 iterazione ->
-     * PRIMAL_RES_TRM_MAX_ITER (1007) o comunque non-OK se il QP non converge */
+    /* INTPNT_MAX_ITERATIONS as a real limit: QP with 1 iteration ->
+     * PRIMAL_RES_TRM_MAX_ITER (1007) or anyway non-OK if the QP does not converge */
     PRIMALtask_t q;
     PRIMAL_maketask(env, 0, 0, &q);
     PRIMAL_appendvars(q, 2);
@@ -90,7 +91,7 @@ int main(void) {
     PRIMAL_putintparam(q, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1);
     PRIMALrescodee rq = PRIMAL_optimize(q);
     printf("QP con max_iter=1: rc=%d (atteso non-OK: 1007 TRM o 1002)\n", rq);
-    int rc_trm = (rq != PRIMAL_RES_OK);   /* il limite interrompe davvero */
+    int rc_trm = (rq != PRIMAL_RES_OK);   /* the limit really interrupts */
     PRIMAL_deletetask(&q);
 
     printf("conteggio errori parametri: %d\n", rc);

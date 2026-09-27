@@ -22,17 +22,18 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* ceo1.c — cono esponenziale (variante dell'esempio "ceo1" della
- * documentazione MOSEK Optimizer API)
+/* ceo1.c — exponential cone (variant of the MOSEK Optimizer API "ceo1"
+ * example)
  *
- * Problema: min x0  s.t. (x0, x1, x2) in EXP, x1 = 1, -1 <= x2 <= -0.5
- *           cioe' x0 >= x1 * exp(x2/x1) = exp(x2)
- * Soluzione attesa: x0 = exp(-1) = 0.367879 in x2 = -1
+ * Problem: min x0  s.t. (x0, x1, x2) in EXP, x1 = 1, -1 <= x2 <= -0.5
+ *          i.e. x0 >= x1 * exp(x2/x1) = exp(x2)
+ * Expected solution: x0 = exp(-1) = 0.367879 at x2 = -1
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the ceo1 exponential-cone problem and check obj = e^-1. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

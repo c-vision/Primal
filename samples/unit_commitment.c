@@ -61,6 +61,7 @@ static const double marg[NG] = {2, 6};
 static const double startc[NG] = {10, 0};
 static const double demand[NT] = {2, 4};
 
+/* Solve the two-generator two-period unit commitment MILP. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

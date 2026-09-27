@@ -48,6 +48,7 @@
 static const double B[NP][L][NVX] = {{{0.5}}, {{0.2}}};
 static const double VERT[L][(1 << L)] = {{-1.0, 1.0}};
 
+/* Solve the exact vertex model and check it against the dense scan. */
 int main(void) {
     int nvert = NVERT;
     PRIMALenv_t env; PRIMALtask_t t;

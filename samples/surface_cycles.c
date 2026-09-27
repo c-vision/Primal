@@ -56,6 +56,7 @@ static int edge_id(int a, int b) {         /* the undirected edge {a,b} */
 /* signed edge: coefficient +1 if a->b matches the stored orientation (min,max) */
 static int edge_sgn(int a, int b, double *s) { *s = (a <= b) ? 1.0 : -1.0; return edge_id(a, b); }
 
+/* Build the cylinder complex and shorten the homologous cycle via LP. */
 int main(void) {
     double xyz[NV][3];
     const double sq[4][2] = {{0.5, 0.5}, {-0.5, 0.5}, {-0.5, -0.5}, {0.5, -0.5}};

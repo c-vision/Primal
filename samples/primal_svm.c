@@ -85,6 +85,7 @@ static int svm(int nd, int nim, const double X[][2], const double *y, double c,
     return ok ? 0 : 1;
 }
 
+/* Solve the separable and soft-margin SVM instances and check both. */
 int main(void) {
     int bad = 0;
     /* A) separable diamond */

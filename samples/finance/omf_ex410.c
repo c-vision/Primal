@@ -179,6 +179,7 @@ static int part_iv(void) {
     return ok;
 }
 
+/* Run parts (i), (iii) and (iv) and aggregate the results. */
 int main(void) {
     int a = part_i(), b = part_iii(), c = part_iv();
     return (a && b && c) ? 0 : 1;

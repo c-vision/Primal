@@ -18,38 +18,39 @@
 
 /* primal.h - public API (PRIMAL-compatible subset, extended)
  *
- * CONVENTIONE DUALI (documentata, verificata dai test):
- *   Le soluzioni duali riportate (y, slc, suc, slx, sux) soddisfano,
- *   per il problema ORIGINALE come scritto (qualsiasi senso):
- *       c + Qx + A'y + z = 0          con z = slx + sux
- *   dove (in forma min-normalizzata, cioe' moltiplicando per s=+1 min / -1 max):
- *       y_i > 0  <=> riga i al bound SUPERIORE attivo
- *       y_i < 0  <=> riga i al bound INFERIORE attivo
- *       z_j > 0  <=> variabile j al bound superiore attivo
- *       z_j < 0  <=> variabile j al bound inferiore attivo
- *   slc/suc e slx/sux sono la scomposizione per segno di y e z:
+ * DUAL CONVENTIONS (documented, verified by tests):
+ *   The reported dual solutions (y, slc, suc, slx, sux) satisfy,
+ *   for the ORIGINAL problem as written (either sense):
+ *       c + Qx + A'y + z = 0          with z = slx + sux
+ *   where (in min-normalized form, i.e. multiplying by s=+1 min / -1 max):
+ *       y_i > 0  <=> row i at active UPPER bound
+ *       y_i < 0  <=> row i at active LOWER bound
+ *       z_j > 0  <=> variable j at active upper bound
+ *       z_j < 0  <=> variable j at active lower bound
+ *   slc/suc and slx/sux are the by-sign split of y and z:
  *       slc = min(y,0), suc = max(y,0), slx = min(z,0), sux = max(z,0).
- *   Multipli di riga/variabile non attivi sono 0 (complementarita').
- *   L'obiettivo duale vale: dobj = -sum_i y_i*b_i(attivo) - sum_j z_j*xb_j(attivo)
- *   in forma min (forte dualita' |pobj - s*dobj_min| ~ 0, verificata dai test).
+ *   Multipliers of inactive rows/variables are 0 (complementarity).
+ *   The dual objective is: dobj = -sum_i y_i*b_i(active) - sum_j z_j*xb_j(active)
+ *   in min form (strong duality |pobj - s*dobj_min| ~ 0, verified by tests).
  *
- * STATO DELLA SOLUZIONE (PRIMAL_getsolsta):
+ * SOLUTION STATUS (PRIMAL_getsolsta):
  *   PRIMAL_SOL_STA_OPTIMAL, PRIMAL_SOL_STA_PRIM_INFEAS_CER, PRIMAL_SOL_STA_DUAL_INFEAS_CER,
  *   PRIMAL_SOL_STA_INTEGER_OPTIMAL, PRIMAL_SOL_STA_UNKNOWN.
- * PRIMAL_optimize restituisce PRIMAL_RES_OK con il verdetto in solsta; per
- * comoperatorsita' con la vecchia bozza, infeasibilita'/illimitatezza
- * restituiscono anche PRIMAL_RES_ERR_INFEASIBLE / PRIMAL_RES_ERR_UNBOUNDED.
- * Un membro *_CER NOMINA un vettore di Farkas: viene pubblicato solo dove
- * PRIMAL_getdualray / PRIMAL_getprimalray rispondono (il percorso LP/QP, e solo
- * se il raggio misura nella forma risolta). Dove il verdetto c'e' ma il vettore
- * no — il percorso a tagli tangenti, l'albero e branch-and-bound, una base non
- * ammissibile — solsta resta UNKNOWN e il verdetto si legge in PRIMAL_getprosta.
- * I numeri grezzi e l'accoppiamento prosta+solsta sono fissati da T93 e T94.
+ * PRIMAL_optimize returns PRIMAL_RES_OK with the verdict in solsta; for
+ * compatibility with the old draft, infeasibility/unboundedness
+ * also return PRIMAL_RES_ERR_INFEASIBLE / PRIMAL_RES_ERR_UNBOUNDED.
+ * A *_CER member NAMES a Farkas vector: it is published only where
+ * PRIMAL_getdualray / PRIMAL_getprimalray answer (the LP/QP route, and only
+ * if the ray measures in the solved form). Where the verdict exists but the
+ * vector does not — the tangent-cuts route, the branch-and-bound tree, a
+ * non-admissible basis — solsta stays UNKNOWN and the verdict is read in
+ * PRIMAL_getprosta.
+ * Raw numbers and the prosta+solsta pairing are fixed by T93 and T94.
  *
- * Deviazioni documentate dal PRIMAL reale:
- *  - una sola soluzione interna, servita sia per PRIMAL_SOL_ITR che PRIMAL_SOL_BAS;
- *  - PRIMAL_OPTIMIZER_DUAL_SIMPLEX e PRIMAL_SIMPLEX usano entrambi il simplesso
- *    primario a due fasi; i QP usano sempre il punto interno (INTPNT).
+ * Documented deviations from real PRIMAL:
+ *  - a single interior solution, served for both PRIMAL_SOL_ITR and PRIMAL_SOL_BAS;
+ *  - PRIMAL_OPTIMIZER_DUAL_SIMPLEX and PRIMAL_SIMPLEX both use the two-phase
+ *    primal simplex; QPs always use the interior point (INTPNT).
  */
 #ifndef PRIMAL_H
 #define PRIMAL_H
@@ -172,8 +173,11 @@ typedef enum {
 /* SOS constraints: SOS1 = at most one member nonzero, SOS2 = at most two
  * adjacent (by weight order) members nonzero. Weights order the members. */
 PRIMALrescodee PRIMAL_appendsos1(PRIMALtask_t t, int num, const int *submem, const PRIMALrealt *weight);
+/* Appends an SOS2 constraint; weights order the members (at most two adjacent). */
 PRIMALrescodee PRIMAL_appendsos2(PRIMALtask_t t, int num, const int *submem, const PRIMALrealt *weight);
+/* Returns the number of SOS constraints in the task. */
 PRIMALrescodee PRIMAL_getnumsos(PRIMALtask_t t, int *numsos);
+/* Reads SOS constraint k: its type, member count, members and weights. */
 PRIMALrescodee PRIMAL_getsos(PRIMALtask_t t, int k, int *sostype, int *num,
                        int *submem, PRIMALrealt *weight);
 
@@ -181,15 +185,15 @@ PRIMALrescodee PRIMAL_getsos(PRIMALtask_t t, int k, int *sostype, int *num,
 typedef enum {
     PRIMAL_CT_QUAD = 0,   /* (t, x1..xk): t >= sqrt(sum xi^2)    */
     PRIMAL_CT_RQUAD = 1,  /* rotated: 2*x1*x2 >= sum_{i>=3} xi^2 */
-    PRIMAL_CT_PEXP = 2,   /* (x1,x2,x3): x1 >= x2*exp(x3/x2), x2 >= 0 (param ignorato) */
-    PRIMAL_CT_DEXP = 3,   /* duale: x1 <= x2*exp(x3/x2), x2 <= 0       */
+    PRIMAL_CT_PEXP = 2,   /* (x1,x2,x3): x1 >= x2*exp(x3/x2), x2 >= 0 (param ignored) */
+    PRIMAL_CT_DEXP = 3,   /* dual: x1 <= x2*exp(x3/x2), x2 <= 0       */
     PRIMAL_CT_PPOW = 4,   /* (x1,x2,x3): x1^a*x2^(1-a) >= |x3|, a=param in (0,1) */
     /* 5 and 6 are the reference's DPOW (dual power cone) and ZERO: not
      * implemented here, and deliberately left empty rather than reused, so a
      * caller passing one of those numbers is refused instead of answered with
      * the wrong cone. RPOW is this solver's own cone and has no reference
      * number, so it sits past the reference's list. */
-    PRIMAL_CT_RPOW = 7    /* ruotato: 2*x1^(2a)*x2^(2(1-a)) >= x3^2; a=1/2 -> RQUAD */
+    PRIMAL_CT_RPOW = 7    /* rotated: 2*x1^(2a)*x2^(2(1-a)) >= x3^2; a=1/2 -> RQUAD */
 } PRIMALconetypee;
 
 /* File data-format types, numbered as the reference's MSKdataformate. */
@@ -235,10 +239,10 @@ typedef enum {
 #define PRIMAL_IPAR_PRESOLVE                  12   /* 0 off, 1 on (default on, LP) */
 #define PRIMAL_IPAR_SCALING                   13   /* 0 off, 1 on (default on, LP/QP) */
 #define PRIMAL_IPAR_MIP_MAX_NODES             14   /* B&B node cap (default 100000) */
-#define PRIMAL_IPAR_NUM_THREADS               15   /* thread per le parti parallele (default 1) */
-#define PRIMAL_IPAR_INTPNT_MAX_NUM_COR        16   /* correttori IPM: -1/1 = 1 (default), >=2 higher-order */
-#define PRIMAL_IPAR_PRESOLVE_LEVEL            17   /* 0 off, 1 empty/singleton (default), 2 +duplicati */
-#define PRIMAL_IPAR_CONCURRENT_TIME           18   /* optimizer concorrente: 0 tie-break (default), 1 piu' veloce */
+#define PRIMAL_IPAR_NUM_THREADS               15   /* threads for the parallel parts (default 1) */
+#define PRIMAL_IPAR_INTPNT_MAX_NUM_COR        16   /* IPM correctors: -1/1 = 1 (default), >=2 higher-order */
+#define PRIMAL_IPAR_PRESOLVE_LEVEL            17   /* 0 off, 1 empty/singleton (default), 2 +duplicates */
+#define PRIMAL_IPAR_CONCURRENT_TIME           18   /* concurrent optimizer: 0 tie-break (default), 1 fastest */
 /* parameters (double) */
 #define PRIMAL_DPAR_INTPNT_TOL_PFEAS          0
 #define PRIMAL_DPAR_INTPNT_TOL_DFEAS          1
@@ -283,68 +287,93 @@ typedef enum {
 PRIMALrescodee PRIMAL_getparaminfo(PRIMALtask_t t, int kind, int param,
                                    PRIMALrealt *dflt, PRIMALrealt *lo,
                                    PRIMALrealt *hi);
-/* numero di parametri di un tipo nella tabella (1 dou, 2 int, 3 str). */
+/* number of parameters of one type in the table (1 dou, 2 int, 3 str). */
 PRIMALrescodee PRIMAL_getnumparam(PRIMALtask_t t, int partype, int *numparam);
-/* nomi dei parametri: getparamname/whichparam/getparammax, le ricerche per nome
- * (isdouparname/isintparname/isstrparname) e la lettura per nome
- * (getnaintparam/getnadouparam/getnastrparam). Il nome e' quello del nostro
- * enum; non esiste un parametro stringa. */
+/* parameter names: getparamname/whichparam/getparammax, the by-name lookups
+ * (isdouparname/isintparname/isstrparname) and the by-name read
+ * (getnaintparam/getnadouparam/getnastrparam). The name is our own
+ * enum's; there is no string parameter. */
 PRIMALrescodee PRIMAL_getparamname(PRIMALtask_t t, int partype, int param, char *parname);
+/* Highest parameter id of one type; infmax is the table's limit. */
 PRIMALrescodee PRIMAL_getparammax(PRIMALtask_t t, int partype, int *parammax);
+/* Resolves a parameter name to its type and id; ERR_ARG if unknown. */
 PRIMALrescodee PRIMAL_whichparam(PRIMALtask_t t, const char *parname, int *partype, int *param);
+/* True when parname is a double parameter; returns its id. */
 PRIMALrescodee PRIMAL_isdouparname(PRIMALtask_t t, const char *parname, int *param);
+/* True when parname is an int parameter; returns its id. */
 PRIMALrescodee PRIMAL_isintparname(PRIMALtask_t t, const char *parname, int *param);
+/* True when parname is a string parameter (none exist here); returns its id. */
 PRIMALrescodee PRIMAL_isstrparname(PRIMALtask_t t, const char *parname, int *param);
+/* Reads an int parameter by name. */
 PRIMALrescodee PRIMAL_getnaintparam(PRIMALtask_t t, const char *paramname, int *parvalue);
+/* Reads a double parameter by name. */
 PRIMALrescodee PRIMAL_getnadouparam(PRIMALtask_t t, const char *paramname, PRIMALrealt *parvalue);
+/* Reads a string parameter by name (no string parameter: ERR_ARG). */
 PRIMALrescodee PRIMAL_getnastrparam(PRIMALtask_t t, const char *paramname,
                                     int sizeparamname, int *len, char *parvalue);
-/* setter per nome di int/double e famiglia stringa (nessun parametro stringa:
- * get/put/resetstrparam* rispondono ERR_ARG). */
+/* by-name setters for int/double and the string family (no string parameter:
+ * get/put/resetstrparam* answer ERR_ARG). */
 PRIMALrescodee PRIMAL_putnaintparam(PRIMALtask_t t, const char *paramname, int parvalue);
+/* Sets a double parameter by name. */
 PRIMALrescodee PRIMAL_putnadouparam(PRIMALtask_t t, const char *paramname, PRIMALrealt parvalue);
+/* Sets a string parameter by name (no string parameter: ERR_ARG). */
 PRIMALrescodee PRIMAL_putnastrparam(PRIMALtask_t t, const char *paramname, const char *parvalue);
+/* Reads a string parameter by id (no string parameter: ERR_ARG). */
 PRIMALrescodee PRIMAL_getstrparam(PRIMALtask_t t, int param, int maxlen, int *len, char *parvalue);
+/* Reads the length of a string parameter (none exist: ERR_ARG). */
 PRIMALrescodee PRIMAL_getstrparamlen(PRIMALtask_t t, int param, int *len);
+/* Sets a string parameter by id (none exist: ERR_ARG). */
 PRIMALrescodee PRIMAL_putstrparam(PRIMALtask_t t, int param, const char *parvalue);
+/* Resets a string parameter to its default (none exist: ERR_ARG). */
 PRIMALrescodee PRIMAL_resetstrparam(PRIMALtask_t t, int param);
 
 /* stream callbacks (PRIMAL compatible) */
 typedef enum { PRIMAL_STREAM_LOG = 0 } PRIMALstreamtypee;
 typedef void (*PRIMALstreamfunc)(void *handle, const char *msg);
-/* tipo di nome per analyzenames (riferimento MSKnametypee) */
+/* name type for analyzenames (reference MSKnametypee) */
 typedef enum {
     PRIMAL_NAME_TYPE_GEN = 0,
     PRIMAL_NAME_TYPE_MPS = 1,
     PRIMAL_NAME_TYPE_LP  = 2
 } PRIMALnametypee;
+/* Analyzes the names of the task as one of the name types. */
 PRIMALrescodee PRIMAL_analyzenames(PRIMALtask_t t, PRIMALstreamtypee whichstream,
                                    PRIMALnametypee nametype);
-/* varianti "al" (allocate-and-return) dei parametri stringa (riferimento
- * getstrparamal/getnastrparamal). Questo solver non ha parametri stringa:
- * rispondono ERR_ARG senza allocare. */
+/* "al" (allocate-and-return) variants of the string parameters (reference
+ * getstrparamal/getnastrparamal). This solver has no string parameters:
+ * they answer ERR_ARG without allocating. */
 PRIMALrescodee PRIMAL_getstrparamal(PRIMALtask_t t, int param, int numaddchr, char **value);
+/* Allocate-and-return string parameter by name (no string parameter: ERR_ARG). */
 PRIMALrescodee PRIMAL_getnastrparamal(PRIMALtask_t t, const char *paramname, int numaddchr,
                                       char **value);
 
 /* environment/task lifecycle */
-/* callback di uscita su errore fatale (riferimento MSKexitfunc). */
+/* exit callback on fatal error (reference MSKexitfunc). */
 typedef void (*PRIMALexitfunc)(void *handle, const char *msg);
 PRIMALrescodee PRIMAL_putexitfunc(PRIMALenv_t env, PRIMALexitfunc exitfunc, void *handle);
+/* Creates a solver environment. */
 PRIMALrescodee PRIMAL_makeenv(PRIMALenv_t *env, void *usercb);
+/* Creates a task with maxcon rows and maxvar columns already preallocated. */
 PRIMALrescodee PRIMAL_maketask(PRIMALenv_t env, int maxcon, int maxvar, PRIMALtask_t *task);
-/* gestione task del riferimento: makeemptytask (nessuna dimensione dichiarata),
- * getenv, commitchanges/resizetask/updatesolutioninfo (no-op), deletesolution
- * (toglie il punto e il verdetto). */
+/* reference task management: makeemptytask (no declared size),
+ * getenv, commitchanges/resizetask/updatesolutioninfo (no-ops), deletesolution
+ * (removes the point and the verdict). */
 PRIMALrescodee PRIMAL_makeemptytask(PRIMALenv_t env, PRIMALtask_t *task);
+/* Returns the environment that owns the task. */
 PRIMALrescodee PRIMAL_getenv(PRIMALtask_t t, PRIMALenv_t *env);
+/* Commits pending model changes (no-op here). */
 PRIMALrescodee PRIMAL_commitchanges(PRIMALtask_t t);
+/* Resizes the task's capacity hints (no-op: arrays grow in place). */
 PRIMALrescodee PRIMAL_resizetask(PRIMALtask_t t, int maxnumcon, int maxnumvar,
                                  int maxnumcone, PRIMALint64t maxnumanz,
                                  PRIMALint64t maxnumqnz);
+/* Updates the solution information (no-op here). */
 PRIMALrescodee PRIMAL_updatesolutioninfo(PRIMALtask_t t, PRIMALsolt which);
+/* Removes the point and the verdict of a solution key. */
 PRIMALrescodee PRIMAL_deletesolution(PRIMALtask_t t, PRIMALsolt which);
+/* Destroys a task and its storage. */
 PRIMALrescodee PRIMAL_deletetask(PRIMALtask_t *task);
+/* Destroys an environment and its storage. */
 PRIMALrescodee PRIMAL_deleteenv(PRIMALenv_t *env);
 
 /* Environment/task memory helpers (reference MSK_callocenv/MSK_freeenv and their
@@ -355,29 +384,42 @@ PRIMALrescodee PRIMAL_deleteenv(PRIMALenv_t *env);
  * up here. freeenv/freetask free a buffer allocated by these helpers, they are
  * NOT the environment/task destructors (those are deleteenv/deletetask). */
 void *PRIMAL_callocenv(PRIMALenv_t env, size_t number, size_t size);
+/* Debug variant of PRIMAL_callocenv (file/line are ignored here). */
 void *PRIMAL_callocdbgenv(PRIMALenv_t env, size_t number, size_t size,
                           const char *file, unsigned line);
+/* Frees a buffer allocated by PRIMAL_callocenv. */
 void PRIMAL_freeenv(PRIMALenv_t env, void *buffer);
+/* Debug variant of PRIMAL_freeenv (file/line are ignored here). */
 void PRIMAL_freedbgenv(PRIMALenv_t env, void *buffer, const char *file, unsigned line);
+/* Allocates zeroed memory owned by the task. */
 void *PRIMAL_calloctask(PRIMALtask_t task, size_t number, size_t size);
+/* Debug variant of PRIMAL_calloctask (file/line are ignored here). */
 void *PRIMAL_callocdbgtask(PRIMALtask_t task, size_t number, size_t size,
                            const char *file, unsigned line);
+/* Frees a buffer allocated by PRIMAL_calloctask. */
 void PRIMAL_freetask(PRIMALtask_t task, void *buffer);
+/* Debug variant of PRIMAL_freetask (file/line are ignored here). */
 void PRIMAL_freedbgtask(PRIMALtask_t task, void *buffer, const char *file, unsigned line);
+/* Initializes the global environment (no global state to set up here). */
 PRIMALrescodee PRIMAL_globalenvinitialize(PRIMALint64t maxnumalloc, const char *dbgfile);
+/* Finalizes the global environment (no global state to tear down here). */
 PRIMALrescodee PRIMAL_globalenvfinalize(void);
+/* Checks the environment's memory (always OK: no internal pool). */
 PRIMALrescodee PRIMAL_checkmemenv(PRIMALenv_t env, const char *file, int line);
+/* Checks the task's memory (always OK: no internal pool). */
 PRIMALrescodee PRIMAL_checkmemtask(PRIMALtask_t task, const char *file, int line);
-/* utilità informative (riferimento getversion/isinfinity/getresponseclass):
- * getversion riporta la versione di QUESTO solver; isinfinity usa la nostra
- * infinità (IEEE, `INF == INFINITY`); getresponseclass mappa un codice nella
- * classe del riferimento (OK 0, WRN 1, TRM 2, ERR 3, UNK 4). */
+/* informational utilities (reference getversion/isinfinity/getresponseclass):
+ * getversion reports THIS solver's version; isinfinity uses our
+ * infinity (IEEE, `INF == INFINITY`); getresponseclass maps a code into the
+ * reference class (OK 0, WRN 1, TRM 2, ERR 3, UNK 4). */
 PRIMALrescodee PRIMAL_getversion(int *major, int *minor, int *revision);
+/* True when value is this solver's infinity (IEEE INF). */
 int PRIMAL_isinfinity(PRIMALrealt value);
+/* Maps a response code to the reference class (OK/WRN/TRM/ERR/UNK). */
 PRIMALrescodee PRIMAL_getresponseclass(PRIMALrescodee res, int *responseclass);
-/* Tipo di problema, coi valori di MSKproblemtypee. Regola documentata nel .c:
- * QC+coni -> MIXED, QC -> QCQO, obiettivo quadratico -> QO, coni/barre -> CONIC,
- * altrimenti LO (le variabili intere non entrano nella classe). */
+/* Problem type, with MSKproblemtypee values. Rule documented in the .c:
+ * QC+cones -> MIXED, QC -> QCQO, quadratic objective -> QO, cones/bars -> CONIC,
+ * otherwise LO (integer variables do not enter the class). */
 typedef enum {
     PRIMAL_PROBTYPE_LO    = 0,
     PRIMAL_PROBTYPE_QO    = 1,
@@ -385,9 +427,9 @@ typedef enum {
     PRIMAL_PROBTYPE_CONIC = 3,
     PRIMAL_PROBTYPE_MIXED = 4
 } PRIMALproblemtypee;
-/* information items (riferimento MSKdinfiteme/MSKiinfiteme/MSKliinfiteme e
- * MSKinftypee). Gli indici sono quelli del riferimento 11.2.4 (letti da
- * constants.html il 2026-09-19); END e' il limite della tabella, non un item. */
+/* information items (reference MSKdinfiteme/MSKiinfiteme/MSKliinfiteme and
+ * MSKinftypee). Indices are the reference 11.2.4 ones (read from
+ * constants.html on 2026-09-19); END is the table limit, not an item. */
 typedef enum {
     PRIMAL_INF_DOU_TYPE  = 0,
     PRIMAL_INF_INT_TYPE  = 1,
@@ -680,165 +722,226 @@ typedef enum {
     PRIMAL_LIINF_END = 22
 } PRIMALliinfiteme;
 
+/* Reads the double information item `which`. */
 PRIMALrescodee PRIMAL_getdouinf(PRIMALtask_t t, PRIMALdinfiteme which, PRIMALrealt *value);
+/* Reads the int information item `which`. */
 PRIMALrescodee PRIMAL_getintinf(PRIMALtask_t t, PRIMALiinfiteme which, int *value);
+/* Reads the long (64-bit) information item `which`. */
 PRIMALrescodee PRIMAL_getlintinf(PRIMALtask_t t, PRIMALliinfiteme which, PRIMALint64t *value);
+/* Reads a double information item by name. */
 PRIMALrescodee PRIMAL_getnadouinf(PRIMALtask_t t, const char *name, PRIMALrealt *value);
+/* Reads an int information item by name. */
 PRIMALrescodee PRIMAL_getnaintinf(PRIMALtask_t t, const char *name, int *value);
+/* Resolves an information-item name to its index within its type. */
 PRIMALrescodee PRIMAL_getinfindex(PRIMALtask_t t, PRIMALinftypee inftype, const char *name, int *index);
+/* Writes the name of information item `whichinf` of the given type. */
 PRIMALrescodee PRIMAL_getinfname(PRIMALtask_t t, PRIMALinftypee inftype, int whichinf, char *name);
+/* Returns the number of items of one information type (its table limit). */
 PRIMALrescodee PRIMAL_getinfmax(PRIMALtask_t t, PRIMALinftypee inftype, int *infmax);
 #define PRIMAL_MAX_INFNAME_LEN 80
-/* nome come stringa di un information item e di un callback code (riferimento
- * dinfitemtostr/iinfitemtostr/liinfitemtostr/callbackcodetostr): nessun task. */
+/* name as string of an information item and of a callback code (reference
+ * dinfitemtostr/iinfitemtostr/liinfitemtostr/callbackcodetostr): no task. */
 PRIMALrescodee PRIMAL_dinfitemtostr(PRIMALdinfiteme item, char *str);
+/* Name as string of an int information item. */
 PRIMALrescodee PRIMAL_iinfitemtostr(PRIMALiinfiteme item, char *str);
+/* Name as string of a long (64-bit) information item. */
 PRIMALrescodee PRIMAL_liinfitemtostr(PRIMALliinfiteme item, char *str);
-/* Symbolic constants (riferimento getsymbcondim/getsymbcon/symnamtovalue/
- * iparvaltosymnam). La tabella e' quella del riferimento 11.2.4, estratta dalla
- * sua stessa libreria (1438 voci, maxlen 60). Il nome piu' lungo sta in
- * PRIMAL_MAX_SYMBNAME_LEN caratteri (incluso il terminatore). */
+/* Symbolic constants (reference getsymbcondim/getsymbcon/symnamtovalue/
+ * iparvaltosymnam). The table is the reference 11.2.4 one, extracted from
+ * its own library (1438 entries, maxlen 60). The longest name fits in
+ * PRIMAL_MAX_SYMBNAME_LEN characters (including the terminator). */
 #define PRIMAL_MAX_SYMBNAME_LEN 64
 PRIMALrescodee PRIMAL_getsymbcondim(PRIMALenv_t env, int *num, size_t *maxlen);
+/* Reads symbolic constant i: its name and (if requested) its value. */
 PRIMALrescodee PRIMAL_getsymbcon(PRIMALtask_t t, int i, int sizevalue, char *name, int *value);
+/* Resolves a symbolic-constant name to its value string; returns success. */
 int PRIMAL_symnamtovalue(const char *name, char *value);
+/* Maps an int parameter value to its symbolic-constant name. */
 PRIMALrescodee PRIMAL_iparvaltosymnam(PRIMALenv_t env, int whichparam, int whichvalue,
                                       char *symbolicname);
+/* Writes the problem type with MSKproblemtypee values. */
 PRIMALrescodee PRIMAL_getprobtype(PRIMALtask_t t, PRIMALproblemtypee *probtype);
-/* versione/build/errore (riferimento checkversion/getbuildinfo/getcodedesc/
- * getlasterror) e la soglia di troncamento di A (get/putatruncatetol: memorizzata,
- * non applicata -- questo solver non tronca A). */
+/* version/build/error (reference checkversion/getbuildinfo/getcodedesc/
+ * getlasterror) and the A truncation threshold (get/putatruncatetol: stored,
+ * not applied -- this solver does not truncate A). */
 PRIMALrescodee PRIMAL_checkversion(PRIMALenv_t env, int major, int minor, int revision);
+/* Writes the build state and date strings. */
 PRIMALrescodee PRIMAL_getbuildinfo(char *buildstate, char *builddate);
-/* stima in byte dell'uso di memoria del task (riferimento getmemusagetask). */
+/* byte estimate of the task memory use (reference getmemusagetask). */
 PRIMALrescodee PRIMAL_getmemusagetask(PRIMALtask_t t, PRIMALint64t *meminuse, PRIMALint64t *maxmemuse);
+/* Writes the symbolic name and text of a response code. */
 PRIMALrescodee PRIMAL_getcodedesc(PRIMALrescodee code, char *symname, char *str);
+/* Reads the last error code and message recorded on the task. */
 PRIMALrescodee PRIMAL_getlasterror(PRIMALtask_t t, PRIMALrescodee *lastrescode,
     int sizelastmsg, int *lastmsglen, char *lastmsg);
+/* 64-bit variant of PRIMAL_getlasterror (sizes and length are 64-bit). */
 PRIMALrescodee PRIMAL_getlasterror64(PRIMALtask_t t, PRIMALrescodee *lastrescode,
     PRIMALint64t sizelastmsg, PRIMALint64t *lastmsglen, char *lastmsg);
-/* riassunti su stream (stampano su stdout). */
+/* summaries on stream (print to stdout). */
 PRIMALrescodee PRIMAL_solutionsummary(PRIMALtask_t t, int whichstream);
+/* Prints a summary of one solution key on the stream (stdout). */
 PRIMALrescodee PRIMAL_onesolutionsummary(PRIMALtask_t t, int whichstream, PRIMALsolt whichsol);
+/* Prints a summary of the optimizer run on the stream (stdout). */
 PRIMALrescodee PRIMAL_optimizersummary(PRIMALtask_t t, int whichstream);
-/* diagnostica su stream (stampano su stdout). */
+/* diagnostics on stream (print to stdout). */
 PRIMALrescodee PRIMAL_analyzeproblem(PRIMALtask_t t, int whichstream);
+/* Prints the solution analysis of one key on the stream (stdout). */
 PRIMALrescodee PRIMAL_analyzesolution(PRIMALtask_t t, int whichstream, PRIMALsolt whichsol);
+/* Prints the infeasibility report of one key on the stream (stdout). */
 PRIMALrescodee PRIMAL_infeasibilityreport(PRIMALtask_t t, int whichstream, PRIMALsolt whichsol);
+/* Prints the sensitivity report on the stream (stdout). */
 PRIMALrescodee PRIMAL_sensitivityreport(PRIMALtask_t t, int whichstream);
+/* Reads the stored A-truncation threshold (not applied by this solver). */
 PRIMALrescodee PRIMAL_getatruncatetol(PRIMALtask_t t, PRIMALrealt *tolzero);
+/* Stores the A-truncation threshold (not applied by this solver). */
 PRIMALrescodee PRIMAL_putatruncatetol(PRIMALtask_t t, PRIMALrealt tolzero);
-/* Nomi simbolici (riferimento *tostr). Il TESTO e' quello di questo solver: la
- * forma esatta del riferimento non e' stata letta, quindi non e' inventata ma
- * nemmeno presa in prestito (deviazione dichiarata). Il buffer deve reggere
- * PRIMAL_MAX_STR_LEN caratteri. */
+/* Symbolic names (reference *tostr). The TEXT is this solver's own: the
+ * reference exact form was not read, so it is neither invented nor
+ * borrowed (declared deviation). The buffer must hold
+ * PRIMAL_MAX_STR_LEN characters. */
 #define PRIMAL_MAX_STR_LEN 1024
 PRIMALrescodee PRIMAL_prostatostr(PRIMALtask_t t, PRIMALprostae prosta, char *str);
+/* Name as string of a solution status. */
 PRIMALrescodee PRIMAL_solstatostr(PRIMALtask_t t, PRIMALsolstae solsta, char *str);
+/* Name as string of a bound key. */
 PRIMALrescodee PRIMAL_bktostr(PRIMALtask_t t, PRIMALboundkeye bk, char *str);
+/* Name as string of a cone type. */
 PRIMALrescodee PRIMAL_conetypetostr(PRIMALtask_t t, PRIMALconetypee ct, char *str);
-/* inversi dei nomi simbolici (riferimento strtoconetype/strtosk). */
+/* inverses of the symbolic names (reference strtoconetype/strtosk). */
 PRIMALrescodee PRIMAL_strtoconetype(PRIMALtask_t t, const char *str, PRIMALconetypee *ct);
+/* Name as string of a problem type. */
 PRIMALrescodee PRIMAL_probtypetostr(PRIMALtask_t t, PRIMALproblemtypee pt, char *str);
+/* Name as string of a response code. */
 PRIMALrescodee PRIMAL_rescodetostr(PRIMALrescodee res, char *str);
+/* Appends `num` variables to the task. */
 PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num);
+/* Appends `num` constraints to the task. */
 PRIMALrescodee PRIMAL_appendcons(PRIMALtask_t t, int num);
+/* Returns the current number of variables. */
 PRIMALrescodee PRIMAL_getnumvar(PRIMALtask_t t, int *numvar);
+/* Returns the current number of constraints. */
 PRIMALrescodee PRIMAL_getnumcon(PRIMALtask_t t, int *numcon);
-/* Contatori "preallocati" del riferimento. Qui gli array crescono sul posto,
- * quindi il numero riservato E' quello corrente (deviazione dichiarata) tranne
- * per coni e barre, dove la capacita' e' reale. */
+/* Reference "preallocated" counters. Here arrays grow in place,
+ * so the reserved number IS the current one (declared deviation) except
+ * for cones and bars, where the capacity is real. */
 PRIMALrescodee PRIMAL_getmaxnumvar(PRIMALtask_t t, int *n);
+/* Reference preallocated capacity in rows (equals the current count here). */
 PRIMALrescodee PRIMAL_getmaxnumcon(PRIMALtask_t t, int *n);
+/* Reference preallocated capacity in cones (the real capacity here). */
 PRIMALrescodee PRIMAL_getmaxnumcone(PRIMALtask_t t, int *n);
+/* Reference preallocated capacity in bar variables (the real capacity here). */
 PRIMALrescodee PRIMAL_getmaxnumbarvar(PRIMALtask_t t, int *n);
 
 /* data input (column-wise linear part) */
 PRIMALrescodee PRIMAL_putcj(PRIMALtask_t t, int j, PRIMALrealt cj);
+/* Sets the objective constant term. */
 PRIMALrescodee PRIMAL_putcfix(PRIMALtask_t t, PRIMALrealt cfix);
-/* c come vettore: lista (putclist), fetta (putcslice) e letture (getc/getcslice).
- * La lista di scrittura valida tutto l'input prima di toccare c. */
+/* c as a vector: list (putclist), slice (putcslice) and reads (getc/getcslice).
+ * The write list validates all input before touching c. */
 PRIMALrescodee PRIMAL_putclist(PRIMALtask_t t, int num, const int *subj, const PRIMALrealt *val);
+/* Sets c[first..last) from the given slice. */
 PRIMALrescodee PRIMAL_putcslice(PRIMALtask_t t, int first, int last, const PRIMALrealt *c);
+/* Reads the whole objective vector c. */
 PRIMALrescodee PRIMAL_getc(PRIMALtask_t t, PRIMALrealt *c);
+/* Reads c[first..last) into the given slice. */
 PRIMALrescodee PRIMAL_getcslice(PRIMALtask_t t, int first, int last, PRIMALrealt *c);
+/* Replaces column j of A from a sparse index/value list. */
 PRIMALrescodee PRIMAL_putacol(PRIMALtask_t t, int j, int nz, const int *sub, const PRIMALrealt *val);
+/* Replaces row i of A from a sparse index/value list. */
 PRIMALrescodee PRIMAL_putarow(PRIMALtask_t t, int i, int nz, const int *sub, const PRIMALrealt *val);
-/* Forme in blocco (riferimento putarowlist/putacollist e le slice): dati in
- * stile CSR, `asub[ptrb[k]..ptre[k])` per la k-esima riga/colonna; l'intera lista
- * e' validata prima di scrivere. */
+/* Block forms (reference putarowlist/putacollist and the slices): data in
+ * CSR style, `asub[ptrb[k]..ptre[k])` for the k-th row/column; the whole list
+ * is validated before writing. */
 PRIMALrescodee PRIMAL_putarowlist(PRIMALtask_t t, int num, const int *sub,
     const int *ptrb, const int *ptre, const int *asub, const PRIMALrealt *aval);
+/* Writes several columns of A in CSR-style blocked form. */
 PRIMALrescodee PRIMAL_putacollist(PRIMALtask_t t, int num, const int *sub,
     const int *ptrb, const int *ptre, const int *asub, const PRIMALrealt *aval);
+/* Writes the rows of A in [first,last) from blocked CSR-style data. */
 PRIMALrescodee PRIMAL_putarowslice(PRIMALtask_t t, int first, int last,
     const int *ptrb, const int *ptre, const int *asub, const PRIMALrealt *aval);
+/* Writes the columns of A in [first,last) from blocked CSR-style data. */
 PRIMALrescodee PRIMAL_putacolslice(PRIMALtask_t t, int first, int last,
     const int *ptrb, const int *ptre, const int *asub, const PRIMALrealt *aval);
-/* a_ij = aij: rimpiazza ogni entrata memorizzata della coppia (un solo termine
- * resta), e a 0 la rimuove. */
+/* a_ij = aij: replaces every stored entry of the pair (a single term
+ * remains), and at 0 removes it. */
 PRIMALrescodee PRIMAL_putaij(PRIMALtask_t t, int i, int j, PRIMALrealt aij);
-/* lista di coefficienti scalari (riferimento putaijlist), validata prima di
- * scrivere. */
+/* list of scalar coefficients (reference putaijlist), validated before
+ * writing. */
 PRIMALrescodee PRIMAL_putaijlist(PRIMALtask_t t, int num, const int *subi,
                                  const int *subj, const PRIMALrealt *valij);
-/* varianti a 64 bit (riferimento *64): gli stessi lettori/scrittori con i
- * puntatori di riga `PRIMALint64t`. */
+/* 64-bit variants (reference *64): the same readers/writers with
+ * `PRIMALint64t` row pointers. */
 PRIMALrescodee PRIMAL_putarowslice64(PRIMALtask_t t, int first, int last,
     const PRIMALint64t *ptrb, const PRIMALint64t *ptre, const int *asub,
     const PRIMALrealt *aval);
+/* 64-bit variant of putacolslice (64-bit row pointers). */
 PRIMALrescodee PRIMAL_putacolslice64(PRIMALtask_t t, int first, int last,
     const PRIMALint64t *ptrb, const PRIMALint64t *ptre, const int *asub,
     const PRIMALrealt *aval);
+/* 64-bit variant of putarowlist (64-bit row pointers). */
 PRIMALrescodee PRIMAL_putarowlist64(PRIMALtask_t t, int num, const int *sub,
     const PRIMALint64t *ptrb, const PRIMALint64t *ptre, const int *asub,
     const PRIMALrealt *aval);
+/* 64-bit variant of putacollist (64-bit row pointers). */
 PRIMALrescodee PRIMAL_putacollist64(PRIMALtask_t t, int num, const int *sub,
     const PRIMALint64t *ptrb, const PRIMALint64t *ptre, const int *asub,
     const PRIMALrealt *aval);
+/* 64-bit variant of putaijlist (64-bit count). */
 PRIMALrescodee PRIMAL_putaijlist64(PRIMALtask_t t, PRIMALint64t num,
     const int *subi, const int *subj, const PRIMALrealt *valij);
+/* Accumulates objective quadratic terms from (qi,qj,qoval) triplets. */
 PRIMALrescodee PRIMAL_putqobj(PRIMALtask_t t, int numqcnz, const int *qi, const int *qj, const PRIMALrealt *qoval);
-/* carica la parte lineare in una chiamata (riferimento inputdata/inputdata64):
- * il task deve essere vuoto; A e' per colonna (aptrb[j]..aptre[j]). */
+/* loads the linear part in one call (reference inputdata/inputdata64):
+ * the task must be empty; A is column-wise (aptrb[j]..aptre[j]). */
 PRIMALrescodee PRIMAL_inputdata(PRIMALtask_t t, int maxnumcon, int maxnumvar,
     int numcon, int numvar, const PRIMALrealt *c, PRIMALrealt cfix,
     const int *aptrb, const int *aptre, const int *asub, const PRIMALrealt *aval,
     const PRIMALboundkeye *bkc, const PRIMALrealt *blc, const PRIMALrealt *buc,
     const PRIMALboundkeye *bkx, const PRIMALrealt *blx, const PRIMALrealt *bux);
+/* 64-bit variant of inputdata (64-bit dimensions). */
 PRIMALrescodee PRIMAL_inputdata64(PRIMALtask_t t, PRIMALint64t maxnumcon, PRIMALint64t maxnumvar,
     PRIMALint64t numcon, PRIMALint64t numvar, const PRIMALrealt *c, PRIMALrealt cfix,
     const int *aptrb, const int *aptre, const int *asub, const PRIMALrealt *aval,
     const PRIMALboundkeye *bkc, const PRIMALrealt *blc, const PRIMALrealt *buc,
     const PRIMALboundkeye *bkx, const PRIMALrealt *blx, const PRIMALrealt *bux);
-/* q_ij = q_ji = qoij, solo triangolo inferiore (i >= j); rimpiazza la coppia. */
+/* q_ij = q_ji = qoij, lower triangle only (i >= j); replaces the pair. */
 PRIMALrescodee PRIMAL_putqobjij(PRIMALtask_t t, int i, int j, PRIMALrealt qoij);
+/* Sets the bound of variable j (key plus the two values). */
 PRIMALrescodee PRIMAL_putvarbound(PRIMALtask_t t, int j, PRIMALboundkeye bk, PRIMALrealt bl, PRIMALrealt bu);
+/* Sets the bound of constraint i (key plus the two values). */
 PRIMALrescodee PRIMAL_putconbound(PRIMALtask_t t, int i, PRIMALboundkeye bk, PRIMALrealt bl, PRIMALrealt bu);
-/* cambiano UN lato del bound (riferimento chgvarbound/chgconbound): lower!=0 ->
- * new lower = (finite ? value : -inf); altrimenti new upper = (finite ? value
- * : +inf); il bound key viene ricalcolato. */
+/* change ONE bound side (reference chgvarbound/chgconbound): lower!=0 ->
+ * new lower = (finite ? value : -inf); else new upper = (finite ? value
+ * : +inf); the bound key is recomputed. */
 PRIMALrescodee PRIMAL_chgvarbound(PRIMALtask_t t, int j, int lower, int finite, PRIMALrealt value);
+/* Change one bound side of a constraint; the bound key is recomputed. */
 PRIMALrescodee PRIMAL_chgconbound(PRIMALtask_t t, int i, int lower, int finite, PRIMALrealt value);
 /* Bound slices: [first, last), the buffer holds last-first entries. Reading
  * refuses before writing anything; writing validates the whole slice first, so a
  * refusal leaves the model untouched. */
 PRIMALrescodee PRIMAL_getvarboundslice(PRIMALtask_t t, int first, int last,
     PRIMALboundkeye *bk, PRIMALrealt *bl, PRIMALrealt *bu);
+/* Reads the constraint bounds in [first,last). */
 PRIMALrescodee PRIMAL_getconboundslice(PRIMALtask_t t, int first, int last,
     PRIMALboundkeye *bk, PRIMALrealt *bl, PRIMALrealt *bu);
+/* Writes the variable bounds in [first,last) after validating the whole slice. */
 PRIMALrescodee PRIMAL_putvarboundslice(PRIMALtask_t t, int first, int last,
     const PRIMALboundkeye *bk, const PRIMALrealt *bl, const PRIMALrealt *bu);
+/* Writes the constraint bounds in [first,last) after validating the whole slice. */
 PRIMALrescodee PRIMAL_putconboundslice(PRIMALtask_t t, int first, int last,
     const PRIMALboundkeye *bk, const PRIMALrealt *bl, const PRIMALrealt *bu);
-/* Liste di bound (riferimento putvarboundlist/putconboundlist, validate tutte
- * prima di applicare) e fetta a bound costante (put*boundsliceconst). */
+/* Bound lists (reference putvarboundlist/putconboundlist, all validated
+ * before applying) and constant-bound slice (put*boundsliceconst). */
 PRIMALrescodee PRIMAL_putvarboundlist(PRIMALtask_t t, int num, const int *sub,
     const PRIMALboundkeye *bk, const PRIMALrealt *bl, const PRIMALrealt *bu);
+/* Writes the bounds of the listed constraints after validating the whole list. */
 PRIMALrescodee PRIMAL_putconboundlist(PRIMALtask_t t, int num, const int *sub,
     const PRIMALboundkeye *bk, const PRIMALrealt *bl, const PRIMALrealt *bu);
+/* Writes the same bound to the variables in [first,last). */
 PRIMALrescodee PRIMAL_putvarboundsliceconst(PRIMALtask_t t, int first, int last,
     PRIMALboundkeye bk, PRIMALrealt bl, PRIMALrealt bu);
+/* Writes the same bound to the constraints in [first,last). */
 PRIMALrescodee PRIMAL_putconboundsliceconst(PRIMALtask_t t, int first, int last,
     PRIMALboundkeye bk, PRIMALrealt bl, PRIMALrealt bu);
 /* quadratic constraint terms on row i:  a_i'x + 1/2 x'Q_i x in [blc_i, buc_i].
@@ -849,349 +952,443 @@ PRIMALrescodee PRIMAL_putconboundsliceconst(PRIMALtask_t t, int first, int last,
 PRIMALrescodee PRIMAL_putqconk(PRIMALtask_t t, int k, int numqcnz,
                          const int *qsubi, const int *qsubj,
                          const PRIMALrealt *qval);
-/* Rimpiazza TUTTI i termini quadratici di TUTTI i vincoli da una lista di
- * triplette con indice di riga (qcsubk, qcsubi, qcsubj, qcval), solo triangolo
- * inferiore; lista vuota azzera. L'intera lista e' validata prima di applicare. */
+/* Replaces ALL quadratic terms of ALL constraints from a row-indexed
+ * triplet list (qcsubk, qcsubi, qcsubj, qcval), lower triangle only;
+ * empty list zeroes. The whole list is validated before applying. */
 PRIMALrescodee PRIMAL_putqcon(PRIMALtask_t t, int numqcnz,
                          const int *qcsubk, const int *qcsubi, const int *qcsubj,
                          const PRIMALrealt *qcval);
+/* Number of stored quadratic terms of constraint k. */
 PRIMALrescodee PRIMAL_getnumqconknz(PRIMALtask_t t, int k, int *numqcnz);
+/* Reads the quadratic coefficient q_ij of constraint k. */
 PRIMALrescodee PRIMAL_getqconkij(PRIMALtask_t t, int k, int i, int j, PRIMALrealt *qij);
+/* Sets the objective sense (minimize/maximize). */
 PRIMALrescodee PRIMAL_putobjsense(PRIMALtask_t t, PRIMALobjsensee sense);
+/* Sets the type of variable j. */
 PRIMALrescodee PRIMAL_putvartype(PRIMALtask_t t, int j, PRIMALvariabletypee vt);
+/* Reads the type of variable j. */
 PRIMALrescodee PRIMAL_getvartype(PRIMALtask_t t, int j, PRIMALvariabletypee *vt);
-/* Tipo per una lista di variabili (riferimento putvartypelist/getvartypelist):
- * la scrittura valida indici e tipi dell'intera lista prima di applicare. */
+/* Type for a variable list (reference putvartypelist/getvartypelist):
+ * the write validates indices and types of the whole list before applying. */
 PRIMALrescodee PRIMAL_putvartypelist(PRIMALtask_t t, int num,
                                      const int *subj, const PRIMALvariabletypee *vartype);
+/* Reads the types of the listed variables. */
 PRIMALrescodee PRIMAL_getvartypelist(PRIMALtask_t t, int num,
                                      const int *subj, PRIMALvariabletypee *vartype);
+/* Returns the number of integer variables. */
 PRIMALrescodee PRIMAL_getnumintvar(PRIMALtask_t t, int *num);
+/* Sets the objective constant term. */
 PRIMALrescodee PRIMAL_putcfix(PRIMALtask_t t, PRIMALrealt cfix);
+/* Sets an int parameter by id. */
 PRIMALrescodee PRIMAL_putintparam(PRIMALtask_t t, int param, int value);
+/* Sets a double parameter by id. */
 PRIMALrescodee PRIMAL_putdouparam(PRIMALtask_t t, int param, PRIMALrealt value);
-/* riportano un parametro (o tutti) al default della tabella dichiarativa
- * (riferimento resetintparam/resetdouparam/resetparameters). */
+/* restore one parameter (or all) to the declarative-table default
+ * (reference resetintparam/resetdouparam/resetparameters). */
 PRIMALrescodee PRIMAL_resetintparam(PRIMALtask_t t, int param);
+/* Restores one double parameter to the table default. */
 PRIMALrescodee PRIMAL_resetdouparam(PRIMALtask_t t, int param);
+/* Restores all parameters to the table defaults. */
 PRIMALrescodee PRIMAL_resetparameters(PRIMALtask_t t);
 
 /* data getters (needed for independent verification, e.g. KKT checks) */
 PRIMALrescodee PRIMAL_getcj(PRIMALtask_t t, int j, PRIMALrealt *cj);
+/* Reads a_ij as the OPERATOR (sum of the stored entries of the pair). */
 PRIMALrescodee PRIMAL_getaij(PRIMALtask_t t, int i, int j, PRIMALrealt *aij);
+/* Reads the objective quadratic coefficient q_ij (the pair's sum). */
 PRIMALrescodee PRIMAL_getqobjij(PRIMALtask_t t, int i, int j, PRIMALrealt *qij);
+/* Reads the bound of variable j. */
 PRIMALrescodee PRIMAL_getvarbound(PRIMALtask_t t, int j, PRIMALboundkeye *bk, PRIMALrealt *bl, PRIMALrealt *bu);
+/* Reads the bound of constraint i. */
 PRIMALrescodee PRIMAL_getconbound(PRIMALtask_t t, int i, PRIMALboundkeye *bk, PRIMALrealt *bl, PRIMALrealt *bu);
+/* Reads the objective sense. */
 PRIMALrescodee PRIMAL_getobjsense(PRIMALtask_t t, PRIMALobjsensee *sense);
+/* Reads the objective constant term. */
 PRIMALrescodee PRIMAL_getcfix(PRIMALtask_t t, PRIMALrealt *cfix);
+/* Reads an int parameter by id. */
 PRIMALrescodee PRIMAL_getintparam(PRIMALtask_t t, int param, int *value);
+/* Reads a double parameter by id. */
 PRIMALrescodee PRIMAL_getdouparam(PRIMALtask_t t, int param, PRIMALrealt *value);
 
-/* ---- accesso ai dati del modello (superficie del riferimento) ----
- * Due contratti DISTINTI, e la linea sta fra il negozio e l'operatore.
- * PRIMAL_getnumanz conta le ENTRATE DI A MEMORIZZATE (somma delle nz delle
- * colonne), percio' un coefficiente scritto due volte conta due volte: la
- * memorizzazione e' colonnare e nessuna deduplica avviene in putarow/putacol;
- * PRIMAL_getarow/PRIMAL_getacol restituiscono quel negozio per come e' scritto
- * (entrambe le entrate). PRIMAL_getaij risponde invece dell'OPERATORE, cioe'
- * della SOMMA delle entrate di quell'(i,j): e' il coefficiente che ogni strada
- * risolve, e sarebbe una contraddizione dire il primo mentre la risposta e'
- * della somma. Stessa linea gia' tracciata da PRIMAL_getqobjij (somma) contro
- * PRIMAL_getqobj + PRIMAL_getnumqobjnz (il negozio di triplette).
- * PRIMAL_getmaxnumanz e' la capacita' gia' allocata sulle stesse colonne:
- * l'invariante e' numanzs <= maxnumanzs dopo ogni scrittura riuscita.
- * PRIMAL_getnumqobjnz conta le triplette di Q memorizzate da putqobj (che
- * possono essere di piu' dei coefficienti non nulli di Q, per lo stesso
- * motivo). */
+/* ---- model data access (reference surface) ----
+ * Two DISTINCT contracts, and the line runs between the store and the operator.
+ * PRIMAL_getnumanz counts the STORED ENTRIES of A (sum of the columns' nz),
+ * so a coefficient written twice counts twice: storage is column-wise and no
+ * dedup happens in putarow/putacol; PRIMAL_getarow/PRIMAL_getacol return that
+ * store as written (both entries). PRIMAL_getaij instead answers for the
+ * OPERATOR, i.e. the SUM of the entries of that (i,j): it is the coefficient
+ * every route solves, and saying the first while the answer is
+ * the sum would be a contradiction. Same line already drawn by PRIMAL_getqobjij
+ * (sum) versus PRIMAL_getqobj + PRIMAL_getnumqobjnz (the triplet store).
+ * PRIMAL_getmaxnumanz is the capacity already allocated on the same columns:
+ * the invariant is numanzs <= maxnumanzs after every successful write.
+ * PRIMAL_getnumqobjnz counts the Q triplets stored by putqobj (which
+ * may be more than the nonzero coefficients of Q, for the same
+ * reason). */
 PRIMALrescodee PRIMAL_getnumanz(PRIMALtask_t t, int *numanzs);
+/* Capacity already allocated on the columns of A (>= numanz). */
 PRIMALrescodee PRIMAL_getmaxnumanz(PRIMALtask_t t, int *maxnumanzs);
+/* Number of Q triplets stored by putqobj. */
 PRIMALrescodee PRIMAL_getnumqobjnz(PRIMALtask_t t, int *numqobjnz);
-/* varianti a 64 bit dei contatori (riferimento getnumanz64/...): gli stessi
- * numeri, allargati. */
+/* 64-bit counter variants (reference getnumanz64/...): the same
+ * numbers, widened. */
 PRIMALrescodee PRIMAL_getnumanz64(PRIMALtask_t t, PRIMALint64t *numanzs);
+/* 64-bit variant of getmaxnumanz. */
 PRIMALrescodee PRIMAL_getmaxnumanz64(PRIMALtask_t t, PRIMALint64t *n);
+/* 64-bit variant of getnumqobjnz. */
 PRIMALrescodee PRIMAL_getnumqobjnz64(PRIMALtask_t t, PRIMALint64t *n);
+/* 64-bit variant of getnumqconknz for constraint k. */
 PRIMALrescodee PRIMAL_getnumqconknz64(PRIMALtask_t t, int k, PRIMALint64t *n);
-/* Conteggi del negozio di A (riferimento getarownumnz/getacolnumnz e le loro
- * fette) e A in triplette (getatrip): contano le ENTRATE memorizzate, come
- * getnumanz, duplicati inclusi. `getatrip` non ha un conteggio in uscita: chi
- * chiama dimensiona con getnumanz, e una capienza insufficiente e' rifiutata
- * senza scrivere. */
+/* Store counts of A (reference getarownumnz/getacolnumnz and their
+ * slices) and A as triplets (getatrip): they count the STORED entries, like
+ * getnumanz, duplicates included. `getatrip` has no outgoing count: the
+ * caller sizes with getnumanz, and insufficient capacity is refused
+ * without writing. */
 PRIMALrescodee PRIMAL_getacolnumnz(PRIMALtask_t t, int j, int *nzj);
+/* Number of stored entries of row i (duplicates counted). */
 PRIMALrescodee PRIMAL_getarownumnz(PRIMALtask_t t, int i, int *nzi);
+/* Number of stored entries in the columns [first,last). */
 PRIMALrescodee PRIMAL_getacolslicenumnz(PRIMALtask_t t, int first, int last, int *numnz);
+/* 64-bit variant of getacolslicenumnz. */
 PRIMALrescodee PRIMAL_getacolslicenumnz64(PRIMALtask_t t, int first, int last, PRIMALint64t *numnz);
+/* 64-bit variant of getarowslicenumnz. */
 PRIMALrescodee PRIMAL_getarowslicenumnz64(PRIMALtask_t t, int first, int last, PRIMALint64t *numnz);
+/* Reads the rows in [first,last) as 64-bit CSC blocks. */
 PRIMALrescodee PRIMAL_getarowslice64(PRIMALtask_t t, int first, int last,
         PRIMALint64t maxnumnz, PRIMALint64t *ptrb, PRIMALint64t *ptre,
         int *sub, PRIMALrealt *val);
+/* Reads the columns in [first,last) as 64-bit CSC blocks. */
 PRIMALrescodee PRIMAL_getacolslice64(PRIMALtask_t t, int first, int last,
         PRIMALint64t maxnumnz, PRIMALint64t *ptrb, PRIMALint64t *ptre,
         int *sub, PRIMALrealt *val);
+/* Number of stored entries in the rows [first,last). */
 PRIMALrescodee PRIMAL_getarowslicenumnz(PRIMALtask_t t, int first, int last, int *numnz);
+/* Reads all stored A entries as (row,col,val) triplets; refusal if maxnumnz is short. */
 PRIMALrescodee PRIMAL_getatrip(PRIMALtask_t t, PRIMALint64t maxnumnz,
                                int *subi, int *subj, PRIMALrealt *val);
-/* Lettura di una riga/colonna di A in buffer di dimensione maxnum: numret dice
- * quante entrate sono state scritte. */
+/* Reading one A row/column into maxnum-sized buffers: numret says
+ * how many entries were written. */
 PRIMALrescodee PRIMAL_getarow(PRIMALtask_t t, int i, int *sub, PRIMALrealt *val,
                         int maxnum, int *numret);
+/* Reads the stored entries of column j into maxnum-sized buffers. */
 PRIMALrescodee PRIMAL_getacol(PRIMALtask_t t, int j, int *sub, PRIMALrealt *val,
                         int maxnum, int *numret);
-/* A su una fetta di righe/colonne in triplette (getarowslicetrip/getacolslicetrip):
- * contano prima e rifiutano senza scrivere se `maxnumnz` non basta. */
+/* A over a row/column slice as triplets (getarowslicetrip/getacolslicetrip):
+ * they count first and refuse without writing if `maxnumnz` is short. */
 PRIMALrescodee PRIMAL_getarowslicetrip(PRIMALtask_t t, int first, int last,
         PRIMALint64t maxnumnz, int *subi, int *subj, PRIMALrealt *val);
+/* A over the columns in [first,last) as triplets. */
 PRIMALrescodee PRIMAL_getacolslicetrip(PRIMALtask_t t, int first, int last,
         PRIMALint64t maxnumnz, int *subi, int *subj, PRIMALrealt *val);
-/* Variante a fetta (get*slice): sono le entrate della riga i (della colonna j)
- * il cui indice cade in [first,last), scritte a partire dalla posizione
- * `offset` dei buffer sub/val, che hanno capienza maxnum. Offset e' la coda di
- * una fetta precedente, percio' maxnum-offset e' lo spazio rimasto.
- * Se lo spazio non basta la chiamata e' RIFIUTATA (PRIMAL_RES_ERR_ARG) e i
- * buffer dell'utente restano intonsi, perche' una scrittura parziale da
- * disfare non e' recuperabile da chi chiama: e' la stessa regola dei setter
- * dei parametri (fuori-range = niente effetto).
- * Ordinamento: per indice crescente (colonne per una riga, righe per una
- * colonna). Un'entrata scritta due volte e' restituita due volte, perche'
- * nessuna deduplica avviene in putarow/putacol. */
+/* Slice variant (get*slice): the entries of row i (of column j)
+ * whose index falls in [first,last), written starting at the
+ * `offset` position of the sub/val buffers, which have maxnum capacity.
+ * Offset is the tail of a previous slice, so maxnum-offset is the space left.
+ * If the space is short the call is REFUSED (PRIMAL_RES_ERR_ARG) and the
+ * user buffers stay untouched, because a partial write to
+ * undo is not recoverable by the caller: it is the same rule as the
+ * parameter setters (out-of-range = no effect).
+ * Ordering: by increasing index (columns for a row, rows for a
+ * column). An entry written twice is returned twice, because
+ * no dedup happens in putarow/putacol. */
 PRIMALrescodee PRIMAL_getarowslice(PRIMALtask_t t, int i, int first, int last,
                              int offset, int maxnum, int *numret,
                              int *sub, PRIMALrealt *val);
+/* Same slice read as getarowslice, for column j. */
 PRIMALrescodee PRIMAL_getacolslice(PRIMALtask_t t, int j, int first, int last,
                              int offset, int maxnum, int *numret,
                              int *sub, PRIMALrealt *val);
-/* Lettura INTERA delle due Q, sulla stessa forma di getarow: maxnum e' la
- * capienza dei buffer e *numret quante triplette sono state scritte. Se maxnum
- * non basta la chiamata e' RIFIUTATA e nessun buffer viene scritto, *numret
- * compreso (la stessa regola delle slice di A).
- * PRIMAL_getqobj legge il listato di triplette COSI' COME E' STATO SCRITTO, in
- * ordine di scrittura: e' la tabella che PRIMAL_getnumqobjnz conta, quindi un
- * valore 0.0 scritto e' restituito e contato (il numero conta le scritture
- * dell'utente, non i non nulli dell'operatore), e un termine incrociato
- * (i,j) con i != j compare UNA volta sola anche se getqobjij risponde lo stesso
- * numero su entrambe le meta': il negozio non e' simmetrizzato, l'operatore si'.
- * PRIMAL_getqconk legge il TRIANGOLO SUPERIORE (i <= j) in ordine crescente,
- * e il conteggio viene da PRIMAL_getnumqconknz stesso, non da un secondo
- * elenco: due enumerazioni della stessa tabella sono due politiche. Una riga
- * le cui entrate si annullano (putqconk accumula) misura zero e scrive zero:
- * verdetto vuoto, non rifiuto.
- * Deviazione dichiarata: la forma che il riferimento usa per queste due letture
- * NON e' stata letta (fetch dei documenti bloccato anche in questo giro); la
- * forma e' quella del nostro stesso contatore, perche' conteggio e lettore
- * rispondono della stessa tabella e non possono divergere. */
+/* FULL read of the two Qs, in the same form as getarow: maxnum is the
+ * buffer capacity and *numret how many triplets were written. If maxnum
+ * is short the call is REFUSED and no buffer is written, *numret
+ * included (the same rule as the A slices).
+ * PRIMAL_getqobj reads the triplet listing AS WRITTEN, in
+ * write order: it is the table PRIMAL_getnumqobjnz counts, so a
+ * written 0.0 value is returned and counted (the number counts the user's
+ * writes, not the operator nonzeros), and a cross term
+ * (i,j) with i != j appears ONCE even though getqobjij answers the same
+ * number on both halves: the store is not symmetrized, the operator is.
+ * PRIMAL_getqconk reads the UPPER TRIANGLE (i <= j) in increasing order,
+ * and the count comes from PRIMAL_getnumqconknz itself, not from a second
+ * listing: two enumerations of the same table are two policies. A row
+ * whose entries cancel (putqconk accumulates) measures zero and writes zero:
+ * empty verdict, not refusal.
+ * Declared deviation: the form the reference uses for these two reads
+ * was NOT read (document fetch still blocked on this pass); the
+ * form is our own counter's, because count and reader
+ * answer for the same table and cannot diverge. */
 PRIMALrescodee PRIMAL_getqobj(PRIMALtask_t t, int *qi, int *qj, PRIMALrealt *qval,
                         int maxnum, int *numret);
+/* Reads the upper triangle of constraint k's Q; refusal if maxnum is short. */
 PRIMALrescodee PRIMAL_getqconk(PRIMALtask_t t, int k, int *qi, int *qj, PRIMALrealt *qval,
                          int maxnum, int *numret);
+/* 64-bit variant of getqobj (64-bit capacity and count). */
 PRIMALrescodee PRIMAL_getqobj64(PRIMALtask_t t, int *qi, int *qj, PRIMALrealt *qval,
                         PRIMALint64t maxnum, PRIMALint64t *numret);
+/* 64-bit variant of getqconk (64-bit capacity and count). */
 PRIMALrescodee PRIMAL_getqconk64(PRIMALtask_t t, int k, int *qi, int *qj, PRIMALrealt *qval,
                          PRIMALint64t maxnum, PRIMALint64t *numret);
 
-/* ---- nomi di variabili e vincoli ----
- * Due tabelle indipendenti, come nel riferimento: in un MPS un vincolo e una
- * variabile possono chiamarsi allo stesso modo, quindi la stessa stringa puo'
- * nominare uno dell'una e uno dell'altra tabella. Ogni entrata possiede la
- * propria stringa; un ente senza nome legge il nome come stringa VUOTA (""),
- * e "" non puo' essere il nome di nessun ente (mettere "" a un nome serve a
- * toglierlo).
- * I nomi sono univoci dentro la propria tabella: un nome gia' in uso e'
- * RIFIUTATO (PRIMAL_RES_ERR_ARG) senza toccare il nome precedente, perche' una
- * tabella con due indici per lo stesso nome renderebbe getvarname una domanda
- * con due risposte. Rinominare un indice con il nome che ha gia' non e' un
- * conflitto (idempotente).
- * getvarnameidx restituisce un puntatore PRESTATO che vive finche' vive il
- * task: appendvars/appendcons muovono la tabella dei puntatori, non le
- * stringhe, quindi un `const char *` ottenuto prima di un append resta valido.
- * I getter non trovati rispondono ERR_ARG e NON toccano l'indice restituito.
- * Deviazione: qui lo statuto di "non trovato" e' lo stesso ERR_ARG con cui
- * ogni getter di questo API dice "no" (vedi i raggi di Farkas, T85). Il
- * riferimento avrebbe un codice dedicato per il nome inesistente: NON letto
- * in questo giro (documentazione irraggiungibile), quindi e' memoria e non
- * fonte, e la scelta sta sulla convenzione nostra misurata, non su quel nome. */
+/* ---- variable and constraint names ----
+ * Two independent tables, as in the reference: in an MPS a constraint and a
+ * variable may be called by the same name, so the same string may
+ * name one entry of one table and one of the other. Each entry owns its
+ * own string; an unnamed entity reads its name as the EMPTY string (""),
+ * and "" cannot be any entity's name (setting a name to "" removes
+ * it).
+ * Names are unique inside their own table: a name already in use is
+ * REFUSED (PRIMAL_RES_ERR_ARG) without touching the previous name, because a
+ * table with two indices for the same name would make getvarname a question
+ * with two answers. Renaming an index with the name it already has is not a
+ * conflict (idempotent).
+ * getvarnameidx returns a BORROWED pointer that lives as long as the
+ * task: appendvars/appendcons move the pointer table, not the
+ * strings, so a `const char *` obtained before an append stays valid.
+ * Missed getters answer ERR_ARG and do NOT touch the returned index.
+ * Deviation: here the "not found" status is the same ERR_ARG with which
+ * every getter of this API says "no" (see the Farkas rays, T85). The
+ * reference would have a dedicated code for the missing name: NOT read
+ * on this pass (documentation unreachable), so it is memory, not
+ * source, and the choice rests on our measured convention, not on that name. */
 PRIMALrescodee PRIMAL_putvarname(PRIMALtask_t t, int j, const char *name);
+/* Sets the name of constraint i (independence and refusal as for variables). */
 PRIMALrescodee PRIMAL_putconname(PRIMALtask_t t, int i, const char *name);
+/* Borrowed name pointer of variable j; ERR_ARG if unnamed. */
 PRIMALrescodee PRIMAL_getvarnameidx(PRIMALtask_t t, int j, const char **name);
+/* Borrowed name pointer of constraint i; ERR_ARG if unnamed. */
 PRIMALrescodee PRIMAL_getconnameidx(PRIMALtask_t t, int i, const char **name);
-/* nome -> indice (le due domande inverse di una stessa tabella) */
+/* name -> index (the two inverse queries of one table) */
 PRIMALrescodee PRIMAL_getvarname(PRIMALtask_t t, const char *name, int *j);
+/* Resolves a constraint name to its index; ERR_ARG if absent. */
 PRIMALrescodee PRIMAL_getconname(PRIMALtask_t t, const char *name, int *i);
-/* Forma del riferimento per la ricerca per nome: stesso servizio, altro nome. */
+/* Reference form for the by-name lookup: same service, other name. */
 PRIMALrescodee PRIMAL_getidxvar(PRIMALtask_t t, const char *vname, int *var);
+/* Reference form of the constraint by-name lookup. */
 PRIMALrescodee PRIMAL_getidxcon(PRIMALtask_t t, const char *cname, int *con);
-/* L'intera tabella in una chiamata. Il buffer dell'utente ha numvar (numcon)
- * elementi -- li legge da PRIMAL_getnumvar / PRIMAL_getnumcon, la stessa
- * convenzione di getxx -- e la scrittura e' esattamente quella misura, perche'
- * non c'e' un conteggio da negoziare. Un ente senza nome esce come la stringa
- * VUOTA, identicamente a getvarnameidx: due letture della stessa tabella che
- * non concordano non sono due formati, sono due regole.
- * Deviazione: il riferimento consegna char** dove LUI copia, in buffer di
- * lunghezza fissa di proprieta' di chi chiama; qui escono i puntatori
- * PRESTATI delle stringhe del task, che vivono finche' vive il task e non
- * vanno liberati. */
+/* The whole table in one call. The user buffer has numvar (numcon)
+ * entries -- read them from PRIMAL_getnumvar / PRIMAL_getnumcon, the same
+ * convention as getxx -- and the write is exactly that size, because
+ * there is no count to negotiate. An unnamed entity comes out as the
+ * EMPTY string, identically to getvarnameidx: two reads of the same table
+ * that disagree are not two formats, they are two rules.
+ * Deviation: the reference delivers char** that IT copies, into fixed-length
+ * caller-owned buffers; here the task's BORROWED string
+ * pointers come out, which live as long as the task and must not
+ * be freed. */
 PRIMALrescodee PRIMAL_getallvarname(PRIMALtask_t t, const char **names);
+/* Reads the whole constraint name table (numcon borrowed pointers). */
 PRIMALrescodee PRIMAL_getallconname(PRIMALtask_t t, const char **names);
 
-/* ---- nomi delle variabili di barra: la terza tabella ----
- * Il contratto e' quello delle due tabelle scalari, elemento per elemento:
- * univocita' DENTRO la tabella, "" che toglie il nome (lettura ""), rifiuto che
- * non tocca il nome precedente, puntatore PRESTATO che vive finche' vive il
- * task, e getallbarname che scrive esattamente PRIMAL_getnumbarvar elementi.
- * La novita' non e' una regola, e' lo spazio degli indici: una variabile di
- * barra non e' una delle numvar variabili scalari (ha dimensione propria e il
- * proprio blocco di cono), quindi il suo nome vive in un namespace INDIPENDENTE
- * -- la stessa stringa puo' nominare una barra e una scalare, come gia' puo'
- * nominare un vincolo e una variabile, e un duplicato e' rifiutato solo
- * dentro la tabella di chi parla.
- * Deviazione dichiarata: la regola che il riferimento usa per i nomi di barra
- * NON e' stata letta in questo giro (fetch dei documenti bloccato); questa e'
- * l'estensione coerente della regola nostra misurata in T102, non una copia. */
+/* ---- bar variable names: the third table ----
+ * The contract is the two scalar tables', entry by entry:
+ * uniqueness INSIDE the table, "" removing the name ("" read), refusal
+ * not touching the previous name, BORROWED pointer living as long as the
+ * task, and getallbarname writing exactly PRIMAL_getnumbarvar entries.
+ * The news is not a rule, it is the index space: a bar
+ * variable is not one of the numvar scalar variables (it has its own size and
+ * its own cone block), so its name lives in an INDEPENDENT namespace
+ * -- the same string may name a bar and a scalar, as it already may
+ * name a constraint and a variable, and a duplicate is refused only
+ * inside the speaking table.
+ * Declared deviation: the rule the reference uses for bar names
+ * was NOT read on this pass (document fetch blocked); this is
+ * the consistent extension of our rule measured in T102, not a copy. */
 PRIMALrescodee PRIMAL_putbarname(PRIMALtask_t t, int j, const char *name);
+/* Borrowed name pointer of bar variable j; ERR_ARG if unnamed. */
 PRIMALrescodee PRIMAL_getbarnameidx(PRIMALtask_t t, int j, const char **name);
-/* nome -> indice della barra */
+/* name -> bar index */
 PRIMALrescodee PRIMAL_getbarname(PRIMALtask_t t, const char *name, int *j);
-/* Forma del riferimento per la ricerca per nome (stesso servizio, altro nome). */
+/* Reference form for the by-name lookup (same service, other name). */
 PRIMALrescodee PRIMAL_getidxbarvar(PRIMALtask_t t, const char *bname, int *bar);
+/* Reads the whole bar name table (numbarvar borrowed pointers). */
 PRIMALrescodee PRIMAL_getallbarname(PRIMALtask_t t, const char **names);
 
-/* ---- nomi dei blocchi di cono: la quarta tabella ----
- * Contratto identico alle tre tabelle misurate in T102/T103/T105: univocita'
- * DENTRO la tabella, "" che toglie il nome (lettura ""), rifiuto che lascia
- * vivo il nome precedente, puntatore PRESTATO per la vita del task, e
- * getallconename che scrive esattamente PRIMAL_getnumcone elementi. La
- * capacita' della tabella e' la stessa cone_cap dei quattro array dei coni,
- * perche' due capacita' da tenere in pari sono due politiche.
- * Namespace INDIPENDENTE, per lo stesso motivo della barra: un cono non e' una
- * variabile scalare, non e' un vincolo, non e' una barra. Attenzione alla
- * coppia confondibile: getconname e' il VINCOLO, getconename e' il CONO, una
- * lettera di differenza — la confusione non e' chiusa da un commento ma da
- * T106, che nomina vincolo e cono con la STESSA stringa nello stesso task e
- * asserisce che le due ricerche rispondono i propri indici.
- * Deviazione dichiarata: la regola che il riferimento usa per nominare un cono
- * NON e' stata letta in questo giro (fetch bloccato) e non e' stata inventata.
- * In particolare qui non esiste una superficie "nome di funzione" con un
- * (tipo, indice): la numerazione di MSKfunctiontypee non e' conosciuta, e
- * darle numeri nostri sarebbe il difetto che T93/T94 hanno corretto. */
+/* ---- cone block names: the fourth table ----
+ * Contract identical to the three tables measured in T102/T103/T105: uniqueness
+ * INSIDE the table, "" removing the name ("" read), refusal leaving
+ * the previous name alive, BORROWED pointer for the task lifetime, and
+ * getallconename writing exactly PRIMAL_getnumcone entries. The
+ * table capacity is the same cone_cap as the four cone arrays,
+ * because two capacities to keep in step are two policies.
+ * INDEPENDENT namespace, for the same reason as the bar: a cone is not a
+ * scalar variable, not a constraint, not a bar. Mind the
+ * confusable pair: getconname is the CONSTRAINT, getconename is the CONE, one
+ * letter apart — the confusion is not closed by a comment but by
+ * T106, which names constraint and cone with the SAME string in one task and
+ * asserts that the two lookups answer their own indices.
+ * Declared deviation: the rule the reference uses to name a cone
+ * was NOT read on this pass (fetch blocked) and was not invented.
+ * In particular there is no "function name" surface here with a
+ * (type, index): the MSKfunctiontypee numbering is not known, and
+ * giving it our numbers would be the defect T93/T94 corrected. */
 PRIMALrescodee PRIMAL_putconename(PRIMALtask_t t, int k, const char *name);
+/* Borrowed name pointer of cone block k; ERR_ARG if unnamed. */
 PRIMALrescodee PRIMAL_getconenameidx(PRIMALtask_t t, int k, const char **name);
-/* nome -> indice del blocco di cono */
+/* name -> cone-block index */
 PRIMALrescodee PRIMAL_getconename(PRIMALtask_t t, const char *name, int *k);
-/* Forma del riferimento per la ricerca per nome (stesso servizio, altro nome). */
+/* Reference form for the by-name lookup (same service, other name). */
 PRIMALrescodee PRIMAL_getidxcone(PRIMALtask_t t, const char *cname, int *cone);
+/* Reads the whole cone-block name table (numcone borrowed pointers). */
 PRIMALrescodee PRIMAL_getallconename(PRIMALtask_t t, const char **names);
-/* ricerche per nome del riferimento (deleghe con l'assegnazione fissa = 0) e
- * lunghezza del nome di un blocco conico. */
+/* reference by-name lookups (delegates with fixed assignment = 0) and
+ * cone-block name length. */
 PRIMALrescodee PRIMAL_getvarnameindex(PRIMALtask_t t, const char *somename,
                                       int *asgn, int *index);
+/* reference constraint name->index delegate (assignment fixed to 0). */
 PRIMALrescodee PRIMAL_getconnameindex(PRIMALtask_t t, const char *somename,
                                       int *asgn, int *index);
+/* reference cone-block name->index delegate (assignment fixed to 0). */
 PRIMALrescodee PRIMAL_getconenameindex(PRIMALtask_t t, const char *somename,
                                        int *asgn, int *index);
+/* Length of the name of cone block i (0 if unnamed). */
 PRIMALrescodee PRIMAL_getconenamelen(PRIMALtask_t t, int i, int *len);
-/* nonnulli di Q memorizzati (obiettivo + vincoli) e c[subj[k]]; suggerimenti di
- * capacita' (no-op). */
+/* stored Q nonzeros (objective + constraints) and c[subj[k]]; capacity
+ * hints (no-op). */
 PRIMALrescodee PRIMAL_getmaxnumqnz(PRIMALtask_t t, int *maxnumqnz);
+/* 64-bit variant of getmaxnumqnz. */
 PRIMALrescodee PRIMAL_getmaxnumqnz64(PRIMALtask_t t, PRIMALint64t *maxnumqnz);
+/* Reads c[subj[k]] for the listed indices. */
 PRIMALrescodee PRIMAL_getclist(PRIMALtask_t t, int num, const int *subj, PRIMALrealt *c);
+/* Capacity hint for the number of variables (no-op: arrays grow in place). */
 PRIMALrescodee PRIMAL_putmaxnumvar(PRIMALtask_t t, int maxnumvar);
+/* Capacity hint for the number of constraints (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumcon(PRIMALtask_t t, int maxnumcon);
+/* Capacity hint for the number of cones (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumcone(PRIMALtask_t t, int maxnumcone);
+/* Capacity hint for the number of A nonzeros (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumanz(PRIMALtask_t t, PRIMALint64t maxnumanz);
+/* Capacity hint for the number of Q nonzeros (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumqnz(PRIMALtask_t t, PRIMALint64t maxnumqnz);
 
-/* ---- il nome dell'obiettivo: un solo posto, non una tabella ----
- * Stessa regola di proprieta' (puntatore prestato, "" toglie, NULL rifiutato),
- * ma con n = 1 la domanda "dupplicato" non si pone: un secondo nome SOSTITUISCE
- * il primo, che e' l'unica differenza misurabile dalle tabelle.
- * Deviazione: il riferimento copia in un buffer di lunghezza fissa di proprieta'
- * di chi chiama; qui esce il puntatore PRESTATO, come per le quattro tabelle. */
+/* ---- the objective name: a single slot, not a table ----
+ * Same ownership rule (borrowed pointer, "" removes, NULL refused),
+ * but with n = 1 the "duplicate" question does not arise: a second name REPLACES
+ * the first, which is the only measurable difference from the tables.
+ * Deviation: the reference copies into a caller-owned fixed-length buffer;
+ * here the BORROWED pointer comes out, as for the four tables. */
 PRIMALrescodee PRIMAL_putobjname(PRIMALtask_t t, const char *name);
+/* Borrowed objective name pointer; ERR_ARG if unnamed. */
 PRIMALrescodee PRIMAL_getobjname(PRIMALtask_t t, const char **name);
-/* Nome del task e lunghezze dei nomi (riferimento puttaskname/gettaskname/
+/* Task name and name lengths (reference puttaskname/gettaskname/
  * gettasknamelen, getvarnamelen/getconnamelen/getobjnamelen, getmaxnamelen).
- * La lunghezza NON conta il terminatore; un oggetto senza nome ha lunghezza 0.
- * gettaskname copia nel buffer di chi chiama, che deve contenere anche lo zero. */
+ * Length does NOT count the terminator; an unnamed object has length 0.
+ * gettaskname copies into the caller buffer, which must also hold the zero. */
 PRIMALrescodee PRIMAL_puttaskname(PRIMALtask_t t, const char *name);
+/* Copies the task name into the caller buffer (which holds the zero too). */
 PRIMALrescodee PRIMAL_gettaskname(PRIMALtask_t t, int sizetaskname, char *taskname);
+/* Length of the task name (0 if unnamed). */
 PRIMALrescodee PRIMAL_gettasknamelen(PRIMALtask_t t, int *len);
+/* Length of the name of variable j (0 if unnamed). */
 PRIMALrescodee PRIMAL_getvarnamelen(PRIMALtask_t t, int j, int *len);
+/* Length of the name of constraint i (0 if unnamed). */
 PRIMALrescodee PRIMAL_getconnamelen(PRIMALtask_t t, int i, int *len);
+/* Length of the objective name (0 if unnamed). */
 PRIMALrescodee PRIMAL_getobjnamelen(PRIMALtask_t t, int *len);
+/* Longest name length across the task's tables. */
 PRIMALrescodee PRIMAL_getmaxnamelen(PRIMALtask_t t, int *maxlen);
 
 /* conic optimization (SOCP); members are variable indices */
-/* Espressioni affini (AFE): f_i = sum_j F_ij x_j + g_i. Lo storage su cui
- * costruiscono i vincoli conici affini (ACC) e disgiuntivi (DJC). */
+/* Affine expressions (AFE): f_i = sum_j F_ij x_j + g_i. The storage on
+ * which the affine conic (ACC) and disjunctive (DJC) constraints build. */
 PRIMALrescodee PRIMAL_appendafes(PRIMALtask_t t, PRIMALint64t num);
+/* Returns the number of affine expressions in the task. */
 PRIMALrescodee PRIMAL_getnumafe(PRIMALtask_t t, PRIMALint64t *numafe);
+/* Sets the coefficient F_ij of affine expression i. */
 PRIMALrescodee PRIMAL_putafefentry(PRIMALtask_t t, PRIMALint64t i, int j, PRIMALrealt v);
+/* Replaces the whole row i of F from a sparse index/value list. */
 PRIMALrescodee PRIMAL_putafefrow(PRIMALtask_t t, PRIMALint64t i, int numnz,
                                  const int *varidx, const PRIMALrealt *val);
+/* Sets the constant g_i of affine expression i. */
 PRIMALrescodee PRIMAL_putafeg(PRIMALtask_t t, PRIMALint64t i, PRIMALrealt g);
+/* Reads the constant g_i of affine expression i. */
 PRIMALrescodee PRIMAL_getafeg(PRIMALtask_t t, PRIMALint64t i, PRIMALrealt *g);
+/* Number of stored nonzero entries in row i of F. */
 PRIMALrescodee PRIMAL_getafefrownumnz(PRIMALtask_t t, PRIMALint64t i, int *numnz);
+/* Reads row i of F as sparse indices and values. */
 PRIMALrescodee PRIMAL_getafefrow(PRIMALtask_t t, PRIMALint64t i, int *numnz,
                                  int *varidx, PRIMALrealt *val);
-/* superficie in blocco degli AFE (riferimento emptyafefrow/emptyafefcol,
+/* block AFE surface (reference emptyafefrow/emptyafefcol,
  * putafeglist/putafegslice/getafegslice, putafefentrylist, getafeftrip,
- * getafefnumnz). Un buffer NULL non viene scritto; `getafeftrip` enumera F in
- * (afeidx,varidx,val) nell'ordine memorizzato e la lunghezza e' la somma dei
+ * getafefnumnz). A NULL buffer is not written; `getafeftrip` enumerates F as
+ * (afeidx,varidx,val) in stored order and the length is the sum of
  * getafefnumnz. */
 PRIMALrescodee PRIMAL_emptyafefrow(PRIMALtask_t t, PRIMALint64t afeidx);
+/* Zeroes the column `varidx` of F. */
 PRIMALrescodee PRIMAL_emptyafefcol(PRIMALtask_t t, int varidx);
+/* Sets several g entries from an afeidx/g list. */
 PRIMALrescodee PRIMAL_putafeglist(PRIMALtask_t t, PRIMALint64t numafeidx,
                                   const PRIMALint64t *afeidx, const PRIMALrealt *g);
+/* Sets g[first..last) from the given slice. */
 PRIMALrescodee PRIMAL_putafegslice(PRIMALtask_t t, PRIMALint64t first,
                                    PRIMALint64t last, const PRIMALrealt *slice);
+/* Reads g[first..last) into the given slice. */
 PRIMALrescodee PRIMAL_getafegslice(PRIMALtask_t t, PRIMALint64t first,
                                    PRIMALint64t last, PRIMALrealt *g);
+/* Replaces the given F entries (does not clear the rest of the rows). */
 PRIMALrescodee PRIMAL_putafefentrylist(PRIMALtask_t t, PRIMALint64t numentr,
                                        const PRIMALint64t *afeidx,
                                        const int *varidx, const PRIMALrealt *val);
+/* Enumerates F as (afeidx,varidx,val) triplets in stored order. */
 PRIMALrescodee PRIMAL_getafeftrip(PRIMALtask_t t, PRIMALint64t *afeidx,
                                   int *varidx, PRIMALrealt *val);
+/* Number of stored nonzeros in row `afeidx` of F (delegate). */
 PRIMALrescodee PRIMAL_getafefnumnz(PRIMALtask_t t, PRIMALint64t afeidx, int *numnz);
+/* Zeroes several rows of F. */
 PRIMALrescodee PRIMAL_emptyafefrowlist(PRIMALtask_t t, PRIMALint64t numafeidx,
                                        const PRIMALint64t *afeidx);
+/* Zeroes several columns of F. */
 PRIMALrescodee PRIMAL_emptyafefcollist(PRIMALtask_t t, PRIMALint64t numvaridx,
                                        const int *varidx);
+/* Writes the column `varidx` of F from an afeidx/value list. */
 PRIMALrescodee PRIMAL_putafefcol(PRIMALtask_t t, int varidx, PRIMALint64t numnz,
                                  const PRIMALint64t *afeidx, const PRIMALrealt *val);
-/* termini bar di un AFE (riferimento putafebarfentry e famiglia): Fbar[i][j] e'
- * una combinazione pesata di matrici simmetriche, e <Fbar_ij, X_j> entra nella
- * i-esima espressione. La scrittura di (i,j) rimpiazza i termini con lo stesso
+/* bar terms of an AFE (reference putafebarfentry and family): Fbar[i][j] is
+ * a weighted combination of symmetric matrices, and <Fbar_ij, X_j> enters the
+ * i-th expression. Writing (i,j) replaces the terms with the same
  * barvaridx. */
 PRIMALrescodee PRIMAL_putafebarfentry(PRIMALtask_t t, PRIMALint64t afeidx, int barvaridx,
         PRIMALint64t numterm, const PRIMALint64t *termidx, const PRIMALrealt *termweight);
+/* Zeroes the bar terms of affine expression afeidx. */
 PRIMALrescodee PRIMAL_emptyafebarfrow(PRIMALtask_t t, PRIMALint64t afeidx);
+/* Zeroes the bar terms of several affine expressions. */
 PRIMALrescodee PRIMAL_emptyafebarfrowlist(PRIMALtask_t t, PRIMALint64t numafeidx,
                                           const PRIMALint64t *afeidxlist);
+/* Number of bar-row entries of affine expression afeidx. */
 PRIMALrescodee PRIMAL_getafebarfnumrowentries(PRIMALtask_t t, PRIMALint64t afeidx, int *numentr);
+/* Entry and term counts of the bar row of affine expression afeidx. */
 PRIMALrescodee PRIMAL_getafebarfrowinfo(PRIMALtask_t t, PRIMALint64t afeidx,
                                         int *numentr, PRIMALint64t *numterm);
+/* Reads the bar row of affine expression afeidx (barvaridx, term indices, weights). */
 PRIMALrescodee PRIMAL_getafebarfrow(PRIMALtask_t t, PRIMALint64t afeidx, int *barvaridx,
         PRIMALint64t *ptrterm, PRIMALint64t *numterm, PRIMALint64t *termidx,
         PRIMALrealt *termweight);
+/* Number of bar block triplets across the task's AFE bar rows. */
 PRIMALrescodee PRIMAL_getafebarfnumblocktriplets(PRIMALtask_t t, PRIMALint64t *numtrip);
+/* Reads the AFE bar terms as block triplets; refusal if maxnumtrip is short. */
 PRIMALrescodee PRIMAL_getafebarfblocktriplet(PRIMALtask_t t, PRIMALint64t maxnumtrip,
         PRIMALint64t *numtrip, PRIMALint64t *afeidx, int *barvaridx, int *subk,
         int *subl, PRIMALrealt *valkl);
+/* Sets several bar rows of F at once. */
 PRIMALrescodee PRIMAL_putafebarfentrylist(PRIMALtask_t t, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidx, const int *barvaridx, const PRIMALint64t *numterm,
         const PRIMALint64t *ptrterm, PRIMALint64t lenterm, const PRIMALint64t *termidx,
         const PRIMALrealt *termweight);
+/* Replaces the bar row of affine expression afeidx. */
 PRIMALrescodee PRIMAL_putafebarfrow(PRIMALtask_t t, PRIMALint64t afeidx, int numentr,
         const int *barvaridx, const PRIMALint64t *numterm, const PRIMALint64t *ptrterm,
         PRIMALint64t lenterm, const PRIMALint64t *termidx, const PRIMALrealt *termweight);
+/* Sets Fbar from block triplets (afeidx, barvaridx, k, l, val). */
 PRIMALrescodee PRIMAL_putafebarfblocktriplet(PRIMALtask_t t, PRIMALint64t numtrip,
         const PRIMALint64t *afeidx, const int *barvaridx, const int *subk,
         const int *subl, const PRIMALrealt *valkl);
+/* Number of block triplets of the Fbar implied by the ACCs. */
 PRIMALrescodee PRIMAL_getaccbarfnumblocktriplets(PRIMALtask_t t, PRIMALint64t *numtrip);
+/* Reads the ACC-implied Fbar as block triplets; refusal if maxnumtrip is short. */
 PRIMALrescodee PRIMAL_getaccbarfblocktriplet(PRIMALtask_t t, PRIMALint64t maxnumtrip,
         PRIMALint64t *numtrip, PRIMALint64t *acc_afe, int *bar_var, int *blk_row,
         int *blk_col, PRIMALrealt *blk_val);
-/* Domini conici (per i vincoli conici affini, ACC); i valori sono quelli di
- * MSKdomaintypee. */
+/* Conic domains (for affine conic constraints, ACC); values are
+ * MSKdomaintypee's. */
 typedef enum {
     PRIMAL_DOMAIN_R = 0,
     PRIMAL_DOMAIN_RZERO = 1,
@@ -1208,297 +1405,395 @@ typedef enum {
     PRIMAL_DOMAIN_SVEC_PSD_CONE = 12
 } PRIMALdomaintypee;
 
+/* Appends the linear domain R^n and returns its index. */
 PRIMALrescodee PRIMAL_appendrdomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends the linear domain {0}^n and returns its index. */
 PRIMALrescodee PRIMAL_appendrzerodomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends the nonnegative domain R_+^n and returns its index. */
 PRIMALrescodee PRIMAL_appendrplusdomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends the nonpositive domain R_-^n and returns its index. */
 PRIMALrescodee PRIMAL_appendrminusdomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends a quadratic cone domain and returns its index. */
 PRIMALrescodee PRIMAL_appendquadraticconedomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends a rotated quadratic cone domain and returns its index. */
 PRIMALrescodee PRIMAL_appendrquadraticconedomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends a primal exponential cone domain and returns its index. */
 PRIMALrescodee PRIMAL_appendprimalexpconedomain(PRIMALtask_t t, PRIMALint64t *domidx);
+/* Appends a dual exponential cone domain and returns its index. */
 PRIMALrescodee PRIMAL_appenddualexpconedomain(PRIMALtask_t t, PRIMALint64t *domidx);
+/* Appends a primal power cone domain (exponent alpha) and returns its index. */
 PRIMALrescodee PRIMAL_appendprimalpowerconedomain(PRIMALtask_t t, PRIMALint64t n, PRIMALrealt alpha, PRIMALint64t *domidx);
+/* Appends a dual power cone domain (exponent alpha) and returns its index. */
 PRIMALrescodee PRIMAL_appenddualpowerconedomain(PRIMALtask_t t, PRIMALint64t n, PRIMALrealt alpha, PRIMALint64t *domidx);
+/* Appends a symmetric-vector PSD cone domain of dimension dim. */
 PRIMALrescodee PRIMAL_appendsvecpsdconedomain(PRIMALtask_t t, int dim, PRIMALint64t *domidx);
+/* Returns the number of conic domains. */
 PRIMALrescodee PRIMAL_getnumdomain(PRIMALtask_t t, PRIMALint64t *numdomain);
+/* Reads the type of the given conic domain. */
 PRIMALrescodee PRIMAL_getdomaintype(PRIMALtask_t t, PRIMALint64t domidx, PRIMALdomaintypee *domtype);
+/* Reads the dimension of the given conic domain. */
 PRIMALrescodee PRIMAL_getdomainn(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t *n);
-/* coni di media geometrica, nomi dei domini (settima tabella), info sul cono di
- * potenza e il suggerimento di capacita' putmaxnumdomain. */
+/* geometric-mean cones, domain names (seventh table), power-cone
+ * info and the putmaxnumdomain capacity hint. */
 PRIMALrescodee PRIMAL_appendprimalgeomeanconedomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Appends a dual geometric-mean cone domain and returns its index. */
 PRIMALrescodee PRIMAL_appenddualgeomeanconedomain(PRIMALtask_t t, PRIMALint64t n, PRIMALint64t *domidx);
+/* Sets the name of the given conic domain. */
 PRIMALrescodee PRIMAL_putdomainname(PRIMALtask_t t, PRIMALint64t domidx, const char *name);
+/* Length of the name of the given conic domain (0 if unnamed). */
 PRIMALrescodee PRIMAL_getdomainnamelen(PRIMALtask_t t, PRIMALint64t domidx, int *len);
+/* Copies the name of the given conic domain into the caller buffer. */
 PRIMALrescodee PRIMAL_getdomainname(PRIMALtask_t t, PRIMALint64t domidx, int sizename, char *name);
+/* Reads the exponent alpha of a power-cone domain. */
 PRIMALrescodee PRIMAL_getpowerdomainalpha(PRIMALtask_t t, PRIMALint64t domidx, PRIMALrealt *alpha);
+/* Reads the dimension and left part of a power-cone domain. */
 PRIMALrescodee PRIMAL_getpowerdomaininfo(PRIMALtask_t t, PRIMALint64t domidx,
                                          PRIMALint64t *n, PRIMALint64t *nleft);
+/* Capacity hint for the number of domains (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumdomain(PRIMALtask_t t, PRIMALint64t maxnumdomain);
+/* Appends a cone of type ct with the given members and parameter. */
 PRIMALrescodee PRIMAL_appendcone(PRIMALtask_t t, PRIMALconetypee ct, PRIMALrealt coneparam, int nummem, const int *submem);
-/* cono/i i cui membri sono variabili CONTIGUE j..j+nummem-1 (riferimento
+/* cone(s) whose members are CONTIGUOUS variables j..j+nummem-1 (reference
  * appendconeseq/appendconesseq). */
 PRIMALrescodee PRIMAL_appendconeseq(PRIMALtask_t t, PRIMALconetypee ct, PRIMALrealt conepar,
                                     int nummem, int j);
+/* Appends several contiguous-member cones in one call. */
 PRIMALrescodee PRIMAL_appendconesseq(PRIMALtask_t t, int num, const PRIMALconetypee *ct,
     const PRIMALrealt *conepar, const int *nummem, const int *j);
-/* rimuove i coni agli indici dati (riferimento removecones). */
+/* removes the cones at the given indices (reference removecones). */
 PRIMALrescodee PRIMAL_removecones(PRIMALtask_t t, int num, const int *subset);
-/* rimuove i vincoli agli indici dati, compattando A/qcon/barA (riferimento
- * removecons). */
+/* removes the constraints at the given indices, compacting A/qcon/barA
+ * (reference removecons). */
 PRIMALrescodee PRIMAL_removecons(PRIMALtask_t t, int num, const int *subset);
-/* rimuove le variabili agli indici dati, rimodellando qcon e rimappando qobj e i
- * membri di cono (riferimento removevars). */
+/* removes the variables at the given indices, reshaping qcon and remapping
+ * qobj and the cone members (reference removevars). */
 PRIMALrescodee PRIMAL_removevars(PRIMALtask_t t, int num, const int *subset);
+/* Returns the number of conic constraints (cones). */
 PRIMALrescodee PRIMAL_getnumcone(PRIMALtask_t t, int *numcone);
+/* Reads cone k: its type, member count and members. */
 PRIMALrescodee PRIMAL_getcone(PRIMALtask_t t, int k, PRIMALconetypee *ct, int *nummem, int *submem);
+/* Reads the parameter (alpha) of cone k. */
 PRIMALrescodee PRIMAL_getconeparam(PRIMALtask_t t, int k, PRIMALrealt *param);
+/* Returns the number of members of cone k. */
 PRIMALrescodee PRIMAL_getnumconemem(PRIMALtask_t t, int k, int *nummem);
-/* ---- vincoli conici affini (ACC) ----
- * appendacc(domidx, numafeidx, afeidxlist, b): il vettore delle numafeidx
- * espressioni affini afeidxlist[e] (F_e x + g_e) piu' le costanti b[e]
- * appartiene al dominio domidx (dimensione numafeidx == getdomainn(domidx)). */
+/* ---- affine conic constraints (ACC) ----
+ * appendacc(domidx, numafeidx, afeidxlist, b): the vector of numafeidx
+ * affine expressions afeidxlist[e] (F_e x + g_e) plus the constants b[e]
+ * belongs to domain domidx (size numafeidx == getdomainn(domidx)). */
 PRIMALrescodee PRIMAL_appendacc(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t numafeidx,
                                 const PRIMALint64t *afeidxlist, const PRIMALrealt *b);
+/* Returns the number of affine conic constraints. */
 PRIMALrescodee PRIMAL_getnumacc(PRIMALtask_t t, PRIMALint64t *numacc);
+/* Reads the dimension (number of AFEs) of ACC accidx. */
 PRIMALrescodee PRIMAL_getaccn(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t *n);
+/* Reads the domain index of ACC accidx. */
 PRIMALrescodee PRIMAL_getaccdomain(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t *domidx);
+/* Reads the AFE index list of ACC accidx. */
 PRIMALrescodee PRIMAL_getaccafeidxlist(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t *afeidxlist);
+/* Reads the constant vector b of ACC accidx. */
 PRIMALrescodee PRIMAL_getaccb(PRIMALtask_t t, PRIMALint64t accidx, PRIMALrealt *b);
-/* superficie ACC in blocco e nomi (riferimento appendaccs/getaccs/getaccntot/
- * putaccb/putaccname/getaccname/getaccnamelen). `appendaccs` appende numaccs
- * ACC, ciascuno di dimensione dom_n[domidxs[i]], consumando afeidxlist/b in
- * sequenza; `getaccs` e' la concatenazione delle liste per-ACC. */
+/* Block ACC surface and names (reference appendaccs/getaccs/getaccntot/
+ * putaccb/putaccname/getaccname/getaccnamelen). `appendaccs` appends numaccs
+ * ACCs, each of size dom_n[domidxs[i]], consuming afeidxlist/b in
+ * sequence; `getaccs` is the concatenation of the per-ACC lists. */
 PRIMALrescodee PRIMAL_appendaccs(PRIMALtask_t t, PRIMALint64t numaccs,
         const PRIMALint64t *domidxs, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidxlist, const PRIMALrealt *b);
+/* Total number of AFE entries across all ACCs. */
 PRIMALrescodee PRIMAL_getaccntot(PRIMALtask_t t, PRIMALint64t *n);
+/* Reads all ACCs as concatenated domain/AFE lists and b. */
 PRIMALrescodee PRIMAL_getaccs(PRIMALtask_t t, PRIMALint64t *domidxlist,
                               PRIMALint64t *afeidxlist, PRIMALrealt *b);
+/* Rewrites the b vector of an existing ACC. */
 PRIMALrescodee PRIMAL_putaccb(PRIMALtask_t t, PRIMALint64t accidx,
                               PRIMALint64t lengthb, const PRIMALrealt *b);
+/* Sets the name of ACC accidx. */
 PRIMALrescodee PRIMAL_putaccname(PRIMALtask_t t, PRIMALint64t accidx, const char *name);
+/* Length of the name of ACC accidx (0 if unnamed). */
 PRIMALrescodee PRIMAL_getaccnamelen(PRIMALtask_t t, PRIMALint64t accidx, int *len);
+/* Copies the name of ACC accidx into the caller buffer. */
 PRIMALrescodee PRIMAL_getaccname(PRIMALtask_t t, PRIMALint64t accidx,
                                  int sizename, char *name);
-/* ACC con AFE contigui (appendaccseq/appendaccsseq), attivita' al punto
- * (evaluateacc/evaluateaccs) e suggerimenti di capacita'. */
+/* ACCs with contiguous AFEs (appendaccseq/appendaccsseq), activity at the
+ * point (evaluateacc/evaluateaccs) and capacity hints. */
 PRIMALrescodee PRIMAL_appendaccseq(PRIMALtask_t t, PRIMALint64t domidx,
                                    PRIMALint64t numafeidx, PRIMALint64t afeidxfirst,
                                    const PRIMALrealt *b);
+/* Appends several ACCs over consecutive AFE ranges in one call. */
 PRIMALrescodee PRIMAL_appendaccsseq(PRIMALtask_t t, PRIMALint64t numaccs,
         const PRIMALint64t *domidxs, PRIMALint64t numafeidx,
         PRIMALint64t afeidxfirst, const PRIMALrealt *b);
+/* Evaluates the activity of ACC accidx at the given solution. */
 PRIMALrescodee PRIMAL_evaluateacc(PRIMALtask_t t, PRIMALsolt which, PRIMALint64t accidx,
                                   PRIMALrealt *activity);
+/* Evaluates the activity of all ACCs at the given solution. */
 PRIMALrescodee PRIMAL_evaluateaccs(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *activity);
+/* Capacity hint for the number of ACCs (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumacc(PRIMALtask_t t, PRIMALint64t maxnumacc);
+/* Capacity hint for the number of AFEs (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumafe(PRIMALtask_t t, PRIMALint64t maxnumafe);
+/* Capacity hint for the number of DJCs (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumdjc(PRIMALtask_t t, PRIMALint64t maxnumdjc);
-/* un componente di b di un ACC; violazione primale di un insieme di ACC;
- * sequenze di domini di potenza. */
+/* one component of an ACC's b; primal violation of an ACC set;
+ * power-domain sequences. */
 PRIMALrescodee PRIMAL_putaccbj(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t j, PRIMALrealt bj);
-/* i duali di un ACC (riferimento getaccdoty/getaccdotys/putaccdoty): i
- * moltiplicatori delle righe che l'ACC ha prodotto, nella convenzione dei nostri
- * `y` (la convenzione del riferimento per `doty` non e' stata letta). */
+/* ACC duals (reference getaccdoty/getaccdotys/putaccdoty): the
+ * multipliers of the rows the ACC produced, in our `y`
+ * convention (the reference `doty` convention was not read). */
 PRIMALrescodee PRIMAL_getaccdoty(PRIMALtask_t t, PRIMALsolt which, PRIMALint64t accidx,
                                  PRIMALrealt *doty);
+/* Reads the doty vectors of all ACCs at once. */
 PRIMALrescodee PRIMAL_getaccdotys(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *doty);
+/* Writes the doty vector of ACC accidx. */
 PRIMALrescodee PRIMAL_putaccdoty(PRIMALtask_t t, PRIMALsolt which, PRIMALint64t accidx,
                                  const PRIMALrealt *doty);
+/* Primal violation of the listed ACCs at the given solution. */
 PRIMALrescodee PRIMAL_getpviolacc(PRIMALtask_t t, PRIMALsolt which,
         PRIMALint64t numaccidx, const PRIMALint64t *accidxlist, PRIMALrealt *viol);
+/* Dual violation of the listed ACCs at the given solution. */
 PRIMALrescodee PRIMAL_getdviolacc(PRIMALtask_t t, PRIMALsolt which,
         PRIMALint64t numaccidx, const PRIMALint64t *accidxlist, PRIMALrealt *viol);
+/* Appends several primal power-cone domains in one call. */
 PRIMALrescodee PRIMAL_appendprimalpowerconedomainseq(PRIMALtask_t t, PRIMALint64t num,
         const PRIMALint64t *n, const PRIMALint64t *nleft, const PRIMALrealt *alpha,
         PRIMALint64t *domidxlist);
+/* Appends several dual power-cone domains in one call. */
 PRIMALrescodee PRIMAL_appenddualpowerconedomainseq(PRIMALtask_t t, PRIMALint64t num,
         const PRIMALint64t *n, const PRIMALint64t *nleft, const PRIMALrealt *alpha,
         PRIMALint64t *domidxlist);
-/* la F e la g implicite nell'ordine degli AFE dentro gli ACC. */
+/* the F and g implied by the AFE order inside the ACCs. */
 PRIMALrescodee PRIMAL_getaccfnumnz(PRIMALtask_t t, PRIMALint64t *accfnnz);
+/* Reads the g vector implied by the ACCs. */
 PRIMALrescodee PRIMAL_getaccgvector(PRIMALtask_t t, PRIMALrealt *g);
+/* Reads the F implied by the ACCs as (row,col,val) triplets. */
 PRIMALrescodee PRIMAL_getaccftrip(PRIMALtask_t t, PRIMALint64t *frow,
                                   int *fcol, PRIMALrealt *fval);
-/* ---- disjunctive constraints (DJC, stile riferimento) ----
- * Un DJC e' l'OR di numterm clausole; la clausola i e' la congiunzione di
- * termsizelist[i] domini applicati a espressioni affini. domidxlist concatena i
- * domini di tutte le clausole (lunghezza sum termsizelist); afeidxlist concatena
- * le espressioni, una per componente di dominio (lunghezza = somma delle
- * dimensioni dei domini). b, opzionale (NULL = tutti zero), e' la costante
- * SOTTRATTA a ogni espressione: l'espressione k e' F_k x + g_k - b_k.
- * appenddjcs pre-alloca num slot vuoti; putdjc riempie lo slot djcidx.
- * Il modello si estende subito (una binaria di selezione per clausola e righe
- * big-M, come ogni MIP di questo solver), quindi un djcidx gia' scritto non e'
- * riscrivibile (ERR_ARG). Deviazione dichiarata: solo domini LINEARI
- * (R/RZERO/RPLUS/RMINUS); un dominio conico in un DJC e' ERR_ARG. */
+/* ---- disjunctive constraints (DJC, reference style) ----
+ * A DJC is the OR of numterm clauses; clause i is the conjunction of
+ * termsizelist[i] domains applied to affine expressions. domidxlist concatenates
+ * the domains of all clauses (length sum termsizelist); afeidxlist concatenates
+ * the expressions, one per domain component (length = sum of the
+ * domain sizes). b, optional (NULL = all zero), is the constant
+ * SUBTRACTED from each expression: expression k is F_k x + g_k - b_k.
+ * appenddjcs pre-allocates num empty slots; putdjc fills slot djcidx.
+ * The model extends at once (one selection binary per clause and big-M
+ * rows, like every MIP of this solver), so an already-written djcidx is not
+ * rewritable (ERR_ARG). Declared deviation: only LINEAR domains
+ * (R/RZERO/RPLUS/RMINUS); a conic domain in a DJC is ERR_ARG. */
 PRIMALrescodee PRIMAL_appenddjcs(PRIMALtask_t t, PRIMALint64t num);
+/* Fills the description of DJC djcidx (OR of clauses over affine expressions). */
 PRIMALrescodee PRIMAL_putdjc(PRIMALtask_t t, PRIMALint64t djcidx,
         PRIMALint64t numdomidx, const PRIMALint64t *domidxlist,
         PRIMALint64t numafeidx, const PRIMALint64t *afeidxlist,
         const PRIMALrealt *b, PRIMALint64t numterms,
         const PRIMALint64t *termsizelist);
-/* idxlast-idxfirst DJC consecutivi; termsindjc[i] = numero di termini della DJC
- * idxfirst+i; il resto e' la concatenazione delle descrizioni di putdjc. */
+/* idxlast-idxfirst consecutive DJCs; termsindjc[i] = number of terms of DJC
+ * idxfirst+i; the rest is the concatenation of the putdjc descriptions. */
 PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
         PRIMALint64t idxlast, PRIMALint64t numdomidx,
         const PRIMALint64t *domidxlist, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidxlist, const PRIMALrealt *b,
         PRIMALint64t numterms, const PRIMALint64t *termsizelist,
         const PRIMALint64t *termsindjc);
+/* Returns the number of disjunctive constraints. */
 PRIMALrescodee PRIMAL_getnumdjc(PRIMALtask_t t, PRIMALint64t *num);
+/* Number of domain entries in DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjcnumdomain(PRIMALtask_t t, PRIMALint64t djcidx, PRIMALint64t *n);
+/* Number of AFE entries in DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjcnumafe(PRIMALtask_t t, PRIMALint64t djcidx, PRIMALint64t *n);
+/* Number of clauses (terms) in DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjcnumterm(PRIMALtask_t t, PRIMALint64t djcidx, PRIMALint64t *n);
+/* Reads the domain index list of DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjcdomainidxlist(PRIMALtask_t t, PRIMALint64t djcidx,
         PRIMALint64t *domidxlist);
+/* Reads the AFE index list of DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjcafeidxlist(PRIMALtask_t t, PRIMALint64t djcidx,
         PRIMALint64t *afeidxlist);
+/* Reads the b vector of DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjcb(PRIMALtask_t t, PRIMALint64t djcidx, PRIMALrealt *b);
+/* Reads the clause size list of DJC djcidx. */
 PRIMALrescodee PRIMAL_getdjctermsizelist(PRIMALtask_t t, PRIMALint64t djcidx,
         PRIMALint64t *termsizelist);
+/* Total number of domain entries across all DJCs. */
 PRIMALrescodee PRIMAL_getdjcnumdomaintot(PRIMALtask_t t, PRIMALint64t *n);
+/* Total number of AFE entries across all DJCs. */
 PRIMALrescodee PRIMAL_getdjcnumafetot(PRIMALtask_t t, PRIMALint64t *n);
+/* Total number of clauses across all DJCs. */
 PRIMALrescodee PRIMAL_getdjcnumtermtot(PRIMALtask_t t, PRIMALint64t *n);
-/* lettura in blocco di TUTTI i DJC (riferimento getdjcs): le liste sono la
- * concatenazione di quelle per-DJC, `numterms` ha una entrata per DJC. Ogni
- * buffer ha la lunghezza data dai getdjcnum*tot; un buffer NULL viene saltato. */
+/* bulk read of ALL the DJCs (reference getdjcs): the lists are the
+ * concatenation of the per-DJC ones, `numterms` has one entry per DJC. Each
+ * buffer has the length given by the getdjcnum*tot; a NULL buffer is skipped. */
 PRIMALrescodee PRIMAL_getdjcs(PRIMALtask_t t, PRIMALint64t *domidxlist,
         PRIMALint64t *afeidxlist, PRIMALrealt *b, PRIMALint64t *termsizelist,
         PRIMALint64t *numterms);
-/* violazione primale di un insieme di DJC (riferimento getpvioldjc): per ogni
- * djcidxlist[k] scrive viol[k] = min_i(max_j viol(T_ij)) letto sul punto
- * pubblicato e sul modello corrente. */
+/* primal violation of a set of DJCs (reference getpvioldjc): for each
+ * djcidxlist[k] writes viol[k] = min_i(max_j viol(T_ij)) read on the published
+ * point and on the current model. */
 PRIMALrescodee PRIMAL_getpvioldjc(PRIMALtask_t t, PRIMALsolt which,
         PRIMALint64t numdjcidx, const PRIMALint64t *djcidxlist, PRIMALrealt *viol);
-/* nomi dei DJC (putdjcname/getdjcname/getdjcnamelen del riferimento): buffer di
- * sizename byte, che deve contenere anche il terminatore; un rifiuto non scrive. */
+/* DJC names (reference putdjcname/getdjcname/getdjcnamelen): buffer of
+ * sizename bytes, which must also hold the terminator; a refusal does not write. */
 PRIMALrescodee PRIMAL_putdjcname(PRIMALtask_t t, PRIMALint64t djcidx, const char *name);
+/* Length of the name of DJC djcidx (0 if unnamed). */
 PRIMALrescodee PRIMAL_getdjcnamelen(PRIMALtask_t t, PRIMALint64t djcidx, int *len);
+/* Copies the name of DJC djcidx into the caller buffer. */
 PRIMALrescodee PRIMAL_getdjcname(PRIMALtask_t t, PRIMALint64t djcidx, int sizename, char *name);
 
-/* SDP (semi-definite): variabili bar X_j >= 0 (matrici simmetriche dim x dim)
- * e termini lineari in forma di prodotto interno <A^k, X_j> con matrici
- * simmetriche sparse dallo "matrix store" (appendsparsesymmat). */
+/* SDP (semi-definite): bar variables X_j >= 0 (dim x dim symmetric matrices)
+ * and linear terms as inner products <A^k, X_j> with sparse
+ * symmetric matrices from the "matrix store" (appendsparsesymmat). */
 PRIMALrescodee PRIMAL_appendsparsesymmat(PRIMALtask_t t, int dim, int nnz,
                                    const int *subi, const int *subj,
                                    const PRIMALrealt *val, int *idx);
-/* piu' matrici in una chiamata (riferimento appendsparsesymmatlist): dims[k] e
- * nz[k] danno la forma, subi/subj/valij sono concatenati, idx[k] restituisce gli
- * id. L'intera lista e' validata prima di appendere. */
+/* several matrices in one call (reference appendsparsesymmatlist): dims[k] and
+ * nz[k] give the shape, subi/subj/valij are concatenated, idx[k] returns the
+ * ids. The whole list is validated before appending. */
 PRIMALrescodee PRIMAL_appendsparsesymmatlist(PRIMALtask_t t, int num, const int *dims,
     const PRIMALint64t *nz, const int *subi, const int *subj, const PRIMALrealt *valij,
     PRIMALint64t *idx);
+/* Reads the sparse symmetric matrix stored at idx. */
 PRIMALrescodee PRIMAL_getsparsesymmat(PRIMALtask_t t, PRIMALint64t idx, PRIMALint64t maxlen,
     int *subi, int *subj, PRIMALrealt *valij);
+/* Appends `num` bar variables with the given dimensions. */
 PRIMALrescodee PRIMAL_appendbarvars(PRIMALtask_t t, int num, const int *dim);
-/* rimuove le variabili bar agli indici dati, rimappando i termini (riferimento
+/* removes the bar variables at the given indices, remapping the terms (reference
  * removebarvars). */
 PRIMALrescodee PRIMAL_removebarvars(PRIMALtask_t t, int num, const int *subset);
-/* vincolo i: aggiunge a (i) i termini scalari  sum_k val_k <A^{sub_k}, X_j> */
+/* constraint i: adds to (i) the scalar terms  sum_k val_k <A^{sub_k}, X_j> */
 PRIMALrescodee PRIMAL_putbaraij(PRIMALtask_t t, int i, int j, int num,
                            const int *sub, const PRIMALrealt *val);
-/* scrittura per blocchi di bar A (API piu' efficiente per SDP grandi):
- * il vincolo i vede sum_k val_k <A^{blk_sub_k}, X_{blk_j_k}> per k=0..num-1 */
+/* block write of bar A (more efficient API for large SDPs):
+ * constraint i sees sum_k val_k <A^{blk_sub_k}, X_{blk_j_k}> for k=0..num-1 */
 PRIMALrescodee PRIMAL_putbarablockij(PRIMALtask_t t, int i, int j, int num,
                                const int *blk_sub, const PRIMALrealt *blk_val);
-/* lettura dei termini bar A della coppia (i,j): elenco (symidx, coef).
- * Contratto degli accessori che riempiono buffer dell'utente (`T102`/`T104`):
- * maxnum e' la capienza di symidx/val e *num il numero di TERMINI di quella
- * coppia. Se lo spazio non basta la chiamata e' RIFIUTATA (ERR_ARG) senza aver
- * toccato nessun buffer e senza aver scritto *num: una lista troncata che
- * risponde OK e' indistinguibile da una lista completa, e un <A,X> costruito
- * sul prefisso e' un altro modello. Simmetrici e val entrambi NULL e' la porta
- * del solo conteggio (questa coppia non ha un getnum... per (i,j)) e non viene
- * mai rifiutata, perche' non scrive nulla; una (i,j) senza termini risponde 0
- * con OK -- verdetto vuoto, non rifiuto. */
+/* read of the bar A terms of the pair (i,j): list (symidx, coef).
+ * Contract of the accessors that fill user buffers (`T102`/`T104`):
+ * maxnum is the capacity of symidx/val and *num the number of TERMS of that
+ * pair. If the space is short the call is REFUSED (ERR_ARG) without having
+ * touched any buffer and without having written *num: a truncated list that
+ * answers OK is indistinguishable from a complete list, and an <A,X> built
+ * on the prefix is a different model. symidx and val both NULL is the door
+ * of the count only (this pair has no getnum... for (i,j)) and is never
+ * refused, because it writes nothing; an (i,j) with no terms answers 0
+ * with OK -- empty verdict, not refusal. */
 PRIMALrescodee PRIMAL_getbaraidxij(PRIMALtask_t t, int i, int j, int maxnum,
                              int *num, int *symidx, PRIMALrealt *val);
-/* lettura dei termini bar C della variabile j: elenco (symidx, coef), con lo
- * STESSO contratto di capienza e di rifiuto silenzioso-impossibile di sopra. */
+/* read of the bar C terms of variable j: list (symidx, coef), with the
+ * SAME capacity and impossible-silent-refusal contract as above. */
 PRIMALrescodee PRIMAL_getbarcidxj(PRIMALtask_t t, int j, int maxnum,
                              int *num, int *symidx, PRIMALrealt *val);
-/* Sparsita' e info per blocco di A-bar/C-bar (riferimento getbarasparsity/
- * getbaraidxinfo/getbaraidx e le varianti C). `idx` nomina un blocco: qui
- * `idx = i*numbarvar + j` per A-bar e `idx = j` per C-bar (convenzione di questo
- * solver: la vettorizzazione del riferimento non e' stata letta). */
+/* Sparsity and per-block info of A-bar/C-bar (reference getbarasparsity/
+ * getbaraidxinfo/getbaraidx and the C variants). `idx` names a block: here
+ * `idx = i*numbarvar + j` for A-bar and `idx = j` for C-bar (this solver's
+ * convention: the reference's vectorization was not read). */
 PRIMALrescodee PRIMAL_getbarasparsity(PRIMALtask_t t, PRIMALint64t maxnumnz,
                                       PRIMALint64t *numnz, PRIMALint64t *idxij);
+/* Number of stored entries in A-bar block idx. */
 PRIMALrescodee PRIMAL_getbaraidxinfo(PRIMALtask_t t, PRIMALint64t idx, PRIMALint64t *num);
+/* Reads A-bar block idx: its (i,j) and the term list. */
 PRIMALrescodee PRIMAL_getbaraidx(PRIMALtask_t t, PRIMALint64t idx, PRIMALint64t maxnum,
     int *i, int *j, PRIMALint64t *num, PRIMALint64t *sub, PRIMALrealt *weights);
+/* Sparsity pattern of C-bar over bar variables. */
 PRIMALrescodee PRIMAL_getbarcsparsity(PRIMALtask_t t, PRIMALint64t maxnumnz,
                                       PRIMALint64t *numnz, PRIMALint64t *idxj);
+/* Number of stored entries in C-bar block idx. */
 PRIMALrescodee PRIMAL_getbarcidxinfo(PRIMALtask_t t, PRIMALint64t idx, PRIMALint64t *num);
+/* Reads C-bar block idx: its variable j and the term list. */
 PRIMALrescodee PRIMAL_getbarcidx(PRIMALtask_t t, PRIMALint64t idx, PRIMALint64t maxnum,
     int *j, PRIMALint64t *num, PRIMALint64t *sub, PRIMALrealt *weights);
-/* Forma a triplette di blocco di A-bar e C-bar (riferimento
- * getbarablocktriplet/getbarcblocktriplet): una riga per ogni entrata memorizzata
- * del triangolo inferiore di ogni blocco. A: (i, j, k, l, val), C: (j, k, l, val);
- * i contatori danno il numero esatto di tali entrate. Capienza insufficiente con
- * buffer forniti = rifiuto senza scrivere. */
+/* Block-triplet form of A-bar and C-bar (reference
+ * getbarablocktriplet/getbarcblocktriplet): one row for every stored entry
+ * of the lower triangle of every block. A: (i, j, k, l, val), C: (j, k, l, val);
+ * the counters give the exact number of such entries. Insufficient capacity with
+ * buffers provided = refusal without writing. */
 PRIMALrescodee PRIMAL_getnumbarablocktriplets(PRIMALtask_t t, PRIMALint64t *num);
+/* Number of block triplets of C-bar. */
 PRIMALrescodee PRIMAL_getnumbarcblocktriplets(PRIMALtask_t t, PRIMALint64t *num);
+/* Reads A-bar as (i,j,k,l,val) block triplets; refusal if maxnum is short. */
 PRIMALrescodee PRIMAL_getbarablocktriplet(PRIMALtask_t t, PRIMALint64t maxnum, PRIMALint64t *num,
     int *subi, int *subj, int *subk, int *subl, PRIMALrealt *valijkl);
+/* Reads C-bar as (j,k,l,val) block triplets; refusal if maxnum is short. */
 PRIMALrescodee PRIMAL_getbarcblocktriplet(PRIMALtask_t t, PRIMALint64t maxnum, PRIMALint64t *num,
     int *subj, int *subk, int *subl, PRIMALrealt *valjkl);
-/* obiettivo: aggiunge  sum_k val_k <A^{sub_k}, X_j> */
+/* objective: adds  sum_k val_k <A^{sub_k}, X_j> */
 PRIMALrescodee PRIMAL_putbarcj(PRIMALtask_t t, int j, int num,
                          const int *sub, const PRIMALrealt *val);
-/* scritture bar in blocco (riferimento putbarablocktriplet/putbarcblocktriplet/
- * putbaraijlist): aggiungono termini al negozio. A-bar per entrate
- * (con,bar,k,l,val); C-bar (bar,k,l,val); la lista per (i,j). */
+/* block bar writes (reference putbarablocktriplet/putbarcblocktriplet/
+ * putbaraijlist): they add terms to the store. A-bar by entries
+ * (con,bar,k,l,val); C-bar (bar,k,l,val); the list by (i,j). */
 PRIMALrescodee PRIMAL_putbarablocktriplet(PRIMALtask_t t, PRIMALint64t num,
         const int *subi, const int *subj, const int *subk, const int *subl,
         const PRIMALrealt *valijkl);
+/* Adds C-bar block triplets (bar,k,l,val) to the store. */
 PRIMALrescodee PRIMAL_putbarcblocktriplet(PRIMALtask_t t, PRIMALint64t num,
         const int *subj, const int *subk, const int *subl, const PRIMALrealt *valjkl);
+/* Adds lists of matrices to the (i,j) entries of A-bar. */
 PRIMALrescodee PRIMAL_putbaraijlist(PRIMALtask_t t, PRIMALint64t num,
         const int *subi, const int *subj, const PRIMALint64t *alphaptrb,
         const PRIMALint64t *alphaptre, const PRIMALint64t *matidx,
         const PRIMALrealt *weights);
+/* Returns the number of bar variables. */
 PRIMALrescodee PRIMAL_getnumbarvar(PRIMALtask_t t, int *num);
-/* soluzione della variabile bar j (matrice dim_j x dim_j, row-major) */
+/* solution of the bar variable j (dim_j x dim_j matrix, row-major) */
 PRIMALrescodee PRIMAL_getbarxj(PRIMALtask_t t, PRIMALsolt which, int j, PRIMALrealt *xj);
-/* duale bar approssimato Z_j = C_j - sum_i y_i A^i (PSD per costruzione) */
+/* approximate bar dual Z_j = C_j - sum_i y_i A^i (PSD by construction) */
 PRIMALrescodee PRIMAL_getbarsj(PRIMALtask_t t, PRIMALsolt which, int j, PRIMALrealt *sj);
-/* superficie bar del riferimento: contatori (getnumbaranz/getnumbarcnz), nomi
- * (putbarvarname/getbarvarname/getbarvarnameindex/getbarvarnamelen), fette di
- * barx/barsj (getbarxslice/getbarsslice, blocchi densi d*d concatenati),
- * warm start (putbarxj/putbarsj) e il suggerimento di capacita'
+/* reference bar surface: counters (getnumbaranz/getnumbarcnz), names
+ * (putbarvarname/getbarvarname/getbarvarnameindex/getbarvarnamelen), slices of
+ * barx/barsj (getbarxslice/getbarsslice, concatenated dense d*d blocks),
+ * warm start (putbarxj/putbarsj) and the capacity hint
  * putmaxnumbarvar. */
 PRIMALrescodee PRIMAL_getnumbaranz(PRIMALtask_t t, PRIMALint64t *nz);
+/* Number of stored C-bar terms. */
 PRIMALrescodee PRIMAL_getnumbarcnz(PRIMALtask_t t, PRIMALint64t *nz);
+/* Sets the name of bar variable j (reference form). */
 PRIMALrescodee PRIMAL_putbarvarname(PRIMALtask_t t, int j, const char *name);
+/* Copies the name of bar variable i into the caller buffer. */
 PRIMALrescodee PRIMAL_getbarvarname(PRIMALtask_t t, int i, int sizename, char *name);
+/* reference bar name->index delegate (assignment fixed to 0). */
 PRIMALrescodee PRIMAL_getbarvarnameindex(PRIMALtask_t t, const char *somename,
                                          int *asgn, int *index);
+/* Length of the name of bar variable i (0 if unnamed). */
 PRIMALrescodee PRIMAL_getbarvarnamelen(PRIMALtask_t t, int i, int *len);
+/* Reads the bar solution over bar variables [first,last). */
 PRIMALrescodee PRIMAL_getbarxslice(PRIMALtask_t t, PRIMALsolt which, int first,
                                    int last, PRIMALint64t slicesize, PRIMALrealt *barxslice);
+/* Reads the bar dual over bar variables [first,last). */
 PRIMALrescodee PRIMAL_getbarsslice(PRIMALtask_t t, PRIMALsolt which, int first,
                                    int last, PRIMALint64t slicesize, PRIMALrealt *barsslice);
+/* Sets the bar solution of variable j (warm start). */
 PRIMALrescodee PRIMAL_putbarxj(PRIMALtask_t t, PRIMALsolt which, int j, const PRIMALrealt *barxj);
+/* Sets the bar dual of variable j (warm start). */
 PRIMALrescodee PRIMAL_putbarsj(PRIMALtask_t t, PRIMALsolt which, int j, const PRIMALrealt *barsj);
+/* Capacity hint for the number of bar variables (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumbarvar(PRIMALtask_t t, int maxnumbarvar);
 
-/* getter interni per I/O CBF (dimensioni bar, termini barC/barA, matrix store) */
+/* internal getters for CBF I/O (bar dimensions, barC/barA terms, matrix store) */
 PRIMALrescodee PRIMAL_getbarsize(PRIMALtask_t t, int j, int *dim);
+/* Dimension of bar variable j (reference getdimbarvarj). */
 PRIMALrescodee PRIMAL_getdimbarvarj(PRIMALtask_t t, int j, int *dimbarvarj);
+/* Packed length d(d+1)/2 of bar variable j. */
 PRIMALrescodee PRIMAL_getlenbarvarj(PRIMALtask_t t, int j, PRIMALint64t *lenbarvarj);
+/* Number of stored C-bar terms. */
 PRIMALrescodee PRIMAL_getnumbarcterm(PRIMALtask_t t, int *num);
+/* Reads stored C-bar term k (bar variable, symmetric id, coefficient). */
 PRIMALrescodee PRIMAL_getbarcitem(PRIMALtask_t t, int k, int *jbar, int *msym, PRIMALrealt *coef);
+/* Number of stored A-bar terms. */
 PRIMALrescodee PRIMAL_getnumbaraterm(PRIMALtask_t t, int *num);
+/* Reads stored A-bar term k (constraint, bar variable, symmetric id, coefficient). */
 PRIMALrescodee PRIMAL_getbaraitem(PRIMALtask_t t, int k, int *con, int *jbar, int *msym, PRIMALrealt *coef);
+/* Number of symmetric matrices in the matrix store. */
 PRIMALrescodee PRIMAL_getnumsymmat(PRIMALtask_t t, int *num);
+/* Reads the dimension and nonzero count of stored symmetric matrix m. */
 PRIMALrescodee PRIMAL_getsymmatinfo(PRIMALtask_t t, int m, int *dim, int *nnz);
+/* Reads stored entry e of symmetric matrix m as (i,j,val). */
 PRIMALrescodee PRIMAL_getsymmatentry(PRIMALtask_t t, int m, int e, int *i, int *j, PRIMALrealt *val);
 
 /* optimize + results */
 PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t);
 /* ---- basis (solvebasis) ---- */
-/* status keys per variabili/righe (PRIMAL PRIMALstakey): base, superbasic,
- * at lower, at upper. PRIMAL_SK_UNDEF per elementi mai impostati. */
+/* status keys for variables/rows (PRIMAL PRIMALstakey): basic, superbasic,
+ * at lower, at upper. PRIMAL_SK_UNDEF for elements never set. */
 typedef enum {
     PRIMAL_SK_UNDEF = 0,
     PRIMAL_SK_BAS = 1,
@@ -1506,68 +1801,83 @@ typedef enum {
     PRIMAL_SK_LOW = 3,
     PRIMAL_SK_UPR = 4
 } PRIMALstakeye;
-/* imposta/legge lo status della base (per righe: BAS/supbas equivalgono a
- * slack di base). Vettori lunghi numcon (skc) / numvar (skx). */
+/* sets/reads the basis status (for rows: BAS/supbas are equivalent to a
+ * basic slack). Vectors of length numcon (skc) / numvar (skx). */
 PRIMALrescodee PRIMAL_putskc(PRIMALtask_t t, PRIMALsolt which, const PRIMALstakeye *skc);
+/* Sets the variable status keys of the basis. */
 PRIMALrescodee PRIMAL_putskx(PRIMALtask_t t, PRIMALsolt which, const PRIMALstakeye *skx);
+/* Reads the row status keys of the basis. */
 PRIMALrescodee PRIMAL_getskc(PRIMALtask_t t, PRIMALsolt which, PRIMALstakeye *skc);
+/* Reads the variable status keys of the basis. */
 PRIMALrescodee PRIMAL_getskx(PRIMALtask_t t, PRIMALsolt which, PRIMALstakeye *skx);
+/* Name as string of a basis status key. */
 PRIMALrescodee PRIMAL_sktostr(PRIMALtask_t t, PRIMALstakeye sk, char *str);
+/* Parses a basis status key from its name. */
 PRIMALrescodee PRIMAL_strtosk(PRIMALtask_t t, const char *str, PRIMALstakeye *sk);
-/* valuta la base corrente (skc+skx): soluzione primal (basic solution) e
- * duali dal sistema della base, verificando primal/duale feasibility con i
- * getter pubblici; se la base non e' primal feasible (righe incompatibili)
- * ritorna ERR_INFEASIBLE; se non duale-feasible ottimizza da zero
- * (deviazione documentata: il simplesso del clone non fa warm start da
- * base arbitrarie, la base serve come specifica della SOLUZIONE basic). */
+/* evaluates the current basis (skc+skx): primal solution (basic solution) and
+ * duals from the basis system, verifying primal/dual feasibility with the
+ * public getters; if the basis is not primal feasible (incompatible rows)
+ * returns ERR_INFEASIBLE; if not dual-feasible it optimizes from scratch
+ * (documented deviation: the clone's simplex does not warm start from
+ * arbitrary bases, the basis serves as a specification of the BASIC SOLUTION). */
 PRIMALrescodee PRIMAL_solvebasis(PRIMALtask_t t);
-/* scrittura/lettura base in formato MPS BAS (XLOWER/XUPPER/XBASIC per
- * variabili, XBASIC per righe); nomi c%d / x%d coerenti con writedata */
+/* basis write/read in MPS BAS format (XLOWER/XUPPER/XBASIC for
+ * variables, XBASIC for rows); names c%d / x%d consistent with writedata */
 PRIMALrescodee PRIMAL_writebasis(PRIMALtask_t t, const char *filename);
+/* Reads a basis in MPS BAS format from the file. */
 PRIMALrescodee PRIMAL_readbasis(PRIMALtask_t t, const char *filename);
-/* solution I/O (riferimento writesolution/readsolution, writebsolution/
- * readbsolution, writebsolutionhandle). Deviazione dichiarata: il FORMATO del
- * riferimento non e' stato letto; qui c'e' un formato testuale e uno binario
- * propri che fanno round-trip. `*file` sono le stesse chiamate. */
+/* solution I/O (reference writesolution/readsolution, writebsolution/
+ * readbsolution, writebsolutionhandle). Declared deviation: the reference's
+ * FORMAT was not read; here there is a text format and a binary format
+ * of our own that round-trip. `*file` are the same calls. */
 typedef void (*PRIMALhwritefunc)(void *handle, const char *data, int len);
 typedef int (*PRIMALhreadfunc)(void *handle, char *buffer, int *len);
 PRIMALrescodee PRIMAL_writesolution(PRIMALtask_t t, PRIMALsolt whichsol, const char *filename);
+/* Reads a solution key from the text file. */
 PRIMALrescodee PRIMAL_readsolution(PRIMALtask_t t, PRIMALsolt whichsol, const char *filename);
+/* Writes all solution keys to the file. */
 PRIMALrescodee PRIMAL_writesolutionfile(PRIMALtask_t t, const char *filename);
+/* Reads all solution keys from the file. */
 PRIMALrescodee PRIMAL_readsolutionfile(PRIMALtask_t t, const char *filename);
+/* Writes the solution in the binary form (compress is stored, not applied). */
 PRIMALrescodee PRIMAL_writebsolution(PRIMALtask_t t, const char *filename, int compress);
+/* Reads the solution from the binary form. */
 PRIMALrescodee PRIMAL_readbsolution(PRIMALtask_t t, const char *filename, int compress);
+/* Writes the binary solution through a user write callback. */
 PRIMALrescodee PRIMAL_writebsolutionhandle(PRIMALtask_t t, PRIMALhwritefunc func,
                                            void *handle, int compress);
-/* forma JSON (JSOL): un oggetto piatto proprio. */
+/* JSON form (JSOL): a flat object of our own. */
 PRIMALrescodee PRIMAL_writejsonsol(PRIMALtask_t t, const char *filename);
+/* Reads a solution from a JSON file. */
 PRIMALrescodee PRIMAL_readjsonsol(PRIMALtask_t t, const char *filename);
+/* Reads a solution from a JSON string. */
 PRIMALrescodee PRIMAL_readjsonstring(PRIMALtask_t t, const char *data);
-/* ---- sensitivity (LP, post-ottimo) ----
- * Range del costo c_j per cui la SOLUZIONE corrente (x*, duali inclusi)
- * resta ottimale (solo problemi lineari gia' risolti). Ritorna
- * PRIMAL_RES_ERR_ARG se non applicabile. */
+/* ---- sensitivity (LP, post-optimal) ----
+ * Range of cost c_j for which the current SOLUTION (x*, duals included)
+ * stays optimal (linear problems already solved only). Returns
+ * PRIMAL_RES_ERR_ARG if not applicable. */
 PRIMALrescodee PRIMAL_costsensitivity(PRIMALtask_t t, int j,
                                  PRIMALrealt *lcost, PRIMALrealt *ucost);
-/* Range del bound RHS della riga i (lato attivo) per cui i DUALI correnti
- * restano ottimali: la riga resta al bound attivo con la stessa base. */
+/* Range of the RHS bound of row i (active side) for which the current DUALS
+ * stay optimal: the row stays at the active bound with the same basis. */
 PRIMALrescodee PRIMAL_rhssensitivity(PRIMALtask_t t, int i,
                                 PRIMALrealt *lrange, PRIMALrealt *urange);
 /* progress callback: called with a user info string after each major
  * iteration / solution update (PRIMAL PRIMAL_progresscb equivalent).
  * Return value ignored. Signature matches PRIMALcallbackfunc. */
 typedef void (*PRIMALprogresscb)(void *handle, const char *info);
+/* Sets the progress callback and its handle. */
 PRIMALrescodee PRIMAL_setprogresscb(PRIMALtask_t t, PRIMALprogresscb cb, void *handle);
-/* ---- callback generali (riferimento putcallbackfunc/getcallbackfunc/
+/* ---- general callbacks (reference putcallbackfunc/getcallbackfunc/
  * putresponsefunc) ----
- * Il callback generale riceve un codice di evento (i numeri sono quelli di
- * MSKcallbackcodee) e tre vettori di dettaglio; questo solver emette gli eventi
- * BEGIN/END di OPTIMIZER/READ/WRITE e, per la rotta che risponde, quelli di
- * SIMPLEX/INTPNT/MIO/CONIC con i vettori a NULL (dettaglio non
- * popolato, deviazione dichiarata). Il callback di risposta e' invocato quando
- * un solve termina con un codice diverso da PRIMAL_RES_OK.
- * Deviazione dichiarata: i codici per-iterazione (MSK_CALLBACK_IM_* e i
- * MSK_CALLBACK_INTPNT/CONIC/PRIMAL_SIMPLEX "di mezzo") non sono emessi. */
+ * The general callback receives an event code (the numbers are those of
+ * MSKcallbackcodee) and three detail vectors; this solver emits the
+ * BEGIN/END events of OPTIMIZER/READ/WRITE and, for the route that answers, those of
+ * SIMPLEX/INTPNT/MIO/CONIC with the vectors at NULL (detail not
+ * populated, declared deviation). The response callback is invoked when
+ * a solve ends with a code different from PRIMAL_RES_OK.
+ * Declared deviation: the per-iteration codes (MSK_CALLBACK_IM_* and the
+ * MSK_CALLBACK_INTPNT/CONIC/PRIMAL_SIMPLEX "middle" ones) are not emitted. */
 typedef enum {
     PRIMAL_CALLBACK_BEGIN_CONIC     = 1,
     PRIMAL_CALLBACK_BEGIN_INTPNT    = 15,
@@ -1586,14 +1896,15 @@ typedef enum {
     PRIMAL_CALLBACK_READ_OPF        = 95,
     PRIMAL_CALLBACK_READ_OPF_SECTION = 96,
     PRIMAL_CALLBACK_WRITE_OPF       = 107,
-    /* per-iterazione / solution-update (i "middle" del riferimento) */
+    /* per-iteration / solution-update (the reference's "middle" ones) */
     PRIMAL_CALLBACK_CONIC           = 34,
     PRIMAL_CALLBACK_PRIMAL_SIMPLEX  = 93,
     PRIMAL_CALLBACK_INTPNT          = 90,
-    /* sub-step interni */
+    /* internal sub-steps */
     PRIMAL_CALLBACK_IM_LU           = 79,
     PRIMAL_CALLBACK_IM_ORDER        = 84
 } PRIMALcallbackcodee;
+/* Name as string of a callback event code. */
 PRIMALrescodee PRIMAL_callbackcodetostr(PRIMALcallbackcodee code, char *str);
 
 typedef void (*PRIMALcallbackcb)(PRIMALtask_t task, void *handle,
@@ -1601,41 +1912,57 @@ typedef void (*PRIMALcallbackcb)(PRIMALtask_t task, void *handle,
     const PRIMALint32t *intinfo, const PRIMALint64t *lliinfo);
 typedef void (*PRIMALresponsecb)(PRIMALtask_t task, void *handle, PRIMALrescodee res);
 
+/* Sets the general event callback. */
 PRIMALrescodee PRIMAL_putcallbackfunc(PRIMALtask_t t, PRIMALcallbackcb cb, void *handle);
+/* Reads the general event callback and its handle. */
 PRIMALrescodee PRIMAL_getcallbackfunc(PRIMALtask_t t, PRIMALcallbackcb *cb, void **handle);
+/* Sets the response callback invoked on a non-OK solve code. */
 PRIMALrescodee PRIMAL_putresponsefunc(PRIMALtask_t t, PRIMALresponsecb cb, void *handle);
 /* name for the info strings of the progress callback (max 63 chars,
  * truncated like PRIMAL_setinfoconnname) */
 PRIMALrescodee PRIMAL_setinfoconnname(PRIMALtask_t t, const char *connname);
+/* Reads the primal variable vector of the solution. */
 PRIMALrescodee PRIMAL_getxx(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *xx);
+/* Reads the dual variable vector of the solution. */
 PRIMALrescodee PRIMAL_gety(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *y);
-/* warm start: fornisce un punto di partenza (usato dal percorso punto interno;
- * ignorato da simplex/MIP/coni). whichsol: PRIMAL_SOL_ITR o PRIMAL_SOL_BAS. */
+/* warm start: provides a starting point (used by the interior-point route;
+ * ignored by simplex/MIP/cones). whichsol: PRIMAL_SOL_ITR or PRIMAL_SOL_BAS. */
 PRIMALrescodee PRIMAL_putxx(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *xx);
+/* Provides a dual starting point for the interior-point route. */
 PRIMALrescodee PRIMAL_puty(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *y);
+/* Reads the lower-constraint slack vector of the solution. */
 PRIMALrescodee PRIMAL_getslc(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *slc);
+/* Reads the upper-constraint slack vector of the solution. */
 PRIMALrescodee PRIMAL_getsuc(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *suc);
+/* Reads the lower-variable slack vector of the solution. */
 PRIMALrescodee PRIMAL_getslx(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *slx);
+/* Reads the upper-variable slack vector of the solution. */
 PRIMALrescodee PRIMAL_getsux(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *sux);
+/* Reads the primal objective value. */
 PRIMALrescodee PRIMAL_getprimalobj(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *pobj);
+/* Reads the dual objective value. */
 PRIMALrescodee PRIMAL_getdualobj(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *dobj);
+/* Reads the solution status of the given key. */
 PRIMALrescodee PRIMAL_getsolsta(PRIMALtask_t t, PRIMALsolt which, PRIMALsolstae *solsta);
+/* Reads the problem status of the given key. */
 PRIMALrescodee PRIMAL_getprosta(PRIMALtask_t t, PRIMALsolt which, PRIMALprostae *prosta);
-/* `getsolution`: legge in una chiamata la soluzione completa (riferimento
- * MSK_getsolution). Ogni puntatore e' opzionale (NULL = salta). `skn` (chiavi di
- * stato dei coni) e' SK_UNDEF per ogni cono e `snx` (duale conico per variabile)
- * e' 0: deviazioni dichiarate (nessuna base per un blocco conico; il duale di un
- * cono vive dentro il blocco). Senza punto pubblicato i buffer del punto
- * rispondono ERR_ARG, come i getter singoli; gli stati si leggono lo stesso. */
+/* `getsolution`: reads the complete solution in one call (reference
+ * MSK_getsolution). Every pointer is optional (NULL = skip). `skn` (status
+ * keys of the cones) is SK_UNDEF for every cone and `snx` (conic dual per variable)
+ * is 0: declared deviations (no basis for a conic block; the dual of a
+ * cone lives inside the block). Without a published point the point buffers
+ * answer ERR_ARG, like the individual getters; the states are read all the same. */
 PRIMALrescodee PRIMAL_getsolution(PRIMALtask_t t, PRIMALsolt which,
     PRIMALprostae *problemsta, PRIMALsolstae *solutionsta,
     PRIMALstakeye *skc, PRIMALstakeye *skx, PRIMALstakeye *skn,
     PRIMALrealt *xc, PRIMALrealt *xx, PRIMALrealt *y,
     PRIMALrealt *slc, PRIMALrealt *suc, PRIMALrealt *slx, PRIMALrealt *sux,
     PRIMALrealt *snx);
+/* Reads the cone status keys (SK_UNDEF for every cone here). */
 PRIMALrescodee PRIMAL_getskn(PRIMALtask_t t, PRIMALsolt which, PRIMALstakeye *skn);
+/* Reads the per-variable conic dual vector (0 here: a declared deviation). */
 PRIMALrescodee PRIMAL_getsnx(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *snx);
-/* ---- Farkas certificates (raggi di infeasibilita', vettori) ----
+/* ---- Farkas certificates (infeasibility rays, vectors) ----
  * PRIMAL_getdualray fills y (numcon entries): a certificate that the primal has
  * no feasible point, measured as   sum_i y_i b_i(active) > 0  and  A'y <= 0
  * on every nonnegative variable (equality rows; see the ranged form below).
@@ -1651,41 +1978,50 @@ PRIMALrescodee PRIMAL_getsnx(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *snx)
  * for a problem with no solution. The same holds for a dual ray whose support
  * needs a variable-bound row: it has no one-entry-per-constraint image. */
 PRIMALrescodee PRIMAL_getdualray(PRIMALtask_t t, PRIMALrealt *y);
+/* Fills rho with a measured primal recession (unboundedness) ray. */
 PRIMALrescodee PRIMAL_getprimalray(PRIMALtask_t t, PRIMALrealt *rho);
-/* ---- solution quality: max violazioni primal/dual della soluzione ----
- * (misurate sui dati del problema con i getter; -1 se non applicabile) */
+/* ---- solution quality: max primal/dual violations of the solution ----
+ * (measured on the problem data with the getters; -1 if not applicable) */
 PRIMALrescodee PRIMAL_getprimalinfeas(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *pinf);
+/* Max dual violation of the solution (-1 if not applicable). */
 PRIMALrescodee PRIMAL_getdualinfeas(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *dinf);
-/* ---- solution information: violazioni per indice e riepilogo ----
- * Famiglia del riferimento (MOSEK 11.2.4): `getpviolcon`/`getpviolvar`/
- * `getpviolbarvar`/`getpviolcones` scrivono in `viol` la violazione primale
- * degli indici elencati in `sub` (che e' un vettore di indici, non un intervallo);
- * un indice fuori dominio, `viol`/`sub` null o nessuna soluzione sono
- * `PRIMAL_RES_ERR_ARG` **senza scrivere nulla**. `PRIMAL_getsolutioninfo` riporta
- * i massimi della famiglia piu' `pobj`/`dobj` (accetta NULL per i campi non
- * richiesti). La meta' primale e' esatta; la duale (dviol*) e' nella nostra
- * convenzione dei getter `y`/`slc`/`sux` (README «Dual conventions»), con i
- * membri di cono lasciati non misurati — v. il commento in `primal.c`. */
+/* ---- solution information: per-index violations and summary ----
+ * Reference family (MOSEK 11.2.4): `getpviolcon`/`getpviolvar`/
+ * `getpviolbarvar`/`getpviolcones` write into `viol` the primal violation
+ * of the indices listed in `sub` (which is a vector of indices, not an interval);
+ * an index out of domain, `viol`/`sub` null or no solution are
+ * `PRIMAL_RES_ERR_ARG` **without writing anything**. `PRIMAL_getsolutioninfo` reports
+ * the maxima of the family plus `pobj`/`dobj` (accepts NULL for the fields not
+ * requested). The primal half is exact; the dual one (dviol*) is in our
+ * convention of the `y`/`slc`/`sux` getters (README «Dual conventions»), with the
+ * cone members left unmeasured — see the comment in `primal.c`. */
 PRIMALrescodee PRIMAL_getpviolcon(PRIMALtask_t t, PRIMALsolt which, int num,
                                   const int *sub, PRIMALrealt *viol);
+/* Primal violation of the listed variables. */
 PRIMALrescodee PRIMAL_getpviolvar(PRIMALtask_t t, PRIMALsolt which, int num,
                                   const int *sub, PRIMALrealt *viol);
+/* Primal violation of the listed bar variables. */
 PRIMALrescodee PRIMAL_getpviolbarvar(PRIMALtask_t t, PRIMALsolt which, int num,
                                      const int *sub, PRIMALrealt *viol);
+/* Primal violation of the listed cones. */
 PRIMALrescodee PRIMAL_getpviolcones(PRIMALtask_t t, PRIMALsolt which, int num,
                                     const int *sub, PRIMALrealt *viol);
-/* La meta' duale della stessa famiglia. Stessa forma di `sub`/`viol` e stesso
- * contratto di rifiuto; i valori sono nella nostra convenzione dei getter
- * (README «Dual conventions», segno speculare al riferimento) e un membro di cono
- * resta non misurato in `dviolvar`. */
+/* The dual half of the same family. Same form of `sub`/`viol` and same
+ * refusal contract; the values are in our getter convention
+ * (README «Dual conventions», sign mirrored with respect to the reference) and a cone
+ * member stays unmeasured in `dviolvar`. */
 PRIMALrescodee PRIMAL_getdviolcon(PRIMALtask_t t, PRIMALsolt which, int num,
                                   const int *sub, PRIMALrealt *viol);
+/* Dual violation of the listed variables. */
 PRIMALrescodee PRIMAL_getdviolvar(PRIMALtask_t t, PRIMALsolt which, int num,
                                   const int *sub, PRIMALrealt *viol);
+/* Dual violation of the listed bar variables. */
 PRIMALrescodee PRIMAL_getdviolbarvar(PRIMALtask_t t, PRIMALsolt which, int num,
                                      const int *sub, PRIMALrealt *viol);
+/* Dual violation of the listed cones. */
 PRIMALrescodee PRIMAL_getdviolcones(PRIMALtask_t t, PRIMALsolt which, int num,
                                     const int *sub, PRIMALrealt *viol);
+/* Reports the solution's maxima plus pobj/dobj (NULL skips a field). */
 PRIMALrescodee PRIMAL_getsolutioninfo(PRIMALtask_t t, PRIMALsolt which,
     PRIMALrealt *pobj, PRIMALrealt *pviolcon, PRIMALrealt *pviolvar,
     PRIMALrealt *pviolbarvar, PRIMALrealt *pviolcone, PRIMALrealt *pviolitg,
@@ -1693,239 +2029,332 @@ PRIMALrescodee PRIMAL_getsolutioninfo(PRIMALtask_t t, PRIMALsolt which,
     PRIMALrealt *dviolbarvar, PRIMALrealt *dviolcone);
 /* ---- feasibility repair (elastic): min sum(s^- + s^+) s.t.
  * lo - s^- <= Ax <= up + s^+, lx - s^- <= x <= ux + s^+ ----
- * Riporta la soluzione riparata (x) nel task. */
+ * Brings the repaired solution (x) back into the task. */
 PRIMALrescodee PRIMAL_feasrepair(PRIMALtask_t t);
+/* Reads a solution item (`part`) over [first,last). */
 PRIMALrescodee PRIMAL_getsolutionslice(PRIMALtask_t t, PRIMALsolt which, int part,
                                  int first, int last, PRIMALrealt *values);
-/* Fette dei vettori di soluzione (riferimento: getxxslice, getyslice,
+/* Slices of the solution vectors (reference: getxxslice, getyslice,
  * getslcslice, getsucslice, getslxslice, getsuxslice, getskxslice, getskcslice)
- * e costo ridotto `(s_l^x)_j - (s_u^x)_j` (getreducedcosts). Forma [first,last),
- * `last-first` entrate; un rifiuto non scrive. */
+ * and reduced cost `(s_l^x)_j - (s_u^x)_j` (getreducedcosts). Form [first,last),
+ * `last-first` entries; a refusal does not write. */
 PRIMALrescodee PRIMAL_getxxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *xx);
+/* Reads the dual vector over [first,last). */
 PRIMALrescodee PRIMAL_getyslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *y);
+/* Reads the lower-constraint slacks over [first,last). */
 PRIMALrescodee PRIMAL_getslcslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *slc);
+/* Reads the upper-constraint slacks over [first,last). */
 PRIMALrescodee PRIMAL_getsucslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *suc);
+/* Reads the lower-variable slacks over [first,last). */
 PRIMALrescodee PRIMAL_getslxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *slx);
+/* Reads the upper-variable slacks over [first,last). */
 PRIMALrescodee PRIMAL_getsuxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *sux);
+/* Reads the reduced costs over [first,last) (== -(slx+sux)). */
 PRIMALrescodee PRIMAL_getreducedcosts(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *redcosts);
+/* Reads the variable basis keys over [first,last). */
 PRIMALrescodee PRIMAL_getskxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALstakeye *skx);
+/* Reads the row basis keys over [first,last). */
 PRIMALrescodee PRIMAL_getskcslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALstakeye *skc);
+/* Writes the variable basis keys over [first,last). */
 PRIMALrescodee PRIMAL_putskxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALstakeye *skx);
+/* Writes the row basis keys over [first,last). */
 PRIMALrescodee PRIMAL_putskcslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALstakeye *skc);
-/* norme 2 della soluzione primale: ||x^c||, ||x||, ||X_bar||_F. */
+/* 2-norms of the primal solution: ||x^c||, ||x||, ||X_bar||_F. */
 PRIMALrescodee PRIMAL_getprimalsolutionnorms(PRIMALtask_t t, PRIMALsolt which,
         PRIMALrealt *nrmxc, PRIMALrealt *nrmxx, PRIMALrealt *nrmbarx);
+/* 2-norms of the dual solution: ||y||, ||slc||, ||suc||, ||slx||, ||sux||, ||snx||, ||Z_bar||_F. */
 PRIMALrescodee PRIMAL_getdualsolutionnorms(PRIMALtask_t t, PRIMALsolt which,
         PRIMALrealt *nrmy, PRIMALrealt *nrmslc, PRIMALrealt *nrmsuc,
         PRIMALrealt *nrmslx, PRIMALrealt *nrmsux, PRIMALrealt *nrmsnx,
         PRIMALrealt *nrmbars);
-/* `x^c`: il valore delle variabili di vincolo (riferimento getxc/getxcslice):
- * il primo membro della riga, letto da `row_activity` (scalare | quadratico |
- * barra) -- la stessa lettura di `getpviolcon`. */
+/* `x^c`: the value of the constraint variables (reference getxc/getxcslice):
+ * the first member of the row, read from `row_activity` (scalar | quadratic |
+ * bar) -- the same read as `getpviolcon`. */
 PRIMALrescodee PRIMAL_getxc(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *xc);
+/* Reads the row-activity vector x^c over [first,last). */
 PRIMALrescodee PRIMAL_getxcslice(PRIMALtask_t t, PRIMALsolt which, int first, int last, PRIMALrealt *xc);
-/* setter di x^c e s_n^x (riferimento putxc/putxcslice/putsnx/putsnxslice/
- * getsnxslice). s_n^x non e' calcolato da nessun percorso: e' storage. */
+/* setters of x^c and s_n^x (reference putxc/putxcslice/putsnx/putsnxslice/
+ * getsnxslice). s_n^x is not computed by any route: it is storage. */
 PRIMALrescodee PRIMAL_putxc(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *xc);
+/* Writes the row-activity vector x^c over [first,last). */
 PRIMALrescodee PRIMAL_putxcslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                  const PRIMALrealt *xc);
+/* Writes the s_n^x storage vector. */
 PRIMALrescodee PRIMAL_putsnx(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *snx);
+/* Writes the s_n^x storage vector over [first,last). */
 PRIMALrescodee PRIMAL_putsnxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALrealt *snx);
+/* Reads the s_n^x storage vector over [first,last). */
 PRIMALrescodee PRIMAL_getsnxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   PRIMALrealt *snx);
-/* setter dei vettori di soluzione (riferimento putslc/putsuc/putslx/putsux,
- * putxxslice/putyslice/putslxslice/putsuxslice): scrivono nel buffer del punto
- * (esiste dopo il primo opt_prepare); una fetta e' [first, last) con
- * last-first entrate; un rifiuto non scrive. */
+/* setters of the solution vectors (reference putslc/putsuc/putslx/putsux,
+ * putxxslice/putyslice/putslxslice/putsuxslice): they write into the point buffer
+ * (exists after the first opt_prepare); a slice is [first, last) with
+ * last-first entries; a refusal does not write. */
 PRIMALrescodee PRIMAL_putslc(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *slc);
+/* Writes the upper-constraint slack vector. */
 PRIMALrescodee PRIMAL_putsuc(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *suc);
+/* Writes the lower-variable slack vector. */
 PRIMALrescodee PRIMAL_putslx(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *slx);
+/* Writes the upper-variable slack vector. */
 PRIMALrescodee PRIMAL_putsux(PRIMALtask_t t, PRIMALsolt which, const PRIMALrealt *sux);
+/* Writes the primal vector over [first,last). */
 PRIMALrescodee PRIMAL_putxxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                  const PRIMALrealt *xx);
+/* Writes the dual vector over [first,last). */
 PRIMALrescodee PRIMAL_putyslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                 const PRIMALrealt *y);
+/* Writes the lower-variable slacks over [first,last). */
 PRIMALrescodee PRIMAL_putslxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALrealt *slx);
+/* Writes the upper-variable slacks over [first,last). */
 PRIMALrescodee PRIMAL_putsuxslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALrealt *sux);
+/* Writes the lower-constraint slacks over [first,last). */
 PRIMALrescodee PRIMAL_putslcslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALrealt *slc);
+/* Writes the upper-constraint slacks over [first,last). */
 PRIMALrescodee PRIMAL_putsucslice(PRIMALtask_t t, PRIMALsolt which, int first, int last,
                                   const PRIMALrealt *suc);
+/* Writes the same bound to the listed variables. */
 PRIMALrescodee PRIMAL_putvarboundlistconst(PRIMALtask_t t, int num, const int *sub,
         PRIMALboundkeye bkx, PRIMALrealt blx, PRIMALrealt bux);
+/* Writes the same bound to the listed constraints. */
 PRIMALrescodee PRIMAL_putconboundlistconst(PRIMALtask_t t, int num, const int *sub,
         PRIMALboundkeye bkc, PRIMALrealt blc, PRIMALrealt buc);
 /* write the problem in a readable text form (debugging) */
 PRIMALrescodee PRIMAL_writedata(PRIMALtask_t t, const char *filename);
+/* Reads a problem from a file in a format known by extension/content. */
 PRIMALrescodee PRIMAL_readdata(PRIMALtask_t t, const char *filename);
-/* forme del riferimento attorno a readdata/writedata (il formato dichiarato non
- * cambia cio' che si legge: il lettore riconosce il file dal contenuto) e
- * `getapiecenumnz`, i nonnulli di A in un pezzo rettangolare. */
+/* reference forms around readdata/writedata (the declared format does not
+ * change what is read: the reader recognizes the file by content) and
+ * `getapiecenumnz`, the nonzeros of A in a rectangular piece. */
 PRIMALrescodee PRIMAL_readdataautoformat(PRIMALtask_t t, const char *filename);
+/* Reads a file in the declared data format and compression (gzip/zstd refused). */
 PRIMALrescodee PRIMAL_readdataformat(PRIMALtask_t t, const char *filename,
                                      PRIMALdataformate format,
                                      PRIMALcompresstypee compress);
+/* Reads a task from a file (form of readdata). */
 PRIMALrescodee PRIMAL_readtask(PRIMALtask_t t, const char *filename);
+/* Writes a task to a file (form of writedata). */
 PRIMALrescodee PRIMAL_writetask(PRIMALtask_t t, const char *filename);
+/* Number of A nonzeros in the rectangular piece [firsti,lasti) x [firstj,lastj). */
 PRIMALrescodee PRIMAL_getapiecenumnz(PRIMALtask_t t, int firsti, int lasti,
                                      int firstj, int lastj, int *numnz);
 
 /* logging callback: void (*)(void *handle, const char *msg) */
 typedef void (*PRIMALlogcb)(void *handle, const char *msg);
+/* Sets the logging callback and its handle. */
 PRIMALrescodee PRIMAL_setlogcb(PRIMALtask_t t, PRIMALlogcb logcb, void *loghandle);
+/* Links a stream callback to one task stream. */
 PRIMALrescodee PRIMAL_linkfunctotaskstream(PRIMALtask_t t, PRIMALstreamtypee which,
                                      void *handle, PRIMALstreamfunc func);
-/* stream su file, stream di env, echo (riferimento linkfileto*stream,
- * linkfunctoenvstream, unlinkfuncfrom*stream, echo*). Lo stream di env e'
- * ereditato dai task creati dopo. */
+/* file stream, env stream, echo (reference linkfileto*stream,
+ * linkfunctoenvstream, unlinkfuncfrom*stream, echo*). The env stream is
+ * inherited by tasks created afterwards. */
 PRIMALrescodee PRIMAL_linkfiletotaskstream(PRIMALtask_t t, PRIMALstreamtypee which,
                                            const char *filename, int append);
+/* Unlinks a stream callback from one task stream. */
 PRIMALrescodee PRIMAL_unlinkfuncfromtaskstream(PRIMALtask_t t, PRIMALstreamtypee which);
+/* Formats a message into the task stream (printf-style). */
 PRIMALrescodee PRIMAL_echotask(PRIMALtask_t t, PRIMALstreamtypee which, const char *format, ...);
+/* Links a file to one environment stream. */
 PRIMALrescodee PRIMAL_linkfiletoenvstream(PRIMALenv_t env, PRIMALstreamtypee which,
                                           const char *filename, int append);
+/* Links a callback to one environment stream. */
 PRIMALrescodee PRIMAL_linkfunctoenvstream(PRIMALenv_t env, PRIMALstreamtypee which,
                                           void *handle, PRIMALstreamfunc func);
+/* Unlinks a stream callback from one environment stream. */
 PRIMALrescodee PRIMAL_unlinkfuncfromenvstream(PRIMALenv_t env, PRIMALstreamtypee which);
+/* Formats a message into the environment stream (printf-style). */
 PRIMALrescodee PRIMAL_echoenv(PRIMALenv_t env, PRIMALstreamtypee which, const char *format, ...);
+/* Prints the introductory banner to the environment stream. */
 PRIMALrescodee PRIMAL_echointro(PRIMALenv_t env, int longver);
 
-/* ---- parita' del riferimento: parametri long, generatori di nomi, diagnostica,
+/* ---- reference parity: long parameters, name generators, diagnostics,
  * optimize*, repair/sensitivity, toconic ---- */
+/* Reads a long (64-bit) integer parameter by id. */
 PRIMALrescodee PRIMAL_getlintparam(PRIMALtask_t t, int param, PRIMALint64t *parvalue);
+/* Sets a long (64-bit) integer parameter by id. */
 PRIMALrescodee PRIMAL_putlintparam(PRIMALtask_t t, int param, PRIMALint64t parvalue);
+/* Sets a parameter by name and string value. */
 PRIMALrescodee PRIMAL_putparam(PRIMALtask_t t, const char *parname, const char *parvalue);
+/* Writes the parameter settings to a file. */
 PRIMALrescodee PRIMAL_writeparamfile(PRIMALtask_t t, const char *filename);
+/* Reads parameter settings from a file. */
 PRIMALrescodee PRIMAL_readparamfile(PRIMALtask_t t, const char *filename);
+/* Generates variable names from a format and axis description. */
 PRIMALrescodee PRIMAL_generatevarnames(PRIMALtask_t t, int num, const int *subj, const char *fmt,
         int ndims, const int *dims, const PRIMALint64t *sp, int numnamedaxis,
         const int *namedaxisidxs, PRIMALint64t numnames, const char **names);
+/* Generates constraint names from a format and axis description. */
 PRIMALrescodee PRIMAL_generateconnames(PRIMALtask_t t, int num, const int *subi, const char *fmt,
         int ndims, const int *dims, const PRIMALint64t *sp, int numnamedaxis,
         const int *namedaxisidxs, PRIMALint64t numnames, const char **names);
+/* Generates cone-block names from a format and axis description. */
 PRIMALrescodee PRIMAL_generateconenames(PRIMALtask_t t, int num, const int *subk, const char *fmt,
         int ndims, const int *dims, const PRIMALint64t *sp, int numnamedaxis,
         const int *namedaxisidxs, PRIMALint64t numnames, const char **names);
+/* Generates bar-variable names from a format and axis description. */
 PRIMALrescodee PRIMAL_generatebarvarnames(PRIMALtask_t t, int num, const int *subj, const char *fmt,
         int ndims, const int *dims, const PRIMALint64t *sp, int numnamedaxis,
         const int *namedaxisidxs, PRIMALint64t numnames, const char **names);
+/* Generates ACC names from a format and axis description. */
 PRIMALrescodee PRIMAL_generateaccnames(PRIMALtask_t t, PRIMALint64t num, const PRIMALint64t *sub,
         const char *fmt, int ndims, const int *dims, const PRIMALint64t *sp, int numnamedaxis,
         const int *namedaxisidxs, PRIMALint64t numnames, const char **names);
+/* Generates DJC names from a format and axis description. */
 PRIMALrescodee PRIMAL_generatedjcnames(PRIMALtask_t t, PRIMALint64t num, const PRIMALint64t *sub,
         const char *fmt, int ndims, const int *dims, const PRIMALint64t *sp, int numnamedaxis,
         const int *namedaxisidxs, PRIMALint64t numnames, const char **names);
+/* Reads cone k's type, parameter and member count. */
 PRIMALrescodee PRIMAL_getconeinfo(PRIMALtask_t t, int k, PRIMALconetypee *ct,
                                   PRIMALrealt *conepar, int *nummem);
+/* Prints the parameter settings to stdout. */
 PRIMALrescodee PRIMAL_printparam(PRIMALtask_t t);
+/* Prints a read summary on the stream (stdout). */
 PRIMALrescodee PRIMAL_readsummary(PRIMALtask_t t, int whichstream);
+/* Optimizes and returns the termination code. */
 PRIMALrescodee PRIMAL_optimizetrm(PRIMALtask_t t, PRIMALrescodee *trmcode);
+/* Optimizes several tasks (optionally in parallel) and returns codes. */
 PRIMALrescodee PRIMAL_optimizebatch(PRIMALenv_t env, int israce, PRIMALrealt maxtime,
         int numthreads, PRIMALint64t numtask, const PRIMALtask_t *task,
         PRIMALrescodee *trmcode, PRIMALrescodee *rcode);
+/* Elastic primal repair with the given row/column weights. */
 PRIMALrescodee PRIMAL_primalrepair(PRIMALtask_t t, const PRIMALrealt *wlc,
         const PRIMALrealt *wuc, const PRIMALrealt *wlx, const PRIMALrealt *wux);
+/* Dual sensitivity ranges for the listed variables. */
 PRIMALrescodee PRIMAL_dualsensitivity(PRIMALtask_t t, int numj, const int *subj,
         PRIMALrealt *leftpricej, PRIMALrealt *rightpricej,
         PRIMALrealt *leftrangej, PRIMALrealt *rightrangej);
+/* Primal sensitivity ranges for the listed rows and variables. */
 PRIMALrescodee PRIMAL_primalsensitivity(PRIMALtask_t t, int numi, const int *subi,
         const int *marki, int numj, const int *subj, const int *markj,
         PRIMALrealt *leftpricei, PRIMALrealt *rightpricei, PRIMALrealt *leftrangei,
         PRIMALrealt *rightrangei, PRIMALrealt *leftpricej, PRIMALrealt *rightpricej,
         PRIMALrealt *leftrangej, PRIMALrealt *rightrangej);
+/* Rewrites the model in conic form. */
 PRIMALrescodee PRIMAL_toconic(PRIMALtask_t t);
-/* ACC in stile put, AFE/coni/barA per riga */
+/* put-style ACC, AFE/cones/barA per row */
 PRIMALrescodee PRIMAL_putacc(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t domidx,
         PRIMALint64t numafeidx, const PRIMALint64t *afeidxlist, const PRIMALrealt *b);
+/* Writes the descriptions of several ACCs at once. */
 PRIMALrescodee PRIMAL_putacclist(PRIMALtask_t t, PRIMALint64t numaccs,
         const PRIMALint64t *accidxs, const PRIMALint64t *domidxs, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidxlist, const PRIMALrealt *b);
+/* Writes several AFE rows from blocked index/value data. */
 PRIMALrescodee PRIMAL_putafefrowlist(PRIMALtask_t t, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidx, const int *numnzrow, const PRIMALint64t *ptrrow,
         PRIMALint64t lenidxval, const int *varidx, const PRIMALrealt *val);
+/* Rewrites cone k with the given type, parameter and members. */
 PRIMALrescodee PRIMAL_putcone(PRIMALtask_t t, int k, PRIMALconetypee ct, PRIMALrealt conepar,
                               int nummem, const int *submem);
+/* Writes several A-bar rows from blocked matrix lists. */
 PRIMALrescodee PRIMAL_putbararowlist(PRIMALtask_t t, int num, const int *subi,
         const PRIMALint64t *ptrb, const PRIMALint64t *ptre, const int *subj,
         const PRIMALint64t *nummat, const PRIMALint64t *matidx, const PRIMALrealt *weights);
-/* API di soluzione in stile "new" e setter per indice */
+/* "new"-style solution API and per-index setters */
 PRIMALrescodee PRIMAL_solutiondef(PRIMALtask_t t, PRIMALsolt which, int *isdef);
+/* Sets the solution entry of constraint i (key, x, sl, su). */
 PRIMALrescodee PRIMAL_putconsolutioni(PRIMALtask_t t, int i, PRIMALsolt which,
         PRIMALstakeye sk, PRIMALrealt x, PRIMALrealt sl, PRIMALrealt su);
+/* Sets the dual solution entry of constraint i. */
 PRIMALrescodee PRIMAL_putsolutionyi(PRIMALtask_t t, int i, PRIMALsolt which, PRIMALrealt y);
+/* Sets the solution entry of variable j (key, x, sl, su, sn). */
 PRIMALrescodee PRIMAL_putvarsolutionj(PRIMALtask_t t, int j, PRIMALsolt which,
         PRIMALstakeye sk, PRIMALrealt x, PRIMALrealt sl, PRIMALrealt su, PRIMALrealt sn);
+/* Reads the full solution including the ACC doty vector. */
 PRIMALrescodee PRIMAL_getsolutionnew(PRIMALtask_t t, PRIMALsolt which, PRIMALprostae *problemsta,
         PRIMALsolstae *solutionsta, PRIMALstakeye *skc, PRIMALstakeye *skx, PRIMALstakeye *skn,
         PRIMALrealt *xc, PRIMALrealt *xx, PRIMALrealt *y, PRIMALrealt *slc, PRIMALrealt *suc,
         PRIMALrealt *slx, PRIMALrealt *sux, PRIMALrealt *snx, PRIMALrealt *doty);
+/* Writes the full solution including the ACC doty vector. */
 PRIMALrescodee PRIMAL_putsolutionnew(PRIMALtask_t t, PRIMALsolt which, const PRIMALstakeye *skc,
         const PRIMALstakeye *skx, const PRIMALstakeye *skn, const PRIMALrealt *xc,
         const PRIMALrealt *xx, const PRIMALrealt *y, const PRIMALrealt *slc,
         const PRIMALrealt *suc, const PRIMALrealt *slx, const PRIMALrealt *sux,
         const PRIMALrealt *snx, const PRIMALrealt *doty);
+/* Writes the full solution (without doty). */
 PRIMALrescodee PRIMAL_putsolution(PRIMALtask_t t, PRIMALsolt which, const PRIMALstakeye *skc,
         const PRIMALstakeye *skx, const PRIMALstakeye *skn, const PRIMALrealt *xc,
         const PRIMALrealt *xx, const PRIMALrealt *y, const PRIMALrealt *slc,
         const PRIMALrealt *suc, const PRIMALrealt *slx, const PRIMALrealt *sux,
         const PRIMALrealt *snx);
+/* Reports the solution maxima including the ACC/DJC fields. */
 PRIMALrescodee PRIMAL_getsolutioninfonew(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *pobj,
         PRIMALrealt *pviolcon, PRIMALrealt *pviolvar, PRIMALrealt *pviolbarvar,
         PRIMALrealt *pviolcone, PRIMALrealt *pviolacc, PRIMALrealt *pvioldjc,
         PRIMALrealt *pviolitg, PRIMALrealt *dobj, PRIMALrealt *dviolcon,
         PRIMALrealt *dviolvar, PRIMALrealt *dviolbarvar, PRIMALrealt *dviolcone,
         PRIMALrealt *dviolacc);
-/* I/O a stringa/handle, basis solve, Cholesky sparsa, clone/duale/subproblem */
+/* string/handle I/O, basis solve, sparse Cholesky, clone/dual/subproblem */
 PRIMALrescodee PRIMAL_readlpstring(PRIMALtask_t t, const char *data);
+/* Reads an OPF problem from a string (no parser: ERR_ARG). */
 PRIMALrescodee PRIMAL_readopfstring(PRIMALtask_t t, const char *data);
+/* Reads a PTF problem from a string (no parser: ERR_ARG). */
 PRIMALrescodee PRIMAL_readptfstring(PRIMALtask_t t, const char *data);
+/* Reads task data through a user read callback. */
 PRIMALrescodee PRIMAL_readdatahandle(PRIMALtask_t t, PRIMALhreadfunc hread, void *h,
                                      int format, int compress, const char *path);
+/* Writes task data through a user write callback. */
 PRIMALrescodee PRIMAL_writedatahandle(PRIMALtask_t t, PRIMALhwritefunc func, void *handle,
                                       int format, int compress);
+/* Initializes a basis solve; writes the basis variable indices. */
 PRIMALrescodee PRIMAL_initbasissolve(PRIMALtask_t t, int *basis);
+/* Solves against the initialized basis (forward or transposed). */
 PRIMALrescodee PRIMAL_solvewithbasis(PRIMALtask_t t, int transp, int numnz, int *sub,
                                      PRIMALrealt *val, int *numnzout);
+/* Condition estimates of the basis and its inverse. */
 PRIMALrescodee PRIMAL_basiscond(PRIMALtask_t t, PRIMALrealt *nrmbasis, PRIMALrealt *nrminvbasis);
+/* Sparse Cholesky of a symmetric matrix with the given ordering. */
 PRIMALrescodee PRIMAL_computesparsecholesky(PRIMALenv_t env, int numthreads, int ordermethod,
         PRIMALrealt tolsingular, int n, const int *anzc, const PRIMALint64t *aptrc,
         const int *asubc, const PRIMALrealt *avalc, int **perm, PRIMALrealt **diag,
         int **lnzc, PRIMALint64t **lptrc, PRIMALint64t *lensubnval, int **lsubc,
         PRIMALrealt **lvalc);
+/* Deep-copies the task into clonedtask. */
 PRIMALrescodee PRIMAL_clonetask(PRIMALtask_t t, PRIMALtask_t *clonedtask);
+/* Builds the dual problem into dualtask (restricted form). */
 PRIMALrescodee PRIMAL_getdualproblem(PRIMALtask_t t, PRIMALtask_t *dualtask);
+/* Builds an infeasible subproblem of the given solution into inftask. */
 PRIMALrescodee PRIMAL_getinfeasiblesubproblem(PRIMALtask_t t, PRIMALsolt which,
                                               PRIMALtask_t *inftask);
 
-/* ---- algebra lineare (riferimento, gruppo "Linear algebra") ----
- * Le matrici dense sono COLONNA-major (la convenzione del riferimento). `uplo` e
- * `transpose` hanno i valori di MSKuploe/MSKtransposee (LO 0/UP 1, NO 0/YES 1). */
+/* ---- linear algebra (reference, "Linear algebra" group) ----
+ * Dense matrices are COLUMN-major (the reference convention). `uplo` and
+ * `transpose` have the values of MSKuploe/MSKtransposee (LO 0/UP 1, NO 0/YES 1). */
 typedef enum { PRIMAL_TRANSPOSE_NO = 0, PRIMAL_TRANSPOSE_YES = 1 } PRIMALtransposee;
 typedef enum { PRIMAL_UPLO_LO = 0, PRIMAL_UPLO_UP = 1 } PRIMALUploe;
 
+/* Dot product x'y. */
 PRIMALrescodee PRIMAL_dot(PRIMALenv_t env, int n, const PRIMALrealt *x,
                           const PRIMALrealt *y, PRIMALrealt *xty);
+/* y += alpha*x. */
 PRIMALrescodee PRIMAL_axpy(PRIMALenv_t env, int n, PRIMALrealt alpha,
                            const PRIMALrealt *x, PRIMALrealt *y);
+/* y = alpha*op(a)*x + beta*y. */
 PRIMALrescodee PRIMAL_gemv(PRIMALenv_t env, PRIMALtransposee transa, int m, int n,
                            PRIMALrealt alpha, const PRIMALrealt *a, const PRIMALrealt *x,
                            PRIMALrealt beta, PRIMALrealt *y);
+/* c = alpha*op(a)*op(b) + beta*c. */
 PRIMALrescodee PRIMAL_gemm(PRIMALenv_t env, PRIMALtransposee transa, PRIMALtransposee transb,
                            int m, int n, int k, PRIMALrealt alpha, const PRIMALrealt *a,
                            const PRIMALrealt *b, PRIMALrealt beta, PRIMALrealt *c);
+/* c = alpha*a*op(a) + beta*c (symmetric rank-k update). */
 PRIMALrescodee PRIMAL_syrk(PRIMALenv_t env, PRIMALUploe uplo, PRIMALtransposee trans, int n,
                            int k, PRIMALrealt alpha, const PRIMALrealt *a, PRIMALrealt beta,
                            PRIMALrealt *c);
+/* Cholesky factorization of a dense symmetric positive definite matrix. */
 PRIMALrescodee PRIMAL_potrf(PRIMALenv_t env, PRIMALUploe uplo, int n, PRIMALrealt *a);
+/* Eigenvalues of a dense symmetric matrix. */
 PRIMALrescodee PRIMAL_syeig(PRIMALenv_t env, PRIMALUploe uplo, int n, const PRIMALrealt *a,
                             PRIMALrealt *w);
+/* Eigenvalues (and eigenvectors) of a dense symmetric matrix. */
 PRIMALrescodee PRIMAL_syevd(PRIMALenv_t env, PRIMALUploe uplo, int n, PRIMALrealt *a,
                             PRIMALrealt *w);
+/* Triangular solve with a sparse lower-triangular Cholesky factor. */
 PRIMALrescodee PRIMAL_sparsetriangularsolvedense(PRIMALenv_t env, PRIMALtransposee transposed,
         int n, const int *lnzc, const PRIMALint64t *lptrc, PRIMALint64t lensubnval,
         const int *lsubc, const PRIMALrealt *lvalc, PRIMALrealt *b);
@@ -1935,8 +2364,10 @@ PRIMALrescodee PRIMAL_sparsetriangularsolvedense(PRIMALenv_t env, PRIMALtranspos
  * written, `conv` = input units consumed.  Declared deviation: the reference's
  * exact len/conv convention was not read (not invented). */
 typedef wchar_t PRIMALwchart;
+/* Converts a UTF-8 string to wide characters. */
 PRIMALrescodee PRIMAL_utf8towchar(size_t outputlen, size_t *len, size_t *conv,
                                   PRIMALwchart *output, const char *input);
+/* Converts a wide-character string to UTF-8. */
 PRIMALrescodee PRIMAL_wchartoutf8(size_t outputlen, size_t *len, size_t *conv,
                                   char *output, const PRIMALwchart *input);
 

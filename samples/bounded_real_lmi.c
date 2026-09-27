@@ -41,6 +41,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the Bounded Real Lemma SDP for the first-order SISO system. */
 int main(void) {
     const double B = 1.0, C = 1.0, D = 0.0;   /* SISO, A=-1, |CB|/|A| = 1 */
     PRIMALenv_t env; PRIMALtask_t t;

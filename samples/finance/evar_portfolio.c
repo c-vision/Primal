@@ -149,6 +149,7 @@ static int evar_sdp(double *obj_out, double *x_out, double *evar_out) {
     return ok;
 }
 
+/* Solve the EVaR conic model and check it against brute force. */
 int main(void) {
     double obj = 0.0, x[NA] = {0}, ev = 0.0;
     int ok = evar_sdp(&obj, x, &ev);

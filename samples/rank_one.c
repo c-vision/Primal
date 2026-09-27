@@ -50,6 +50,7 @@
 static const double XP[NPTS + NF][NF] = {{1, 0}, {1, 1}, {0, 1}, {0, 0}, {0, 0}};
 static const double Y[NPTS] = {1, 2, 1};
 
+/* Solve the rank-one best-subset selection model with DJC support. */
 int main(void) {
     enum { B = 0, U = NF, TT = 2 * NF, Z = 2 * NF + 1, W = 3 * NF + 1,
            HT = 3 * NF + 1 + (NPTS + NF), ONE = HT + 1, NV = HT + 2 };

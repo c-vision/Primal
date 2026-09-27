@@ -22,20 +22,21 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* concurrent1.c — porting dell'esempio "concurrent1.jl" della Julia API
- * MOSEK: optimizer concorrente — piu' algoritmi in competizione sullo
- * stesso problema, si prende il migliore.
- * Il clone e' single-process: i tre optimizer (FREE, INTPNT, PRIMAL_SIMPLEX,
- * DUAL_SIMPLEX) girano in SEQUENZA sullo stesso problema e si confrontano
- * i pobj (deviazione documentata: nessun vero parallelismo).
+/* concurrent1.c — port of the MOSEK Julia API "concurrent1.jl" example:
+ * concurrent optimizer — several algorithms competing on the same
+ * problem, the best one is taken.
+ * The clone is single-process: the three optimizers (FREE, INTPNT,
+ * PRIMAL_SIMPLEX, DUAL_SIMPLEX) run in SEQUENCE on the same problem and the
+ * pobj values are compared (documented deviation: no real parallelism).
  *
- * Problema: lo1-like: max 3x0+x1+5x2+x3 con righe EQ/LO/UP (T1 della
- * suite, pobj noto 250/3 ~ 83.333).
+ * Problem: lo1-like: max 3x0+x1+5x2+x3 with EQ/LO/UP rows (T1 of the
+ * suite, known pobj 250/3 ~ 83.333).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Build the reference lo1 LP used by every optimizer. */
 static void build(PRIMALtask_t t) {
     PRIMAL_appendvars(t, 4);
     PRIMAL_appendcons(t, 3);
@@ -55,6 +56,7 @@ static void build(PRIMALtask_t t) {
     PRIMAL_putacol(t, 3, 2, (int[]){1, 2}, (double[]){1, 3});
 }
 
+/* Run the LP under each optimizer and check they agree on the optimum. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -91,7 +93,7 @@ int main(void) {
 
     int ok = all_ok && fabs(best - 250.0 / 3.0) < 1e-6;
     for (int k = 0; k < 4; k++)
-        if (fabs(vals[k] - best) > 1e-6) ok = 0;   /* tutti d'accordo */
+        if (fabs(vals[k] - best) > 1e-6) ok = 0;   /* all agree */
     printf("%s (4 optimizer, stesso ottimo — concorrenza simulata)\n",
            ok ? "OK" : "FAIL");
 

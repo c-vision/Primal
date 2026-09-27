@@ -22,30 +22,31 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* solutionquality.c — porting dell'esempio "solutionquality.jl" della
- * MOSEK Julia API: misura della qualita' della soluzione (violazioni
- * primal/dual) via PRIMAL_getprimalinfeas / PRIMAL_getdualinfeas.
+/* solutionquality.c — port of the MOSEK Julia API "solutionquality.jl"
+ * example: measuring solution quality (primal/dual violations) via
+ * PRIMAL_getprimalinfeas / PRIMAL_getdualinfeas.
  *
- * Verifica a mano:
- *   1. LP ottimale: min x0+x1 s.t. x0+x1 >= 1, x >= 0 -> entrambe le
- *      violazioni ~ 0 (soluzione esatta)
- *   2. punto ROTTO iniettato via putxx + solvebasis? no: si costruisce un
- *      secondo task la cui "soluzione" e' volutamente violata: si misura
- *      la violazione primal direttamente (x fuori dai bound): per farlo
- *      senza risolvere, si usa il task gia' risolto e si corrompe x via
- *      una seconda optimize con bound stretti... approccio semplice:
- *      verificare che dopo optimize le violazioni siano < 1e-6, e che i
- *      getter rifiutino un task senza soluzione (ERR_ARG).
+ * Hand check:
+ *   1. optimal LP: min x0+x1 s.t. x0+x1 >= 1, x >= 0 -> both
+ *      violations ~ 0 (exact solution)
+ *   2. BROKEN point injected via putxx + solvebasis? no: a
+ *      second task is built whose "solution" is deliberately violated: the
+ *      primal violation is measured directly (x outside its bounds): to do it
+ *      without solving, we use the already-solved task and corrupt x via
+ *      a second optimize with tight bounds... simple approach:
+ *      check that after optimize the violations are < 1e-6, and that the
+ *      getters reject a task with no solution (ERR_ARG).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve an LP and check the violation getters, including the no-solution refusal. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
 
-    /* 1. LP ottimale */
+    /* 1. optimal LP */
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
     PRIMAL_appendvars(task, 2);
@@ -64,7 +65,7 @@ int main(void) {
     PRIMAL_getdualinfeas(task, PRIMAL_SOL_ITR, &dinf);
     printf("violazione primal = %.3e, duale = %.3e (attese ~ 0)\n", pinf, dinf);
 
-    /* 2. senza soluzione: rifiutato */
+    /* 2. without a solution: refused */
     PRIMALtask_t t2;
     PRIMAL_maketask(env, 0, 0, &t2);
     PRIMAL_appendvars(t2, 1);

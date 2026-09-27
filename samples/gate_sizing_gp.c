@@ -49,6 +49,7 @@
 #include "primal.h"
 
 typedef struct { double coef; int n; int var[4]; double alpha[4]; } Mono;
+/* Build one GP monomial from its coefficient and (var, exponent) pairs. */
 static Mono mon(double c, int n, const double *p) {
     Mono r; r.coef = c; r.n = n;
     for (int i = 0; i < n; i++) { r.var[i] = (int)p[2*i]; r.alpha[i] = p[2*i+1]; }
@@ -61,6 +62,7 @@ enum { S1=0, S2, T1, T2, V2, D };
 #define NPF 5                      /* number of posynomial constraints */
 #define NMAXM 2                    /* max monomials per posynomial */
 
+/* Solve the two-inverter gate-sizing GP and check the hand optimum. */
 int main(void) {
     const double Amax = 10.0;
     /* posynomials */

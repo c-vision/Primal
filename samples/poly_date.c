@@ -49,6 +49,7 @@
 #define NMAX 32
 typedef struct { int a, b, c; long val; } Mono;
 
+/* Enumerate the degree-k monomials of (d,m,y) and their values. */
 static int gen_monomials(int d, int m, int y, int k, Mono *mo) {
     int n = 0;
     for (int a = 0; a <= k; a++) for (int b = 0; b <= k - a; b++) {
@@ -111,6 +112,7 @@ static int solve_degree(int d, int m, int y, int k, int *nmono_out, int *n1_out,
     return ok;
 }
 
+/* Search degrees 1..maxDeg for the shortest homogeneous date equation. */
 int main(int argc, char **argv) {
     int d = argc > 1 ? atoi(argv[1]) : 8;
     int m = argc > 2 ? atoi(argv[2]) : 11;

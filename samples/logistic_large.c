@@ -35,6 +35,7 @@
 #include "primal.h"
 
 static unsigned st = 11235813u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
@@ -44,6 +45,7 @@ static int N, D;
 static double *A, *c;
 static const double GAMMA = 0.1;
 
+/* Objective value of the sum-of-exponentials model at x. */
 static double fval(const double *x) {
     double s = 0.0;
     for (int i = 0; i < N; i++) {
@@ -55,6 +57,7 @@ static double fval(const double *x) {
     return s;
 }
 
+/* Build, solve and verify the exponential-cone regression model. */
 int main(int argc, char **argv) {
     N = argc > 1 ? atoi(argv[1]) : 40;
     D = argc > 2 ? atoi(argv[2]) : 8;

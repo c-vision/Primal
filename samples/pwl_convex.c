@@ -46,6 +46,7 @@
 static const double XD[NP] = {0.0, 1.0, 2.0};
 static const double YD[NP] = {0.0, 1.0, 0.0};
 
+/* Fit the convex PWL function to three points via rotated cone. */
 int main(void) {
     enum { M = 0, T = 1, S = 1 + NP, AD = 1 + 2 * NP, HALF = 1 + 3 * NP, NV = 1 + 3 * NP + 1 };
     PRIMALenv_t env; PRIMALtask_t t;

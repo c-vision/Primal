@@ -34,6 +34,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the revised-simplex LP and check x1=3, x2=5, x6=3, Z=13. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

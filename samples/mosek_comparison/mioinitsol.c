@@ -22,23 +22,24 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* mioinitsol.c — porting dell'esempio "mioinitsol.jl" della Julia API
- * MOSEK: fornire una soluzione iniziale al MIP (feasmios / initial
- * solution) per accelerare il branch & bound.
+/* mioinitsol.c — port of the MOSEK Julia API "mioinitsol.jl" example:
+ * provide an initial solution to the MIP (feasmios / initial
+ * solution) to speed up branch & bound.
  *
- * Problema (milo1-like con soluzione iniziale nota):
+ * Problem (milo1-like with a known initial solution):
  *   max 3x0 + 2x1 + 2x2
  *   s.t. x0 + x1 + x2 <= 10, x0 + 2x1 <= 9, -x0 + 3x1 + x2 <= 10
- *        x0, x1 interi >= 0, x2 >= 0
- * Soluzione iniziale fornita (ammissibile, intera): x = (3, 3, 1)
- * (righe: 7 <= 10, 9 <= 9, 10 <= 10 — attiva la riga 1 al limite).
- * Verifica: l'ottimo e' confermato per enumerazione (obj = 17.5 con
- * x=(3,3,1)? 3*3+2*3+2*1 = 17; l'enumerazione trova il vero ottimo).
+ *        x0, x1 integer >= 0, x2 >= 0
+ * Provided initial solution (feasible, integer): x = (3, 3, 1)
+ * (rows: 7 <= 10, 9 <= 9, 10 <= 10 — row 1 active at its limit).
+ * Check: the optimum is confirmed by enumeration (obj = 17.5 with
+ * x=(3,3,1)? 3*3+2*3+2*1 = 17; the enumeration finds the true optimum).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the MIP from the given initial solution and confirm against enumeration. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -61,7 +62,7 @@ int main(void) {
     PRIMAL_putvartype(task, 0, PRIMAL_VAR_TYPE_INT);
     PRIMAL_putvartype(task, 1, PRIMAL_VAR_TYPE_INT);
 
-    /* soluzione iniziale (ammissibile e intera) */
+    /* initial solution (feasible and integer) */
     double x0[3] = {3.0, 3.0, 1.0};
     PRIMAL_putxx(task, PRIMAL_SOL_ITR, x0);
 
@@ -75,7 +76,7 @@ int main(void) {
            xx[0], xx[1], xx[2], obj,
            3.0 * x0[0] + 2.0 * x0[1] + 2.0 * x0[2]);
 
-    /* verifica per enumerazione completa (x0,x1 interi, x2 continuo) */
+    /* check by complete enumeration (x0,x1 integer, x2 continuous) */
     double best = -1e30;
     for (int a = 0; a <= 10; a++)
         for (int b = 0; b <= 5; b++) {

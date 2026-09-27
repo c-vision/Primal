@@ -45,6 +45,7 @@
 #define DIM 2
 #define BIGM 10.0
 
+/* Build, solve and verify the smallest-k-balls MISOCP on four points. */
 int main(void) {
     static const double P[NP][DIM] = {{0, 0}, {1, 0}, {2, 0}, {3, 0}};
     PRIMALenv_t env; PRIMALtask_t t;

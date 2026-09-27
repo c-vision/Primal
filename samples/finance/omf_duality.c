@@ -36,6 +36,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the first duality LP and check x=(5,2), obj=-7. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

@@ -60,6 +60,7 @@ static void addT(PRIMALtask_t t, int row, int bar, int dim, int i, double coef) 
     }
 }
 
+/* Build, solve and grid-verify the FIR filter SDP. */
 int main(void) {
     const double DELTA = 0.05, WP = M_PI / 4.0, WS = M_PI / 4.0 + M_PI / 8.0;
     PRIMALenv_t env; PRIMALtask_t t;

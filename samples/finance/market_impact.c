@@ -34,11 +34,13 @@
 #include "primal.h"
 
 static unsigned st = 778899u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
 }
 
+/* Build, solve and verify the power-cone market-impact portfolio. */
 int main(int argc, char **argv) {
     int n = argc > 1 ? atoi(argv[1]) : 15;
     int k = argc > 2 ? atoi(argv[2]) : 4;

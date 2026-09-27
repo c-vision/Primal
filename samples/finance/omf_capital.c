@@ -35,6 +35,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the capital-budgeting MIP and check x=(0,1,1,1), Z=21000. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

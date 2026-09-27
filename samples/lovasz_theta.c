@@ -127,6 +127,7 @@ static int check_X(int n, const int adj[NMAX][NMAX], const double *X, double tol
     return 1;
 }
 
+/* Solve theta on C5, K3, E5 and check values, X and integer bounds. */
 int main(void) {
     int C5[NMAX][NMAX] = {{0}};
     for (int i = 0; i < 5; i++) { C5[i][(i + 1) % 5] = 1; C5[(i + 1) % 5][i] = 1; }

@@ -32,6 +32,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Append the (i,j) unit symmetric matrix and return its id. */
 static int unit_sym(PRIMALtask_t t, int n, int i, int j) {
     int id;
     PRIMAL_appendsparsesymmat(t, n, 1, (int[]){i}, (int[]){j}, (double[]){1.0}, &id);
@@ -103,6 +104,7 @@ static PRIMALrescodee int_ls(const double c[2], double *val) {
     return rc;
 }
 
+/* Solve both models on the hand instance and compare with closed forms. */
 int main(void) {
     const double c[2] = {2.0 / 5.0, 3.0 / 5.0};
     double relax = 0.0, ils = 0.0;

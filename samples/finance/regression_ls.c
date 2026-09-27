@@ -38,6 +38,7 @@
 #include "linalg.h"
 
 static unsigned st = 13103397u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
@@ -90,6 +91,7 @@ static PRIMALtask_t build(int constrained, PRIMALenv_t env) {
     return t;
 }
 
+/* Solve the unconstrained and constrained LS and verify both. */
 int main(int argc, char **argv) {
     N = argc > 1 ? atoi(argv[1]) : 60;
     M = argc > 2 ? atoi(argv[2]) : 6;

@@ -22,17 +22,18 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sdo1.c — SDP (variante dell'esempio "sdo1" della documentazione MOSEK)
+/* sdo1.c — SDP (variant of the MOSEK docs "sdo1" example)
  *
- * Problema: min tr(X)  s.t. <J,X> = 1 (J = matrice di tutti 1, 2x2), X >= 0
- * Analisi: X = [[a,b],[b,c]] PSD, a+c+2b = 1  =>  tr = s = a+c,
- *          ac >= (1-s)^2/4 e ac <= s^2/4  =>  s >= 1/2.
- * Soluzione attesa: tr(X) = 0.5 con X = [[0.25,0.25],[0.25,0.25]]
+ * Problem: min tr(X)  s.t. <J,X> = 1 (J = all-ones 2x2 matrix), X >= 0
+ * Analysis: X = [[a,b],[b,c]] PSD, a+c+2b = 1  =>  tr = s = a+c,
+ *          ac >= (1-s)^2/4 and ac <= s^2/4  =>  s >= 1/2.
+ * Expected solution: tr(X) = 0.5 with X = [[0.25,0.25],[0.25,0.25]]
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the sdo1 SDP and check tr(X) = 0.5. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -40,22 +41,22 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili bar: una X 2x2 */
+    /* bar variables: one 2x2 X */
     int dim = 2;
     PRIMAL_appendbarvars(task, 1, &dim);
 
-    /* simmat: J = [[1,1],[1,1]] = E00 + E11 + 2*E01 (entry (0,1) conta due
-     * volte nel prodotto interno: si fornisce solo un triangolo) */
+    /* symmat: J = [[1,1],[1,1]] = E00 + E11 + 2*E01 (entry (0,1) counts
+     * twice in the inner product: only one triangle is given) */
     int mJ;
     PRIMAL_appendsparsesymmat(task, 2, 3, (int[]){0, 1, 0}, (int[]){0, 1, 1},
                            (double[]){1.0, 1.0, 1.0}, &mJ);
 
-    /* vincolo: <J,X> = 1  <=>  ⟨[[1,1],[1,1]],X⟩ = 1 con entry (0,1) doppia */
+    /* constraint: <J,X> = 1  <=>  ⟨[[1,1],[1,1]],X⟩ = 1 with doubled (0,1) entry */
     PRIMAL_appendcons(task, 1);
     PRIMAL_putbaraij(task, 0, 0, 1, (int[]){mJ}, (double[]){1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 1.0, 1.0);
 
-    /* obiettivo: min tr(X) = <I,X> */
+    /* objective: min tr(X) = <I,X> */
     int mI;
     PRIMAL_appendsparsesymmat(task, 2, 2, (int[]){0, 1}, (int[]){0, 1},
                            (double[]){1.0, 1.0}, &mI);

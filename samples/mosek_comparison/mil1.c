@@ -22,21 +22,22 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* mil1.c — porting dell'esempio "mil1.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): piccolo MIP intero puro.
+/* mil1.c — port of the MOSEK Julia API "mil1.jl" example
+ * (docs.mosek.com/11.0/juliaapi): a small pure-integer MIP.
  *
  * max 5x0 + 4x1 + 3x2
  * s.t. 2x0 + 3x1 + x2 <= 5
  *      4x0 + x1 + 2x2 <= 11
  *      3x0 + 4x1 + 2x2 <= 8
- *      x0, x1, x2 interi >= 0
+ *      x0, x1, x2 integer >= 0
  *
- * Soluzione attesa: x = (2, 0, 1), obj = 13
+ * Expected solution: x = (2, 0, 1), obj = 13
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the pure-integer MIP and check x=(2,0,1), obj=13. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

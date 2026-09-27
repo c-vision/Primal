@@ -50,6 +50,7 @@ static const double Q[N][N] = {
     { 0, -2,  2, -2}, { 0,  0, -2,  2}};
 static const double C[N] = {0, 0, 0, 0};
 
+/* Objective value of the binary quadratic at the binary point x. */
 static double fval(const int *x) {
     double s = 0.0;
     for (int i = 0; i < N; i++) {
@@ -103,6 +104,7 @@ static int shor(double *val_out, double *Z_out) {
     return ok;
 }
 
+/* Solve the Shor relaxation and check it against brute-force optimum. */
 int main(void) {
     double sdp = 0.0, Z[(N + 1) * (N + 1)];
     int ok = shor(&sdp, Z);

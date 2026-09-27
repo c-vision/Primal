@@ -43,6 +43,7 @@
 typedef struct { double c[2]; double r; } Circ;
 
 /* ---- circle through 0, 1, 2 or 3 boundary points ---- */
+/* Circle through 0, 1, 2 or 3 boundary points. */
 static Circ circ_of(int m, const double R[3][2]) {
     Circ z;
     if (m == 0) { z.c[0] = z.c[1] = 0.0; z.r = -1.0; return z; }   /* empty: contains nothing */
@@ -61,11 +62,13 @@ static Circ circ_of(int m, const double R[3][2]) {
     z.r = sqrt((ax - z.c[0]) * (ax - z.c[0]) + (ay - z.c[1]) * (ay - z.c[1]));
     return z;
 }
+/* True when point p lies inside circle z (within tolerance). */
 static int inside(const Circ *z, const double p[2]) {
     if (z->r < 0) return 0;
     double dx = p[0] - z->c[0], dy = p[1] - z->c[1];
     return sqrt(dx * dx + dy * dy) <= z->r + 1e-9;
 }
+/* Welzl's recursive minimum-enclosing-circle routine. */
 static Circ welzl(const double (*P)[2], int n, double R[3][2], int m) {
     if (n == 0 || m == 3) return circ_of(m, (const double (*)[2])R);
     Circ D = welzl(P + 1, n - 1, R, m);
@@ -107,8 +110,10 @@ static double socp_circle(int k, const double (*P)[2], int *ok_out) {
 
 #define KP 10
 static unsigned long g_seed;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) { g_seed = g_seed * 1103515245 + 12345; return (double)((g_seed >> 16) % 1000) / 1000.0; }
 
+/* Run Welzl against the SOCP on twenty deterministic point sets. */
 int main(void) {
     int all = 1, nsets = 20;
     printf("welzl\n");

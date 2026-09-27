@@ -22,26 +22,27 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* djc1.c — porting dell'esempio "djc1.jl" della MOSEK Julia API:
- * disjunctive constraints (DJC) con l'API del riferimento
- * (appenddjcs + putdjc su AFE e domini).
+/* djc1.c — port of the MOSEK Julia API "djc1.jl" example:
+ * disjunctive constraints (DJC) with the reference API
+ * (appenddjcs + putdjc on AFEs and domains).
  *
- * Problema (verificato a mano):
- *   min x0   s.t. 0 <= x0 <= 10 e la disgiunzione:
+ * Problem (verified by hand):
+ *   min x0   s.t. 0 <= x0 <= 10 and the disjunction:
  *        [ x0 <= 2 ]  OR  [ x0 >= 6 AND x0 <= 7 ]
- *   La seconda disgiunzione impone l'intervallo [6,7]; la prima x0 <= 2:
- *   min x0 = 0 (via la prima).
- * Seconda parte: max x0 con la stessa disgiunzione -> x0 = 7 (la seconda).
+ *   The second disjunct imposes the interval [6,7]; the first x0 <= 2:
+ *   min x0 = 0 (via the first).
+ * Second part: max x0 with the same disjunction -> x0 = 7 (the second).
  *
- * Codifica DJC: una sola AFE f = x0; il termine 0 e' il dominio RMINUS
- * (f - 2 <= 0); il termine 1 e' RMINUS (f - 7 <= 0) AND RPLUS (f - 6 >= 0).
- * La convenzione del riferimento e' F x + g - b, quindi i b sono le costanti
+ * DJC encoding: a single AFE f = x0; term 0 is the RMINUS domain
+ * (f - 2 <= 0); term 1 is RMINUS (f - 7 <= 0) AND RPLUS (f - 6 >= 0).
+ * The reference convention is F x + g - b, so the b values are the constants
  * 2, 7, 6.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the disjunction for min or max of x0; returns the objective value. */
 static double solve(int maximize, double *x0) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -51,7 +52,7 @@ static double solve(int maximize, double *x0) {
     PRIMAL_putvarbound(task, 0, PRIMAL_BK_RA, 0.0, 10.0);
     PRIMAL_putcj(task, 0, 1.0);
     if (maximize) PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
-    /* una AFE f = x0 e due domini lineari (monodimensionali) */
+    /* one AFE f = x0 and two (one-dimensional) linear domains */
     PRIMAL_appendafes(task, 1);
     PRIMAL_putafefentry(task, 0, 0, 1.0);
     PRIMALint64t dminus, dplus;
@@ -68,7 +69,7 @@ static double solve(int maximize, double *x0) {
         rc = PRIMAL_optimize(task);
         if (rc == PRIMAL_RES_OK) {
             int nv;
-            PRIMAL_getnumvar(task, &nv);   /* le binarie DJC aggiungono variabili */
+            PRIMAL_getnumvar(task, &nv);   /* the DJC binaries add variables */
             double x[16];
             if (nv > 16) nv = 16;
             PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
@@ -81,6 +82,7 @@ static double solve(int maximize, double *x0) {
     return po;
 }
 
+/* Solve both directions and check min x0 = 0 and max x0 = 7. */
 int main(void) {
     double xmin, xmax;
     double pmin = solve(0, &xmin);

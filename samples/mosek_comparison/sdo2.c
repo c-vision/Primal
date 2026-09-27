@@ -22,22 +22,23 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sdo2.c — porting dell'esempio "sdo2.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): SDP con DUE variabili bar (matrici PSD)
- * e una costante di obiettivo.
+/* sdo2.c — port of the MOSEK Julia API "sdo2.jl" example
+ * (docs.mosek.com/11.0/juliaapi): SDP with TWO bar variables (PSD matrices)
+ * and an objective constant.
  *
  *   min  <I, X1> + <I, X2> + 1.0            (cfix = 1)
- *   s.t. <J, X1> + <I, X2> = 1              (J = matrice di tutti 1)
+ *   s.t. <J, X1> + <I, X2> = 1              (J = all-ones matrix)
  *        X1, X2 >= 0 (PSD)
  *
- * Analisi: min tr(X1) + tr(X2). La variabile X1 paga <J,X1> con tr(X1) >=
- * <J,X1>/2 = 1/2 (rank-1, X1 = J/4), mentre X2 = 0.
- * Atteso: obj = 0.5 + 1 = 1.5, X1 = J/4, X2 = 0.
+ * Analysis: min tr(X1) + tr(X2). Variable X1 pays <J,X1> with tr(X1) >=
+ * <J,X1>/2 = 1/2 (rank-1, X1 = J/4), while X2 = 0.
+ * Expected: obj = 0.5 + 1 = 1.5, X1 = J/4, X2 = 0.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the sdo2 two-bar SDP and check obj = 1.5, X1 = J/4, X2 = 0. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -59,7 +60,7 @@ int main(void) {
     PRIMAL_putcfix(task, 1.0);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MINIMIZE);
 
-    /* <I, X1> + <I, X2> nell'obiettivo */
+    /* <I, X1> + <I, X2> in the objective */
     PRIMAL_putbarcj(task, 0, 1, (int[]){mI}, (double[]){1.0});
     PRIMAL_putbarcj(task, 1, 1, (int[]){mI}, (double[]){1.0});
     /* <J, X1> + <I, X2> = 1 */
@@ -78,7 +79,7 @@ int main(void) {
     printf("X2 = [%.6f %.6f; %.6f %.6f]\n", X2[0], X2[1], X2[2], X2[3]);
     printf("obj = %.6f\n", po);
 
-    /* verifica: obj = 1.5, X1 = J/4, X2 = 0 */
+    /* check: obj = 1.5, X1 = J/4, X2 = 0 */
     int ok = fabs(po - 1.5) < 1e-4;
     if (fabs(X1[0] - 0.25) > 1e-4 || fabs(X1[1] - 0.25) > 1e-4 ||
         fabs(X1[2] - 0.25) > 1e-4 || fabs(X1[3] - 0.25) > 1e-4) ok = 0;

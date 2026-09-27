@@ -34,8 +34,10 @@
 #include <stdio.h>
 #include "primal.h"
 
+/* Log callback forwarding solver messages to stdout. */
 static void PRIMALAPI logfn(void *h, const char s[]) { (void)h; printf("%s", s); }
 
+/* Build, solve and print the lo1 reference LP. */
 int main(void) {
     PRIMALenv_t env = NULL;
     PRIMALtask_t task = NULL;
@@ -62,16 +64,16 @@ int main(void) {
     PRIMAL_putvarbound(task, 2, PRIMAL_BK_LO, 0.0, 0.0);
     PRIMAL_putvarbound(task, 3, PRIMAL_BK_LO, 0.0, 0.0);
 
-    /* Colonna 0: 3x1 + 2x1 -> righe 0,1 */
+    /* Column 0: 3x1 + 2x1 -> rows 0,1 */
     { PRIMALint32t sub[] = {0,1}; double v[] = {3.0,2.0};
       PRIMAL_putacol(task, 0, 2, sub, v); }
-    /* Colonna 1: x2 + x2 + 2x2 -> righe 0,1,2 */
+    /* Column 1: x2 + x2 + 2x2 -> rows 0,1,2 */
     { PRIMALint32t sub[] = {0,1,2}; double v[] = {1.0,1.0,2.0};
       PRIMAL_putacol(task, 1, 3, sub, v); }
-    /* Colonna 2: 2x3 + 3x3 -> righe 0,1 */
+    /* Column 2: 2x3 + 3x3 -> rows 0,1 */
     { PRIMALint32t sub[] = {0,1}; double v[] = {2.0,3.0};
       PRIMAL_putacol(task, 2, 2, sub, v); }
-    /* Colonna 3: x4 + 3x4 -> righe 1,2 */
+    /* Column 3: x4 + 3x4 -> rows 1,2 */
     { PRIMALint32t sub[] = {1,2}; double v[] = {1.0,3.0};
       PRIMAL_putacol(task, 3, 2, sub, v); }
 

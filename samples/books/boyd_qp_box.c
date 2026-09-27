@@ -36,6 +36,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the box-constrained QP and check the book optimum. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

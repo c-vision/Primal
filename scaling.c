@@ -16,20 +16,22 @@
  * under the License.
  */
 
-/* scaling.c — equilibratura geometrica righe/colonne con potenze di 2.
+/* scaling.c -- geometric row/column equilibration with powers of 2.
  *
- * Poche iterazioni di equilibratura: ogni pass computa per ogni riga
- * (poi colonna) la radice quadrata della media di |a_ij|^2 e arrotonda
- * il fattore 1/rms alla potenza di 2 più vicina, così lo scaling è
- * esatto in floating point.
+ * A few equilibration iterations: each pass computes for every row
+ * (then column) the square root of the mean of |a_ij|^2 and rounds
+ * the 1/rms factor to the nearest power of 2, so the scaling is
+ * exact in floating point.
  */
 #include <math.h>
 #include <string.h>
 
 #include "scaling.h"
 
+/* Nearest power of 2 to x (>0), clamped to [2^-24, 2^24].
+ * Returns 1.0 for non-positive or NaN input. */
 static double pow2_round(double x) {
-    /* potenza di 2 più vicina a x (>0), clampata a [2^-24, 2^24] */
+    /* nearest power of 2 to x (>0), clamped to [2^-24, 2^24] */
     if (!(x > 0.0) || x != x) return 1.0;
     double e = floor(log2(x) + 0.5);
     if (e > 24.0) e = 24.0;
@@ -105,7 +107,7 @@ void scale_equilibrate(int nvar, int ncon,
             lx[j] /= f; ux[j] /= f;
             for (int k = ptr[j]; k < ptr[j + 1]; k++) val[k] *= f;
             if (Q) {
-                /* Q' = D Q D: riga j e colonna j scalate da d[j] (parziale) */
+                /* Q' = D Q D: row j and column j scaled by d[j] (partial) */
                 for (int k = 0; k < nvar; k++) {
                     Q[j * nvar + k] *= f;
                     Q[k * nvar + j] *= f;

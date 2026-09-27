@@ -91,18 +91,21 @@ static const int PAIRS[][2] = {
 };
 #define NPAIR ((int)(sizeof(PAIRS)/sizeof(PAIRS[0])))
 
+/* Convert a covariance matrix to its correlation matrix. */
 static void corr_from_cov(const double S[N][N], double C[N][N]) {
     double d[N];
     for (int i = 0; i < N; i++) d[i] = sqrt(S[i][i]);
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++) C[i][j] = S[i][j] / (d[i] * d[j]);
 }
+/* Rebuild a covariance matrix from a correlation matrix and the variances of S. */
 static void cov_from_corr(const double S[N][N], const double C[N][N], double Ss[N][N]) {
     double d[N];
     for (int i = 0; i < N; i++) d[i] = sqrt(S[i][i]);
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++) Ss[i][j] = d[i] * d[j] * C[i][j];
 }
+/* Cholesky factor G with S = G G'; returns 0 if S is not positive definite. */
 static int chol(const double S[N][N], double G[N][N]) {
     for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) G[i][j] = 0.0;
     for (int i = 0; i < N; i++)
@@ -114,6 +117,7 @@ static int chol(const double S[N][N], double G[N][N]) {
         }
     return 1;
 }
+/* Portfolio variance x'S x. */
 static double port_var(const double x[N], const double S[N][N]) {
     double v = 0.0;
     for (int i = 0; i < N; i++) { double t = 0.0;
@@ -252,6 +256,7 @@ static int stress_corr(const double C[N][N], double Cs[N][N]) {
     return ok;
 }
 
+/* Run the observed, min-risk, max-return and correlation-stress pipeline. */
 int main(void) {
     double G[N][N], C[N][N], Cs[N][N], Ss[N][N], Gs[N][N];
     double R0, var0, vol0, vols_base, Rrisk, volstr, mult, vols_str;

@@ -48,6 +48,7 @@ static const int HR[][3] = {
 };
 #define NFIX ((int)(sizeof(HR) / sizeof(HR[0])))
 
+/* Solve the 4x4 Sudoku MILP and validate the returned grid. */
 int main(void) {
     int nrow = 4 * N * N + NFIX;      /* 64 + 8 = 72 */
     PRIMALenv_t env; PRIMALtask_t t;

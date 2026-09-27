@@ -45,6 +45,7 @@ static int ridx(int i, int j) {
     return map[i][j];
 }
 
+/* Solve the correlation SDP for one objective sign; writes rho_14 (and all rho). */
 static int solve(double sgn, double *rho14, double *rho_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     int msym[10], cnt = 0;
@@ -89,6 +90,7 @@ static int solve(double sgn, double *rho14, double *rho_out) {
     return ok;
 }
 
+/* Minimize and maximize rho_14 and check them against the book values. */
 int main(void) {
     double lo14 = 0.0, hi14 = 0.0;
     int ok = solve(+1.0, &lo14, NULL) && solve(-1.0, &hi14, NULL);

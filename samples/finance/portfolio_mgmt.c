@@ -38,6 +38,7 @@
 #include "primal.h"
 
 static unsigned st = 314159u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
@@ -46,6 +47,7 @@ static double rnd(void) {
 static int N, M;
 static double *X, *rM, *mu;
 
+/* Sum of the first M weights of the published portfolio (the budget). */
 static double budget_of(PRIMALtask_t t) {
     double *x = malloc((size_t)(8 * M + 2 * N + 8) * sizeof(double));
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
@@ -91,6 +93,7 @@ static PRIMALtask_t build_ls(PRIMALenv_t env, int tracking) {
     return t;
 }
 
+/* Solve and verify the five conic portfolio models of Section 4. */
 int main(int argc, char **argv) {
     N = argc > 1 ? atoi(argv[1]) : 40;
     M = argc > 2 ? atoi(argv[2]) : 6;

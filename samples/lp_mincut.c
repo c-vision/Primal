@@ -83,6 +83,7 @@ static double mincut(const int (*cor)[2], int ncor, double *dout) {
     return val;
 }
 
+/* Solve the plain and correlated min-cut LPs and check both values. */
 int main(void) {
     printf("lp_mincut (min-cut LP; graph.txt di maxdan94/lp_mincut)\n");
     int all = 1;

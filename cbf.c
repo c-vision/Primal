@@ -16,20 +16,20 @@
  * under the License.
  */
 
-/* cbf.c - Conic Benchmark Format (CBF v4) I/O (sottoinsieme, vedi cbf.h)
+/* cbf.c - Conic Benchmark Format (CBF v4) I/O (subset, see cbf.h)
  *
- * Semantica della mappatura (inner product <A,X> = somma_ij A_ij X_ij,
- * identica alla convenzione PRIMAL del clone):
- *  - vincolo scalare CBF i:  g_i = sum_j a_ij x_j + sum_j <F_ij, X_j> + b_i,
- *    con g_i nel cone del gruppo. Nel clone: riga i con coefficienti a_ij,
- *    termini barA (coef=1, F_ij) e bound derivato da b_i e dal cone.
- *  - cone lineari L+/L-/L=: bound della riga = -b_i (LO/UP/FX).
- *  - cone non lineari (Q/QR/EXP/EXPx/POW): variabile ausiliaria v_i (FR),
- *    riga FX: expr_i - v_i = -b_i, cone sui v_i (nello stesso ordine).
- *  - PSDCON G_i >= 0: variabile bar aggiuntiva (dopo le PSDVAR) con righe
- *    X[p,q] = sum_j x_j H_ij[p,q] + D_i[p,q] per le posizioni non nulle.
- * Coordinate ripetute sulla stessa posizione si accumulano (il formato le
- * dichiara un errore; il lettore e' tollerante per semplicita').
+ * Mapping semantics (inner product <A,X> = sum_ij A_ij X_ij, identical to the
+ * PRIMAL convention of this solver):
+ *  - CBF scalar constraint i:  g_i = sum_j a_ij x_j + sum_j <F_ij, X_j> + b_i,
+ *    with g_i in the cone of the group. In this solver: row i with coefficients
+ *    a_ij, barA terms (coef=1, F_ij) and a bound derived from b_i and the cone.
+ *  - linear cones L+/L-/L=: row bound = -b_i (LO/UP/FX).
+ *  - nonlinear cones (Q/QR/EXP/EXPx/POW): auxiliary variable v_i (FR),
+ *    row FX: expr_i - v_i = -b_i, cone on the v_i (in the same order).
+ *  - PSDCON G_i >= 0: an additional bar variable (after the PSDVAR) with rows
+ *    X[p,q] = sum_j x_j H_ij[p,q] + D_i[p,q] for the nonzero positions.
+ * Repeated coordinates on the same position accumulate (the format declares
+ * that an error; this reader is tolerant for simplicity).
  */
 #include <stdlib.h>
 #include <string.h>
@@ -41,7 +41,7 @@
 #define CBF_INF      1e30
 #define CBF_MAXPOW   256
 
-/* ---------------- lettura righe ---------------- */
+/* ---------------- line reading ---------------- */
 /**
  * Converts a string to double, skipping whitespace.
  *
@@ -105,10 +105,10 @@ static void sym_dense(PRIMALtask_t t, int m, int dim, double *M) {
 }
 
 /* ================================================================
- *                       SCRITTURA
+ *                       WRITE
  * ================================================================ */
 typedef struct { int kind; int row; int cone; } CLine;
-/* kind: 0=L=, 1=L+, 2=L-, 3=membro di cone (row=offset nel cone) */
+/* kind: 0=L=, 1=L+, 2=L-, 3=cone member (row=offset in the cone) */
 
 /**
  * Writes a double value to a file in CBF format (%.17g).
@@ -158,7 +158,7 @@ PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f) {
     double cfix; PRIMAL_getcfix(t, &cfix);
     PRIMALobjsensee sense; PRIMAL_getobjsense(t, &sense);
 
-    /* tavola POWCONES (solo PPOW, alpha = (a, 1-a)) */
+    /* POWCONES table (PPOW only, alpha = (a, 1-a)) */
     double powa[CBF_MAXPOW]; int npow = 0;
     for (int k = 0; k < nk; k++) {
         PRIMALconetypee ct; int nmem; int mem[64];
@@ -170,7 +170,7 @@ PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f) {
         }
     }
 
-    /* righe logiche: vincoli, coni, bounds variabili */
+    /* logical lines: constraints, cones, variable bounds */
     int nlines = 0, capl = 64;
     CLine *lines = (CLine *)malloc((size_t)capl * sizeof(CLine));
     if (!lines) return PRIMAL_RES_ERR_ALLOC;
@@ -249,7 +249,7 @@ PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f) {
             }
         }
     }
-    /* CON: i gruppi lineari hanno size 1; ogni cone e' un gruppo */
+    /* CON: linear groups have size 1; each cone is one group */
     {
         int grps = 0, r = 0;
         while (r < nlines) {
@@ -294,7 +294,7 @@ PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f) {
         }
     }
 
-    /* --- dati --- */
+    /* --- data --- */
     int n_objA = 0;
     for (int j = 0; j < nv; j++) { double v; PRIMAL_getcj(t, j, &v); if (v != 0.0) n_objA++; }
     fprintf(f, "OBJACOORD\n%d\n", n_objA);
@@ -308,7 +308,7 @@ PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f) {
     PRIMAL_getnumbarcterm(t, &ntC); PRIMAL_getnumbaraterm(t, &ntA);
     PRIMAL_getnumsymmat(t, &nsym);
 
-    /* cache densa per sym matrix */
+    /* dense cache for sym matrices */
     double **dense = (double **)calloc((size_t)(nsym > 0 ? nsym : 1), sizeof(double *));
     if (!dense) { free(lines); return PRIMAL_RES_ERR_ALLOC; }
     for (int k = 0; k < ntC; k++) {
@@ -350,7 +350,7 @@ PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f) {
                 }
         }
     }
-    /* FCOORD: la riga logica e' la PRIMA copia del vincolo (RA spezzato) */
+    /* FCOORD: the logical row is the FIRST copy of the constraint (split RA) */
     {
         int nfc = 0;
         for (int k = 0; k < ntA; k++) {
@@ -448,7 +448,7 @@ oom:
 }
 
 /* ================================================================
- *                       LETTURA
+ *                       READ
  * ================================================================ */
 typedef struct { double v[2]; int len; } PowEnt;
 typedef struct { char name[16]; int start, size; } CbGroup;
@@ -458,6 +458,8 @@ typedef struct { int i, j, p, q; double v; } T4;
 typedef struct { T2 *d; int n, cap; } V2;
 typedef struct { T4 *d; int n, cap; } V4;
 
+/* Append one (i,j,v) entry to a growable V2 list, growing it as needed.
+ * Returns 1 on success, 0 on allocation failure. */
 static int push2(V2 *v, T2 e) {
     if (v->n == v->cap) {
         v->cap = v->cap ? v->cap * 2 : 16;
@@ -467,6 +469,8 @@ static int push2(V2 *v, T2 e) {
     }
     v->d[v->n++] = e; return 1;
 }
+/* Append one (i,j,p,q,v) entry to a growable V4 list, growing it as needed.
+ * Returns 1 on success, 0 on allocation failure. */
 static int push4(V4 *v, T4 e) {
     if (v->n == v->cap) {
         v->cap = v->cap ? v->cap * 2 : 16;
@@ -477,7 +481,9 @@ static int push4(V4 *v, T4 e) {
     v->d[v->n++] = e; return 1;
 }
 
-/* classificazione dominio: 100=F, 101=L+, 102=L-, 103=L=, altrimenti ct clone */
+/* Domain classification: 100=F, 101=L+, 102=L-, 103=L=, otherwise the clone
+ * cone code.  Writes the cone type and parameter and returns 1 when the name
+ * and size are representable, 0 otherwise. */
 static int cone_dom(const char *nm, int size, const PowEnt *pows, int npows,
                     int *ct, double *param) {
     *ct = -1; *param = 0.0;
@@ -503,6 +509,8 @@ static int cone_dom(const char *nm, int size, const PowEnt *pows, int npows,
     return 1;
 }
 
+/* Translate a domain classification into bounds: L+ -> [0,inf),
+ * L- -> (-inf,0], L= -> fixed 0, anything else -> free. */
 static void bounds_for_dom(int ct, PRIMALboundkeye *bk, double *bl, double *bu) {
     switch (ct) {
         case 101: *bk = PRIMAL_BK_LO; *bl = 0.0; *bu = CBF_INF; break;
@@ -512,9 +520,10 @@ static void bounds_for_dom(int ct, PRIMALboundkeye *bk, double *bl, double *bu) 
     }
 }
 
-/* merge di una lista di (j,v) con get/set sul row corrente:
- * combina le coordinate ripetute sommandole */
+/* Merge a list of (j,v) pairs with get/set on the current row:
+ * combines repeated coordinates by adding them. */
 typedef struct { int *sub; double *val; int nz, cap; } RowList;
+/* Add v to entry j of the row list, accumulating with an existing entry. */
 static void rl_add(RowList *r, int j, double v) {
     for (int k = 0; k < r->nz; k++)
         if (r->sub[k] == j) { r->val[k] += v; return; }
@@ -526,6 +535,10 @@ static void rl_add(RowList *r, int j, double v) {
     r->sub[r->nz] = j; r->val[r->nz] = v; r->nz++;
 }
 
+/* Assemble the parsed CBF model into the task: bar variables (PSDVAR plus one
+ * per PSDCON), linear variables with their cone bounds, auxiliary variables
+ * for nonlinear CON groups, the scalar rows, the PSD matrix data and the
+ * objective.  Returns PRIMAL_RES_OK or a PRIMAL error code. */
 static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
         int nv, CbGroup *vgrp, int nvgrp, const PowEnt *pows, int npows,
         int *ints, int nint, int *psdvar, int npsdvar,
@@ -543,7 +556,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
     }
     if (PRIMAL_appendvars(t, nv) != PRIMAL_RES_OK) return PRIMAL_RES_ERR_ARG;
 
-    /* --- VAR: bounds + cone (membri contigui) --- */
+    /* --- VAR: bounds + cone (contiguous members) --- */
     for (int g = 0; g < nvgrp; g++) {
         int ct; double pr = 0.0;
         if (!cone_dom(vgrp[g].name, vgrp[g].size, pows, npows, &ct, &pr))
@@ -563,10 +576,10 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
     for (int k = 0; k < nint; k++)
         PRIMAL_putvartype(t, ints[k], PRIMAL_VAR_TYPE_INT);
 
-    /* --- CON: righe scalari --- */
+    /* --- CON: scalar rows --- */
     PRIMAL_appendcons(t, m);
 
-    /* --- ausiliarie per cone CON non lineari --- */
+    /* --- auxiliaries for nonlinear CON cones --- */
     int naux = 0;
     for (int g = 0; g < ncgrp; g++) {
         int ct; double pr;
@@ -578,7 +591,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
         return PRIMAL_RES_ERR_ALLOC;
     int aux0 = 0; PRIMAL_getnumvar(t, &aux0); aux0 -= naux;
 
-    /* --- righe scalari: coefficienti + bounds --- */
+    /* --- scalar rows: coefficients + bounds --- */
     for (int i = 0; i < m; i++) {
         int gidx = -1;
         for (int g = 0; g < ncgrp; g++)
@@ -591,12 +604,12 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
         /* b_i */
         double b = 0.0;
         for (int k = 0; k < nbc; k++) if (bc[k].i == i) b += bc[k].v;
-        /* coefficienti */
+        /* coefficients */
         RowList rl; memset(&rl, 0, sizeof(rl));
         for (int k = 0; k < nac; k++)
             if (ac[k].i == i) rl_add(&rl, ac[k].j, ac[k].v);
         if (ct < 100) {
-            /* ausiliaria: expr - v = -b */
+            /* auxiliary: expr - v = -b */
             int off = 0;
             for (int g2 = 0; g2 < gidx; g2++) {
                 int ct2; double pr2;
@@ -619,7 +632,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
         }
         free(rl.sub); free(rl.val);
     }
-    /* --- cone sui vincoli non lineari (sui v_i) --- */
+    /* --- cones on the nonlinear constraints (on the v_i) --- */
     for (int g = 0; g < ncgrp; g++) {
         int ct; double pr;
         if (!cone_dom(cgrp[g].name, cgrp[g].size, pows, npows, &ct, &pr))
@@ -639,7 +652,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
             != PRIMAL_RES_OK) return PRIMAL_RES_ERR_ARG;
     }
 
-    /* --- PSDCON: righe per le posizioni non nulle --- */
+    /* --- PSDCON: rows for the nonzero positions --- */
     {
         int nposTot = 0;
         for (int c = 0; c < npsdcon; c++) {
@@ -663,7 +676,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
             int baridx = npsdvar + c, mc = psdcon[c];
             for (int p = 0; p < mc; p++) {
                 for (int q = p; q < mc; q++) {
-                    /* la posizione (p,q) ha dati? */
+                    /* does position (p,q) carry data? */
                     int hasH = 0, hasD = 0;
                     for (int k = 0; k < nhc; k++)
                         if (hc[k].i == c && hc[k].p == p && hc[k].q == q) { hasH = 1; break; }
@@ -678,7 +691,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
                     double coef = (p == q) ? 1.0 : 0.5;
                     if (PRIMAL_putbaraij(t, r, baridx, 1, &sm, &coef) != PRIMAL_RES_OK)
                         return PRIMAL_RES_ERR_ARG;
-                    /* coefficienti lineari */
+                    /* linear coefficients */
                     RowList rl; memset(&rl, 0, sizeof(rl));
                     for (int k = 0; k < nhc; k++)
                         if (hc[k].i == c && hc[k].p == p && hc[k].q == q)
@@ -698,7 +711,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
         }
     }
 
-    /* --- FCOORD / OBJFCOORD: matrici F dai coordinate --- */
+    /* --- FCOORD / OBJFCOORD: F matrices from the coordinates --- */
     for (int pass = 0; pass < 2; pass++) {
         int cnt = (pass == 0) ? nobjF : nfc;
         T4 *dat = (pass == 0) ? objF : fc;
@@ -765,7 +778,7 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
 
 /* ---- CHANGE section (CBF v4): post-build modifications ----
  * Supported blocks (coordinates refer to the ADDED dimensions):
- *   VAR   <n> <groups>     : append variables (F/L+/L-/L= per gruppo)
+ *   VAR   <n> <groups>     : append variables (F/L+/L-/L= per group)
  *   CON   <m> <groups>      : append rows (L+/L-/L=; default free)
  *   PSDVAR <k> <dims>       : append bar variables
  *   OBJACOORD <n> (i,v)     : cj of the new variables (i relative to new)
@@ -946,7 +959,7 @@ static PRIMALrescodee read_change(PRIMALtask_t t, char **lines, int nl, int *idx
             }
             continue;
         }
-        return PRIMAL_RES_ERR_ARG;   /* CHANGE block non supportato */
+        return PRIMAL_RES_ERR_ARG;   /* unsupported CHANGE block */
     }
     return PRIMAL_RES_OK;
 #undef CNEXT
@@ -1044,12 +1057,12 @@ PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f) {
                     pe.v[q] = cbf_atof(l);
                 }
                 if (dual) {
-                    /* POW*CONES e' il cono di potenza DUALE: questo solver ha il
-                     * cono primale (PRIMAL_CT_PPOW), quindi un file che vincola
-                     * nel duale non e' rappresentabile. Prima la sezione veniva
-                     * scartata in silenzio e il task che ne usciva era un modello
-                     * a cui mancavano dei vincoli; ora e' un rifiuto dichiarato
-                     * (deviazione), non un modello incompleto. */
+                    /* POW*CONES is the DUAL power cone: this solver has the
+                     * primal cone (PRIMAL_CT_PPOW), so a file constraining in
+                     * the dual is not representable.  Previously the section
+                     * was discarded silently and the resulting task was a model
+                     * missing constraints; now it is a declared refusal
+                     * (deviation), not an incomplete model. */
                     return PRIMAL_RES_ERR_ARG;
                 }
                 if (npows >= CBF_MAXPOW) return PRIMAL_RES_ERR_ARG;
@@ -1236,7 +1249,7 @@ PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f) {
             }
             continue;
         }
-        return PRIMAL_RES_ERR_ARG;   /* keyword non riconosciuta */
+        return PRIMAL_RES_ERR_ARG;   /* unrecognized keyword */
     }
 
     if (!have_var || !have_con) return PRIMAL_RES_ERR_ARG;

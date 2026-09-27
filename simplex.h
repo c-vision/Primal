@@ -28,50 +28,52 @@
 #ifndef SIMPLEX_H
 #define SIMPLEX_H
 
+/* Primal simplex wrapper on the standard form (no basis/tableau output).
+ * Solves for primal x and dual y, with optional Farkas rays. */
 int simplex_solve_std(const double *A, int m, int n,
                       const double *b, const double *c,
                       int max_iter, double *x /*n*/, double *y /*m*/,
                       double *dray /*m, status 1*/, double *pray /*n, status 2*/);
-/* Come sopra, ma restituisce anche la base finale (`basis_out`, m indici di
- * colonna) e il tableau (`tab_out`, m righe di stride n+m+1: coefficienti
- * ridotti nelle prime n+m colonne, RHS in [n+m]). Servono ai tagli di Gomory.
- * Entrambi opzionali (NULL). */
+/* As above, but also returns the final basis (`basis_out`, m column
+ * indices) and the tableau (`tab_out`, m rows of stride n+m+1: reduced
+ * coefficients in the first n+m columns, RHS in [n+m]). Needed for Gomory cuts.
+ * Both optional (NULL). */
 int simplex_solve_std_tab(const double *A, int m, int n,
                           const double *b, const double *c,
                           int max_iter, double *x, double *y,
                           double *dray, double *pray,
                           int *basis_out, double *tab_out);
 
-/* Dual simplex: min c'x s.t. A x = b, x >= 0, da una base DUAL-ammissibile
- * (`basis[m]`, indici di colonna); `b` puo' avere componenti negative. Costruisce
- * B^-1 con Gauss-Jordan su [B|I], sceglie la riga con RHS piu' negativo e fa il
- * ratio test sui costi ridotti. Status come sopra (0 ottimo, 1 inammissibile,
- * 2 illimitato, 3 max iter, 4 memoria). x[n]. Portato da gmbortools
- * `gor_lp_dual_simplex` (a sua volta da apurvasijaria/Operation_Research_Lab). */
+/* Dual simplex: min c'x s.t. A x = b, x >= 0, from a DUAL-feasible basis
+ * (`basis[m]`, column indices); `b` may have negative entries. Builds
+ * B^-1 with Gauss-Jordan on [B|I], picks the row with the most negative RHS and
+ * runs the ratio test on the reduced costs. Statuses as above (0 optimal,
+ * 1 infeasible, 2 unbounded, 3 max iter, 4 memory). x[n]. Ported from gmbortools
+ * `gor_lp_dual_simplex` (itself from apurvasijaria/Operation_Research_Lab). */
 int simplex_dual_solve_std(const double *A, int m, int n,
                            const double *b, const double *c,
                            const int *basis, int max_iter, double *x /*n*/,
-                           int *basis_out /*m, base finale, opzionale*/,
-                           double *y /*m, duali cB^T B^-1 via LU, opzionale*/);
+                           int *basis_out /*m, final basis, optional*/,
+                           double *y /*m, duals cB^T B^-1 via LU, optional*/);
 
-/* Revised simplex: min c'x s.t. A x = b, x >= 0, da una base PRIMAL-ammissibile
- * (`basis[m]`). Mantiene B^-1 con aggiornamento eta (una fattorizzazione per
- * iterazione, non un tableau denso). Status come sopra; 1 = base primal
- * inammissibile. x[n]. Portato da gmbortools `gor_lp_revised_simplex`
- * (da athityakumar/or_lab). */
+/* Revised simplex: min c'x s.t. A x = b, x >= 0, from a PRIMAL-feasible basis
+ * (`basis[m]`). Keeps B^-1 with eta updates (one factorization per
+ * iteration, not a dense tableau). Statuses as above; 1 = primal-infeasible
+ * basis. x[n]. Ported from gmbortools `gor_lp_revised_simplex`
+ * (from athityakumar/or_lab). */
 int simplex_revised_solve_std(const double *A, int m, int n,
                               const double *b, const double *c,
                               const int *basis, int max_iter, double *x /*n*/,
-                              double *y /*m, duali, opzionale (NULL ok)*/);
+                              double *y /*m, duals, optional (NULL ok)*/);
 
-/* Costi ridotti c - A'y (n). Portato da gmbortools `gor_lp_reduced_costs`. */
+/* Reduced costs c - A'y (n). Ported from gmbortools `gor_lp_reduced_costs`. */
 void simplex_reduced_costs(const double *A, int m, int n, const double *c,
                            const double *y, double *red /*n*/);
 
-/* Crash basis: m colonne di A linearmente indipendenti (eliminazione di Gauss
- * con pivoting di colonna). Ritorna 1 e riempie `basis[m]` (indici di colonna)
- * se rank(A) == m, 0 altrimenti. Serve a dare al simplesso revised una base
- * valida senza fase 1 (concetto di MSK_IPAR_SIM_PRIMAL_CRASH). */
+/* Crash basis: m linearly independent columns of A (Gaussian elimination
+ * with column pivoting). Returns 1 and fills `basis[m]` (column indices)
+ * when rank(A) == m, 0 otherwise. Gives the revised simplex a valid
+ * starting basis without phase 1 (the MSK_IPAR_SIM_PRIMAL_CRASH concept). */
 int simplex_crash_basis(const double *A, int m, int n, int *basis /*m*/);
 
 #endif /* SIMPLEX_H */

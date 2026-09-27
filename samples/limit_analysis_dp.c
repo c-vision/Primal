@@ -51,6 +51,7 @@
 
 #define PI 3.14159265358979323846
 
+/* Solve the Drucker-Prager limit-analysis SOCP for the uniaxial case. */
 int main(void) {
     /* material (materials.py) */
     const double c = 1.0, phi = 30.0 * PI / 180.0;

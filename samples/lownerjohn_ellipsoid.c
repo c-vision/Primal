@@ -45,12 +45,14 @@
 #include <math.h>
 #include "primal.h"
 
+/* Append the (i,j) unit symmetric matrix and return its id. */
 static int unit_sym(PRIMALtask_t t, int n, int i, int j) {
     int id;
     PRIMAL_appendsparsesymmat(t, n, 1, (int[]){i}, (int[]){j}, (double[]){1.0}, &id);
     return id;
 }
 
+/* Solve the unit-square Lowner-John ellipsoid model. */
 int main(void) {
     enum { T = 0, D0, D1, X00, X01, X11, Z00, Z11, UU, AA, BB, CC, EE, NV };
     enum { R = 14 };

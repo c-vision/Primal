@@ -70,6 +70,7 @@ static int solve(double *x0_out, double *y_out) {
     return ok;
 }
 
+/* Solve the one-mass equilibrium and check it against -sqrt(3). */
 int main(void) {
     double x0 = 0, y = 0;
     int ok = solve(&x0, &y);

@@ -35,6 +35,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve one branch-and-bound MILP case and check the book optimum. */
 static int solve(const char *name, double c1, double c2,
                  double want_obj, double wx1, double wx2) {
     PRIMALenv_t env; PRIMALtask_t t;
@@ -65,6 +66,7 @@ static int solve(const char *name, double c1, double c2,
     return ok;
 }
 
+/* Run both branch-and-bound cases and aggregate the result. */
 int main(void) {
     int a = solve("(A)", 1.0, 1.0, 4.0, 1.0, 3.0);
     int b = solve("(B)", 3.0, 1.0, 7.0, 2.0, 1.0);

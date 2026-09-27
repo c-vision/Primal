@@ -22,22 +22,22 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sdo_lmi.c — porting dell'esempio "sdo_lmi.jl" della MOSEK Julia API:
- * linear matrix inequality (LMI) con variabili scalari.
+/* sdo_lmi.c — port of the MOSEK Julia API "sdo_lmi.jl" example:
+ * linear matrix inequality (LMI) with scalar variables.
  *
- *   max x0 + x1  s.t.  F(x) = F0 + x0*F1 + x1*F2 PSD (LMI 3x3)
- *   con F0 = I3, e le F1/F2 con un solo termine ciascuna:
- *     F1 = -E00,  F2 = -E11  (scala le diagonali giu')
- *   piu' x0 + x1 <= 0.5.
- * Verifica a mano: F(x) = diag(1 - x0, 1 - x1, 1) PSD: 1-x0 >= 0,
- * 1-x1 >= 0. max x0+x1 <= 0.5: la LMI e' lasca (x <= 1): il vincolo lineare
- * domina -> ottimo x0+x1 = 0.5, obj = 0.5. La LMI rende invece attivo il
- * caso con x0+x1 <= 0.5 sostituito... per rendere la LMI ATTIVA: bound
- * x0+x1 <= 1.6: la LMI blocca a x0=x1=1 (1-x0 >= 0): max x0+x1 = 2 > 1.6 ->
- * il lineare domina ancora. Con vincolo x0+x1 <= 2.5: la LMI attiva a
- * x0=x1=1, obj=2.
- * Modello (bar 3x3 X PSD): X = F0 + x0 F1 + x1 F2 elemento per elemento
- * (righe FX sulle entrate diagonal) e le offdiagonal di X a 0.
+ *   max x0 + x1  s.t.  F(x) = F0 + x0*F1 + x1*F2 PSD (3x3 LMI)
+ *   with F0 = I3, and F1/F2 each with a single term:
+ *     F1 = -E00,  F2 = -E11  (scales the diagonals down)
+ *   plus x0 + x1 <= 0.5.
+ * Hand check: F(x) = diag(1 - x0, 1 - x1, 1) PSD: 1-x0 >= 0,
+ * 1-x1 >= 0. max x0+x1 <= 0.5: the LMI is loose (x <= 1): the linear
+ * constraint dominates -> optimum x0+x1 = 0.5, obj = 0.5. The LMI instead
+ * makes active the case with x0+x1 <= 0.5 replaced... to make the LMI ACTIVE:
+ * bound x0+x1 <= 1.6: the LMI blocks at x0=x1=1 (1-x0 >= 0): max x0+x1 = 2
+ * > 1.6 -> the linear one still dominates. With x0+x1 <= 2.5: the LMI binds
+ * at x0=x1=1, obj=2.
+ * Model (3x3 PSD bar X): X = F0 + x0 F1 + x1 F2 entry by entry
+ * (FX rows on the diagonal entries) and the off-diagonals of X to 0.
  */
 #include <stdio.h>
 #include <math.h>
@@ -45,6 +45,7 @@
 
 #define D 3
 
+/* Solve the sdo_lmi model and check the active-LMI optimum (1,1), 2. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -52,7 +53,7 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili scalari x0, x1 */
+    /* scalar variables x0, x1 */
     PRIMAL_appendvars(task, 2);
     PRIMAL_putvarbound(task, 0, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putvarbound(task, 1, PRIMAL_BK_LO, 0.0, INFINITY);
@@ -64,17 +65,17 @@ int main(void) {
     int dim = D;
     PRIMAL_appendbarvars(task, 1, &dim);
 
-    /* matrix store: E_ii per le diagonali */
+    /* matrix store: E_ii for the diagonals */
     int mE[D];
     for (int i = 0; i < D; i++)
         PRIMAL_appendsparsesymmat(task, D, 1,
                                (int[]){i}, (int[]){i}, (double[]){1.0}, &mE[i]);
 
-    /* righe: X_ii = F0_ii + x_i * F_i_ii (per i<2, con F_i = -E_ii):
+    /* rows: X_ii = F0_ii + x_i * F_i_ii (for i<2, with F_i = -E_ii):
      *   X_00 = 1 - x0,  X_11 = 1 - x1,  X_22 = 1
      *   X_01 = 0, X_02 = 0, X_12 = 0
-     * e il vincolo lineare x0 + x1 <= 2.5
-     * Totale righe: 3 (diag) + 3 (offdiag) + 1 (lineare) = 7 */
+     * and the linear constraint x0 + x1 <= 2.5
+     * Total rows: 3 (diag) + 3 (offdiag) + 1 (linear) = 7 */
     PRIMAL_appendcons(task, 7);
     int r = 0;
     /* X_00 = 1 - x0 */
@@ -91,8 +92,8 @@ int main(void) {
     PRIMAL_putbaraij(task, r, 0, 1, (int[]){mE[2]}, (double[]){1.0});
     PRIMAL_putconbound(task, r, PRIMAL_BK_FX, 1.0, 1.0);
     r++;
-    /* off-diagonali a 0: X_01 = X_02 = X_12 = 0 (la simmetria e' implicita:
-     * la matrice del matrix store con entrata (i,j) conta 2X_ij) */
+    /* off-diagonals to 0: X_01 = X_02 = X_12 = 0 (symmetry is implicit:
+     * the matrix-store matrix with entry (i,j) counts 2X_ij) */
     int mO[3];
     PRIMAL_appendsparsesymmat(task, D, 1, (int[]){0}, (int[]){1}, (double[]){1.0}, &mO[0]);
     PRIMAL_appendsparsesymmat(task, D, 1, (int[]){0}, (int[]){2}, (double[]){1.0}, &mO[1]);

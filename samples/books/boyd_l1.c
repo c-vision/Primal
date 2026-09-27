@@ -35,6 +35,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the l1 approximation LP and check x*=(1,1,1) and value 4. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     static const double A[6][3] = {

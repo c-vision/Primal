@@ -39,6 +39,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the feed-mix LP and check the fractions and the cost. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

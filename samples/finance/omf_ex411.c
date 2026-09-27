@@ -62,6 +62,7 @@
 #define NV 13
 enum { DE, DP, DY, ED, EP, EY, PD, PE, PY, YD, YE, YP, D_ };
 
+/* Build the currency arbitrage LP and check the cycles and the cap. */
 int main(void) {
     /* cycle products: dollar->euro->yen->dollar and the reverse */
     double c_dey = 1.1486 * 116.12 * 0.00750;   /* > 1 : arbitrage */

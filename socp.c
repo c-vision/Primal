@@ -311,7 +311,7 @@ int socp_solve(int n, int p,
         for (int k = 0; k < ncones; k++) { off[k] = o; typ[k] = cones[k].type; o += cones[k].nmem; }
     }
 
-    /* strictly feasible cone start: R_+ -> tutti 1, SOC/arrow -> [1,0,...] */
+    /* strictly feasible cone start: R_+ -> all 1, SOC/arrow -> [1,0,...] */
     {
         int o = 0;
         for (int k = 0; k < ncones; k++) {
@@ -332,11 +332,11 @@ int socp_solve(int n, int p,
 
     int status = OPT_MAXITER;
     int no_progress = 0;
-    /* Miglior iterato per gap (stack, nessuna allocazione heap: aggiungere
-     * malloc qui perturbava l'aritmetica e faceva cambiare verdetto a T82/T101 C).
-     * L'IPM su un LP a tagli accumulati (mal condizionato) puo' convergere in mu
-     * e poi DIVERGERE in gap; si tiene il punto col gap minore e, quando il gap
-     * risale di molti ordini, si restituisce quello. */
+    /* Best gap iterate (stack, no heap allocation: adding a malloc here
+     * perturbed the arithmetic and changed the verdict of T82/T101 C).
+     * The IPM on an accumulated-cut LP (ill-conditioned) can converge in mu
+     * and then DIVERGE in gap; keep the point with the smallest gap and, when
+     * the gap climbs back by many orders, return that one. */
     double bx[(n > 0) ? n : 1], by[(p > 0) ? p : 1];
     double bs[(K > 0) ? K : 1], blm[(K > 0) ? K : 1];
     int have_bp = 0; double best_gap = HUGE_VAL;
@@ -394,8 +394,8 @@ int socp_solve(int n, int p,
             status = OPT_OK;
             break;
         }
-        /* Si tiene solo un punto FEASIBLE: un LP infeasible ha per natura un gap
-         * grande e non deve essere "aggiustato" in una risposta (T101 C, T82). */
+        /* Keep only a FEASIBLE point: an infeasible LP naturally has a large gap
+         * and must not be "repaired" into an answer (T101 C, T82). */
         if (feas_p <= tol_feas && feas_d <= tol_feas &&
             (!have_bp || gap < best_gap)) {
             have_bp = 1; best_gap = gap;
@@ -748,6 +748,8 @@ static void nt_Qmat(const double *v,int k,double *Q){
     for(int i=0;i<k;i++)for(int j=0;j<k;j++){double s=0;for(int z=0;z<k;z++)s+=A[i*k+z]*A[z*k+j];A2[i*k+j]=s;}
     for(int i=0;i<k;i++)for(int j=0;j<k;j++){double a=(i==0&&j==0)?vv[0]:(i==0)?vv[j]:(j==0)?vv[i]:(i==j?vv[0]:0.0);Q[i*k+j]=2*A2[i*k+j]-a;}
 }
+/* Applies Q(v) to w without forming Q (dense k x k row-major scratch).
+ * Uses nt_Qmat internally; o holds the Jordan quadratic image. */
 static void nt_Qapp(const double *v,const double *w,int k,double *o){
     double Q[NT_MAXK*NT_MAXK]; nt_Qmat(v,k,Q);
     for(int i=0;i<k;i++){double s=0;for(int z=0;z<k;z++)s+=Q[i*k+z]*w[z];o[i]=s;}

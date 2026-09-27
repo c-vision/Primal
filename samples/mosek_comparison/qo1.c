@@ -22,19 +22,20 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* qo1.c — QP (equivale all'esempio Python Optimizer API "qo1")
+/* qo1.c — QP (matches the Python Optimizer API "qo1" example)
  *
- * Problema: min x^2 + y^2  s.t. x+y >= 1, x,y >= 0
- * Soluzione attesa: x = 0.5, y = 0.5, obj = 0.5
+ * Problem: min x^2 + y^2  s.t. x+y >= 1, x,y >= 0
+ * Expected solution: x = 0.5, y = 0.5, obj = 0.5
  *
- * Nota: putqobj riceve il triangolo inferiore/0.5·q per entry — il clone
- * usa la stessa convenzione di MOSEK (metà dei termini fuori diagonale;
- * la Q va data con coefficiente pieno: Q = diag(2) => 0.5*x'Qx = x^2+y^2).
+ * Note: putqobj takes the lower triangle / 0.5·q per entry — the clone
+ * uses the same convention as MOSEK (half the off-diagonal terms;
+ * Q is given with full coefficient: Q = diag(2) => 0.5*x'Qx = x^2+y^2).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the qo1 QP and check x=0.5, y=0.5, obj=0.5. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -49,11 +50,11 @@ int main(void) {
     for (int j = 0; j < numvar; j++)
         PRIMAL_putvarbound(task, j, PRIMAL_BK_LO, 0.0, INFINITY);
 
-    /* Obiettivo quadratico: min x^2 + y^2 */
-    PRIMAL_putqobj(task, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});  /* Q = diag(2): obiettivo 0.5*x'Qx = x^2+y^2 */
+    /* Quadratic objective: min x^2 + y^2 */
+    PRIMAL_putqobj(task, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});  /* Q = diag(2): objective 0.5*x'Qx = x^2+y^2 */
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MINIMIZE);
 
-    /* Vincolo: x + y >= 1 */
+    /* Constraint: x + y >= 1 */
     PRIMAL_putarow(task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_LO, 1.0, INFINITY);
 

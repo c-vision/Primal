@@ -45,6 +45,7 @@ static Mono mon(double coef, int n, const double *p) {
 #define MO(coef, ...) mon((coef), (int)(sizeof((double[]){__VA_ARGS__}) / sizeof(double) / 2), (double[]){__VA_ARGS__})
 
 #define NV 3
+/* Solve the 3-variable tutorial GP and verify by direct substitution. */
 int main(void) {
     /* objective and constraints, each a posynomial */
     Mono OBJ[2] = { MO(1.0, 0,1), MO(1.0, 1,2, 2,1) };          /* x + y^2 z */

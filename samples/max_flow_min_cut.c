@@ -95,6 +95,7 @@ static double min_cut_bruteforce(void) {
     return best;
 }
 
+/* Solve the max-flow LP and check it against the brute-force min cut. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

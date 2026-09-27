@@ -112,6 +112,7 @@ static double rb_ls(int N, const double *G, const double *b, double a, double *x
     return obj;
 }
 
+/* Solve the long-short risk-budgeting MIO on the hand case. */
 int main(void) {
     printf("risk_budgeting_ls (long-short MIO)\n");
     int all = 1;

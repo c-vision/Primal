@@ -22,19 +22,20 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* pinfeas.c — porting dell'esempio "pinfeas.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): un LP primariamente infeasible.
- * Il solver deve rilevare l'infeasibility e produrre il certificato.
+/* pinfeas.c — port of the MOSEK Julia API "pinfeas.jl" example
+ * (docs.mosek.com/11.0/juliaapi): a primal-infeasible LP.
+ * The solver must detect the infeasibility and produce the certificate.
  *
  * min 0  s.t. x0 + x1 >= 4,  x0 + x1 <= 2,  x >= 0
- * (le due righe si escludono a vicenda: nessun punto ammissibile)
+ * (the two rows are mutually exclusive: no feasible point)
  *
- * Atteso: rc = PRIMAL_RES_ERR_INFEASIBLE, solsta = PRIM_INFEAS_CER
+ * Expected: rc = PRIMAL_RES_ERR_INFEASIBLE, solsta = PRIM_INFEAS_CER
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the infeasible LP and check the infeasibility certificate. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

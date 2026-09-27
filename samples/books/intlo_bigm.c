@@ -37,6 +37,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the Big-M LP and check x=[0,2,2,0], value 4. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

@@ -22,18 +22,19 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* mi1.c — MIP (equivale all'esempio Julia Optimizer API, putacolslice)
+/* mi1.c — MIP (equivalent to the Julia Optimizer API example, putacolslice)
  *
- * Problema: max x1 + 0.64*x2
+ * Problem: max x1 + 0.64*x2
  *           s.t. 50*x1 + 31*x2 <= 250
  *                 3*x1 - 2*x2 >= -4
- *                 x1, x2 interi >= 0
- * Soluzione attesa: x1 = 5, x2 = 0, obj = 5.0000
+ *                 x1, x2 integer >= 0
+ * Expected solution: x1 = 5, x2 = 0, obj = 5.0000
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the two-variable MIP and check x=(5,0), obj=5. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -52,7 +53,7 @@ int main(void) {
     PRIMAL_putcj(task, 0, 1.0);
     PRIMAL_putcj(task, 1, 0.64);
 
-    /* A per colonne (putacolslice):
+    /* A by columns (putacolslice):
      * col 1: 50 in row1, 3 in row2; col 2: 31 in row1, -2 in row2 */
     PRIMAL_putacol(task, 0, 2, (int[]){0, 1}, (double[]){50.0, 3.0});
     PRIMAL_putacol(task, 1, 2, (int[]){0, 1}, (double[]){31.0, -2.0});
@@ -63,7 +64,7 @@ int main(void) {
 
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
-    /* putvartypelist: entrambe intere */
+    /* putvartypelist: both integers */
     PRIMAL_putvartype(task, 0, PRIMAL_VAR_TYPE_INT);
     PRIMAL_putvartype(task, 1, PRIMAL_VAR_TYPE_INT);
 

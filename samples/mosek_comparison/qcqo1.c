@@ -22,20 +22,21 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* qcqo1.c — porting dell'esempio "qcqo1.jl" della MOSEK Julia API
+/* qcqo1.c — port of the MOSEK Julia API "qcqo1.jl" example
  * (docs.mosek.com/11.0/juliaapi): quadratic constraints.
  *
- * Problema (forma conica equivalente dell'esempio MOSEK, ottimo verificato
- * a mano):  max x0 + x1  s.t.  x0^2 + x1^2 <= 1,  x >= 0.
- * Ottimo: x* = (1,1)/sqrt(2), obj = sqrt(2) ~ 1.414214.
+ * Problem (conic form equivalent of the MOSEK example, hand-verified
+ * optimum):  max x0 + x1  s.t.  x0^2 + x1^2 <= 1,  x >= 0.
+ * Optimum: x* = (1,1)/sqrt(2), obj = sqrt(2) ~ 1.414214.
  *
- * Implementato con PRIMAL_putqconk (coefficiente quadratico sulla riga 0,
- * convenzione MOSEK: 1/2 x'Qx con Q = 2I -> x0^2 + x1^2).
+ * Implemented with PRIMAL_putqconk (quadratic coefficient on row 0,
+ * MOSEK convention: 1/2 x'Qx with Q = 2I -> x0^2 + x1^2).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the qcqo1 QCQP and check the sqrt(2) optimum. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -52,7 +53,7 @@ int main(void) {
     PRIMAL_putcj(task, 1, 1.0);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
-    /* vincolo quadratico: x0^2 + x1^2 <= 1 */
+    /* quadratic constraint: x0^2 + x1^2 <= 1 */
     PRIMAL_putqconk(task, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_UP, -INFINITY, 1.0);
 

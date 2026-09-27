@@ -49,6 +49,7 @@ static const double N[NN][NF] = {{2.0, 1.0, 0.0}, {1.0, 2.0, 0.0}, {0.0, 0.0, 1.
 static const double BB[NN] = {4.0, 5.0, 1.0};
 static const double CC[NF] = {1.0, 1.0, 2.0};
 
+/* Solve the primal and dual diet LPs and check strong duality. */
 int main(void) {
     printf("diet (Stigler, 3 alimenti x 3 nutrienti)\n");
     int all = 1;

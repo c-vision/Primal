@@ -22,25 +22,26 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sos2.c — porting dell'esempio "sos2.jl" (C API docs.mosek.com):
- * SOS type-2 constraint (al piu' due membri non nulli ADIACENTI nell'ordine
- * dei pesi — la base della piecewise-linear approximation).
+/* sos2.c — port of the "sos2.jl" example (C API docs.mosek.com):
+ * SOS type-2 constraint (at most two nonzero members ADJACENT in the weight
+ * order — the basis of piecewise-linear approximation).
  *
- * Problema (verificato a mano): approssimare la funzione piecewise-linear
- * f(t) su breakpoint t=(0,1,2) con valori f=(0,1,0.5) tramite pesi SOS2:
+ * Problem (verified by hand): approximate the piecewise-linear function
+ * f(t) on breakpoints t=(0,1,2) with values f=(0,1,0.5) via SOS2 weights:
  *   t = sum_i w_i * t_i,  y = sum_i w_i * f_i,  sum w = 1, w >= 0
- * con SOS2{w0,w1,w2} (pesi = i breakpoint). SOS2 garantisce che al piu' due
- * w adiacenti sono attive: y interpola linearmente f in t.
- * Test: minimizza (y - y_target)^2 via... per restare LP: fissiamo t=1.5
- * e calcoliamo y: tra i segmenti [1,2]: y = 1 + 0.5*(1.5-1) = 0.75.
- * Verifica: con t fisso a 1.5, la soluzione SOS2 deve dare y=0.75.
- * Modella: variabili w0,w1,w2 >= 0, w0+w1+w2=1 (EQ), 0*w0+1*w1+2*w2=1.5 (EQ),
- * y = 0*w0+1*w1+0.5*w2 (definita via riga EQ su y), obj = 0 (feasibility).
+ * with SOS2{w0,w1,w2} (weights = breakpoint index). SOS2 guarantees that at
+ * most two adjacent w are active: y interpolates f linearly in t.
+ * Test: minimize (y - y_target)^2 via... to stay LP: we fix t=1.5
+ * and compute y: within segment [1,2]: y = 1 + 0.5*(1.5-1) = 0.75.
+ * Check: with t fixed at 1.5, the SOS2 solution must give y=0.75.
+ * Model: variables w0,w1,w2 >= 0, w0+w1+w2=1 (EQ), 0*w0+1*w1+2*w2=1.5 (EQ),
+ * y = 0*w0+1*w1+0.5*w2 (defined by an EQ row on y), obj = 0 (feasibility).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the SOS2 piecewise-linear interpolation and check y(1.5)=0.75. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -48,11 +49,11 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: w0, w1, w2, y */
+    /* variables: w0, w1, w2, y */
     PRIMAL_appendvars(task, 4);
     PRIMAL_appendcons(task, 3);
     for (int j = 0; j < 4; j++) PRIMAL_putvarbound(task, j, PRIMAL_BK_LO, 0.0, INFINITY);
-    PRIMAL_putvarbound(task, 3, PRIMAL_BK_FR, -INFINITY, INFINITY);   /* y libero */
+    PRIMAL_putvarbound(task, 3, PRIMAL_BK_FR, -INFINITY, INFINITY);   /* y free */
     /* w0 + w1 + w2 = 1 */
     PRIMAL_putarow(task, 0, 3, (int[]){0, 1, 2}, (double[]){1.0, 1.0, 1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 1.0, 1.0);
@@ -62,7 +63,7 @@ int main(void) {
     /* y = 0*w0 + 1*w1 + 0.5*w2 */
     PRIMAL_putarow(task, 2, 4, (int[]){0, 1, 2, 3}, (double[]){0.0, 1.0, 0.5, -1.0});
     PRIMAL_putconbound(task, 2, PRIMAL_BK_FX, 0.0, 0.0);
-    /* SOS2 sui pesi, ordine dei breakpoint */
+    /* SOS2 on the weights, breakpoint order */
     PRIMAL_appendsos2(task, 3, (int[]){0, 1, 2}, (double[]){0.0, 1.0, 2.0});
 
     PRIMALrescodee rc = PRIMAL_optimize(task);
@@ -76,7 +77,7 @@ int main(void) {
     int ok = fabs(xx[3] - 0.75) < 1e-6 &&
              fabs(xx[0] + xx[1] + xx[2] - 1.0) < 1e-6 &&
              fabs(xx[1] + 2.0 * xx[2] - 1.5) < 1e-6;
-    /* SOS2: w0 e w2 non entrambi positivi (non adiacenti) */
+    /* SOS2: w0 and w2 not both positive (not adjacent) */
     if (xx[0] > 1e-6 && xx[2] > 1e-6) ok = 0;
     printf("%s (piecewise-linear SOS2: y(1.5)=0.75, adiacenza rispettata)\n",
            ok ? "OK" : "FAIL");

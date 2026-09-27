@@ -80,6 +80,7 @@ StdForm *stdform_build(int nvar, int ncon,
                        const double *lx, const double *ux,
                        const double *lc, const double *uc,
                        const int *col_ptr, const int *sub, const double *val);
+/* Release a standard-form problem and all its sparse arrays. NULL-safe. */
 void stdform_free(StdForm *sf);
 
 /* map standard-form primal solution to original variables */

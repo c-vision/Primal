@@ -69,6 +69,7 @@ static const int    M[N] = {1, 2, 2, 3, 4, 5, 5, 6, 7, 8};
 /* book optimum holdings (Exercise 3.11) */
 static const double XBOOK[N] = {62, 0, 125, 152, 157, 123, 0, 124, 104, 93};
 
+/* Solve the dedication LP and check cost, holdings and sensitivities. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

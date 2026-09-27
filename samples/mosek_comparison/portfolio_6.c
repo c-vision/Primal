@@ -22,29 +22,30 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* portfolio_6.c — porting dell'esempio "portfolio_6_factor.jl" della
- * MOSEK Julia API: ottimizzazione di portafoglio con modello a FATTORI:
- * la covarianza e' x'(F P F' + D)x con fattori f = F'x, P = diag(p) e
- * rischio specifico D (diagonale). Qui: rischio via fattori con cono QUAD
- * + MIP (binarie di cardinalita' come portfolio_5 ma con fattori).
+/* portfolio_6.c — port of the MOSEK Julia API "portfolio_6_factor.jl"
+ * example: portfolio optimization with a FACTOR model:
+ * the covariance is x'(F P F' + D)x with factors f = F'x, P = diag(p) and
+ * specific risk D (diagonal). Here: risk via factors with a QUAD cone
+ * + MIP (cardinality binaries as in portfolio_5 but with factors).
  *
  *   max  r'x - gamma*(||p^{1/2} F'x||^2 + x'Dx)
- *   s.t. sum(x) = 1, 0 <= x <= y, y binaria, sum(y) <= k
+ *   s.t. sum(x) = 1, 0 <= x <= y, y binary, sum(y) <= k
  *
- * F (3x2): 2 fattori; p = (0.05, 0.06); D = diag(0.01, 0.02, 0.005).
- * Il rischio fattoriale ||p^{1/2} F'x||^2 e' modellato con variabile v e
- * cono QUAD (v, z1, z2) con z = p^{1/2} F'x (righe di uguaglianza):
- * v >= ||z|| => v^2 >= z1^2+z2^2 -> nella forma clone: (v, z1, z2) in QUAD.
- * La parte x'Dx resta quadratica (putqobj). Verifica: bilancio, binarie,
- * obj coerente con la valutazione diretta del rischio in x*.
+ * F (3x2): 2 factors; p = (0.05, 0.06); D = diag(0.01, 0.02, 0.005).
+ * The factor risk ||p^{1/2} F'x||^2 is modelled with variable v and a
+ * QUAD cone (v, z1, z2) with z = p^{1/2} F'x (equality rows):
+ * v >= ||z|| => v^2 >= z1^2+z2^2 -> in clone form: (v, z1, z2) in QUAD.
+ * The x'Dx part stays quadratic (putqobj). Check: budget, binaries,
+ * obj consistent with the direct evaluation of the risk at x*.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the factor-model cardinality portfolio and verify against a direct risk check. */
 int main(void) {
-    const int n = 3;      /* asset */
-    const int m = 2;      /* fattori */
+    const int n = 3;      /* assets */
+    const int m = 2;      /* factors */
     const int k = 2;
     const double r[3] = {0.10717, 0.07502, 0.11902};
     const double F[3][2] = {{0.16, -0.23}, {0.28, 0.19}, {-0.11, 0.32}};
@@ -52,7 +53,7 @@ int main(void) {
     const double D[3] = {0.01, 0.02, 0.005};
     const double gamma = 0.05;
 
-    /* variabili: x(0..2), v=3, z(4..5), y(6..8) */
+    /* variables: x(0..2), v=3, z(4..5), y(6..8) */
     const int VV = 3, VZ = 4, VY = 6;
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -61,7 +62,7 @@ int main(void) {
     PRIMAL_maketask(env, 0, 0, &task);
 
     PRIMAL_appendvars(task, 9);
-    /* righe: bilancio, cardinalita', x<=y (3), z_i = sqrt(p) F'_i x (2) */
+    /* rows: budget, cardinality, x<=y (3), z_i = sqrt(p) F'_i x (2) */
     PRIMAL_appendcons(task, 2 + n + m);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
@@ -78,13 +79,13 @@ int main(void) {
         PRIMAL_putvartype(task, VY + j, PRIMAL_VAR_TYPE_INT_BIN);
     }
 
-    {   /* bilancio */
+    {   /* budget */
         int sub[3] = {0, 1, 2};
         double v[3] = {1.0, 1.0, 1.0};
         PRIMAL_putarow(task, 0, 3, sub, v);
         PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 1.0, 1.0);
     }
-    {   /* cardinalita' */
+    {   /* cardinality */
         int sub[3] = {VY, VY + 1, VY + 2};
         double v[3] = {1.0, 1.0, 1.0};
         PRIMAL_putarow(task, 1, 3, sub, v);
@@ -104,10 +105,10 @@ int main(void) {
         PRIMAL_putconbound(task, 2 + n + i, PRIMAL_BK_FX, 0.0, 0.0);
     }
 
-    /* cono: (v, z1, z2) in QUAD -> v >= ||z|| */
+    /* cone: (v, z1, z2) in QUAD -> v >= ||z|| */
     PRIMAL_appendcone(task, PRIMAL_CT_QUAD, 0.0, 3, (int[]){VV, VZ, VZ + 1});
 
-    {   /* parte specifica: -gamma * x'Dx (Q = -2*gamma*D) */
+    {   /* specific part: -gamma * x'Dx (Q = -2*gamma*D) */
         int sub[3] = {0, 1, 2};
         int subj[3] = {0, 1, 2};
         double v[3] = {-2.0 * gamma * D[0], -2.0 * gamma * D[1],
@@ -125,10 +126,10 @@ int main(void) {
     printf("v = %.4f, y = (%.0f, %.0f, %.0f)\n", xx[VV], xx[VY], xx[VY + 1], xx[VY + 2]);
     printf("obj = %.6f\n", obj);
 
-    /* verifica indipendente: rischio in x* da F, P, D e obj = r'x - gamma*rischio.
-     * L'IPM conico lascia un piccolo residuo sul bordo del cono (v >= ||z||):
-     * v puo' restare leggermente sopra ||z||, quindi obj_solver <= exp_obj
-     * con scarto ~ gamma*(v - ||z||). Tolleranza 5e-3 su entrambi i lati. */
+    /* independent check: risk at x* from F, P, D and obj = r'x - gamma*risk.
+     * The conic IPM leaves a small residual on the cone boundary (v >= ||z||):
+     * v can stay slightly above ||z||, so obj_solver <= exp_obj
+     * with a gap ~ gamma*(v - ||z||). Tolerance 5e-3 on both sides. */
     double fx[2] = {0.0, 0.0};
     for (int i = 0; i < m; i++)
         for (int j = 0; j < n; j++) fx[i] += F[j][i] * xx[j];

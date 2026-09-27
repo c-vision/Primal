@@ -63,18 +63,21 @@ static const double LAM[8] = {
     5.268736362702, 7.720171650511, 8.532848755941, 0.067019857594,
     13.395507417002, 20.316405933601, 17.878374617311, 8.532848755941};
 
+/* Binomial coefficient n choose k as a double. */
 static double binom(int n, int k) {
     if (k < 0 || k > n) return 0.0;
     double r = 1.0;
     for (int i = 0; i < k; i++) r = r * (n - i) / (i + 1);
     return r;
 }
+/* Coefficients of s^x in the Bernstein basis s^a (1-s)^j. */
 static double s_coef(int a, int j, int x) {       /* coeff of s^x in s^a (1-s)^j */
     int e = x - a;
     if (e < 0 || e > j) return 0.0;
     double s = binom(j, e);
     return (e % 2) ? -s : s;
 }
+/* Coefficient of s^m t^n in the symmetrized Handelman product p. */
 static double handelman(const int p[4], int m, int n) {
     double f = s_coef(p[0], p[1], m) * s_coef(p[2], p[3], n);
     double g = s_coef(p[2], p[3], m) * s_coef(p[0], p[1], n);
@@ -112,6 +115,7 @@ static void eig3(const double A[3][3], double ev[3]) {
     for (int i = 0; i < 3; i++) ev[i] = a[i][i];
 }
 
+/* Re-verify the committed M1 SOS certificate and report its margin. */
 int main(void) {
     double G[4][4];
     double vstar[4] = {1.0, 1.0 / 3, 1.0 / 3, 1.0 / 3};

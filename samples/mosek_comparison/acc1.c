@@ -22,20 +22,21 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* acc1.c — porting dell'esempio "acc1.jl" della MOSEK Julia API:
+/* acc1.c — port of the MOSEK Julia API "acc1.jl" example:
  * affine conic constraints (ACC) via appendaccseq.
  *
- * Problema (verificato a mano):
+ * Problem (verified by hand):
  *   min  x1
- *   s.t. x0 = 3 (riga FX)
- *        ACC: (v0, v1) in QUAD con v0 = 2*x0 + x1, v1 = x0 - 1
+ *   s.t. x0 = 3 (FX row)
+ *        ACC: (v0, v1) in QUAD with v0 = 2*x0 + x1, v1 = x0 - 1
  *   => v0 = 6 + x1 >= |v1| = |2| = 2  =>  x1 >= -4
- * Ottimo: x = (3, -4), obj = -4.
+ * Optimum: x = (3, -4), obj = -4.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the ACC quadratic-cone model and check x=(3,-4), obj=-4. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -51,7 +52,7 @@ int main(void) {
     PRIMAL_putarow(task, 0, 1, (int[]){0}, (double[]){1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 3.0, 3.0);
 
-    /* ACC: (v0, v1) in QUAD, v0 = 2*x0 + x1, v1 = x0 - 1 (via AFE + dominio) */
+    /* ACC: (v0, v1) in QUAD, v0 = 2*x0 + x1, v1 = x0 - 1 (via AFE + domain) */
     PRIMAL_appendafes(task, 2);
     PRIMAL_putafefentry(task, 0, 0, 2.0);
     PRIMAL_putafefentry(task, 0, 1, 1.0);
@@ -70,7 +71,7 @@ int main(void) {
     if (rc != PRIMAL_RES_OK) { printf("optimize rc=%d\n", rc); return 1; }
 
     int nv;
-    PRIMAL_getnumvar(task, &nv);   /* le ausiliarie ACC aggiungono variabili */
+    PRIMAL_getnumvar(task, &nv);   /* the ACC auxiliaries add variables */
     double xx[16], obj;
     if (nv > 16) nv = 16;
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx);
@@ -78,7 +79,7 @@ int main(void) {
     printf("x = (%.4f, %.4f), obj = %.4f (numvar=%d incl. ausiliarie ACC)\n",
            xx[0], xx[1], obj, nv);
 
-    /* verifica esterna: v0 >= |v1| */
+    /* external check: v0 >= |v1| */
     double v0 = 2.0 * xx[0] + xx[1];
     double v1 = xx[0] - 1.0;
     int ok = fabs(xx[0] - 3.0) < 1e-6 &&

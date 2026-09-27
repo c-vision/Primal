@@ -33,6 +33,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the two-period index-tracking LP and check the value 0.08. */
 int main(void) {
     static const double b0[2] = {0.6, 0.4};
     static const double b1[2] = {0.3, 0.7};

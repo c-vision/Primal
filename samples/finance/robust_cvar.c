@@ -79,6 +79,7 @@ static double solve(PRIMALenv_t env, int robust, double *wout) {
     return obj;
 }
 
+/* Solve the nominal and box-robust CVaR LPs and compare them. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

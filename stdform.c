@@ -38,10 +38,14 @@
 #include <string.h>
 #include "stdform.h"
 
+/* Test a bound value for finiteness (neither infinite nor NaN).
+ * Returns 1 when finite, 0 otherwise. */
 static int is_fin(double v) { return !isinf(v) && !isnan(v); }
 
 /* ---- growable triplet list ---- */
 typedef struct { int *r, *c; double *v; int n, cap; } Tri;
+/* Append one (row, column, value) triplet, growing the arrays as needed.
+ * Returns 0 ok, -1 on allocation failure. */
 static int tri_add(Tri *t, int r, int c, double v) {
     if (t->n == t->cap) {
         int nc = t->cap ? t->cap * 2 : 256;
@@ -54,6 +58,7 @@ static int tri_add(Tri *t, int r, int c, double v) {
     t->r[t->n] = r; t->c[t->n] = c; t->v[t->n] = v; t->n++;
     return 0;
 }
+/* Release a triplet list and reset its counters. */
 static void tri_free(Tri *t) { free(t->r); free(t->c); free(t->v); t->r = t->c = NULL; t->v = NULL; t->n = t->cap = 0; }
 
 /* build CSC from triplets over ncol columns, summing duplicate (row,col) pairs
@@ -92,6 +97,12 @@ static int tri_to_csc(int ncol, const Tri *t, int **optr, int **orow, double **o
     return 0;
 }
 
+/* Build the standard form from a general model: objective c and sparse Q,
+ * variable and constraint bounds, and A given by columns (CSC).  Fixed
+ * variables are folded into cfix and the right-hand sides, free variables are
+ * split into two columns, finite upper bounds get one extra row each, and
+ * negative right-hand sides are normalized.  Returns the StdForm, or NULL on
+ * invalid bounds or on allocation failure. */
 StdForm *stdform_build(int nvar, int ncon,
                        const double *c_int,
                        const int *qi, const int *qj, const double *qv, int nq,

@@ -47,6 +47,7 @@
 static const double DATA[NS][M] = {{0.02, 0.01}, {-0.01, 0.03}, {0.04, -0.02}};
 static const double EPS = 0.05;
 
+/* Worst-case DRO objective at weights x with auxiliary t. */
 static double worst_objective(const double *x, double t) {
     double lambda = 0.0, ssum = 0.0;
     for (int j = 0; j < M; j++) {
@@ -63,6 +64,7 @@ static double worst_objective(const double *x, double t) {
     return EPS * lambda + ssum / NS;
 }
 
+/* Solve the Wasserstein DRO LP and check it against brute force. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t task;
     PRIMAL_makeenv(&env, NULL);

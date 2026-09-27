@@ -85,6 +85,7 @@ static double min_ball(int k, const double P[KMAX][ND], double c_out[ND], int *o
     return r;
 }
 
+/* Solve the two hand instances and check radii against closed forms. */
 int main(void) {
     double P2[KMAX][ND] = {{0.0, 0.0}, {2.0, 0.0}, {0.0, 0.0}};
     double P3[KMAX][ND] = {{0.0, 0.0}, {2.0, 0.0}, {1.0, 1.7320508075688772}}; /* side 2 */

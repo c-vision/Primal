@@ -22,14 +22,15 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* hello.c — porting dell'esempio "hello.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): il task più semplice possibile:
- * una variabile libera, min x, x ∈ [2, 4]  ->  x = 2, obj = 2
+/* hello.c — port of the MOSEK Julia API "hello.jl" example
+ * (docs.mosek.com/11.0/juliaapi): the simplest possible task:
+ * a free variable, min x, x ∈ [2, 4]  ->  x = 2, obj = 2
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the one-variable task and check x=2, obj=2. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

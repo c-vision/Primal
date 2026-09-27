@@ -299,6 +299,8 @@ int expcone_dual_point(int kind, double alpha, const double *s, double *W) {
 /* Degree of the barrier: <x, grad f(x)> = -nu for every block. */
 static double expcone_nu(int kind) { return kind == EXPCONE_PEXP ? 2.0 : 3.0; }
 
+/* Symmetric eigendecomposition of a 3x3 matrix via the Jacobi solver.
+ * Symmetrizes M first, then reports eigenvalues ev and eigenvectors V. */
 static void eig3(const double *M, double *ev, double *V) {
     double A[9];
     for (int i = 0; i < 9; i++) A[i] = 0.5 * (M[i] + M[(i % 3) * 3 + i / 3]);
@@ -371,6 +373,8 @@ typedef struct {
     int have_s;                       /* W, Hs, Mid and conds/rel are usable */
 } expnt;
 
+/* Evaluates Hessians, scaling point and margins for one exp/power block.
+ * Fills the expnt struct; degrades gracefully when the dual chain is missing. */
 static int nt_eval(int kind, double alpha, const double *z, const double *s, expnt *M) {
     double Hw[9], ev[3], V[9], tmp[9], zn;
     M->have_s = 0;
@@ -563,7 +567,11 @@ int expcone_scaling(int kind, double alpha, const double *z, const double *s,
  * expcone_dual_point provides for PEXP, PPOW and RPOW alike.
  * ========================================================================= */
 
+/* 3-vector dot product used by the secant scaling construction.
+ * Operates on the fixed 3-dimensional exp/power block coordinates. */
 static double pd_dot3(const double *a, const double *b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+/* 3x3 row-major matrix-vector product for the secant update.
+ * Writes the product M*v into o. */
 static void pd_matvec3(const double *M, const double *v, double *o) {
     for (int i = 0; i < 3; i++) o[i] = M[i*3+0]*v[0] + M[i*3+1]*v[1] + M[i*3+2]*v[2];
 }

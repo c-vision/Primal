@@ -118,6 +118,7 @@ static int toks_load(const char *filename, Toks *T) {
     return 1;
 }
 
+/* Release a token array and every token it owns. */
 static void toks_free(Toks *T) {
     for (int i = 0; i < T->n; i++) free(T->tok[i]);
     free(T->tok);
@@ -135,7 +136,9 @@ static void toks_free(Toks *T) {
 static int tok_is(const Toks *T, int i, const char *s) {
     return i < T->n && strcmp(T->tok[i], s) == 0;
 }
+/* Exact string equality. Returns 1 when equal, 0 otherwise. */
 static int teq(const char *a, const char *b) { return strcmp(a, b) == 0; }
+/* Case-insensitive string equality. Returns 1 when equal, 0 otherwise. */
 static int ieq(const char *a, const char *b) {
     while (*a && *b) {
         if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return 0;
@@ -143,6 +146,8 @@ static int ieq(const char *a, const char *b) {
     }
     return *a == *b;
 }
+/* Test whether s is an MPS section keyword (case-exact match).
+ * Returns 1 for section keywords, 0 otherwise. */
 static int is_mps_section(const char *s) {
     return teq(s, "NAME") || teq(s, "OBJSENSE") || teq(s, "OBJNAME") ||
            teq(s, "ROWS") || teq(s, "COLUMNS") || teq(s, "RHS") ||
@@ -150,6 +155,8 @@ static int is_mps_section(const char *s) {
            teq(s, "QUADOBJ") || teq(s, "QMATRIX") || teq(s, "QCMATRIX") ||
            teq(s, "CSECTION") || teq(s, "ENDATA");
 }
+/* Test whether s is an LP section keyword (case-insensitive match).
+ * Returns 1 for section keywords, 0 otherwise. */
 static int is_lp_section(const char *s) {
     return ieq(s, "subject") || ieq(s, "such") || ieq(s, "st") || ieq(s, "s.t.") ||
            ieq(s, "bounds") || ieq(s, "bound") || ieq(s, "general") ||
@@ -157,10 +164,14 @@ static int is_lp_section(const char *s) {
            ieq(s, "integers") || ieq(s, "binaries") || ieq(s, "binary") ||
            ieq(s, "bin") || ieq(s, "end");
 }
+/* Test whether s spells a relation (<=, >=, =, and aliases).
+ * Returns 1 for relations, 0 otherwise. */
 static int is_rel(const char *s) {
     return ieq(s, "<=") || ieq(s, "<") || ieq(s, "=<") || ieq(s, ">=") ||
            ieq(s, ">") || ieq(s, "=>") || ieq(s, "=") || ieq(s, "==");
 }
+/* Fold a relation spelling onto an MPS row type.
+ * Returns 'L', 'G', or 'E' (default for anything else). */
 static char rel_char(const char *s) {
     if (teq(s, "<=") || teq(s, "<") || teq(s, "=<")) return 'L';
     if (teq(s, ">=") || teq(s, ">") || teq(s, "=>")) return 'G';
@@ -192,6 +203,7 @@ static int has_ext(const char *fn, const char *ext) {
 /* growable arrays */
 typedef struct { double *a; int n, cap; } DArr;
 typedef struct { int *a; int n, cap; } IArr;
+/* Append one double to a growable array. Exits on allocation failure. */
 static void dpush(DArr *v, double x) {
     if (v->n == v->cap) {
         v->cap = v->cap ? v->cap * 2 : 8;
@@ -201,6 +213,7 @@ static void dpush(DArr *v, double x) {
     }
     v->a[v->n++] = x;
 }
+/* Append one int to a growable array. Exits on allocation failure. */
 static void ipush(IArr *v, int x) {
     if (v->n == v->cap) {
         v->cap = v->cap ? v->cap * 2 : 8;
@@ -233,6 +246,7 @@ static int names_get(Names *N, const char *s, int create) {
     N->nm[N->n] = xstrdup(s);
     return N->n++;
 }
+/* Release a name table and every duplicated string it owns. */
 static void names_free(Names *N) {
     for (int i = 0; i < N->n; i++) free(N->nm[i]);
     free(N->nm);
@@ -270,22 +284,30 @@ static const char *w_name(const char *name, char *buf, size_t bufn,
     snprintf(buf, bufn, fmt, idx);
     return buf;
 }
+/* Resolve the writer name for constraint row i: task name when usable.
+ * Falls back to the positional key. Returned pointer is borrowed or buf. */
 static const char *mps_rowname(PRIMALtask_t t, int i, char *buf, size_t n) {
     const char *nm = "";
     PRIMAL_getconnameidx(t, i, &nm);
     return w_name(nm, buf, n, "c%d", i);
 }
+/* Resolve the writer name for variable j: task name when usable.
+ * Falls back to the positional key. Returned pointer is borrowed or buf. */
 static const char *mps_colname(PRIMALtask_t t, int j, char *buf, size_t n) {
     const char *nm = "";
     PRIMAL_getvarnameidx(t, j, &nm);
     return w_name(nm, buf, n, "x%d", j);
 }
+/* Resolve the writer name for the objective: task name when usable.
+ * Falls back to "obj". Returned pointer is borrowed or buf. */
 static const char *mps_objname(PRIMALtask_t t, char *buf, size_t n) {
     const char *nm = "";
     PRIMAL_getobjname(t, &nm);
     return w_name(nm, buf, n, "obj", 0);
 }
 
+/* Write the task as free-format MPS: ROWS, COLUMNS, RHS, RANGES, BOUNDS.
+ * Emits QUADOBJ for a quadratic objective and CSECTION for cones. */
 static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
     int numcon = 0, numvar = 0;
     PRIMALobjsensee sense;
@@ -439,11 +461,11 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
                 has_q = 1;
         }
     if (has_q) {
-        /* QUADOBJ (formato CPLEX) invece di QSECTION: e' quello che HiGHS
-         * riconosce (QSECTION gli fa segnalare un errore di sintassi), e va
-         * SENZA nome di riga: con "QUADOBJ obj" HiGHS scarta l'intero obiettivo
-         * (anche lineare); con il solo "QUADOBJ" lo legge. La semantica e' la
-         * stessa: le entrate valgono per 0.5 x'Qx. */
+        /* QUADOBJ (CPLEX format) instead of QSECTION: it is what HiGHS
+         * recognizes (QSECTION makes it report a syntax error), and it goes
+         * WITHOUT a row name: with "QUADOBJ obj" HiGHS discards the whole
+         * objective (even the linear one); with bare "QUADOBJ" it reads it.
+         * The semantics are the same: entries count for 0.5 x'Qx. */
         fprintf(f, "QUADOBJ\n");
         for (int i = 0; i < numvar; i++)
             for (int j = i; j < numvar; j++) {
@@ -504,6 +526,9 @@ static void lp_row_terms(FILE *f, PRIMALtask_t t, int numvar, int con) {
     if (first) { char cb[32]; fprintf(f, " 0 %s", mps_colname(t, 0, cb, sizeof cb)); }
 }
 
+/* Write the task as CPLEX LP format: objective, Subject To, Bounds, General
+ * and Binaries.  A quadratic objective or constraint is refused instead of
+ * being silently dropped (this writer emits the linear part only). */
 static PRIMALrescodee lp_write(PRIMALtask_t t, FILE *f) {
     int numcon = 0, numvar = 0;
     PRIMALobjsensee sense;
@@ -622,6 +647,10 @@ static PRIMALrescodee lp_write(PRIMALtask_t t, FILE *f) {
 }
 
 /* ================= MPS reader ================= */
+/* Parse a free-format MPS token stream into an empty task: ROWS, COLUMNS,
+ * RHS, RANGES, BOUNDS, QSECTION/QUADOBJ/QMATRIX/QCMATRIX and CSECTION.  A model
+ * with duplicate row or column names is refused before anything reaches the
+ * task.  Returns PRIMAL_RES_OK or ERR_FILE/ERR_ALLOC. */
 static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
     Names rows = {0, 0, 0}, cols = {0, 0, 0};
     char *rty = NULL;               /* row type chars 'N','L','G','E' */
@@ -878,9 +907,9 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
         }
         if (teq(sec, "QSECTION") || teq(sec, "QUADOBJ") || teq(sec, "QMATRIX")) {
             i++;
-            /* QSECTION/QMATRIX portano il nome della riga obiettivo; QUADOBJ
-             * (CPLEX) NO: saltare il primo token li' mangerebbe la prima
-             * entrata della matrice. */
+            /* QSECTION/QMATRIX carry the objective row name; QUADOBJ
+             * (CPLEX) does NOT: skipping the first token there would eat the
+             * first matrix entry. */
             if (!teq(sec, "QUADOBJ") && i < T->n && !is_mps_section(T->tok[i])) i++;
             while (i + 2 < T->n && !is_mps_section(T->tok[i])) {
                 int a = names_get(&cols, T->tok[i], 0);
@@ -951,7 +980,7 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
             else if (teq(kt, "DEXP")) ct = PRIMAL_CT_DEXP;
             else if (teq(kt, "PPOW")) ct = PRIMAL_CT_PPOW;
             else if (teq(kt, "DPOW")) ct = PRIMAL_CT_RPOW;
-            else { rc = PRIMAL_RES_ERR_FILE; goto fail; }   /* ZERO non rappresentato */
+            else { rc = PRIMAL_RES_ERR_FILE; goto fail; }   /* ZERO not represented */
             int *mem = NULL, nmem = 0, memcap = 0;
             while (i < T->n && !is_mps_section(T->tok[i])) {
                 int a = names_get(&cols, T->tok[i], 0);
@@ -1078,6 +1107,10 @@ typedef struct {
     const char *nm;   /* the label before ':', owned by the tokenizer */
 } LpCon;
 
+/* Parse a CPLEX LP token stream into an empty task: objective, Subject To,
+ * Bounds, General and Binaries sections.  Linear terms only; a token starting
+ * with '[' (the unsupported quadratic syntax) is refused with ERR_FILE.
+ * Returns PRIMAL_RES_OK or ERR_FILE/ERR_ALLOC. */
 static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
     Names cols = {0, 0, 0};
     LpCon *cons = NULL;
@@ -1408,6 +1441,7 @@ typedef struct {
     int rc;
 } Opf;
 
+/* Skip whitespace and '#' comments in the OPF input. */
 static void opf_ws(Opf *o) {
     for (;;) {
         while (*o->p && isspace((unsigned char)*o->p)) o->p++;
@@ -1415,6 +1449,8 @@ static void opf_ws(Opf *o) {
         else break;
     }
 }
+/* Read an OPF name, quoted or a bare identifier, into out.
+ * Returns 1 when a name was read, 0 otherwise. */
 static int opf_name(Opf *o, char *out, int cap) {
     opf_ws(o);
     int n = 0;
@@ -1430,6 +1466,8 @@ static int opf_name(Opf *o, char *out, int cap) {
     }
     out[n] = 0; return 1;
 }
+/* Read an OPF number into *v. Returns 1 on success, 0 when no number starts
+ * at the current position. */
 static int opf_num(Opf *o, double *v) {
     opf_ws(o);
     const char *s = o->p; char *end = NULL;
@@ -1450,6 +1488,7 @@ static int opf_tag(Opf *o, char *tag, int cap) {
     if (close) { while (*o->p && *o->p != ']') o->p++; if (*o->p == ']') o->p++; }
     return close ? 0 : 1;
 }
+/* Advance the cursor past the next ']', skipping quoted strings. */
 static void opf_to_bracket(Opf *o) {
     opf_ws(o);
     while (*o->p && *o->p != ']') {
@@ -1458,13 +1497,17 @@ static void opf_to_bracket(Opf *o) {
     }
     if (*o->p == ']') o->p++;
 }
+/* Advance the cursor past the matching "[/tag]" of the given tag. */
 static void opf_skip(Opf *o, const char *tag) {
     char close[OPF_NM]; snprintf(close, sizeof close, "[/%s]", tag);
     const char *q = strstr(o->p, close);
     if (q) o->p = q + strlen(close);
 }
 
+/* Look up a name in an OpfName table; returns its index or -1. */
 static int opf_find(OpfName *a, int n, const char *nm) { for (int i = 0; i < n; i++) if (strcmp(a[i].nm, nm) == 0) return a[i].idx; return -1; }
+/* Return the index of variable nm, appending a new variable (with free
+ * bounds) when it is not known yet. Returns -1 when appending fails. */
 static int opf_var(Opf *o, const char *nm) {
     int e = opf_find(o->var, o->nvar, nm);
     if (e >= 0) return e;
@@ -1494,7 +1537,10 @@ typedef struct {
     int err;
 } OpfE;
 
+/* Release the arrays of an OpfE expression and reset its counters. */
 static void oe_free(OpfE *e) { free(e->lin); free(e->qi); free(e->qj); free(e->qv); e->lin = NULL; e->qi = e->qj = NULL; e->qv = NULL; e->lcap = 0; e->nq = e->qcap = 0; }
+/* Make sure the linear coefficient vector of e has room for every variable,
+ * zero-filling the new tail. */
 static void oe_lin(OpfE *e) {
     if (e->lcap < e->o->nvar) {
         int nc = e->o->nvar + 8;
@@ -1504,7 +1550,9 @@ static void oe_lin(OpfE *e) {
         e->lin = nl; e->lcap = nc;
     }
 }
+/* Add v to the linear coefficient of variable idx. */
 static void oe_addlin(OpfE *e, int idx, double v) { oe_lin(e); if (!e->err) e->lin[idx] += v; }
+/* Append the quadratic term v*x_i*x_j, with i,j reordered so i >= j. */
 static void oe_addq(OpfE *e, int i, int j, double v) {
     if (i < j) { int t = i; i = j; j = t; }
     if (e->nq == e->qcap) {
@@ -1517,9 +1565,14 @@ static void oe_addq(OpfE *e, int i, int j, double v) {
     }
     e->qi[e->nq] = i; e->qj[e->nq] = j; e->qv[e->nq] = v; e->nq++;
 }
+/* Degree of the expression: 2 with quadratic terms, otherwise 1 or 0. */
 static int oe_deg(OpfE *e) { oe_lin(e); if (e->nq > 0) return 2; for (int i = 0; i < e->o->nvar; i++) if (e->lin[i] != 0.0) return 1; return 0; }
+/* Multiply the whole expression e by the scalar s. */
 static void oe_scale(OpfE *e, double s) { e->c *= s; oe_lin(e); for (int i = 0; i < e->o->nvar; i++) e->lin[i] *= s; for (int k = 0; k < e->nq; k++) e->qv[k] *= s; }
+/* Add expression g into e. */
 static void oe_addto(OpfE *e, const OpfE *g) { oe_lin((OpfE *)g); e->c += g->c; oe_lin(e); for (int i = 0; i < e->o->nvar; i++) e->lin[i] += g->lin[i]; for (int k = 0; k < g->nq; k++) oe_addq(e, g->qi[k], g->qj[k], g->qv[k]); }
+/* Multiply expressions a and b into e; a product of two quadratics has degree
+ * greater than 2 and is an error. */
 static void oe_mul(OpfE *e, const OpfE *a, const OpfE *b) {   /* e = a*b */
     int da = oe_deg((OpfE *)a), db = oe_deg((OpfE *)b);
     memset(e, 0, sizeof *e); e->o = a->o;
@@ -1543,6 +1596,8 @@ static void opf_factor(Opf *o, OpfE *e);
 static void opf_prod(Opf *o, OpfE *e);
 static void opf_expr(Opf *o, OpfE *e);
 
+/* Parse a primary factor: a parenthesized expression, a variable with an
+ * optional '^2', or a numeric constant. */
 static void opf_factor(Opf *o, OpfE *e) {
     memset(e, 0, sizeof *e); e->o = o;
     opf_ws(o);
@@ -1570,6 +1625,7 @@ static void opf_factor(Opf *o, OpfE *e) {
     if (isdigit((unsigned char)c) || c == '.') { double d; if (!opf_num(o, &d)) { e->err = 1; return; } e->c = d; return; }
     e->err = 1;
 }
+/* Parse a chain of factors joined by explicit '*' or implicit juxtaposition. */
 static void opf_prod(Opf *o, OpfE *e) {
     opf_factor(o, e);
     for (;;) {
@@ -1584,6 +1640,7 @@ static void opf_prod(Opf *o, OpfE *e) {
         } else break;
     }
 }
+/* Parse a signed sum of products at the current cursor. */
 static void opf_expr(Opf *o, OpfE *e) {
     opf_ws(o);
     int neg = 0;
@@ -1622,6 +1679,9 @@ static int opf_varlist(Opf *o, int *vars, int *np, int cap) {
     return *np > 0 ? 0 : -1;
 }
 
+/* Parse one [con] body: a linear or quadratic expression with one or two
+ * relations, then add the corresponding row to the task.  A quadratic
+ * equality or ranged row is not representable and is refused. */
 static void opf_con(Opf *o, const char *nm) {
     OpfE term[3]; int nt = 0, rel[2], nr = 0;
     opf_expr(o, &term[nt++]);
@@ -1698,6 +1758,8 @@ done:
     for (int i = 0; i < nt; i++) oe_free(&term[i]);
 }
 
+/* Parse one [b] body: a numeric or variable-led bound, 'free', or a
+ * conjunction of bounds, and update the affected variable bounds. */
 static void opf_bound(Opf *o) {
     int vars[1024]; int nv = 0;
     opf_ws(o);
@@ -1727,6 +1789,8 @@ static void opf_bound(Opf *o) {
     }
 }
 
+/* Parse one [cone] body: cone type with an optional alpha, then the member
+ * variables, and append the cone to the task. */
 static void opf_cone(Opf *o) {
     char ctype[OPF_NM]; if (!opf_name(o, ctype, sizeof ctype)) { o->rc = PRIMAL_RES_ERR_FILE; return; }
     double alpha = 0.5; char nm[OPF_NM]; nm[0] = 0;
@@ -1759,11 +1823,14 @@ static void opf_cone(Opf *o) {
     if (PRIMAL_appendcone(o->t, ct, par, nmem, mem) != PRIMAL_RES_OK) o->rc = PRIMAL_RES_ERR_FILE;
 }
 
+/* Parse the [variables] section: declare the names in the given order. */
 static void opf_variables(Opf *o) {
     opf_to_bracket(o);
     for (;;) { opf_ws(o); if (*o->p == '[') break; char nm[OPF_NM]; if (!opf_name(o, nm, sizeof nm)) break; opf_var(o, nm); }
     opf_skip(o, "variables");
 }
+/* Parse the [objective min|max [name]] section: sense, optional name and the
+ * linear/quadratic objective. */
 static void opf_objective(Opf *o) {
     char w[OPF_NM], nm[OPF_NM]; nm[0] = 0;
     if (!opf_name(o, w, sizeof w)) { o->rc = PRIMAL_RES_ERR_FILE; return; }
@@ -1781,6 +1848,8 @@ static void opf_objective(Opf *o) {
     oe_free(&e);
     opf_skip(o, "objective");
 }
+/* Parse the [constraints] section, dispatching to opf_con for each [con]
+ * sub-tag. */
 static void opf_constraints(Opf *o) {
     opf_to_bracket(o);
     char tag[OPF_NM];
@@ -1795,6 +1864,7 @@ static void opf_constraints(Opf *o) {
         opf_skip(o, "con");
     }
 }
+/* Parse the [bounds] section, dispatching the [b] and [cone] sub-tags. */
 static void opf_bounds(Opf *o) {
     opf_to_bracket(o);
     char tag[OPF_NM];
@@ -1806,12 +1876,15 @@ static void opf_bounds(Opf *o) {
         else opf_skip(o, tag);
     }
 }
+/* Parse the [integer] section: mark the named variables integer. */
 static void opf_integer(Opf *o) {
     opf_to_bracket(o);
     for (;;) { opf_ws(o); if (*o->p == '[') break; char nm[OPF_NM]; if (!opf_name(o, nm, sizeof nm)) break; int idx = opf_var(o, nm); if (idx >= 0) PRIMAL_putvartype(o->t, idx, PRIMAL_VAR_TYPE_INT); }
     opf_skip(o, "integer");
 }
 
+/* Walk the OPF top-level sections, invoking the handler of each known tag and
+ * skipping unknown ones.  Returns the accumulated result code. */
 static int opf_parse(Opf *o) {
     char tag[OPF_NM];
     for (;;) {
@@ -1834,6 +1907,8 @@ static int opf_parse(Opf *o) {
     return o->rc;
 }
 
+/* Parse OPF text into an EMPTY task (only empty tasks are accepted).  Emits
+ * the READ_OPF callback and returns ERR_NULL/ERR_ARG or the parser's code. */
 PRIMALrescodee opf_read(PRIMALtask_t t, const char *data) {
     if (!t || !data) return PRIMAL_RES_ERR_NULL;
     {
@@ -1859,6 +1934,7 @@ PRIMALrescodee opf_read(PRIMALtask_t t, const char *data) {
 }
 
 /* -------- writer -------- */
+/* Write a name to f, quoting it when it is not a bare identifier. */
 static void opf_pname(FILE *f, const char *nm) {
     if (!nm || !*nm) return;
     int simple = isalpha((unsigned char)nm[0]) ? 1 : 0;
@@ -1867,11 +1943,14 @@ static void opf_pname(FILE *f, const char *nm) {
     if (simple) fputs(nm, f);
     else fprintf(f, "'%s'", nm);
 }
+/* Write variable j's task name, or its positional 'x%d' fallback. */
 static void opf_vname(FILE *f, PRIMALtask_t t, int j) {
     const char *nm = NULL;
     PRIMAL_getvarnameidx(t, j, &nm);
     if (nm && *nm) opf_pname(f, nm); else fprintf(f, "x%d", j);
 }
+/* Write one objective/row term, handling the leading sign and the square
+ * suffix when power == 2. */
 static void opf_cterm(FILE *f, int *first, double coef, PRIMALtask_t t, int j, int power) {
     if (coef == 0.0) return;
     fputs(*first ? (coef > 0 ? "" : "- ") : (coef > 0 ? " + " : " - "), f);
@@ -1881,6 +1960,8 @@ static void opf_cterm(FILE *f, int *first, double coef, PRIMALtask_t t, int j, i
     if (power == 2) fputs(" ^ 2", f);
     *first = 0;
 }
+/* Write the task in OPF format: variables, objective, constraints, bounds,
+ * cones and integers.  Emits the WRITE_OPF callback. */
 PRIMALrescodee opf_write(PRIMALtask_t t, FILE *f) {
     if (!t || !f) return PRIMAL_RES_ERR_NULL;
     primal_cb_notify(t, PRIMAL_CALLBACK_WRITE_OPF);
@@ -2095,6 +2176,9 @@ PRIMALrescodee primalio_read(PRIMALtask_t t, const char *filename) {
     return rc;
 }
 
+/* Read a file with a declared PRIMALdataformate: format 0 dispatches by
+ * extension, 1/4 force MPS, 2 forces LP, 3 forces OPF, 7 forces CBF.  The
+ * task-dump, PTF and JSON formats have no reader and answer ERR_ARG. */
 PRIMALrescodee primalio_read_format(PRIMALtask_t t, const char *filename, int format) {
     if (!t || !filename) return PRIMAL_RES_ERR_NULL;
     {

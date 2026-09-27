@@ -62,6 +62,7 @@ static const double XS[5]   = {0.03, 0.13, 0.24, 0.35, 0.45};
 static const double XB[5]   = {0.10, 0.12, 0.14, 0.16, 0.18};
 static const double XM[5]   = {0.87, 0.75, 0.62, 0.49, 0.37};
 
+/* Solve the MVO QP for target R[k] and check the book portfolio. */
 static int solve(int k) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
@@ -99,6 +100,7 @@ static int solve(int k) {
     return ok;
 }
 
+/* Solve the five target-return MVO problems and aggregate the result. */
 int main(void) {
     int ok = 1;
     for (int k = 0; k < 5; k++) ok &= solve(k);

@@ -22,23 +22,24 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* dual_sdo_l1.c — porting dell'esempio "dual_sdo_l1.jl" (C API
- * docs.mosek.com): dualita' SDP — il duale di
+/* dual_sdo_l1.c — port of the "dual_sdo_l1.jl" example (C API
+ * docs.mosek.com): SDP duality — the dual of
  *   min <C, X>  s.t.  <A_i, X> = b_i (i=1..m),  X PSD
- * e'  max b'y  s.t.  S = C - sum_i y_i A_i PSD.
- * L'esempio costruisce il duale come problema SEPARATO e verifica la
- * strong duality <C, X*> = b'y* tramite il solver del clone.
+ * is  max b'y  s.t.  S = C - sum_i y_i A_i PSD.
+ * The example builds the dual as a SEPARATE problem and checks
+ * strong duality <C, X*> = b'y* through the clone's solver.
  *
- * Primal (piccolo, verificato a mano):  min X00  s.t.  X11 = 1, X PSD (2x2)
- *   -> ottimo X* = diag(0, 1), pobj = 0.
- * Duale: max y (b_1 = 1, A_1 = E_11, C = E_00):
+ * Primal (small, hand-verified):  min X00  s.t.  X11 = 1, X PSD (2x2)
+ *   -> optimum X* = diag(0, 1), pobj = 0.
+ * Dual: max y (b_1 = 1, A_1 = E_11, C = E_00):
  *   max y  s.t.  S = C - y A_1 = diag(0, -y) PSD  ->  -y >= 0 -> y <= 0
- *   -> ottimo y* = 0, dobj = 0. Strong duality: 0 = 0 ✓.
+ *   -> optimum y* = 0, dobj = 0. Strong duality: 0 = 0 ✓.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the primal SDP min X00 s.t. X11 = 1 and return its value. */
 static double primal_sdp(double *Xout) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -67,12 +68,13 @@ static double primal_sdp(double *Xout) {
     return po;
 }
 
+/* Solve the dual SDP max y s.t. S = C - y A_1 PSD and return its value. */
 static double dual_sdp(double *y_out, double *S_out) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
-    /* max y s.t. S = C - y A_1 PSD: S bar 2x2 con
+    /* max y s.t. S = C - y A_1 PSD: 2x2 bar S with
      * S_00 = 0, S_01 = 0, S_11 = -y, y <= 0 */
     PRIMAL_appendvars(task, 1);   /* y */
     PRIMAL_putvarbound(task, 0, PRIMAL_BK_FR, -INFINITY, INFINITY);
@@ -85,7 +87,7 @@ static double dual_sdp(double *y_out, double *S_out) {
     PRIMAL_appendsparsesymmat(task, 2, 1, (int[]){1}, (int[]){1}, (double[]){1.0}, &mA);
     PRIMAL_appendsparsesymmat(task, 2, 1, (int[]){0}, (int[]){1}, (double[]){1.0}, &mO);
     PRIMAL_appendcons(task, 3);
-    /* S_00 = 0 (da C - 0) */
+    /* S_00 = 0 (from C - 0) */
     PRIMAL_putbaraij(task, 0, 0, 1, (int[]){mC}, (double[]){1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 0.0, 0.0);
     /* S_01 = 0 */
@@ -111,6 +113,7 @@ static double dual_sdp(double *y_out, double *S_out) {
     return dobj;
 }
 
+/* Solve primal and dual SDPs and check strong duality at 0 = 0. */
 int main(void) {
     double X[4], S[4], y;
     double pobj = primal_sdp(X);

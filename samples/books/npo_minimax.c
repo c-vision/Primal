@@ -36,6 +36,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the minimax regression LP and check the book coefficients and mad. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     static const double y[10] = {

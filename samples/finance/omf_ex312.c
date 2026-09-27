@@ -65,6 +65,7 @@ static const double C[N] = {5.625, 4.75, 4.25, 5.25, 0.0, 0.0, 0.0, 5.75,
                             6.875, 6.5, 6.625, 6.125, 5.625, 4.75, 5.5, 0.0};
 static const int    M[N] = {1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9};
 
+/* Solve the dedication LP and verify the cash-flow recurrence. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

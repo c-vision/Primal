@@ -22,19 +22,19 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* nearestcorrelation.c — porting dell'esempio "nearestcorrelation.jl"
+/* nearestcorrelation.c — port of the "nearestcorrelation.jl" example
  * (C API docs.mosek.com): nearest correlation matrix (Higham).
  *
  *   min  ||A - X||_F  s.t.  X PSD, diag(X) = 1
- * modellato con:  min t  s.t. (t, vec(A-X)) in QUAD (norma Frobenius),
- * X bar PSD, righe FX X_ii = 1.
+ * modelled as:  min t  s.t. (t, vec(A-X)) in QUAD (Frobenius norm),
+ * X PSD bar, FX rows X_ii = 1.
  *
- * A (3x3, dal tutorial MOSEK):
+ * A (3x3, from the MOSEK tutorial):
  *   A = [ 2  -1    0
  *        -1   2   -1
- *         0  -1   2 ] / scaling? qui: A come sopra ma con diag fuori scala
- * per rendere il problema non banale. La proiezione Higham (alternating
- * projections su PSD ∩ diag=1) fornisce la verifica indipendente.
+ *         0  -1   2 ] / scaling? here: A as above but with off-scale diag
+ * to make the problem nontrivial. The Higham projection (alternating
+ * projections onto PSD ∩ diag=1) provides the independent check.
  */
 #include <stdio.h>
 #include <math.h>
@@ -131,6 +131,7 @@ static void higham(double X[N][N]) {
     }
 }
 
+/* Solve the nearest-correlation model and check it against Higham. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -138,17 +139,17 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: t (norma) + bar X 3x3.
-     * ||A - X||_F = sqrt(sum_{i<=j} w_ij (A_ij - X_ij)^2) con w = 1 (diag)
-     * o 2 (offdiag, per il doppio conteggio nel Frobenius).
-     * Cono QUAD su (t, d_00..d_22) con d_ij = A_ij - X_ij (righe FX con
-     * termini barA): 9 membri + t. Il primo membro e' t: t >= ||d||. */
+    /* variables: t (norm) + 3x3 bar X.
+     * ||A - X||_F = sqrt(sum_{i<=j} w_ij (A_ij - X_ij)^2) with w = 1 (diag)
+     * or 2 (offdiag, for the double counting in Frobenius).
+     * QUAD cone over (t, d_00..d_22) with d_ij = A_ij - X_ij (FX rows with
+     * barA terms): 9 members + t. The first member is t: t >= ||d||. */
     PRIMAL_appendvars(task, 1);         /* t */
     PRIMAL_putvarbound(task, 0, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putcj(task, 0, 1.0);         /* min t */
 
-    /* matrici del matrix store: E_ij per ogni entrata (i<=j), UN SOLO
-     * triangolo (la simmetria implicita conta l'offdiag due volte) */
+    /* matrix-store matrices: E_ij for every entry (i<=j), ONE
+     * triangle only (implicit symmetry counts offdiag twice) */
     int msym[N * (N + 1) / 2];
     int cnt = 0;
     for (int i = 0; i < N; i++)
@@ -162,20 +163,20 @@ int main(void) {
     int dim = N;
     PRIMAL_appendbarvars(task, 1, &dim);
 
-    /* righe: per ogni entrata (i,j): w_ij * <E_ij, X> + w_ij * d_ij = w_ij * A_ij
-     * e per la diag: riga extra X_kk = 1.
-     * d_ij sono variabili ausiliarie: aggiungiamole al task (9).
-     * Layout variabili: [0]=t, [1..9]=d_ij (row-major i<=j), poi bar.
-     * Ricalcolo: le d sono 6 (i<=j). variabili: t + 6 d. */
+    /* rows: for every entry (i,j): w_ij * <E_ij, X> + w_ij * d_ij = w_ij * A_ij
+     * and for the diag: extra row X_kk = 1.
+     * d_ij are auxiliary variables: append them to the task (9).
+     * Variable layout: [0]=t, [1..9]=d_ij (row-major i<=j), then bar.
+     * Recount: the d are 6 (i<=j). variables: t + 6 d. */
     PRIMAL_appendvars(task, N * (N + 1) / 2);
     for (int k = 0; k < N * (N + 1) / 2; k++)
         PRIMAL_putvarbound(task, 1 + k, PRIMAL_BK_FR, -INFINITY, INFINITY);
 
-    /* righe: per (i,i):   X_ii + d_ii = A_ii            (d = A_ii - X_ii)
-     *       per (i,j) i<j: 2 X_ij + sqrt(2) d_ij = 2 A_ij
-     *         (<E_ij,X> = 2 X_ij per la simmetria; d_ij = sqrt(2)(A_ij - X_ij))
-     * cosi' ||A-X||_F^2 = sum_{i<=j} d_ij^2 (offdiag contato due volte) e
-     * il cono t >= ||d|| da' la norma Frobenius. */
+    /* rows: for (i,i):   X_ii + d_ii = A_ii            (d = A_ii - X_ii)
+     *       for (i,j) i<j: 2 X_ij + sqrt(2) d_ij = 2 A_ij
+     *         (<E_ij,X> = 2 X_ij by symmetry; d_ij = sqrt(2)(A_ij - X_ij))
+     * so ||A-X||_F^2 = sum_{i<=j} d_ij^2 (offdiag counted twice) and
+     * the cone t >= ||d|| gives the Frobenius norm. */
     PRIMAL_appendcons(task, N * (N + 1) / 2 + N);
     int row = 0;
     cnt = 0;
@@ -190,7 +191,7 @@ int main(void) {
             PRIMAL_putconbound(task, row, PRIMAL_BK_FX, rhs, rhs);
             row++; cnt++;
         }
-    /* righe diag: X_kk = 1: <E_kk, X> = 1 */
+    /* diag rows: X_kk = 1: <E_kk, X> = 1 */
     {
         int me[N];
         int k2 = 0;
@@ -203,12 +204,12 @@ int main(void) {
         }
     }
 
-    /* cono: (t, d_00, d_11, d_22, d_01, d_02, d_12) in QUAD con pesi sqrt(w):
-     * t >= ||(sqrt(w_ij) d_ij)||, w=1 per diag, w=2 per offdiag.
-     * L'utente deve pre-scalare: d'_ij = sqrt(w)*d via... il cono QUAD non
-     * pesa i membri: aggiungiamo i coefficienti nelle righe: d_ij definita
-     * gia' come sqrt(w)*(A - X): riscrivo le righe sopra con -sqrt(w) su d.
-     * Implementazione: coef su d = sqrt(w_ij). */
+    /* cone: (t, d_00, d_11, d_22, d_01, d_02, d_12) in QUAD with sqrt(w) weights:
+     * t >= ||(sqrt(w_ij) d_ij)||, w=1 for diag, w=2 for offdiag.
+     * The caller must pre-scale: d'_ij = sqrt(w)*d via... the QUAD cone does
+     * not weight members: the coefficients go in the rows: d_ij already
+     * defined as sqrt(w)*(A - X): the rows above rewritten with -sqrt(w) on d.
+     * Implementation: coef on d = sqrt(w_ij). */
     {
         int mem[1 + N * (N + 1) / 2];
         mem[0] = 0;
@@ -233,7 +234,7 @@ int main(void) {
     }
     printf("obj (norma Frobenius) = %.6f\n", po);
 
-    /* verifica indipendente: Higham alternating projections */
+    /* independent check: Higham alternating projections */
     double Xh[N][N];
     higham(Xh);
     printf("Higham:\n");
@@ -246,8 +247,8 @@ int main(void) {
     double fx = fro(X);
     printf("||A-X_higham||_F = %.6f, ||A-X_clone||_F = %.6f\n", fh, fx);
 
-    /* il clone deve essere almeno buono quanto Higham (entro tolleranza)
-     * e ammissibile: diag=1, PSD (autovalori >= -1e-6) */
+    /* the clone must be at least as good as Higham (within tolerance)
+     * and feasible: diag=1, PSD (eigenvalues >= -1e-6) */
     double ev[N], V[N][N];
     eig3((const double (*)[N])X, ev, V);
     int psd_ok = 1;

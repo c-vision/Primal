@@ -22,29 +22,30 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* solvebasis.c — porting dell'esempio "solvebasis.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): leggere una base da file e risolvere
- * partendo da quella base.
+/* solvebasis.c — port of the MOSEK Julia API "solvebasis.jl" example
+ * (docs.mosek.com/11.0/juliaapi): read a basis from file and solve
+ * starting from that basis.
  *
- * Flusso (come l'esempio ufficiale):
- *   1. costruisce un LP noto e lo risolve (PRIMAL_optimize)
- *   2. scrive la base della soluzione ottimale (writebasis)
- *   3. costruisce un NUOVO task e legge la base (readbasis)
- *   4. risolve con PRIMAL_solvebasis e verifica che la soluzione coincida
+ * Flow (as in the official example):
+ *   1. builds a known LP and solves it (PRIMAL_optimize)
+ *   2. writes the basis of the optimal solution (writebasis)
+ *   3. builds a NEW task and reads the basis (readbasis)
+ *   4. solves with PRIMAL_solvebasis and checks the solution matches
  *
- * Problema (ottimo verificato a mano):  max 3x0 + x1 + 5x2 + x3
- *   s.t. 3x0 + x1 + 2x2 + x3  = 30   (r0, sempre attiva)
+ * Problem (optimum verified by hand):  max 3x0 + x1 + 5x2 + x3
+ *   s.t. 3x0 + x1 + 2x2 + x3  = 30   (r0, always active)
  *        2x0 + x1 + 3x2 + x3  >= 15  (r1)
  *               2x1 +     x3  <= 9   (r2)
- * con x >= 0, x3 in [0,5].
- * x2 domina (5 per 2 unita' di r0); ottimo x* = (0, 0, 15, 0), pobj = 75
- * (r1: 45 >= 15 ok, r2: 0 <= 9 ok). Base: x2 BAS, r0 attiva (LOW/UPR = EQ).
+ * with x >= 0, x3 in [0,5].
+ * x2 dominates (5 per 2 units of r0); optimum x* = (0, 0, 15, 0), pobj = 75
+ * (r1: 45 >= 15 ok, r2: 0 <= 9 ok). Basis: x2 BAS, r0 active (LOW/UPR = EQ).
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include "primal.h"
 
+/* Build the reference basis LP. */
 static void build(PRIMALtask_t t) {
     PRIMAL_appendvars(t, 4);
     PRIMAL_appendcons(t, 3);
@@ -62,9 +63,9 @@ static void build(PRIMALtask_t t) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_UP, -INFINITY, 9.0);
 }
 
-/* ricava la base dalla soluzione: var BAS se strettamente tra i bound,
- * LOW/UPR se al bound; riga BAS (slack di base) se inattiva, LOW/UPR se
- * attiva (lato inferiore/superiore) */
+/* derive the basis from the solution: var BAS if strictly between its bounds,
+ * LOW/UPR if at a bound; row BAS (basic slack) if inactive, LOW/UPR if
+ * active (lower/upper side) */
 static void basis_from_solution(PRIMALtask_t t, PRIMALstakeye *skc, PRIMALstakeye *skx) {
     int nvar, ncon;
     PRIMAL_getnumvar(t, &nvar);
@@ -94,11 +95,12 @@ static void basis_from_solution(PRIMALtask_t t, PRIMALstakeye *skc, PRIMALstakey
     free(x);
 }
 
+/* Solve, write the basis, read it into a new task and re-solve. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
 
-    /* 1. risolvi e ricava la base */
+    /* 1. solve and derive the basis */
     PRIMALtask_t t1;
     PRIMAL_maketask(env, 0, 0, &t1);
     build(t1);
@@ -115,7 +117,7 @@ int main(void) {
     PRIMALstakeye *skx = calloc((size_t)nvar, sizeof(PRIMALstakeye));
     basis_from_solution(t1, skc, skx);
 
-    /* 2. scrivi la base */
+    /* 2. write the basis */
     rc = PRIMAL_putskc(t1, PRIMAL_SOL_BAS, skc);
     rc |= PRIMAL_putskx(t1, PRIMAL_SOL_BAS, skx);
     if (rc) { printf("putsk rc=%d\n", rc); return 1; }
@@ -123,7 +125,7 @@ int main(void) {
     if (rc != PRIMAL_RES_OK) { printf("writebasis rc=%d\n", rc); return 1; }
     printf("fase 2: base scritta in /tmp/mc_solvebasis.bas\n");
 
-    /* 3. nuovo task: legge la base e risolve con solvebasis */
+    /* 3. new task: read the basis and solve with solvebasis */
     PRIMALtask_t t2;
     PRIMAL_maketask(env, 0, 0, &t2);
     build(t2);

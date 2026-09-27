@@ -45,6 +45,7 @@
 
 static const double PT[NPTS] = {0.0, 1.0, 2.0, 3.0};
 
+/* Solve the 4-point 2-cluster k-means MICP with DJC assignment. */
 int main(void) {
     enum { C = 0, DIST = NK, AUX = NK + NPTS, D3 = NK + NPTS + NPTS * NK,
            Y = NK + NPTS + 2 * NPTS * NK, HALF = Y + NPTS, NV = HALF + 1 };

@@ -47,6 +47,7 @@
 
 #define ND 3
 
+/* Solve the log-concave density MLE on a 3-point grid. */
 int main(void) {
     const double dy[ND] = {0.5, 0.5, 0.5};
     const double w[ND] = {1.0, 2.0, 3.0};

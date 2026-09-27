@@ -36,6 +36,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the duality LP and check x*, p* and the equality multiplier. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

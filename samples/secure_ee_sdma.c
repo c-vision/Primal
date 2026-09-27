@@ -79,6 +79,7 @@ static double sai_inverse(double x) {
     return b1 - log(phi / (k1 * (x + k2)) - 1.0) / b0;
 }
 
+/* 2-D dot product. */
 static double dot(const double *a, const double *b) { return a[0]*b[0] + a[1]*b[1]; }
 
 /* true SINRs / secrecy rate / EE at a precoder p */
@@ -98,6 +99,8 @@ static void evaluate(const double *p, double *rate, double *ee) {
 enum { PV0=0, PV1, Y, Z, FP, FE, RU, RE, OPRU, LFP, ZE, PW, HALF, ONE, TPS, HALFSIG, NVAR };
 enum { R_ZE, R_OBJ, R_SEC, R_EXP, R_GAM, R_USR, R_HARV, R_LFP, NR };
 
+/* One successive-convex-approximation step: solves the SOCP built around the
+ * previous point and returns the new precoder and auxiliary zeta. */
 static int solve_sca(const double *p_old, double rho_u_old, double f_e_old,
                      double eta, double out_p[2], double *out_zeta) {
     PRIMALenv_t env; PRIMALtask_t t;
@@ -168,6 +171,7 @@ static int solve_sca(const double *p_old, double rho_u_old, double f_e_old,
     return ok;
 }
 
+/* Run the Dinkelbach/SCA loops and validate against brute force. */
 int main(void) {
     double ereq = sai_inverse(EH);
     double p[2], zeta = 0.0;

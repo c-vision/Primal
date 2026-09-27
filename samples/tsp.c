@@ -52,6 +52,7 @@ static void solve(const PRIMALtask_t t, int succ[N]) {
     }
 }
 
+/* Build the base model and eliminate subtours until a tour remains. */
 int main(void) {
     const int two_hop = 0;   /* without 2-hop removal the first cover is disjoint cycles */
     PRIMALenv_t env; PRIMALtask_t t;

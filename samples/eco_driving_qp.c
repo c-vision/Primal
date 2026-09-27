@@ -51,6 +51,7 @@
 
 #define N 10
 
+/* Solve the eco-driving speed-planning QP on the hand-built corridor. */
 int main(void) {
     /* vehicle parameters (from the paper's code) */
     const double spd_max = 60.0/3.6, acc_min = -2.0, acc_max = 1.4;

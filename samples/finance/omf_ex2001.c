@@ -53,6 +53,7 @@
 static const double S11 = 0.1764, S12 = 0.09702, S22 = 0.1089;
 static double l11, l21, l22;
 
+/* Solve one tracking-error SOCP case and check the book optimum. */
 static int solve(const char *name, double mu1, double mu2,
                  double want_obj, double wx1, double wx2) {
     PRIMALenv_t env; PRIMALtask_t t;
@@ -100,6 +101,7 @@ static int solve(const char *name, double mu1, double mu2,
     return ok;
 }
 
+/* Factor the covariance block and run the two book cases. */
 int main(void) {
     l11 = sqrt(S11);
     l21 = S12 / l11;

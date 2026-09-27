@@ -47,6 +47,7 @@
 static const double XS[NB] = {0.0, 1.0, 2.0};
 static const double NU[NK][NB] = {{0.5, 0.5, 0.0}, {0.0, 0.5, 0.5}};
 
+/* Solve the 2-distribution Wasserstein barycenter LP. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

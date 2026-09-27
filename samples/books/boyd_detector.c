@@ -38,6 +38,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the minimax detector LP and check t and both error probabilities. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     static const double P0[4] = {0.70, 0.20, 0.05, 0.05};  /* hyp 1 column */

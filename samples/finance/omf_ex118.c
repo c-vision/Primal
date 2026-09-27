@@ -87,6 +87,7 @@ static int solve(int with_cut, int int_flag, double *obj, double *x1, double *x2
     return ok;
 }
 
+/* Reproduce the LP relaxation, the GMI cut and the MIP. */
 int main(void) {
     int ok = 1;
     double z, x1, x2;

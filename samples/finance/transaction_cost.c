@@ -45,6 +45,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the transaction-cost LP and check the value and the optimal face. */
 int main(void) {
     static const double x0[3] = {-20.0, -50.0, -10.0};
     PRIMALenv_t env;

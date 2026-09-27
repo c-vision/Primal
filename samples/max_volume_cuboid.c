@@ -48,6 +48,7 @@
 static const double SQ[4][3]  = { {-1, 0, 0}, {0, -1, 0}, {1, 0, 1}, {0, 1, 1} };
 static const double TRI[3][3] = { {-1, 0, 0}, {0, -1, 0}, {1, 1, 1} };
 
+/* Solve the max-volume cuboid GP on one polyhedron and check its volume. */
 static int solve(const char *name, const double F[][3], int nf, double want) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
@@ -88,6 +89,7 @@ static int solve(const char *name, const double F[][3], int nf, double want) {
     return ok;
 }
 
+/* Run the selected polyhedron case (square by default, triangle on "t"). */
 int main(int argc, char **argv) {
     const char *which = (argc > 1) ? argv[1] : "square";
     int ok;

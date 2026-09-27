@@ -70,6 +70,7 @@ static double LAM = 0.3;      /* LASSO penalty            */
 
 /* ---- deterministic data (LCG), CLR-transformed ------------------------- */
 static unsigned st = 20260924u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
@@ -77,6 +78,7 @@ static double rnd(void) {
 /* true log-contrast signal (sum zero), used to label the samples */
 static const double WTRUE[NF] = {-0.5, -0.5, 1.0};
 
+/* Build the deterministic CLR-transformed instance and its labels. */
 static void make_instance(void) {
     for (int i = 0; i < NS; i++) {
         double raw[NF], m = 0.0;
@@ -102,6 +104,7 @@ static void make_instance(void) {
 
 /* stable softplus and sigmoid */
 static double softplus(double z) { return z >= 0.0 ? z + log1p(exp(-z)) : log1p(exp(z)); }
+/* numerically stable logistic sigmoid 1/(1+exp(-z)) */
 static double sigmoid(double z) { return z >= 0.0 ? 1.0/(1.0+exp(-z)) : exp(z)/(1.0+exp(z)); }
 
 /* objective at beta (intercept first) */
@@ -119,13 +122,18 @@ static double objective(const double *b) {
 
 /* ======================= 1. conic model (PrimalSolver) =================== */
 /* vars: b0 | b_j | g_j | per sample (t,m,s,a,b) | one                       */
+/* Variable indices for slopes, epigraphs, per-sample blocks and the one. */
 static int BJ(int j) { return 1 + j; }
+/* Epigraph variable index for feature j. */
 static int GJ(int j) { return 1 + NF + j; }
+/* First variable index of sample i's (t,m,s,a,b) block. */
 static int SB(int i) { return 1 + 2 * NF + 5 * i; }   /* t,m,s,a,b */
+/* Index of the fixed one variable. */
 static int ONE(void) { return 1 + 2 * NF + 5 * NS; }
 #define NVAR (1 + 2 * NF + 5 * NS + 1)
 #define NR (1 + 2 * NF + 3 * NS)
 
+/* Solve the log-contrast LASSO through the PEXP conic model. */
 static int conic_solve(double *beta_out, double *obj_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
@@ -352,6 +360,7 @@ static void brute_force(double *obj_out, double *beta_out) {
     for (int k = 0; k < NL; k++) beta_out[k] = bb[k];
 }
 
+/* Run conic, ADMM and brute force and check the three agree. */
 int main(void) {
     make_instance();
     double bc[NL], ba[NL], bb[NL], oc = 0, oa = 0, ob = 0;

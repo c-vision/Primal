@@ -85,6 +85,7 @@ static int feasible(double t, double *p_out) {
     return ok;
 }
 
+/* Bisect the max-min SINR and verify power, SINR and hand optimum. */
 int main(void) {
     /* bisection on t: [0, hi]; hi is an obvious upper bound (SINR with p=P). */
     double lo = 0.0, hi = 100.0;

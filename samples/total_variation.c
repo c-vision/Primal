@@ -43,6 +43,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the two-point TV denoising SOCP and check the closed form. */
 int main(void) {
     const double f[2] = {0.0, 1.0}, sigma = 0.5;
     enum { U = 0, TT = 2, DX = 3, E0 = 4, E1 = 5, SG = 6, NV = 7 };

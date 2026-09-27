@@ -35,6 +35,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the simplex LP and check the book optimum x=(3,0,0), 12. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

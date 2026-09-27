@@ -60,6 +60,7 @@ static const double DEMAND[D] = {14, 13, 15, 16, 19, 18, 11};
 static const double XBOOK[D]  = {4, 7, 1, 4, 3, 3, 0};
 static const double SPBOOK[D] = {0.333333, 0, 0.333333, 0, 0.333333, 0.333333, 0};
 
+/* Solve the workforce LP and check the schedule and sensitivities. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

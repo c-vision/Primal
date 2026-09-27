@@ -22,24 +22,25 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sched.c — Scheduling MIP (equivalente all'esempio Python Fusion API
- * "Scheduling": assegnare 30 task a 6 processori minimizzando il makespan)
+/* sched.c — Scheduling MIP (equivalent to the Python Fusion API example
+ * "Scheduling": assign 30 tasks to 6 processors minimizing the makespan)
  *
- * Riformulazione Optimizer API della Fusion:
- *   x[i][j] ∈ {0,1}  binaria di assegnamento (proc i, task j)
- *   t                variabile continua libera (makespan)
- *   per ogni task j:     sum_i x[i][j] = 1          (Expr.sum(x,0) == 1)
- *   per ogni proc i:     t - sum_j T[j]*x[i][j] >= 0 (repeat(t,m) - x*T >= 0)
- *   obiettivo: min t
+ * Optimizer API reformulation of the Fusion one:
+ *   x[i][j] ∈ {0,1}  assignment binary (proc i, task j)
+ *   t                free continuous variable (makespan)
+ *   for each task j:     sum_i x[i][j] = 1          (Expr.sum(x,0) == 1)
+ *   for each proc i:     t - sum_j T[j]*x[i][j] >= 0 (repeat(t,m) - x*T >= 0)
+ *   objective: min t
  *
- * I tempi dei task sono generati come l'esempio Python (random.seed(0),
- * 24 task uniform(1,5) + 6 task uniform(20,100), ordinati decrescente);
- * la sequenza Mersenne Twister di Python è hardcoded sotto.
+ * The task times are generated as in the Python example (random.seed(0),
+ * 24 tasks uniform(1,5) + 6 tasks uniform(20,100), sorted decreasing);
+ * the Python Mersenne Twister sequence is hardcoded below.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the scheduling MIP and check the makespan and assignment. */
 int main(void) {
     enum { N = 30, M = 6 };
     static const double T[N] = {
@@ -56,11 +57,11 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: x[i][j] = var i*N + j; t = var M*N */
+    /* variables: x[i][j] = var i*N + j; t = var M*N */
     PRIMAL_appendvars(task, M * N + 1);
     PRIMAL_appendcons(task, N + M);
 
-    /* x binarie in [0,1], t libera */
+    /* x binaries in [0,1], t free */
     for (int i = 0; i < M; i++)
         for (int j = 0; j < N; j++) {
             int v = i * N + j;
@@ -69,11 +70,11 @@ int main(void) {
         }
     PRIMAL_putvarbound(task, M * N, PRIMAL_BK_FR, -INFINITY, INFINITY);
 
-    /* obiettivo: min t */
+    /* objective: min t */
     PRIMAL_putcj(task, M * N, 1.0);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MINIMIZE);
 
-    /* righe 0..N-1: sum_i x[i][j] = 1  (ogni task assegnato a un solo proc) */
+    /* rows 0..N-1: sum_i x[i][j] = 1  (each task assigned to a single proc) */
     for (int j = 0; j < N; j++) {
         int sub[M]; double val[M];
         for (int i = 0; i < M; i++) { sub[i] = i * N + j; val[i] = 1.0; }
@@ -81,7 +82,7 @@ int main(void) {
         PRIMAL_putconbound(task, j, PRIMAL_BK_FX, 1.0, 1.0);
     }
 
-    /* righe N..N+M-1: t - sum_j T[j]*x[i][j] >= 0  (load_i <= t) */
+    /* rows N..N+M-1: t - sum_j T[j]*x[i][j] >= 0  (load_i <= t) */
     for (int i = 0; i < M; i++) {
         int sub[N + 1]; double val[N + 1];
         for (int j = 0; j < N; j++) { sub[j] = i * N + j; val[j] = -T[j]; }
@@ -91,15 +92,15 @@ int main(void) {
     }
 
 
-    /* Misura su questo modello (cap di default 100000 nodi): l'albero non
-     * chiude -- 100000 nodi esplorati, 27 ancora aperti, incumbent 97.328509.
-     * Il valore E' l'ottimo (nessun processore puo' scendere sotto il task piu'
-     * grosso), ma non e' *dimostrato* ottimale, e il riferimento distingue le
-     * due cose: tabella 7.3, punto intero ammissibile non provato ottimo =
-     * prosta PRIM_FEAS + solsta PRIM_FEAS, con un codice di terminazione per il
-     * cap (MSK_RES_TRM_MIO_NUM_BRANCHES nella numerazione del riferimento).
-     * Quindi qui rc != OK E' la risposta corretta: un INTEGER_OPTIMAL su un
-     * albero tagliato dal contatore asserirebbe una prova che non c'e' stata. */
+    /* Measurement on this model (default cap 100000 nodes): the tree does not
+     * close -- 100000 nodes explored, 27 still open, incumbent 97.328509.
+     * The value IS the optimum (no processor can go below the largest task),
+     * but it is not *proven* optimal, and the reference distinguishes the two:
+     * table 7.3, feasible integer point not proven optimal =
+     * prosta PRIM_FEAS + solsta PRIM_FEAS, with a termination code for the
+     * cap (MSK_RES_TRM_MIO_NUM_BRANCHES in the reference numbering).
+     * So here rc != OK IS the correct answer: an INTEGER_OPTIMAL on a tree
+     * cut off by the counter would assert a proof that never happened. */
     PRIMALrescodee rc = PRIMAL_optimize(task);
 
     double xx[M * N + 1], obj;
@@ -117,7 +118,7 @@ int main(void) {
         printf("  M%d: load = %.4f\n", i, load);
     }
 
-    /* verifica: ogni task assegnato esattamente una volta, makespan coerente */
+    /* check: each task assigned exactly once, consistent makespan */
     /* The solver's partition-bound cut derives t >= T_j for this model and
        tightens the objective's box, so the tree closes at the root: an integer
        optimum is PROVEN (rc = OK, solsta = INTEGER_OPTIMAL = 9). */

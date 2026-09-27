@@ -32,6 +32,7 @@
 #define NT 5
 static const int TASK[NT] = {3, 3, 2, 2, 2};   /* already sorted descending (LPT) */
 
+/* Solve the 2-machine scheduling MIP from the LPT warm start. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 0, 0, &t);

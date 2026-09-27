@@ -43,6 +43,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the Lyapunov LMI and check P* and its trace. */
 int main(void) {
     /* A = [[0,-2],[1,-3]] */
     PRIMALenv_t env; PRIMALtask_t t;

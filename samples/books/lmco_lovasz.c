@@ -52,6 +52,7 @@ static int arcidx(int i, int j) {
     return map[i][j];
 }
 
+/* Solve the Lovasz capacity SDP and check theta(C5)=sqrt(5). */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     int msym[15], mcnt = 0, row = 0;

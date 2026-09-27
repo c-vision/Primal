@@ -33,6 +33,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the factor-model minimum-variance QP and check the hand value. */
 int main(void) {
     static const double F[3] = {1.0, 1.0, 0.0};
     static const double D[3] = {0.0, 0.0, 1.0};

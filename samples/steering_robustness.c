@@ -54,8 +54,11 @@
 #include "primal.h"
 
 typedef struct { double re, im; } C;
+/* Complex product of two 2-vectors-as-complex numbers. */
 static C cmul(C a, C b) { C r; r.re = a.re*b.re - a.im*b.im; r.im = a.re*b.im + a.im*b.re; return r; }
+/* Complex sum of two 2-vectors-as-complex numbers. */
 static C cadd(C a, C b) { C r; r.re = a.re+b.re; r.im = a.im+b.im; return r; }
+/* Complex conjugate of a 2-vector-as-complex number. */
 static C cconj(C a) { C r; r.re = a.re; r.im = -a.im; return r; }
 
 /* measurement vector M(dim=2, x=1..3, a=1..2): the three mutually unbiased bases */
@@ -84,6 +87,7 @@ static void assemblage(double w, int x, int a, C sig[2][2]) {
         sig[iB][jB] = s;
     }
 }
+/* True when deterministic strategy l answers a to setting x. */
 static int Dstrategy(int a, int x, int l) { return (((l >> x) & 1) == a); }
 
 #define OA 2
@@ -133,6 +137,7 @@ static double sr(double w, int *ok_out) {
     return obj;
 }
 
+/* Solve steering robustness at the seven reference Werner parameters. */
 int main(void) {
     printf("steering_robustness (Werner state)\n");
     const double ws[7]   = {0.0, 0.4, 0.5, 0.58, 0.8, 0.9, 1.0};

@@ -37,6 +37,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the portfolio allocation LP and check the return and allocation. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     static const double mu[4] = {0.2069, 0.0587, 0.1052, 0.0243};

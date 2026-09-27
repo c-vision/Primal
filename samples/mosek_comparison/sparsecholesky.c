@@ -22,19 +22,19 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sparsecholesky.c — porting dell'esempio "sparsecholesky.jl" della MOSEK
- * Julia API: fattorizzazione di Cholesky sparsa come SDP: dato A simmetrica
- * SPD, trovare L triangolare inferiore con A = L L' — qui nella versione
- * "matrix completion": il sample ufficiale fattorizza una matrice corsa
- * (banded). Il clone lo modella come: min 0 s.t. le entrate di L con
- * le variabili, e A - L L' = 0... NON lineare. La versione SDP lineare
- * (come nel MOSEK example concettualmente equivalente): verifica che la
- * matrice A corsa ammetta Cholesky: le sottomatrici principali hanno
- * determinante >= 0, cioe' A e' PSD <=> esiste la fattorizzazione.
- * Pratico: si costruisce A (tridiagonale 3x3), la si impone come bar X
- * (fissa, righe FX) e si risolve min 0 con X PSD: feasible ⇔ Cholesky
- * esiste. Poi si verifica con la fattorizzazione diretta (via dmat_cholesky
- * non esposto: qui fattorizzazione 3x3 esplicita nel sample).
+/* sparsecholesky.c — port of the MOSEK Julia API "sparsecholesky.jl"
+ * example: sparse Cholesky factorization as an SDP: given symmetric SPD A,
+ * find lower-triangular L with A = L L' — here in the "matrix completion"
+ * version: the official sample factors a banded matrix. The clone models
+ * it as: min 0 s.t. the entries of L with the variables, and A - L L' =
+ * 0... NOT linear. The linear SDP version (as in the conceptually
+ * equivalent MOSEK example): check that the banded matrix A admits a
+ * Cholesky factor: the leading principal submatrices have determinant >=
+ * 0, i.e. A is PSD <=> the factorization exists. In practice: build A
+ * (3x3 tridiagonal), fix it as bar X (fixed, FX rows) and solve min 0
+ * with X PSD: feasible <=> Cholesky exists. Then check with the direct
+ * factorization (via unexposed dmat_cholesky: here explicit 3x3
+ * factorization in the sample).
  */
 #include <stdio.h>
 #include <math.h>
@@ -42,10 +42,10 @@
 
 #define D 3
 
-/* A tridiagonale SPD: diag 2, offdiag -1 (matrice del Laplaciano 1D) */
+/* SPD tridiagonal A: diag 2, offdiag -1 (1D Laplacian matrix) */
 static double A[D][D] = {{2, -1, 0}, {-1, 2, -1}, {0, -1, 2}};
 
-/* Cholesky 3x3 esplicita (verifica indipendente) */
+/* Explicit 3x3 Cholesky (independent check) */
 static int chol3(double M[D][D], double L[D][D]) {
     for (int i = 0; i < D; i++)
         for (int j = 0; j < D; j++) L[i][j] = 0.0;
@@ -64,6 +64,7 @@ static int chol3(double M[D][D], double L[D][D]) {
     return 1;
 }
 
+/* Fix the tridiagonal A as a PSD bar and cross-check with Cholesky. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -75,7 +76,7 @@ int main(void) {
     int dim = D;
     PRIMAL_appendbarvars(task, 1, &dim);
 
-    /* matrix store: E_ii (diag) e E_ij (offdiag, un solo triangolo) */
+    /* matrix store: E_ii (diag) and E_ij (offdiag, one triangle only) */
     int mE[D], mO[3];
     for (int i = 0; i < D; i++)
         PRIMAL_appendsparsesymmat(task, D, 1,
@@ -88,7 +89,7 @@ int main(void) {
             oc++;
         }
 
-    /* fissa X = A: righe FX su ogni entrata (6 per il triangolo) */
+    /* fix X = A: FX rows on every entry (6 for the triangle) */
     PRIMAL_appendcons(task, 6);
     int r = 0;
     for (int i = 0; i < D; i++) {
@@ -113,7 +114,7 @@ int main(void) {
     printf("SDP feasibility di A: solsta = %d (%s)\n", sta,
            sta == PRIMAL_SOL_STA_OPTIMAL ? "PSD" : "NON PSD");
 
-    /* verifica indipendente: Cholesky esplicita */
+    /* independent check: explicit Cholesky */
     double L[D][D];
     int ok_chol = chol3(A, L);
     printf("Cholesky diretta: %s\n", ok_chol ? "esiste (A SPD)" : "non esiste");

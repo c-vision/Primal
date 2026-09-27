@@ -33,16 +33,19 @@
 #include "primal.h"
 
 static unsigned st = 606060u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
 }
 
+/* qsort comparator ordering doubles from largest to smallest. */
 static int cmp_desc(const void *a, const void *b) {
     double x = *(const double *)a, y = *(const double *)b;
     return (x < y) - (x > y);
 }
 
+/* Solve the CVaR LP and compare with the empirical tail average. */
 int main(int argc, char **argv) {
     int n = argc > 1 ? atoi(argv[1]) : 40;
     int S = argc > 2 ? atoi(argv[2]) : 200;

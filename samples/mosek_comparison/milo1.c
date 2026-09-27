@@ -22,27 +22,28 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* milo1.c — porting dell'esempio "milo1.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): MIP misto (parte delle variabili intera,
- * parte continua).
+/* milo1.c — port of the MOSEK Julia API "milo1.jl" example
+ * (docs.mosek.com/11.0/juliaapi): mixed MIP (some variables integer,
+ * some continuous).
  *
  * max 3x0 + 2x1 + 2x2
  * s.t.  x0 + x1 + x2 <= 10
  *       x0 + 2x1        <=  9
  *      -x0 + 3x1 +  x2  <= 10
- *      x0, x1 interi >= 0, x2 continua >= 0
+ *      x0, x1 integer >= 0, x2 continuous >= 0
  *
- * Verifica: branching correttezza (violate solo x0,x1), soluzione
- * ammissibile, obj = 3x0+2x1+2x2, solsta INTEGER_OPTIMAL. Il valore atteso
- * e' derivato enumerando gli interi ammissibili: per x0=3,x1=3 -> x2=10/3?
- * (verifica numerica dall'esterno: obj coerente + ammissibilita' + interezza
- *  + primal bound: obj <= 12 (rilassamento) e >= 11.9? il valore ottimo
- * e' stampato e confrontato con l'enumerazione interna della LP rilassata).
+ * Check: branching correctness (only x0,x1 branched), feasible
+ * solution, obj = 3x0+2x1+2x2, solsta INTEGER_OPTIMAL. The expected value
+ * is derived by enumerating the feasible integers: for x0=3,x1=3 -> x2=10/3?
+ * (external numerical check: consistent obj + feasibility + integrality
+ *  + primal bound: obj <= 12 (relaxation) and >= 11.9? the optimal value
+ *  is printed and compared with the internal enumeration of the relaxed LP).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the mixed-integer LP and confirm the optimum by enumeration. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -80,17 +81,17 @@ int main(void) {
     PRIMAL_getsolsta(task, PRIMAL_SOL_ITR, &sta);
     printf("x = (%.4f, %.4f, %.4f), obj = %.4f\n", xx[0], xx[1], xx[2], obj);
 
-    /* verifica: x0,x1 interi, tutte le righe ammissibili, obj coerente,
-     * e ottimalità per confronto con enumerazione completa di (x0,x1)
-     * con x2 ottimizzato: x2 <= 10 - x0 (max dopo x2<=-x0+3x1? no: row2
-     * -x0+3x1+x2<=10 -> x2 <= 10+x0-3x1; e x0+x1+x2<=10) */
+    /* check: x0,x1 integer, all rows feasible, consistent obj,
+     * and optimality by comparison with the complete enumeration of (x0,x1)
+     * with x2 optimized: x2 <= 10 - x0 (max after x2<=-x0+3x1? no: row2
+     * -x0+3x1+x2<=10 -> x2 <= 10+x0-3x1; and x0+x1+x2<=10) */
     int ok = sta == PRIMAL_SOL_STA_INTEGER_OPTIMAL;
     double best = -1e30;
     for (int x0 = 0; ok && x0 <= 20; x0++)
         for (int x1 = 0; x1 <= 20; x1++) {
             if (x0 + 2 * x1 > 9.0 + 1e-9) continue;     /* row1 */
-            double v = 10.0 - x0 - x1;                  /* da row0: x2<=10-x0-x1 */
-            double w = 10.0 + x0 - 3.0 * x1;            /* da row2 */
+            double v = 10.0 - x0 - x1;                  /* from row0: x2<=10-x0-x1 */
+            double w = 10.0 + x0 - 3.0 * x1;            /* from row2 */
             if (w < v) v = w;
             if (v > 0 && 3.0 * x0 + 2.0 * x1 + 2.0 * v > best)
                 best = 3.0 * x0 + 2.0 * x1 + 2.0 * v;

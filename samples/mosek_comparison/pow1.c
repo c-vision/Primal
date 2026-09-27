@@ -22,19 +22,20 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* pow1.c — cono di potenza (equivalente all'esempio "pgo"/pow della
- * documentazione MOSEK: min x + y s.t. x^0.5 * y^0.5 >= 1, x,y >= 0)
+/* pow1.c — power cone (equivalent of the MOSEK docs "pgo"/pow example:
+ * min x + y s.t. x^0.5 * y^0.5 >= 1, x,y >= 0)
  *
- * Forma cono PPOW (t,u,v): t^a * u^(1-a) >= |v|, a = 0.5.
- * Con (t,u,v) = (x, 1, y): x^0.5 >= y  =>  x >= y^2.
- * Problema equivalente: min x + y s.t. x >= y^2, y >= 0  => y=1, x=1.
- * Il valore y=1 tocca il bordo del dominio PEXP/PPOW (w = v/u = 1 <= cap).
- * Soluzione attesa: obj = 2 in (x, y) = (1, 1).
+ * PPOW cone form (t,u,v): t^a * u^(1-a) >= |v|, a = 0.5.
+ * With (t,u,v) = (x, 1, y): x^0.5 >= y  =>  x >= y^2.
+ * Equivalent problem: min x + y s.t. x >= y^2, y >= 0  => y=1, x=1.
+ * The value y=1 touches the PEXP/PPOW domain boundary (w = v/u = 1 <= cap).
+ * Expected solution: obj = 2 at (x, y) = (1, 1).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the pow1 power-cone problem and check obj = 2 at (1,1). */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -42,7 +43,7 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: t = x, u = y, v = 1 (fissa) */
+    /* variables: t = x, u = y, v = 1 (fixed) */
     PRIMAL_appendvars(task, 3);
     PRIMAL_putvarbound(task, 0, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putvarbound(task, 1, PRIMAL_BK_LO, 0.0, INFINITY);

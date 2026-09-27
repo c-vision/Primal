@@ -41,6 +41,7 @@
 #define ND 2
 
 /* ---- SOCP (the reference formulation) ---- */
+/* Solve the minimum enclosing circle SOCP for k points. */
 static double socp_circle(int k, const double P[KMAX][ND], double c_out[ND], int *ok_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
@@ -73,6 +74,7 @@ static double socp_circle(int k, const double P[KMAX][ND], double c_out[ND], int
 }
 
 /* ---- exact oracle: circumcircle of a pair / a triple ---- */
+/* Circumcircle of 2 (pair) or 3 (triple) indexed points. */
 static double circum(int m, const double P[KMAX][ND], int idx[3], double c[ND]) {
     if (m == 2) {
         for (int d = 0; d < ND; d++) c[d] = 0.5 * (P[idx[0]][d] + P[idx[1]][d]);
@@ -90,6 +92,7 @@ static double circum(int m, const double P[KMAX][ND], int idx[3], double c[ND]) 
     double dx = ax - c[0], dy = ay - c[1];
     return sqrt(dx * dx + dy * dy);
 }
+/* True when the circle (c, r) contains all k points. */
 static int contains_all(int k, const double P[KMAX][ND], double c[ND], double r) {
     for (int i = 0; i < k; i++) {
         double dx = P[i][0] - c[0], dy = P[i][1] - c[1];
@@ -97,6 +100,7 @@ static int contains_all(int k, const double P[KMAX][ND], double c[ND], double r)
     }
     return 1;
 }
+/* Exact minimum enclosing circle by brute force over pairs/triples. */
 static double exact_circle(int k, const double P[KMAX][ND]) {
     double best = INFINITY;
     for (int i = 0; i < k; i++)
@@ -115,6 +119,7 @@ static double exact_circle(int k, const double P[KMAX][ND]) {
     return best;
 }
 
+/* Run one point set through SOCP and exact oracle and compare. */
 static int run(const char *name, int k, double P[KMAX][ND]) {
     double c[ND]; int ok = 0;
     double rs = socp_circle(k, P, c, &ok);
@@ -124,6 +129,7 @@ static int run(const char *name, int k, double P[KMAX][ND]) {
     return good;
 }
 
+/* Run the two repo cases plus a deterministic random set. */
 int main(void) {
     int all = 1;
     printf("min_circle\n");

@@ -45,6 +45,7 @@
 #define V(k) (2 * (k) + 1)
 #define U(k) (2 * NST + (k))
 
+/* Solve the 2-step double-integrator MPC QP and check u=(1,-1). */
 int main(void) {
     const int NV = 2 * NST + NSTEP;
     const int NROW = 2 + 2 * NSTEP + 2;

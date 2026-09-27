@@ -39,6 +39,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the max-Sharpe Charnes-Cooper model and check sqrt(10). */
 int main(void) {
     static const double mu[2] = {3.0, 1.0};
     PRIMALenv_t env;

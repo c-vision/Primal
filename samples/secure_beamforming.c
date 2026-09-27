@@ -44,6 +44,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the one-step secure-ISAC beamforming SOCP subproblem. */
 int main(void) {
     const double h[2] = {1.0, 0.0};
     const double a[2] = {1.0 / sqrt(2.0), 1.0 / sqrt(2.0)};

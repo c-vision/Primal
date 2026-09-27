@@ -64,6 +64,7 @@ static int solve(double a0, double a1, double b0, double b1, double *obj) {
     return ok;
 }
 
+/* Solve both transportation LPs and check (a)=2 and (b)>=50. */
 int main(void) {
     double z1 = -1.0, z2 = -1.0;
     int ok = solve(1.0, 1.0, 1.0, 1.0, &z1) &&

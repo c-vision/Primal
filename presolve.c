@@ -58,6 +58,8 @@ struct Presolve {
     POp *ops; int nops, opcap;
 };
 
+/* Fold an index and a coefficient into an FNV hash for duplicate detection.
+ * Reads the double bitwise, so equal values hash equally. */
 static unsigned long long hfold(unsigned long long h, int idx, double v) {
     unsigned long long vb; memcpy(&vb, &v, sizeof(vb));
     h = (h ^ (unsigned long long)idx) * 1099511628211ULL;
@@ -65,6 +67,8 @@ static unsigned long long hfold(unsigned long long h, int idx, double v) {
     return h;
 }
 
+/* Append one reduction operation to the presolve log, growing it as needed.
+ * Takes ownership of ks/Akj. Returns 1 ok, 0 on allocation failure. */
 static int push_op(Presolve *p, int type, int i, int j, double Aij, double cj,
                    int nk, int *ks, double *Akj) {
     if (p->nops == p->opcap) {
@@ -79,10 +83,10 @@ static int push_op(Presolve *p, int type, int i, int j, double Aij, double cj,
 }
 
 /* compare two alive rows over alive columns (CSR) + RHS, using a stamp marker */
-/* Riga i2 proporzionale a i1 (stesso pattern, i2 = c*i1) con RHS coerente
- * (bw[i2] = c*bw[i1]): ridondante. Se il RHS non e' coerente la riga e'
- * inconsistente, ma NON e' una riduzione sicura qui (il presolve non dichiara
- * infeasibility), quindi si salta. */
+/* Row i2 proportional to i1 (same pattern, i2 = c*i1) with consistent RHS
+ * (bw[i2] = c*bw[i1]): redundant. When the RHS is inconsistent the row is
+ * inconsistent, but that is NOT a safe reduction here (presolve never declares
+ * infeasibility), so it is skipped. */
 static int rows_prop_sp(const int *rptr, const int *ridx, const double *rval,
                         const char *alive_col, const double *bw,
                         int *mstamp, double *mval, int stamp, int i1, int i2) {
@@ -107,6 +111,8 @@ static int rows_prop_sp(const int *rptr, const int *ridx, const double *rval,
     }
     return bw[i2] == c * bw[i1];
 }
+/* Compare two alive columns over alive rows (CSC) with a stamp marker.
+ * Returns 1 when both columns carry the same rows with equal values. */
 static int cols_equal_sp(const int *Aptr, const int *Arow, const double *Aval,
                          const char *alive_row, int *mstamp, double *mval, int stamp,
                          int j1, int j2) {
@@ -200,8 +206,8 @@ int lp_presolve(const int *Aptr, const int *Arow, const double *Aval,
     int changed = 0, progress = 1, stamp = 1;
     while (progress) {
         progress = 0;
-        /* Livello 0: nessuna riduzione. Livello 1: empty/singleton. Livello 2:
-         * anche i duplicati (aggressive), MSK_IPAR_PRESOLVE_LEVEL. */
+        /* Level 0: no reduction. Level 1: empty/singleton. Level 2:
+         * also duplicates (aggressive), MSK_IPAR_PRESOLVE_LEVEL. */
         if (level < 1) break;
         /* ---- rows: empty + singleton ---- */
         for (int i = 0; i < m; i++) {
@@ -263,8 +269,8 @@ int lp_presolve(const int *Aptr, const int *Arow, const double *Aval,
                 for (int q = rptr[i]; q < rptr[i + 1]; q++)
                     if (alive_col[ridx[q]]) { if (nz == 0) a0 = rval[q]; nz++; }
                 if (nz == 0 || a0 == 0.0) { rh[i] = 0; continue; }
-                /* hash NORMALIZZATO per il primo coefficiente: cosi' righe
-                 * proporzionali (LINDEP-lite) collidono e vengono confrontate. */
+                /* hash NORMALIZED by the first coefficient: so proportional
+                 * rows (LINDEP-lite) collide and get compared. */
                 for (int q = rptr[i]; q < rptr[i + 1]; q++)
                     if (alive_col[ridx[q]]) h = hfold(h, ridx[q], rval[q] / a0);
                 rh[i] = h;

@@ -30,6 +30,7 @@
 #include <sys/time.h>
 #include "primal.h"
 
+/* Build, solve and verify the max-cut SDP relaxation on K_{p,q}. */
 int main(int argc, char **argv) {
     int p = argc > 1 ? atoi(argv[1]) : 4;
     int q = argc > 2 ? atoi(argv[2]) : 4;

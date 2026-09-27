@@ -22,21 +22,22 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* mil2.c — porting dell'esempio "mil2.jl" (C API docs.mosek.com):
- * variabili semi-continue e semi-intere.
+/* mil2.c — port of the "mil2.jl" example (C API docs.mosek.com):
+ * semi-continuous and semi-integer variables.
  *
- * Problema (verificato a mano): min x0 + 2*x1 s.t. x0 + x1 >= 3 con
- *   x0 semi-cont inua [2,10]  (x0 = 0 oppure 2 <= x0 <= 10)
- *   x1 semi-intera   [2.5,10] (x1 = 0 oppure 2.5 <= x1 <= 10 intera)
- * Enumerazione: x0=0 -> x1 >= 3 intero -> min x1=3, cost 6;
- *               x1=0 -> x0 >= 3, min x0=3, cost 3;  <-- migliore
- *               entrambi attivi -> x0>=2, x1>=2.5(->3), cost >= 2+6=8
- * Ottimo: x=(3,0), obj=3.
+ * Problem (verified by hand): min x0 + 2*x1 s.t. x0 + x1 >= 3 with
+ *   x0 semi-continuous [2,10]  (x0 = 0 or 2 <= x0 <= 10)
+ *   x1 semi-integer    [2.5,10] (x1 = 0 or 2.5 <= x1 <= 10, integer)
+ * Enumeration: x0=0 -> x1 >= 3 integer -> min x1=3, cost 6;
+ *              x1=0 -> x0 >= 3, min x0=3, cost 3;  <-- best
+ *              both active -> x0>=2, x1>=2.5(->3), cost >= 2+6=8
+ * Optimum: x=(3,0), obj=3.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the semi-continuous/semi-integer MIP and check x=(3,0), obj=3. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -63,23 +64,23 @@ int main(void) {
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj);
     printf("x = (%.4f, %.4f), obj = %.4f\n", xx[0], xx[1], obj);
 
-    /* enumerazione esaustiva dei casi semi (attivo/disattivo) */
+    /* exhaustive enumeration of the semi cases (active/inactive) */
     double best = INFINITY;
-    for (int a = 0; a <= 1; a++)          /* x0 attivo? */
-        for (int b = 0; b <= 1; b++) {    /* x1 attivo? */
+    for (int a = 0; a <= 1; a++)          /* x0 active? */
+        for (int b = 0; b <= 1; b++) {    /* x1 active? */
             double v1 = b ? 3.0 : 0.0;
-            /* minimizza x0+2x1 con x0+x1>=3 nei domini */
+            /* minimize x0+2x1 with x0+x1>=3 in the domains */
             double x0 = a ? fmax(2.0, 3.0 - v1) : 0.0;
             double x1 = b ? ceil(fmax(2.5, 3.0 - (a ? 2.0 : 0.0))) : 0.0;
             if (!a && !b) continue;                       /* 0+0 < 3 */
-            if (!a && x1 < 3.0 - 1e-9 && b) continue;     /* x1 copre da sola? gestito */
+            if (!a && x1 < 3.0 - 1e-9 && b) continue;     /* does x1 cover alone? handled */
             double cov = (a ? x0 : 0.0) + (b ? x1 : 0.0);
             if (!a && !b) continue;
             if (cov < 3.0 - 1e-9) {
-                /* il membro attivo deve coprire da solo o col compagno */
+                /* the active member must cover alone or with its companion */
                 if (a && !b) x0 = 3.0;
                 if (!a && b) x1 = 3.0;
-                if (a && b) continue;   /* entrambi attivi: copertura minima 2+3=5 ok */
+                if (a && b) continue;   /* both active: minimum coverage 2+3=5, ok */
                 cov = (a ? x0 : 0.0) + (b ? x1 : 0.0);
             }
             double c = (a ? x0 : 0.0) + 2.0 * (b ? x1 : 0.0);

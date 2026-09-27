@@ -408,8 +408,8 @@ void dmat_lu_free(LuFact *f) {
 }
 
 /* ---------------- Jacobi eigenvalue (symmetric) ---------------- */
-/* Autodecomposizione simmetrica con rotazioni di Jacobi (cyclic, sweep).
- * Convergenza: off-diagonale scende quadraticamente; tolleranza 1e-14. */
+/* Symmetric eigendecomposition with Jacobi rotations (cyclic, sweep).
+ * Convergence: off-diagonal drops quadratically; tolerance 1e-14. */
 void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
     int nn = n > 0 ? n : 1;
     double *W = (double *)calloc((size_t)nn * (size_t)nn, sizeof(double));
@@ -430,12 +430,12 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
                 double t = (theta >= 0.0 ? 1.0 : -1.0) /
                            (fabs(theta) + sqrt(theta * theta + 1.0));
                 double c = 1.0 / sqrt(t * t + 1.0), sn = t * c;
-                for (int k = 0; k < n; k++) {   /* righe (J^T W) */
+                for (int k = 0; k < n; k++) {   /* rows (J^T W) */
                     double wp = W[p * n + k], wq = W[q * n + k];
                     W[p * n + k] = c * wp - sn * wq;
                     W[q * n + k] = sn * wp + c * wq;
                 }
-                for (int k = 0; k < n; k++) {   /* colonne (W J) */
+                for (int k = 0; k < n; k++) {   /* columns (W J) */
                     double wp = W[k * n + p], wq = W[k * n + q];
                     W[k * n + p] = c * wp - sn * wq;
                     W[k * n + q] = sn * wp + c * wq;
@@ -455,16 +455,18 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
 }
 
 /* ---------------- sparse Cholesky (left-looking) ----------------
- * K = L L', K simmetrica definita positiva data in CSC (triangolo
- * inferiore: colonna j con righe i >= j). Per ogni colonna j:
+ * K = L L', K symmetric positive definite given in CSC (lower
+ * triangle: column j with rows i >= j). For each column j:
  *   w = K(:,j) - sum_{k<j, L(j,k)!=0} L(j,k) * L(:,k)
  *   L(j,j) = sqrt(w_j),  L(i,j) = w_i / L(j,j)
- * L'adiacenza per riga di L (lista dei k<j con L(j,k) != 0) e' mantenuta
- * incrementalmente: quando la colonna k e' completata, ogni (i,k) viene
- * accodato alla lista della riga i. Costo ~ O(sum_k nnz(L(:,k))^2) con
- * fill-in dinamico. */
+ * The row adjacency of L (list of k<j with L(j,k) != 0) is maintained
+ * incrementally: when column k completes, each (i,k) is
+ * appended to row i's list. Cost ~ O(sum_k nnz(L(:,k))^2) with
+ * dynamic fill-in. */
 static int *sym_amd(int n, const int *Ap, const int *Ai);
 
+/* Factor K in natural order with the left-looking column algorithm.
+ * Returns NULL on bad input, alloc failure, or indefinite pivot. */
 static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const double *Kx) {
     if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
     int **ci = (int **)calloc((size_t)n, sizeof(int *));
@@ -488,14 +490,14 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
 
     for (int j = 0; j < n; j++) {
         int nt = 0;
-        /* scatter del triangolo inferiore di K(:,j) */
+        /* scatter the lower triangle of K(:,j) */
         for (int p = Kp[j]; p < Kp[j + 1]; p++) {
             int i = Ki[p];
             if (i < j) continue;
             if (mark[i] != j + 1) { mark[i] = j + 1; touched[nt++] = i; w[i] = 0.0; }
             w[i] += Kx[p];
         }
-        /* sottrai i contributi delle colonne precedenti */
+        /* subtract the contributions of previous columns */
         for (int q = 0; q < rn[j]; q++) {
             int k = ri[j][q];
             double ljk = rv[j][q];
@@ -507,7 +509,7 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
             }
         }
         double dj = w[j];
-        if (!(dj > 1e-300)) {   /* non definita positiva */
+        if (!(dj > 1e-300)) {   /* not positive definite */
             for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
             free(ci); free(cv); free(cn); free(cc);
             free(ri); free(rv); free(rn); free(rc);
@@ -553,7 +555,7 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
         w[j] = 0.0;
     }
 
-    /* compatta in CSC */
+    /* pack into CSC */
     SpChol *L = (SpChol *)malloc(sizeof(SpChol));
     if (!L) {
         for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
@@ -601,7 +603,7 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
 static int spchol_solve_nat(const SpChol *L, double *rhs) {
     if (!L || !rhs) return -1;
     int n = L->n;
-    /* forward: L v = rhs (colonne ascendenti) */
+    /* forward: L v = rhs (ascending columns) */
     for (int k = 0; k < n; k++) {
         int p0 = L->Lp[k], p1 = L->Lp[k + 1];
         double lkk = 0.0;
@@ -615,7 +617,7 @@ static int spchol_solve_nat(const SpChol *L, double *rhs) {
             if (i > k) rhs[i] -= L->Lx[p] * vk;
         }
     }
-    /* backward: L' u = v (colonne discendenti) */
+    /* backward: L' u = v (descending columns) */
     for (int k = n - 1; k >= 0; k--) {
         int p0 = L->Lp[k], p1 = L->Lp[k + 1];
         double lkk = 0.0, sum = 0.0;
@@ -629,10 +631,14 @@ static int spchol_solve_nat(const SpChol *L, double *rhs) {
     return 0;
 }
 
+/* Factor K in natural column order (no permutation wrapper).
+ * Returns NULL on bad input, alloc failure, or indefinite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     return spchol_factor_nat(n, Kp, Ki, Kx);
 }
 
+/* Solve K u = rhs in place through the natural-order factor.
+ * Returns 0 ok, -1 on missing or zero diagonal. */
 int spchol_solve(const SpChol *L, double *rhs) {
     return spchol_solve_nat(L, rhs);
 }
@@ -682,6 +688,8 @@ SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx)
     return L;
 }
 
+/* Solve through an ordered factor, permuting rhs forth and back.
+ * Returns 0 ok, -1 on NULL input, alloc failure, or solve failure. */
 int spchol_solve_ord(const SpChol *L, double *rhs) {
     if (!L || !rhs) return -1;
     if (!L->perm) return spchol_solve_nat(L, rhs);
@@ -695,6 +703,7 @@ int spchol_solve_ord(const SpChol *L, double *rhs) {
     return rc;
 }
 
+/* Release a sparse Cholesky factor and its ordering. NULL-safe. */
 void spchol_free(SpChol *L) {
     if (!L) return;
     free(L->Lp); free(L->Li); free(L->Lx);
@@ -1209,6 +1218,8 @@ done:
 #undef FAIL
 }
 
+/* Solve K u = rhs in place through forward, block-diagonal, backward sweeps.
+ * Applies the stored permutation forth and back. Returns 0 ok, -1 on failure. */
 int spldl_solve(const SpLdl *L, double *rhs) {
     int n = L->n;
     double *buf = rhs;
@@ -1249,6 +1260,7 @@ int spldl_solve(const SpLdl *L, double *rhs) {
     return 0;
 }
 
+/* Release a sparse LDL' factor and its permutation. NULL-safe. */
 void spldl_free(SpLdl *L) { if (!L) return; free(L->Lp); free(L->Li); free(L->Lx); free(L->D); free(L->piv2); free(L->Doff); free(L->perm); free(L); }
 
 /* ================= dense LDL^T with Bunch-Kaufman pivoting =================
@@ -1256,6 +1268,8 @@ void spldl_free(SpLdl *L) { if (!L) return; free(L->Lp); free(L->Li); free(L->Lx
  * block): a 1x1 LDL has no pivot there, a 2x2 block does.  Symmetric
  * permutations, so the solve is forward/block-diagonal/backward plus the
  * permutation. */
+/* Factor a dense symmetric indefinite matrix with Bunch-Kaufman pivoting.
+ * Copies A, builds L/D with 1x1 and 2x2 blocks. NULL on singular input. */
 SpBK *dmat_ldl_bk(int n, const double *A) {
     if (n <= 0 || !A) return NULL;
     SpBK *F = (SpBK *)calloc(1, sizeof(SpBK));
@@ -1308,6 +1322,8 @@ SpBK *dmat_ldl_bk(int n, const double *A) {
     return F;
 }
 
+/* Solve through a dense Bunch-Kaufman factor with block-atomic sweeps.
+ * Permutes rhs forth and back. Returns 0 ok, -1 on singular block. */
 int dmat_ldl_bk_solve(const SpBK *F, double *rhs) {
     if (!F || !rhs) return -1;
     int n = F->n; const double *L = F->LU;
@@ -1347,6 +1363,7 @@ int dmat_ldl_bk_solve(const SpBK *F, double *rhs) {
     return 0;
 }
 
+/* Release a dense Bunch-Kaufman factor. NULL-safe. */
 void dmat_ldl_bk_free(SpBK *F) {
     if (!F) return;
     free(F->perm); free(F->piv2); free(F->LU); free(F);

@@ -54,6 +54,7 @@
 #define NDOT (NG*NG)  /* 9 dots */
 #define NP 2          /* two squares */
 
+/* Solve the two-squares dotted-board nesting MILP. */
 int main(void) {
     int X0 = 0, ZL = NP*NDOT, ZW = NP*NDOT + 1, NV = NP*NDOT + 2;
     PRIMALenv_t env; PRIMALtask_t t;

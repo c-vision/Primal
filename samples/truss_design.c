@@ -58,6 +58,7 @@ static void barentry(PRIMALtask_t t, int row, int i, int j, double coef) {
     PRIMAL_putbaraij(t, row, 0, 1, &m, &coef);
 }
 
+/* Solve the two-bar truss SDP and check volume and compliance. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

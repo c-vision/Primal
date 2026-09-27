@@ -22,13 +22,13 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* response.c — porting dell'esempio "response.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): cattura l'output di log dell'ottimizzatore
- * tramite la callback di stream PRIMAL_linkfunctotaskstream(PRIMAL_STREAM_LOG).
+/* response.c — port of the MOSEK Julia API "response.jl" example
+ * (docs.mosek.com/11.0/juliaapi): capture the optimizer's log output
+ * through the stream callback PRIMAL_linkfunctotaskstream(PRIMAL_STREAM_LOG).
  *
- * Modello LP identico a lo1: min -2x0-3x1 s.c. x0+x1<=4, x0+3x1<=6,
- * ottimo x=(3,1), obj=-9. Il test verifica che la callback riceva davvero
- * messaggi di log e che il risultato sia corretto.
+ * LP model identical to lo1: min -2x0-3x1 s.t. x0+x1<=4, x0+3x1<=6,
+ * optimum x=(3,1), obj=-9. The test checks that the callback really receives
+ * log messages and that the result is correct.
  */
 #include <stdio.h>
 #include <string.h>
@@ -38,6 +38,7 @@
 static int msg_count = 0;
 static char first_msg[64] = "";
 
+/* Log callback recording the message count and the first message. */
 static void logcb(void *handle, const char *msg) {
     (void)handle;
     if (msg_count == 0 && msg && strlen(msg) < sizeof(first_msg))
@@ -45,6 +46,7 @@ static void logcb(void *handle, const char *msg) {
     msg_count++;
 }
 
+/* Solve the lo1 LP with a stream callback and check the log and optimum. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

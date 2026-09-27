@@ -179,6 +179,8 @@ static size_t ipm_state_size(int n, int m, int nb, const int *dims,
 #define IPM_STATE_ARGS int n, int m, int nb, const int *dims, int nsoc, const int *socdims, int Ke, \
     double *xs, double *ss, double *y, double *const *Xbar, double *const *Sbar, \
     double *const *Zsoc, double *const *Ssoc, double *ez, double *es
+/* Copies the full iterate between locals and a flat buffer (out selects
+ * the direction). Used to snapshot the best point and the fallback one. */
 static void ipm_state(double *buf, int out, IPM_STATE_ARGS) {
     size_t o = 0;
 #define IPM_CP(p, cnt) do { size_t bytes_ = (size_t)(cnt) * sizeof(double);                       \
@@ -233,6 +235,7 @@ typedef struct {
     double *ez, *es;
 } ipmc;
 
+/* Computes the primal/dual/gap residuals of the unified conic IPM iterate. */
 static ipmres ipm_resid(const ipmc *P) {
     const int n = P->n, m = P->m, nb = P->nb, nsoc = P->nsoc, nep = P->nep;
     const int Ke = P->Ke;
@@ -287,6 +290,7 @@ static ipmres ipm_resid(const ipmc *P) {
  * stays a residual on a problem whose data happen to be tiny. ---- */
 typedef struct { double pri, dual, gap; } ipmqual;
 
+/* Relative primal/dual/gap quality triple (MOSEK normalisers) of an iterate. */
 static ipmqual ipm_quality(const ipmc *P, const ipmres *R) {
     double pobj = 0.0, dobj = 0.0;
     ipmqual Q;
@@ -479,8 +483,12 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
  * getting the direction wrong. */
 typedef struct { double hi, lo; } hdd;
 
+/* Builds a double-double value from a double (zero low part).
+ * Entry point for the HSD double-double Newton arithmetic. */
 static hdd hdd_make(double x) { hdd r = { x, 0.0 }; return r; }
 
+/* Double-double addition with error-free transformation of the high parts.
+ * Returns the rounded sum with its residual in the low part. */
 static hdd hdd_add(hdd a, hdd b) {
     double s = a.hi + b.hi, v = s - a.hi;
     double e = (a.hi - (s - v)) + (b.hi - v) + a.lo + b.lo;
@@ -488,9 +496,15 @@ static hdd hdd_add(hdd a, hdd b) {
     return r;
 }
 
+/* Double-double negation (negates high and low parts).
+ * Used to implement subtraction via addition. */
 static hdd hdd_neg(hdd a) { hdd r = { -a.hi, -a.lo }; return r; }
+/* Double-double subtraction implemented as addition of the negated operand.
+ * Preserves the extra precision of the double-double format. */
 static hdd hdd_sub(hdd a, hdd b) { return hdd_add(a, hdd_neg(b)); }
 
+/* Double-double multiplication with FMA-based product residual.
+ * Keeps two doubles of mantissa for the HSD Newton system. */
 static hdd hdd_mul(hdd a, hdd b) {
     double p = a.hi * b.hi;
     double e = fma(a.hi, b.hi, -p) + a.hi * b.lo + a.lo * b.hi + a.lo * b.lo;
@@ -498,6 +512,8 @@ static hdd hdd_mul(hdd a, hdd b) {
     return r;
 }
 
+/* Double-double division by two Newton refinement steps on the quotient.
+ * Used by the HSD dense LU with partial pivoting. */
 static hdd hdd_div(hdd a, hdd b) {
     double q = a.hi / b.hi;
     hdd x = hdd_make(q);
@@ -562,6 +578,8 @@ static int hsd_ddsolve(const double *M, double *v, int n) {
  * the embedding the way rp/rd close the ordinary primal-dual system. */
 typedef struct { double pf, df, mu, rg, rn, pobj, dobj; } hsd_stat;
 
+/* Measures the HSD-embedded iterate: primal/dual residuals, mu, gap and the
+ * normalizing-row residual rn for the homogeneous self-dual path. */
 static hsd_stat hsd_measure(int m, int n, int nb, const int *dims, size_t d2,
         const double *A, const double *b, const double *c,
         const double *const *C, const double *const *AB,
@@ -1071,10 +1089,10 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     double *Ds = (double *)malloc(nbd2 * sizeof(double));
     double *snap = (double *)malloc(
                      ipm_state_size(n, m, nb, dims, nsoc, socdims, Ke) * sizeof(double));
-    /* Candidato di fallback (percorso separato, T171/risk_parity): salvato quando
-     * il merito assoluto non accetta mai il punto ma la terna RELATIVA sta nel
-     * fattore near-optimal.  Non e' have_best: il verdetto nativo resta "non
-     * risolto" e i tagli restano la prima scelta. */
+    /* Fallback candidate (separate path, T171/risk_parity): saved when the
+     * absolute merit never accepts the point but the RELATIVE triple stays
+     * within the near-optimal factor. It is not have_best: the native verdict
+     * stays "not solved" and the cuts remain the first choice. */
     double *fb_snap = (double *)malloc(
                      ipm_state_size(n, m, nb, dims, nsoc, socdims, Ke) * sizeof(double));
     double *trial = (nep > 0 || nb > 0) ? (double *)malloc(
@@ -1099,10 +1117,10 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
      * would then set mu -- and mu is what every tolerance on the path is
      * relative to. */
     for (int i = 0; i < n; i++) { xs[i] = 1.0; ss[i] = 1.0; }
-    /* warm start: un punto primale fornito dall'utente sovrascrive le colonne
-     * scalari (NaN = non impostato; 0 lascerebbe il punto fuori dal cono
-     * nonnegativo, quindi si accetta solo > 0). L'IPM e' infeasible-start, quindi
-     * il punto non deve essere ammissibile -- deve solo stare nei coni. */
+    /* warm start: a user-supplied primal point overwrites the scalar columns
+     * (NaN = not set; 0 would leave the point outside the nonnegative cone,
+     * so only > 0 is accepted). The IPM is infeasible-start, so the point
+     * need not be feasible -- it only has to stay inside the cones. */
     if (xwarm)
         for (int i = 0; i < n; i++)
             if (isfinite(xwarm[i]) && xwarm[i] > 0.0) xs[i] = xwarm[i];
@@ -1120,8 +1138,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
         for (int a = 0; a < 3; a++) si[a] = -g[a];
     }
     for (int k = 0; k < m; k++) y[k] = 0.0;
-    /* warm start duale: come il primale, un punto fornito dall'utente (NaN =
-     * non impostato). L'IPM e' infeasible-start, quindi non deve misurare. */
+    /* dual warm start: like the primal one, a user-supplied point (NaN =
+     * not set). The IPM is infeasible-start, so it need not be feasible. */
     if (ywarm)
         for (int k = 0; k < m; k++)
             if (isfinite(ywarm[k])) y[k] = ywarm[k];
@@ -1161,20 +1179,21 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
          * K*, and the loop then spends its whole budget recomputing the same
          * iterate.  Stop on that, accepted point or not. */
         double merit = pfeas + dfeas + mu;
-        /* "Collassato" va giudicato su DUE scale: il merito assoluto puo' essere
-         * fermo al pavimento di rappresentazione di pfeas (risk_parity:
-         * pfeas=6.9e-6 con |b|~1e4) mentre la terna RELATIVA -- che e' cio' che
-         * il gate giudica -- continua a scendere.  Congelare su una sola
-         * ferma il percorso prima del punto che il fallback vuole. */
+        /* A "stalled" step must be judged on TWO scales: the absolute merit can
+         * sit at the representation floor of pfeas (risk_parity:
+         * pfeas=6.9e-6 with |b|~1e4) while the RELATIVE triple -- which is what
+         * the gate judges -- keeps decreasing. Freezing on only one of them
+         * stops the path before the point the fallback wants. */
         if (it > 0 && !(merit < 0.9995 * merit_prev) && !(viol < 0.9995 * viol_prev)) {
             if (++frozen >= 6) {
                 if (getenv("GMB_DBG")) fprintf(stderr,
                     "  [frozen] merit stalled at it=%d merit=%.3g\n", it, merit);
-                /* Candidato di fallback: il punto congelato, se la terna RELATIVA
-                 * e' nel fattore near-optimal.  Il verdetto nativo resta "non
-                 * risolto": i tagli restano la prima scelta, questo punto esce
-                 * solo se anch'essi non rispondono (risk_parity: pfeas=6.9e-6
-                 * assoluto, floor di |b|~1e4, ma rel_pri=6.9e-10, rel_gap=1.37e-7). */
+                /* Fallback candidate: the frozen point, when the RELATIVE triple
+                 * is within the near-optimal factor. The native verdict stays
+                 * "not solved": the cuts remain the first choice, and this
+                 * point only leaves when they also fail to answer (risk_parity:
+                 * pfeas=6.9e-6 absolute, floor of |b|~1e4, but rel_pri=6.9e-10,
+                 * rel_gap=1.37e-7). */
                 if (!have_best && !fb_saved && viol <= near_rel) {
                     fb_saved = 1;
                     ipm_state(fb_snap, 1, IPM_STATE_PASS);
@@ -1602,11 +1621,12 @@ refine:
         ipm_state(snap, 0, IPM_STATE_PASS);
         status = 0;
     } else if (fb_saved && nep > 0) {
-        /* Il punto congelato entra negli output come CANDIDATO solo per i
-         * modelli exp/power (nep>0): li' il pavimento di residuo e' noto
-         * (T90/T91/logistic_large/risk_parity) e i tagli restano la prima
-         * scelta.  Sui modelli PSD/SOC vale la policy di T96: un "non risolto"
-         * non pubblica.  status resta "non risolto", cosi' il gate lo giudica. */
+        /* The frozen point enters the outputs as a CANDIDATE only for
+         * exp/power models (nep>0): there the residual floor is known
+         * (T90/T91/logistic_large/risk_parity) and the cuts stay the first
+         * choice. On PSD/SOC models the T96 policy holds: a "not solved"
+         * verdict publishes nothing. status stays "not solved" so the gate
+         * judges it. */
         ipm_state(fb_snap, 0, IPM_STATE_PASS);
     }
     /* Route selection, on the MEASURED quality of the point about to be handed
@@ -1673,9 +1693,9 @@ refine:
     for (int i = 0; i < n; i++) x[i] = xs[i];
     for (int i = 0; i < nep; i++) { for (int a = 0; a < 3; a++) { Zexp[i][a] = ez[3 * i + a]; Sexp[i][a] = es[3 * i + a]; } }
 done:
-    /* Un punto e' negli output (accettato-e-declassato, o congelato) ma il
-     * verdetto nativo e' "non risolto": il chiamante puo' pubblicarlo come
-     * fallback se anche i tagli non rispondono. */
+    /* A point is in the outputs (accepted-and-demoted, or frozen) but the
+     * native verdict is "not solved": the caller may publish it as a
+     * fallback when the cuts do not answer either. */
     if (fb_ok) *fb_ok = (status != 0 && fb_saved && nep > 0) ? 1 : 0;
     free(soff); free(Ws); free(Wi); free(Xi); free(t1); free(t2); free(t3); free(Mt);
     free(xs); free(ss); free(zsoc); free(ssoc); free(Dzsoc); free(Dssoc);

@@ -48,6 +48,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the short-term financing LP and check the book shadow prices. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

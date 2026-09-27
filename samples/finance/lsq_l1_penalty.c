@@ -128,6 +128,7 @@ static double qp_solve(int N, int M, const double *X, const double *b, double *w
     return obj;
 }
 
+/* Solve both cases and check the conic results against QP and brute force. */
 int main(void) {
     int all = 1;
     printf("lsq_l1_penalty\n");

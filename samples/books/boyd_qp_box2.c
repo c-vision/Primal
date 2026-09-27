@@ -33,6 +33,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the box QP and check the book optimum x*=2. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

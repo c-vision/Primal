@@ -64,6 +64,8 @@ static double g_ipm_deadline = -1.0;
  *       it all stop at the same instant.
  */
 void ipm_set_deadline(double abs_deadline) { g_ipm_deadline = abs_deadline; }
+/* Reports whether the shared wall-clock deadline has passed.
+ * Reads the file-scope deadline set by ipm_set_deadline. */
 static int ipm_past_deadline(void) {
     return g_ipm_deadline >= 0.0 && (double)clock() >= g_ipm_deadline;
 }
@@ -96,8 +98,8 @@ void ipm_set_obj_cuts(double lower, double upper) { g_obj_lower = lower; g_obj_u
  */
 int ipm_obj_cut_hit(void) { return g_obj_cut_hit; }
 
-/* Numero di correttori (MSK_IPAR_INTPNT_MAX_NUM_COR): >= 1. Il primo e' il
- * correttore di Mehrotra, i successivi sono higher-order. Default 1. */
+/* Number of correctors (MSK_IPAR_INTPNT_MAX_NUM_COR): >= 1. The first is the
+ * Mehrotra corrector, the later ones are higher-order. Default 1. */
 static int g_intpnt_max_cor = 1;
 /**
  * Sets the maximum number of higher-order correctors (Mehrotra + higher-order).
@@ -215,8 +217,8 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
         return IPM_MEMORY;
     }
 
-    /* warm start: parte dal punto fornito, proiettato nell'interno;
-     * z derivato dalla stazionarieta' c + Qx - A'y */
+    /* warm start: starts from the given point, projected into the interior;
+     * z derived from stationarity c + Qx - A'y */
     if (x0) {
         for (int j = 0; j < n; j++)
             if (x0[j] != x0[j]) { x0 = NULL; break; }  /* NaN -> default */
@@ -345,10 +347,10 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
         if (!(sigma > 1e-8)) sigma = 1e-8;
         if (sigma > 1.0) sigma = 1.0;
 
-        /* ---- correttori (Mehrotra; g_intpnt_max_cor >= 1) ----
-         * Il primo e' il correttore di Mehrotra (termine del second'ordine
-         * affine dxa*dza); i successivi usano il termine del correttore
-         * precedente (higher-order corrector, MSK_IPAR_INTPNT_MAX_NUM_COR). */
+        /* ---- correctors (Mehrotra; g_intpnt_max_cor >= 1) ----
+         * The first is the Mehrotra corrector (affine second-order term
+         * dxa*dza); the later ones use the previous corrector's term
+         * (higher-order corrector, MSK_IPAR_INTPNT_MAX_NUM_COR). */
         for (int cor = 0; cor < g_intpnt_max_cor; cor++) {
             for (int j = 0; j < n; j++)
                 rc[j] = x[j] * z[j] - sigma * mu +

@@ -22,9 +22,9 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* lo2.c — porting dell'esempio "lo2.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): LP con 4 variabili e 3 vincoli
- * (uno di uguaglianza, uno upper-bounded, uno lower-bounded).
+/* lo2.c — port of the MOSEK Julia API "lo2.jl" example
+ * (docs.mosek.com/11.0/juliaapi): LP with 4 variables and 3 constraints
+ * (one equality, one upper-bounded, one lower-bounded).
  *
  * max 3x0 + x1 + 5x2 + x3
  * s.t. 3x0 + x1 + 2x2       = 30
@@ -32,12 +32,13 @@
  *       x0 + 2x1 +  x2 + 2x3 >= 15
  *      0 <= x0, 0 <= x1 <= 10, x2, x3 >= 0
  *
- * Verifica: primal = dual (no duality gap) e cross-check BAS vs ITR.
+ * Check: primal = dual (no duality gap) and BAS vs ITR cross-check.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the lo2 LP and check feasibility, gap and BAS/ITR agreement. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -52,7 +53,7 @@ int main(void) {
     for (int j = 0; j < 4; j++) PRIMAL_putcj(task, j, c[j]);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
-    /* A per righe */
+    /* A by rows */
     PRIMAL_putarow(task, 0, 3, (int[]){0, 1, 2}, (double[]){3.0, 1.0, 2.0});
     PRIMAL_putarow(task, 1, 4, (int[]){0, 1, 2, 3}, (double[]){2.0, 1.0, 3.0, 1.0});
     PRIMAL_putarow(task, 2, 4, (int[]){0, 1, 2, 3}, (double[]){1.0, 2.0, 1.0, 2.0});
@@ -85,7 +86,7 @@ int main(void) {
     double r1 = 2 * xx[0] + xx[1] + 3 * xx[2] + xx[3];
     double r2 = xx[0] + 2 * xx[1] + xx[2] + 2 * xx[3];
     if (fabs(r0 - 30.0) > 1e-6 || r1 > 25.0 + 1e-6 || r2 < 15.0 - 1e-6) ok = 0;
-    /* duality gap nullo + BAS/ITR coerenti */
+    /* zero duality gap + consistent BAS/ITR */
     if (fabs(po - dobj) > 1e-6 * (1 + fabs(po))) ok = 0;
     if (fabs(po - (c[0]*xx[0]+c[1]*xx[1]+c[2]*xx[2]+c[3]*xx[3])) > 1e-6) ok = 0;
     for (int j = 0; j < 4; j++) if (fabs(xx[j] - xb[j]) > 1e-6) ok = 0;

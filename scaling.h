@@ -16,18 +16,18 @@
  * under the License.
  */
 
-/* scaling.h — equilibratura righe/colonne (potenze di 2) per LP/QP.
+/* scaling.h -- row/column equilibration (powers of 2) for LP/QP.
  *
- * Trasforma il problema in min-form prima del solve:
- *   A' = R A D,  b' = R b  (bounds riga: [lc,uc] *= r_i)
- *   c' = D c,    Q' = D Q D (bounds var: [lx,ux] /= d_j)
- * con r_i, d_j potenze esatte di 2 (nessun errore di round-off).
- * Dopo il solve: x_orig = D x', y_orig = R^{-1} y'.
+ * Transforms the problem into min-form before the solve:
+ *   A' = R A D,  b' = R b  (row bounds: [lc,uc] *= r_i)
+ *   c' = D c,    Q' = D Q D (var bounds: [lx,ux] /= d_j)
+ * with r_i, d_j exact powers of 2 (no round-off error).
+ * After the solve: x_orig = D x', y_orig = R^{-1} y'.
  */
 #ifndef SCALING_H
 #define SCALING_H
 
-/* Modifica in-place CSC (val), bounds e c/Q; scrive r[ncon], d[nvar] (allocati dal chiamante). */
+/* Edits CSC (val), bounds, and c/Q in place; writes r[ncon], d[nvar] (caller-allocated). */
 void scale_equilibrate(int nvar, int ncon,
                        const int *ptr, const int *sub, double *val,
                        double *lc, double *uc, double *lx, double *ux,

@@ -22,13 +22,13 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* callback.c — porting dell'esempio "callback.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): progress callback durante l'ottimizzazione.
+/* callback.c — port of the MOSEK Julia API "callback.jl" example
+ * (docs.mosek.com/11.0/juliaapi): progress callback during optimization.
  *
- * Registra PRIMAL_setprogresscb + PRIMAL_setinfoconnname e risolve un piccolo
- * portfolio QP; verifica che il callback riceva >= 1 notifica di progresso
- * e che la soluzione sia quella attesa (min variance portfolio, verifica
- * del valore con la formula analitica su 2 asset correlati).
+ * Registers PRIMAL_setprogresscb + PRIMAL_setinfoconnname and solves a small
+ * portfolio QP; checks that the callback receives >= 1 progress notification
+ * and that the solution is the expected one (min variance portfolio, with
+ * the value checked by the analytic formula on 2 correlated assets).
  */
 #include <stdio.h>
 #include <math.h>
@@ -38,6 +38,7 @@
 static int n_calls = 0;
 static char last_info[256] = "";
 
+/* Progress callback counting calls and storing the latest info. */
 static void progcb(void *handle, const char *info) {
     (void)handle;
     n_calls++;
@@ -46,6 +47,7 @@ static void progcb(void *handle, const char *info) {
     printf("  [progress] %s\n", info);
 }
 
+/* Solve the min-variance QP and check the progress callback fired. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -53,8 +55,8 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* min 0.5*(x0^2 + x1^2) s.t. x0 + x1 = 1 (varianza minima, 2 asset
-     * scorrelati): ottimo x* = (0.5, 0.5), var = 0.25 */
+    /* min 0.5*(x0^2 + x1^2) s.t. x0 + x1 = 1 (minimum variance, 2
+     * uncorrelated assets): optimum x* = (0.5, 0.5), var = 0.25 */
     PRIMAL_appendvars(task, 2);
     PRIMAL_appendcons(task, 1);
     for (int j = 0; j < 2; j++)

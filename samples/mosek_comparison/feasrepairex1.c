@@ -22,20 +22,21 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* feasrepairex1.c — porting dell'esempio "feasrepairex1.jl" della Julia API
- * MOSEK: feasibility repair — un LP infeasibile viene "riparato" trovando
- * il punto con la minima violazione totale (elastic relaxation, PRIMAL_feasrepair).
+/* feasrepairex1.c — port of the MOSEK Julia API "feasrepairex1.jl" example:
+ * feasibility repair — an infeasible LP is "repaired" by finding
+ * the point with minimum total violation (elastic relaxation, PRIMAL_feasrepair).
  *
- * Problema infeasibile (verificato a mano):
- *   min x0  s.t.  x0 >= 2,  x0 <= 1   (nessun x ammissibile)
- * Riparazione minima: la violazione totale minima e' 1 (muovere un bound di
- * 1): la somma delle slack elastiche ottimali = 1. Il punto riparato
- * soddisfa la definizione con violazione totale 1.
+ * Infeasible problem (verified by hand):
+ *   min x0  s.t.  x0 >= 2,  x0 <= 1   (no feasible x)
+ * Minimum repair: the minimum total violation is 1 (moving one bound by
+ * 1): the sum of the optimal elastic slacks = 1. The repaired point
+ * satisfies the definition with total violation 1.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Optimize (infeasible) then feasrepair and check the minimum violation. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -51,17 +52,17 @@ int main(void) {
     PRIMAL_putarow(task, 1, 1, (int[]){0}, (double[]){1.0});
     PRIMAL_putconbound(task, 1, PRIMAL_BK_UP, -INFINITY, 1.0);  /* x0 <= 1 */
 
-    /* 1. optimize: infeasibile */
+    /* 1. optimize: infeasible */
     PRIMALrescodee rc = PRIMAL_optimize(task);
     printf("optimize: rc=%d (atteso 1002 infeasible)\n", rc);
     int infeas = (rc == PRIMAL_RES_ERR_INFEASIBLE);
 
-    /* 2. feasrepair: punto a violazione minima */
+    /* 2. feasrepair: point of minimum violation */
     rc = PRIMAL_feasrepair(task);
     if (rc != PRIMAL_RES_OK) { printf("feasrepair rc=%d\n", rc); return 1; }
     double x[1];
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
-    /* violazione totale del punto riparato: (2 - x0)+ + (x0 - 1)+ = 1 */
+    /* total violation of the repaired point: (2 - x0)+ + (x0 - 1)+ = 1 */
     double viol = 0.0;
     if (x[0] < 2.0) viol += 2.0 - x[0];
     if (x[0] > 1.0) viol += x[0] - 1.0;

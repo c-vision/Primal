@@ -22,11 +22,11 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* parallel.c — porting dell'esempio "parallel.jl" della MOSEK Julia API:
- * piu' task indipendenti risolti (nel clone: in sequenza — deviazione
- * documentata: single-thread; l'esempio verifica l'isolamento dei task).
+/* parallel.c — port of the MOSEK Julia API "parallel.jl" example:
+ * several independent tasks solved (in the clone: in sequence — documented
+ * deviation: single-thread; the example checks task isolation).
  *
- * 3 task indipendenti con ottimi noti (verificati a mano):
+ * 3 independent tasks with known optima (verified by hand):
  *   A: max x s.t. x <= 4        -> 4
  *   B: min x s.t. x >= 2        -> 2
  *   C: max x0+x1 s.t. x0+x1 <= 7 -> 7
@@ -35,6 +35,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve three independent tasks and check each optimum. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

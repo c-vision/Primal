@@ -24,7 +24,10 @@
 
 typedef struct { int m, n; double **v; } DMat;
 
+/* Allocate an m x n dense matrix, zero-initialized.
+ * Returns NULL on allocation failure; free with dmat_free. */
 DMat *dmat_new(int m, int n);
+/* Free a dense matrix created by dmat_new. NULL-safe. */
 void  dmat_free(DMat *A);
 
 /* solve A x = b by LU with partial pivoting (destroys A, b). returns 0 ok. */
@@ -58,21 +61,22 @@ int dmat_lu_solve(const LuFact *f, double *rhs);
 /* same, compensated (Neumaier+FMA) triangular sweeps -- for the degenerate
  * PSD/SOC path in sdp.c only, see linalg.c. */
 int dmat_lu_solve_comp(const LuFact *f, double *rhs);
+/* Release an LU factor created by dmat_lu_factor. NULL-safe. */
 void dmat_lu_free(LuFact *f);
 
 /* ---- symmetric eigenvalues (Jacobi rotations) ----
- * A: n x n row-major symmetric (modificato? no: copia interna).
- * eval[n] = autovalori in ordine di interesse (ascendente NON garantito,
- * chiamare cerca min), evec = n x n row-major colonna k = autovettore k. */
+ * A: n x n row-major symmetric (modified? no: internal copy).
+ * eval[n] = eigenvalues in order of interest (ascending NOT guaranteed,
+ * call site finds the minimum), evec = n x n row-major column k = eigenvector k. */
 void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec);
 
-/* ---- sparse Cholesky  K = L L'  (K simmetrica definita positiva) ----
- * K in CSC: solo il triangolo INFERIORE (Ki[p] >= colonna). L e' lower
- * triangular in CSC (righe non ordinate dentro la colonna). Fattorizzazione
- * left-looking colonna per colonna; il fill-in e' gestito dinamicamente
- * (adiacenza di L' mantenuta incrementalmente). Ritorna NULL se K non e'
- * numericamente definita positiva (il chiamante regolarizza e riprova).
- * Un repeated (row,column) position is merged, not dropped: the column is
+/* ---- sparse Cholesky  K = L L'  (K symmetric positive definite) ----
+ * K in CSC: only the LOWER triangle (Ki[p] >= column). L is lower
+ * triangular in CSC (rows unsorted within the column). Left-looking
+ * factorization column by column; fill-in is handled dynamically
+ * (adjoint of L' maintained incrementally). Returns NULL when K is not
+ * numerically positive definite (the caller regularizes and retries).
+ * A repeated (row,column) position is merged, not dropped: the column is
  * scattered into the dense work vector with w[i] += Kx[p]. */
 typedef struct {
     int n;
@@ -83,13 +87,18 @@ typedef struct {
                    * (NULL if the natural order was used); spchol_solve undoes it */
 } SpChol;
 
+/* Factor K in natural order (no fill-reducing permutation).
+ * Returns NULL on allocation failure or non-positive-definite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx);
 /* same, with a fill-reducing AMD ordering applied internally (undone by
  * spchol_solve_ord); used by the sparse LP IPM, where fill matters. */
 SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx);
+/* Solve through an ordered factor, undoing the AMD permutation.
+ * Operates in place on rhs. 0 ok, -1 on NULL input or solve failure. */
 int spchol_solve_ord(const SpChol *L, double *rhs);
-/* risolve K u = rhs in place. 0 ok, -1 singolare. */
+/* solve K u = rhs in place. 0 ok, -1 singular. */
 int spchol_solve(const SpChol *L, double *rhs);
+/* Release a sparse Cholesky factor, including its ordering. NULL-safe. */
 void spchol_free(SpChol *L);
 
 /* ---- sparse LU with partial pivoting (non-symmetric A), P A = L U ----
@@ -115,34 +124,40 @@ typedef struct {
     int *Up, *Ui; double *Ux;   /* U in CSR by position row: Up[i]..Up[i+1] are row i's columns */
 } SpluFact;
 
+/* Factor a sparse non-symmetric A with row pivoting and column ordering.
+ * Returns NULL when singular or on allocation failure. */
 SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax);
 /* solves A x = rhs in place (rhs overwritten with x). 0 ok, -1 singular. */
 int splu_solve(const SpluFact *F, double *rhs);
+/* Release a sparse LU factor. NULL-safe, also safe on half-built structs. */
 void splu_free(SpluFact *F);
 
 
-/* ---- sparse LDL'  K = L D L'  (K simmetrica) ----
- * Stessa forma di input di spchol_factor (CSC del triangolo INFERIORE; le
- * entrate strettamente sopra la diagonale sono ignorate, quindi una CSC
- * simmetrica piena va bene).  D e' diagonale a blocchi: entrate 1x1 di segno
- * misto piu' blocchi 2x2 che assorbono una diagonale (numericamente) nulla --
- * il caso che il KKT conico/SDP presenta sulle righe di uguaglianza.  I pivot
- * 2x2 sono scelti STATICAMENTE (matching greedy sui nonnulli fuori diagonale,
- * poi permutazione che rende adiacente ogni coppia): nessun pivoting dinamico.
- * L ha diagonale unitaria ESPLICITA.  Ritorna NULL se un blocco non fattorizza.
- * La fattorizzazione e' di P K P' con P = L->perm (position -> original). */
+/* ---- sparse LDL'  K = L D L'  (K symmetric) ----
+ * Same input shape as spchol_factor (CSC of the LOWER triangle; entries
+ * strictly above the diagonal are ignored, so a full symmetric CSC is
+ * fine).  D is block diagonal: mixed-sign 1x1 entries plus 2x2 blocks that
+ * absorb a (numerically) zero diagonal --
+ * the case the conic/SDP KKT presents on its equality rows.  The
+ * 2x2 pivots are chosen STATICALLY (greedy matching on off-diagonal nonzeros,
+ * then a permutation making every pair adjacent): no dynamic pivoting.
+ * L has an EXPLICIT unit diagonal.  Returns NULL when a block does not factor.
+ * The factorization is of P K P' with P = L->perm (position -> original). */
 typedef struct {
     int n;
-    int *Lp, *Li; double *Lx;   /* L in CSC, diagonale unitaria esplicita */
-    double *D;                  /* diagonale di D (1x1) */
-    int *piv2;                  /* piv2[k]=1 se un blocco 2x2 parte a k (partner k+1) */
-    double *Doff;               /* off-diagonal b del blocco 2x2 che parte a k */
-    int *perm;                  /* position -> original: L,D sono di P K P' */
+    int *Lp, *Li; double *Lx;   /* L in CSC, explicit unit diagonal */
+    double *D;                  /* diagonal of D (1x1) */
+    int *piv2;                  /* piv2[k]=1 if a 2x2 block starts at k (partner k+1) */
+    double *Doff;               /* off-diagonal b of the 2x2 block starting at k */
+    int *perm;                  /* position -> original: L,D are of P K P' */
 } SpLdl;
 
+/* Factor symmetric K into sparse LDL' with static 1x1/2x2 pivots.
+ * Returns NULL when a pivot block does not factor or on alloc failure. */
 SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx);
-/* risolve K u = rhs in place. 0 ok, -1 singolare. */
+/* solve K u = rhs in place. 0 ok, -1 singular. */
 int spldl_solve(const SpLdl *L, double *rhs);
+/* Release a sparse LDL' factor. NULL-safe. */
 void spldl_free(SpLdl *L);
 
 
@@ -160,8 +175,13 @@ typedef struct {
     double *LU;     /* n x n row-major: L below the diagonal, D (1x1/2x2) at it */
 } SpBK;
 
+/* Factor a dense symmetric indefinite matrix with Bunch-Kaufman pivoting.
+ * Copies A, applies a symmetric permutation, stores L/D in LU. NULL on failure. */
 SpBK *dmat_ldl_bk(int n, const double *A);
+/* Solve through a Bunch-Kaufman factor, applying and undoing the permutation.
+ * Operates in place on rhs. 0 ok, -1 on NULL input or singular block. */
 int dmat_ldl_bk_solve(const SpBK *F, double *rhs);
+/* Release a Bunch-Kaufman factor. NULL-safe. */
 void dmat_ldl_bk_free(SpBK *F);
 
 #endif /* LINALG_H */

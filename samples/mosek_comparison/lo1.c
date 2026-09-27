@@ -22,15 +22,16 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* lo1.c — LP semplice (equivale all'esempio Python Optimizer API "lo1")
+/* lo1.c — simple LP (matches the Python Optimizer API "lo1" example)
  *
- * Problema: min 2x + 3y  s.t. x+y >= 1, x-y <= 0, x,y >= 0
- * Soluzione attesa: x = 0.5, y = 0.5, obj = 2.5
+ * Problem: min 2x + 3y  s.t. x+y >= 1, x-y <= 0, x,y >= 0
+ * Expected solution: x = 0.5, y = 0.5, obj = 2.5
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the lo1 LP and check x=0.5, y=0.5, obj=2.5. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -46,16 +47,16 @@ int main(void) {
     for (int j = 0; j < numvar; j++)
         PRIMAL_putvarbound(task, j, PRIMAL_BK_LO, 0.0, INFINITY);
 
-    /* Obiettivo: min 2x + 3y */
+    /* Objective: min 2x + 3y */
     PRIMAL_putcj(task, 0, 2.0);
     PRIMAL_putcj(task, 1, 3.0);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MINIMIZE);
 
-    /* Vincolo 1: x + y >= 1 */
+    /* Constraint 1: x + y >= 1 */
     PRIMAL_putarow(task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_LO, 1.0, INFINITY);
 
-    /* Vincolo 2: x - y <= 0 */
+    /* Constraint 2: x - y <= 0 */
     PRIMAL_putarow(task, 1, 2, (int[]){0, 1}, (double[]){1.0, -1.0});
     PRIMAL_putconbound(task, 1, PRIMAL_BK_UP, -INFINITY, 0.0);
 

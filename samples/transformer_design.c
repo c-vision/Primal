@@ -47,6 +47,7 @@ typedef struct { double coef; int n; int var[8]; double alpha[8]; } Mono;
 typedef struct { int nm; Mono m[6]; } Posy;
 
 /* pairs = {var0,exp0, var1,exp1, ...}; doubles so fractional exponents survive */
+/* Build one GP monomial from its coefficient and (var, exponent) pairs. */
 static Mono M(double coef, int n, const double *pairs) {
     Mono r; r.coef = coef; r.n = n;
     for (int i = 0; i < n; i++) { r.var[i] = (int)pairs[2 * i]; r.alpha[i] = pairs[2 * i + 1]; }
@@ -55,6 +56,7 @@ static Mono M(double coef, int n, const double *pairs) {
 #define MK(coef, ...) M((coef), (int)(sizeof((double[]){__VA_ARGS__}) / sizeof(double) / 2), \
     (double[]){__VA_ARGS__})
 
+/* Build, solve and feasibility-check the 15-variable transformer GP. */
 int main(void) {
     /* ---- constants ---- */
     const double c0 = 0.005, t0 = 0.015, bw0 = 0.010, hw0 = 0.025;

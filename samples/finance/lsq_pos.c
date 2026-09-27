@@ -41,6 +41,7 @@
 #include "primal.h"
 
 static unsigned st = 13103397u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
@@ -137,6 +138,7 @@ static double solve_qp(PRIMALenv_t env, double *wout) {
     return q;
 }
 
+/* Solve the SOCP and QP forms and check v*^2 equals the QP objective. */
 int main(int argc, char **argv) {
     N = argc > 1 ? atoi(argv[1]) : 40;
     M = argc > 2 ? atoi(argv[2]) : 5;

@@ -31,6 +31,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the cardinality MIQP and check the K=2 optimum 0.5. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

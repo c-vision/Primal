@@ -16,58 +16,59 @@
  * under the License.
  */
 
-/* barqcqp.c — barre simmetriche e parte quadratica (vincolo e obiettivo) nello
- * stesso modello, risolti dalla strada QCQP→conica attraverso la sola API
- * pubblica; e il dominio non convesso, che deve essere rifiutato.
+/* barqcqp.c — symmetric bars and quadratic part (constraint and objective) in
+ * the same model, solved by the QCQP-to-conic route through the public API
+ * alone; plus the nonconvex domain, which must be refused.
  *
- * I valori ottimi sono derivati a mano qui sotto (nessun numero copiato da un
- * altro solver). A e B sono le due forme che la via barre perdeva in silenzio
- * (T86); C e' la forma che l'encoder QCQP tagliava in silenzio (T87).
+ * The optimal values are derived by hand below (no number copied from
+ * another solver). A and B are the two forms the bar route used to silently
+ * drop (T86); C is the form the QCQP encoder used to silently cut (T87).
  *
  * A) min -x0 - x1 - 4 <E00,B>
  *    s.t. x0^2 + x1^2 + <E00,B> <= 3,  <I,B> = 1,  B in S^2_+,  x >= 0
- *    Con tr(B)=1 e B psd si ha b = B00 in [0,1]; per un b fissato la sfera e'
- *    attiva in x0=x1=sqrt((3-b)/2) e resta da massimizzare
- *    g(b) = 2 sqrt((3-b)/2) + 4b, con g'(b) = 4 - 1/(2 sqrt((3-b)/2)) >= 3.5
- *    su tutto [0,1]. Quindi b*=1 e s*=1, e
- *      x* = (1,1),  B = diag(1,0) (B00=1 e tr(B)=1 forzano B11=0 e, per
+ *    With tr(B)=1 and B psd we have b = B00 in [0,1]; for fixed b the sphere
+ *    is active at x0=x1=sqrt((3-b)/2) and it remains to maximize
+ *    g(b) = 2 sqrt((3-b)/2) + 4b, with g'(b) = 4 - 1/(2 sqrt((3-b)/2)) >= 3.5
+ *    on all of [0,1]. Hence b*=1 and s*=1, and
+ *      x* = (1,1),  B = diag(1,0) (B00=1 and tr(B)=1 force B11=0 and, from
  *      det(B)>=0, B01=0),  obj = -(2 + 4) = -6.
  *
  * B) min x0^2 + x1^2 - 2 x0 - 2 x1 - 3 <E00,B>
  *    s.t. <I,B> = 1,  B in S^2_+,  x >= 0
- *    Le due parti sono separate: la quadratica e' (x0-1)^2 + (x1-1)^2 - 2,
- *    minima in x*=(1,1) con valore -2; il termine di obiettivo sulla barra vale -3 b con
- *    b = B00 in [0,1], minimo a b=1, cioe' di nuovo B = diag(1,0).
+ *    The two parts separate: the quadratic is (x0-1)^2 + (x1-1)^2 - 2,
+ *    minimal at x*=(1,1) with value -2; the bar objective term is -3 b with
+ *    b = B00 in [0,1], minimal at b=1, i.e. again B = diag(1,0).
  *      obj = -2 - 3 = -5.
- *    Qui e' il termine quadratico dell'obiettivo che deve spostare la risposta:
- *    se la via barre lo scarta resta -x0-x1 su x >= 0, cioe' un modello
- *    illimitato. Il numero checkato sotto e' quindi un certificato
- *    dell'encoding intero, non un dettaglio.
+ *    Here it is the quadratic objective term that must move the answer:
+ *    if the bar route drops it, -x0-x1 on x >= 0 remains, i.e. an
+ *    unbounded model. The number checked below is therefore a certificate
+ *    of the whole encoding, not a detail.
  *
- * C) come A ma con il vincolo x0^2 - 2 x1^2 + <E00,B> <= 3 e 0 <= x <= 2.
- *    La matrice quadratica diag(2,-4) ha un autovalore dal lato sbagliato: il
- *    dominio non e' convesso e il cono non puo' rappresentarlo. Un encoder che
- *    taglia lascia la sola x0^2 + <E00,B> <= 3 e risponde un numero sul
- *    modello di qualcun altro. Qui si misura il rifiuto: rc = ERR_ARG, e i
- *    getter soluzione dicono "no" con lo stesso codice.
+ * C) as A but with constraint x0^2 - 2 x1^2 + <E00,B> <= 3 and 0 <= x <= 2.
+ *    The quadratic matrix diag(2,-4) has an eigenvalue on the wrong side: the
+ *    domain is not convex and no cone can represent it. An encoder that
+ *    cuts leaves only x0^2 + <E00,B> <= 3 and answers a number on
+ *    somebody else's model. Here the refusal is measured: rc = ERR_ARG, and
+ *    the solution getters say "no" with the same code.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
-/* E00 e l'identita' 2x2, condivisi dai tre casi */
+/* E00 and the 2x2 identity, shared by the three cases */
 static void put_syms(PRIMALtask_t t, int *m00, int *mI) {
     PRIMAL_appendsparsesymmat(t, 2, 1, (int[]){0}, (int[]){0}, (double[]){1.0}, m00);
     PRIMAL_appendsparsesymmat(t, 2, 2, (int[]){0, 1}, (int[]){0, 1},
                               (double[]){1.0, 1.0}, mI);
 }
 
+/* Solve cases A (bar+quadratic row), B (bar+quadratic objective) and C (refusal). */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
     int pass = 1;
 
-    /* ---- A) riga quadratica e barra nella stessa riga, barra anche in obiettivo ---- */
+    /* ---- A) quadratic row and bar in the same row, bar also in objective ---- */
     {
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
@@ -105,7 +106,7 @@ int main(void) {
         PRIMAL_deletetask(&t);
     }
 
-    /* ---- B) obiettivo quadratico convesso + barra ---- */
+    /* ---- B) convex quadratic objective + bar ---- */
     {
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
@@ -141,7 +142,7 @@ int main(void) {
         PRIMAL_deletetask(&t);
     }
 
-    /* ---- C) dominio non convesso: rifiuto, non risposta ---- */
+    /* ---- C) nonconvex domain: refusal, not an answer ---- */
     {
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);

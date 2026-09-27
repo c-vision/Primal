@@ -90,6 +90,8 @@ int expcone_dual_point(int kind, double alpha, const double *s, double *W);
 #define EXPCONE_EV_MZ    4
 #define EXPCONE_EV_MS    5
 #define EXPCONE_EV_WN    6
+/* NT metrics (gap, conditioning, margins) for the scaling decision.
+ * Evaluates nt_eval once and reports the seven EXPCONE_EV_* slots. */
 int expcone_nt_metrics(int kind, double alpha, const double *z, const double *s,
                        double *m);
 

@@ -123,6 +123,7 @@ static double obj_at(double c, double t0, double t) {
     return a * t - c * turn;
 }
 
+/* Solve the two market-neutral cases and check against brute force. */
 int main(void) {
     double T = tmax(), a = M[0] - M[1];
     int all = 1;

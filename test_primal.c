@@ -49,6 +49,7 @@
 static int n_pass = 0, n_fail = 0;
 static const char *cur_name = "";
 
+/* Increment the pass/fail counters and report a failure with the test name. */
 static void check(int cond, const char *what) {
     if (cond) { n_pass++; }
     else {
@@ -57,6 +58,7 @@ static void check(int cond, const char *what) {
     }
 }
 
+/* Like check, but compares a return code against the expected one. */
 static void check_rc(PRIMALrescodee rc, PRIMALrescodee want, const char *what) {
     if (rc == want) n_pass++;
     else {
@@ -65,6 +67,7 @@ static void check_rc(PRIMALrescodee rc, PRIMALrescodee want, const char *what) {
     }
 }
 
+/* Compare a and b within a relative-plus-absolute tolerance and report the diff. */
 static void close_enough_tol(double a, double b, double ftol, const char *what) {
     double tol = ftol * (1.0 + fabs(a) + fabs(b));
     check(fabs(a - b) <= tol, what);
@@ -72,6 +75,7 @@ static void close_enough_tol(double a, double b, double ftol, const char *what) 
         printf("       %.10g vs %.10g (diff %.3g)\n", a, b, a - b);
 }
 
+/* Compare a and b at the default 1e-6 tolerance. */
 static void close_enough(double a, double b, const char *what) {
     double tol = 1e-6 * (1.0 + fabs(a) + fabs(b));
     check(fabs(a - b) <= tol, what);
@@ -86,6 +90,7 @@ typedef struct {
     double feas_p, feas_d, comp, gap;   /* violation measures */
 } KKT;
 
+/* Map a bound key and its two stored values to an explicit [lo, up] interval. */
 static void act_bound(PRIMALboundkeye bk, double bl, double bu, double *lo, double *up) {
     switch (bk) {
         case PRIMAL_BK_LO: *lo = bl; *up = INFINITY; break;
@@ -224,6 +229,7 @@ static KKT kkt_check(PRIMALtask_t t, double s) {
 }
 
 
+/* Run the KKT check for the given sense and count one pass or one failure. */
 static void expect_kkt(PRIMALtask_t t, double s) {
     KKT k = kkt_check(t, s);
     if (k.ok) { n_pass++; return; }
@@ -239,10 +245,12 @@ typedef struct {
     PRIMALtask_t task;
 } P;
 
+/* Create an environment and task for a test fixture. */
 static void pbegin(P *p) {
     PRIMAL_makeenv(&p->env, NULL);
     PRIMAL_maketask(p->env, 0, 0, &p->task);
 }
+/* Delete the fixture's task and environment. */
 static void pend(P *p) {
     PRIMAL_deletetask(&p->task);
     PRIMAL_deleteenv(&p->env);
@@ -1101,6 +1109,7 @@ static void test_t27(void) {
 }
 
 /* ---- I/O roundtrip helpers (T28-T32) ---- */
+/* Read a file, optimize, and check x[0], x[1] and pobj against expected values. */
 static void solve_and_check(const char *file, double ex0, double ex1,
                             double pexp, const char *what) {
     PRIMALenv_t env; PRIMALtask_t t;
@@ -1224,7 +1233,7 @@ static void test_t33(void) {
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
     /* min 1e6 x0 + 1e-6 x1 s.t. 1e6 x0 + 1e-6 x1 >= 1, 1e-6 x0 + 1e6 x1 >= 1,
-     * x >= 0.  Ottimo simmetrico: x0=x1=1e-6, obj=1.000001 */
+     * x >= 0.  Symmetric optimum: x0=x1=1e-6, obj=1.000001 */
     PRIMAL_putcj(t, 0, 1e6); PRIMAL_putcj(t, 1, 1e-6);
     int s[] = {0, 1};
     PRIMAL_putacol(t, 0, 2, s, (double[]){1e6, 1e-6});
@@ -1245,6 +1254,8 @@ static void test_t33(void) {
     pend(&p);
 }
 
+/* T34: warm start (INTPNT): solve an LP, then re-solve from the reported
+ * solution and from an arbitrary interior point; the optimum -7 is unchanged. */
 static void test_t34(void) {
     cur_name = "T34 warm start (INTPNT)";
     P p; pbegin(&p);
@@ -1264,7 +1275,7 @@ static void test_t34(void) {
     PRIMAL_gety(t, PRIMAL_SOL_ITR, y);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough(po, -7.0, "cold pobj");
-    /* warm start con la soluzione fredda: stesso ottimo */
+    /* warm start with the cold solution: same optimum */
     check_rc(PRIMAL_putxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "putxx");
     check_rc(PRIMAL_puty(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "puty");
     rc = PRIMAL_optimize(t);
@@ -1274,7 +1285,7 @@ static void test_t34(void) {
     close_enough(po, -7.0, "warm pobj");
     close_enough(x[0], 1.0, "warm x0");
     close_enough(x[1], 3.0, "warm x1");
-    /* warm start anche come punto arbitrario interno */
+    /* warm start also as an arbitrary interior point */
     double xw[2] = {0.5, 0.5};
     double yw[1] = {-1.0};
     check_rc(PRIMAL_putxx(t, PRIMAL_SOL_ITR, xw), PRIMAL_RES_OK, "putxx2");
@@ -1286,6 +1297,8 @@ static void test_t34(void) {
     pend(&p);
 }
 
+/* T32: LP roundtrip (write .lp, read .lp) with equality + ranged bounds + FR
+ * variable; write, read back and solve, same optimum 7. */
 static void test_t32(void) {
     cur_name = "T32 LP roundtrip";
     PRIMALenv_t env; PRIMALtask_t t;
@@ -1308,8 +1321,9 @@ static void test_t32(void) {
     solve_and_check("/tmp/mc_t32.lp", 3.0, 2.0, 7.0, "lp roundtrip");
 }
 
-/* ---------------- coni esponenziali e power ---------------- */
+/* ---------------- exponential and power cones ---------------- */
 
+/* T35: PEXP cone: min t s.t. (t,u,v) in PEXP with u=1, v=-1, so t = e^-1. */
 static void test_t35(void) {
     cur_name = "T35 PEXP cone";
     P p; pbegin(&p);
@@ -1330,13 +1344,15 @@ static void test_t35(void) {
     pend(&p);
 }
 
+/* T36: DEXP cone: min -a + c with b = -1, so a = -exp(-c) and the optimum is
+ * a = -1, c = 0, pobj = 1 (min a - c alone would be unbounded). */
 static void test_t36(void) {
     cur_name = "T36 DEXP cone";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     /* DEXP(a,b,c): a <= b*exp(c/b), b<=0.  b=-1: a <= -exp(-c)
      * min -a + c -> a = -exp(-c), d/dc = -exp(-c)+1 = 0 -> c=0,
-     * obj = 1 + 0 = 1, a = -1 (min a-c sarebbe NON LIMITATO) */
+     * obj = 1 + 0 = 1, a = -1 (min a-c would be UNBOUNDED) */
     PRIMAL_appendvars(t, 3);
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0, 0);   /* a */
     PRIMAL_putvarbound(t, 1, PRIMAL_BK_FX, -1.0, -1.0); /* b */
@@ -1353,14 +1369,16 @@ static void test_t36(void) {
     pend(&p);
 }
 
+/* T37: PPOW cone (a=0.3): min 2t - v with u=1 and v = t^0.3, so t = 0.15^(1/0.7);
+ * t is bounded above because the tangent-cut approximation needs a bounded LP. */
 static void test_t37(void) {
     cur_name = "T37 PPOW cone (a=0.3)";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     /* min 2t - v s.t. (t,u,v) in PPOW_0.3: t^0.3 u^0.7 >= |v|; u=1
      * -> v = t^0.3, min 2t - t^0.3 -> t = 0.15^(1/0.7).
-     * t bornato sopra: l'approssimazione a tagli richiede il dominio
-     * LP limitato (i tagli tangenti sono sotto-stima nel verso di v) */
+     * t bounded above: the cutting-plane approximation requires a bounded
+     * LP domain (the tangent cuts under-estimate in the v direction) */
     PRIMAL_appendvars(t, 3);
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.01, 10.0);   /* t */
     PRIMAL_putvarbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0); /* u */
@@ -1373,13 +1391,15 @@ static void test_t37(void) {
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     double topt = pow(0.15, 1.0 / 0.7);
     close_enough(po, 2.0 * topt - pow(topt, 0.3), "pobj");
-    /* l'approssimazione a tagli tangenti converge nell'obiettivo; il punto
-     * primitivo resta sulla faccia ottima con tolleranza piu' larga */
+    /* the tangent-cut approximation converges in the objective; the primal
+     * point stays on the optimal face with a wider tolerance */
     close_enough_tol(x[0], topt, 1e-4, "t");
     close_enough_tol(x[2], pow(topt, 0.3), 1e-4, "v");
     pend(&p);
 }
 
+/* T38: RPOW/PPOW with a=1/2 against RQUAD: RPOW gives t >= 0.5, PPOW gives
+ * t >= 1 for the same fixed u=1, v=1. */
 static void test_t38(void) {
     cur_name = "T38 RPOW/PPOW a=1/2 vs RQUAD";
     P p; pbegin(&p);
@@ -1407,6 +1427,8 @@ static void test_t38(void) {
     pend(&p);
 }
 
+/* T39: mixed SOC + PEXP cones in one task: (w,x) in QUAD with x=1 gives w=1,
+ * (t,u,v) in PEXP with u=1, v=-1 gives t=e^-1; pobj = 1 + e^-1. */
 static void test_t39(void) {
     cur_name = "T39 cono SOC + PEXP misti";
     P p; pbegin(&p);
@@ -1430,7 +1452,7 @@ static void test_t39(void) {
 }
 
 /* T40: SDP standard form 2x2: min <I,X> s.t. X00 - X11 = 1, X >= 0
- * -> min X00+X11 con X00 = 1+X11, X11 >= 0 -> 1 (X11 = X01 = 0) */
+ * -> min X00+X11 with X00 = 1+X11, X11 >= 0 -> 1 (X11 = X01 = 0) */
 static void test_t40(void) {
     cur_name = "T40 SDP standard 2x2";
     P p; pbegin(&p);
@@ -1456,8 +1478,8 @@ static void test_t40(void) {
     pend(&p);
 }
 
-/* T41: LMI su variabile scalare: F(x) = [[1,x],[x,1]] >= 0, min x -> -1
- * modellata con X bar e uguaglianze <E_ij, X> = F_ij(x) */
+/* T41: LMI on a scalar variable: F(x) = [[1,x],[x,1]] >= 0, min x -> -1
+ * modeled with a bar X and equalities <E_ij, X> = F_ij(x) */
 static void test_t41(void) {
     cur_name = "T41 SDP LMI 2x2";
     P p; pbegin(&p);
@@ -1489,9 +1511,9 @@ static void test_t41(void) {
     pend(&p);
 }
 
-/* T45: roundtrip CBF di un SOCP (QUAD + riga lineare + DEXP):
- * il problema scritto su file .cbf, riletto e risolto, deve dare lo
- * stesso valore ottimo dell'originale.
+/* T45: CBF round-trip of an SOCP (QUAD + linear row + DEXP):
+ * the problem written to a .cbf file, re-read and solved, must give the
+ * same optimal value as the original.
  *  - QUAD: min x0 s.t. (x0,x1,x2) in Q3, x1=1, x2=0 -> 1
  *  - DEXP: max m0 s.t. m1=-1, m2=-1, (m0,m1,m2) in DEXP -> -e
  *    (DEXP clone: m0 <= m1*exp(m2/m1), m1<0) */
@@ -1507,7 +1529,7 @@ static void test_t45(void) {
         PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0, 1, 2});
         PRIMAL_appendcons(t, 1);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
-        PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 2.0, 0);   /* inattivo */
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 2.0, 0);   /* inactive */
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize QUAD");
         double po1;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po1);
@@ -1545,9 +1567,9 @@ static void test_t45(void) {
         close_enough_tol(po2, -2.718281828459045, 1e-6, "pobj DEXP roundtrip");
         pend(&q);
     }
-    {   /* POW*CONES e' il cono di potenza DUALE: non rappresentabile qui, e
-         * prima veniva scartato in silenzio lasciando un modello incompleto.
-         * Ora e' un rifiuto dichiarato che non tocca il task. */
+    {   /* POW*CONES is the DUAL power cone: not representable here, and
+         * previously it was silently dropped leaving an incomplete model.
+         * Now it is a declared rejection that does not touch the task. */
         FILE *f = fopen("/tmp/mc_t45c.cbf", "w");
         check(f != NULL, "apri t45c");
         if (f) {
@@ -1563,7 +1585,7 @@ static void test_t45(void) {
     }
 }
 
-/* T46: roundtrip CBF SDP (come T41 + barC su X00):
+/* T46: CBF round-trip SDP (like T41 + barC on X00):
  * min x + 0.5*X00 s.t. X00=1, X11=1, X01=x, X PSD -> -1 + 0.5 = -0.5 */
 static void test_t46(void) {
     cur_name = "T46 CBF roundtrip SDP";
@@ -1602,8 +1624,8 @@ static void test_t46(void) {
     pend(&q);
 }
 
-/* Modello CBF v4 dell'esempio C.2: condiviso fra T47 (lettura) e T81
- * (parita' percorso nativo exp/power vs tagli tangenti). */
+/* CBF v4 model of example C.2: shared by T47 (reading) and T81
+ * (native exp/power path vs tangent-cut parity). */
 static const char T47_TXT[] =
     "# variante esempio C.2 (format4)\n"
     "VER\n4\n"
@@ -1615,12 +1637,12 @@ static const char T47_TXT[] =
     "2 0 1.0\n3 1 1.0\n4 2 1.0\n6 3 1.0\n"
     "BCOORD\n2\n1 5.0\n5 1.0\n";
 
-/* T47: variante dell'esempio C.2 della specifica CBF v4 (letto da testo):
- * max x3 - x0 s.t. x0+2x1-x2=0, (5,x0,x1) in Q3 (cioe' x0^2+x1^2<=5),
- * (x2,1,x3) in EXP (cioe' x3 <= ln x2), con x2 = x0+2x1.
- * KKT: f = ln(s) - x0, s = x0+2x1; sul cerchio x0^2+x1^2=5 vale
+/* T47: variant of CBF v4 spec example C.2 (read from text):
+ * max x3 - x0 s.t. x0+2x1-x2=0, (5,x0,x1) in Q3 (i.e. x0^2+x1^2<=5),
+ * (x2,1,x3) in EXP (i.e. x3 <= ln x2), with x2 = x0+2x1.
+ * KKT: f = ln(s) - x0, s = x0+2x1; on the circle x0^2+x1^2=5
  *   grad f = (1/s - 1, 2/s)  ||  (x0, x1)
- * (verifica indipendente: cross product nullo e x3 = ln s) */
+ * (independent check: null cross product and x3 = ln s) */
 static void test_t47(void) {
     cur_name = "T47 CBF lettura variante C.2";
     FILE *f = fopen("/tmp/mc_t47.cbf", "w");
@@ -1631,7 +1653,7 @@ static void test_t47(void) {
     check_rc(primalio_read(p.task, "/tmp/mc_t47.cbf"), PRIMAL_RES_OK, "cbf_read");
     PRIMAL_putintparam(p.task, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1000);
     check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "optimize");
-    /* il task letto ha 4 variabili + 6 ausiliarie (una per riga conica) */
+    /* the read task has 4 variables + 6 auxiliaries (one per conic row) */
     int nv = 0;
     PRIMAL_getnumvar(p.task, &nv);
     check(nv == 10, "numvar (4 + 6 ausiliarie)");
@@ -1639,30 +1661,30 @@ static void test_t47(void) {
     PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po);
     PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, xx);
     double s = xx[0] + 2.0 * xx[1];
-    /* x3 = ln s (l'approssimazione esterna tocca ln nel punto ottimo);
-     * le ausiliarie: v3=x2, v4=1, v5=x3 (esp), v0=5, v1=x0, v2=x1 (Q) */
+    /* x3 = ln s (the outer approximation touches ln at the optimal point);
+     * the auxiliaries: v3=x2, v4=1, v5=x3 (exp), v0=5, v1=x0, v2=x1 (Q) */
     close_enough_tol(xx[3], log(s), 1e-4, "x3=ln(s)");
     close_enough_tol(po, xx[3] - xx[0], 1e-6, "pobj=x3-x0");
     close_enough_tol(xx[4], 5.0, 1e-9, "aux v0=5");
-    /* v4 = u del blocco exp: risposto dai blocchi nativi, e' una variabile della
-     * barra e condivide il residuo di fattibilita' del sistema aumentato
-     * (5e-9 a mu=1e-11); con i tagli era la costante esatta del membro fissato */
+    /* v4 = u of the exp block: answered by the native blocks, it is a bar
+     * variable and shares the feasibility residual of the augmented system
+     * (5e-9 at mu=1e-11); with cuts it was the exact constant of the fixed side */
     close_enough_tol(xx[8], 1.0, 1e-7, "aux v4=1");
     close_enough_tol(xx[9], xx[3], 1e-6, "aux v5=x3");
-    /* KKT: grad f parallelo a (x0,x1) (moltiplicatore del cerchio attivo).
-     * L'ottimo e' degenere (il cerchio attivo con la direzione radiale) e la
-     * direzione del punto e' sensibile alla build: a -O2 liscio il residuo e'
-     * < 1e-4, a -O1 e a -O2+ASan e' -1.227e-3 (misurato 2026-09-24, stesso
-     * valore su entrambi).  Si asserisce quindi l'esito (x3=ln s, pobj e le
-     * ausiliarie sopra, tutte verdi a ogni livello) e qui solo che il residuo
-     * radiale resta piccolo -- non la sua cifra esatta. */
+    /* KKT: grad f parallel to (x0,x1) (multiplier of the active circle).
+     * The optimum is degenerate (the active circle with the radial direction) and the
+     * point direction is build-sensitive: with plain -O2 the residual is
+     * < 1e-4, with -O1 and -O2+ASan it is -1.227e-3 (measured 2026-09-24, same
+     * value on both).  Hence assert the outcome (x3=ln s, pobj and the
+     * auxiliaries above, all green at every level) and here only that the radial
+     * residual stays small -- not its exact digit. */
     double g0 = 1.0 / s - 1.0, g1 = 2.0 / s;
     close_enough_tol(g0 * xx[1] - g1 * xx[0], 0.0, 2e-3, "KKT grad||radiale");
     pend(&p);
 }
 
 /* T42: SDP 3x3: min 2*X01 s.t. <I,X> = 3, X >= 0
- * ottimo: X00=X11=1.5, X01=-1.5, obj = -3 */
+ * optimum: X00=X11=1.5, X01=-1.5, obj = -3 */
 static void test_t42(void) {
     cur_name = "T42 SDP 3x3";
     P p; pbegin(&p);
@@ -1683,8 +1705,8 @@ static void test_t42(void) {
     close_enough(po, -3.0, "pobj");
     double X[9];
     check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, X), PRIMAL_RES_OK, "getbarxj");
-    /* il punto primo non e' unico: l'approssimazione esterna converge
-     * nell'obiettivo (vedi Scostamenti in README) -> tolleranza piu' larga */
+    /* the primal point is not unique: the outer approximation converges
+     * in the objective (see Deviations in README) -> wider tolerance */
     close_enough_tol(X[0], 1.5, 1e-5, "X00");
     close_enough_tol(X[4], 1.5, 1e-5, "X11");
     close_enough(X[1], -1.5, "X01");
@@ -1694,9 +1716,9 @@ static void test_t42(void) {
     pend(&p);
 }
 
-/* T43: numero di Lovasz theta(C5) = sqrt(5):
- * max <J,X> s.t. X_ii = 1, X_ij = 0 per gli archi, X >= 0.
- * Con tr X = 5 (X_ii = 1) il valore e' 5*theta = 5*sqrt(5) */
+/* T43: Lovasz theta(C5) number = sqrt(5):
+ * max <J,X> s.t. X_ii = 1, X_ij = 0 for the edges, X >= 0.
+ * With tr X = 5 (X_ii = 1) the value is 5*theta = 5*sqrt(5) */
 static void test_t43(void) {
     cur_name = "T43 Lovasz theta C5";
     P p; pbegin(&p);
@@ -1724,7 +1746,7 @@ static void test_t43(void) {
         PRIMAL_putconbound(t, a, PRIMAL_BK_FX, 1.0, 1.0);
     }
     int edges[5][2] = {{0,1},{1,2},{2,3},{3,4},{4,0}};
-    for (int k = 0; k < 5; k++) {          /* X_ij = 0 sugli archi */
+    for (int k = 0; k < 5; k++) {          /* X_ij = 0 on the edges */
         int a = edges[k][0], b = edges[k][1];
         PRIMAL_putbaraij(t, 5 + k, 0, 1, (int[]){mE[a][b]}, (double[]){0.5});
         PRIMAL_putconbound(t, 5 + k, PRIMAL_BK_FX, 0.0, 0.0);
@@ -1736,8 +1758,8 @@ static void test_t43(void) {
     pend(&p);
 }
 
-/* T44: duale bar approssimato Z = C + sum y_i A^i (y del clone = -duale SDP):
- * T42-like: Z = [[1,1],[1,1]] su T41-like: Z = [[1,.5],[.5,1]] -> PSD */
+/* T44: approximate bar dual Z = C + sum y_i A^i (clone y = -SDP dual):
+ * T42-like: Z = [[1,1],[1,1]] on T41-like: Z = [[1,.5],[.5,1]] -> PSD */
 static void test_t44(void) {
     cur_name = "T44 SDP duale bar";
     P p; pbegin(&p);
@@ -1765,21 +1787,21 @@ static void test_t44(void) {
     check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, Z), PRIMAL_RES_OK, "getbarsj");
     PRIMAL_gety(t, PRIMAL_SOL_ITR, y);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-    /* Z = C + sum y_i A^i e' PSD (per costruzione) e qui rank-1 */
+    /* Z = C + sum y_i A^i is PSD (by construction) and rank-1 here */
     close_enough(Z[0], Z[1], "Z01=Z00");
     close_enough(Z[0], Z[3], "Z11=Z00");
     double det = Z[0] * Z[3] - Z[1] * Z[2];
     check(Z[0] + Z[3] >= -1e-9 && det >= -1e-6, "Z PSD");
-    /* -b'y = pobj (la y del clone e' opposta al moltiplicatore duale SDP,
-     * stessa convenzione del percorso LP) */
+    /* -b'y = pobj (the clone y is opposite to the SDP dual multiplier,
+     * same convention as the LP path) */
     double by = -(1.0 * y[0] + 1.0 * y[1] + 0.0 * y[2]);
     close_enough(by, po, "-b'y = pobj");
     pend(&p);
 }
 
-/* T48: vincoli quadratici UP (qcqo): max x0+x1 s.t. x0^2+x1^2 <= 1, x>=0.
- * Ottimo a mano: x*=(1,1)/sqrt(2), obj=sqrt(2). Verifica: valore, primal
- * feasibility (vincolo quadratico attivo), getter putqconk. */
+/* T48: UP quadratic constraints (qcqo): max x0+x1 s.t. x0^2+x1^2 <= 1, x>=0.
+ * Hand-derived optimum: x*=(1,1)/sqrt(2), obj=sqrt(2). Check: value, primal
+ * feasibility (active quadratic constraint), putqconk getter. */
 static void test_t48(void) {
     cur_name = "T48 quad constraint UP";
     P p; pbegin(&p);
@@ -1804,10 +1826,10 @@ static void test_t48(void) {
     pend(&p);
 }
 
-/* T49: vincolo quadratico LO (Q NSD, vincolo concavo -> regione convessa):
- * min x0 s.t. -(x0-1)^2 - x1^2 >= -1/4  (disco centro (1,0) r=1/2), x >= 0.
- * Atteso a mano: x0* = 0.5 (bordo sinistro), x1* = 0, obj = 0.5.
- * La riga LO e': 2x0 - x0^2 - x1^2 >= 3/4 (espansa: -(x0^2-2x0+1) - x1^2 + 3/4 >= 0) */
+/* T49: LO quadratic constraint (Q NSD, concave constraint -> convex region):
+ * min x0 s.t. -(x0-1)^2 - x1^2 >= -1/4  (disk centered at (1,0) r=1/2), x >= 0.
+ * Hand-derived expectation: x0* = 0.5 (left edge), x1* = 0, obj = 0.5.
+ * The LO row is: 2x0 - x0^2 - x1^2 >= 3/4 (expanded: -(x0^2-2x0+1) - x1^2 + 3/4 >= 0) */
 static void test_t49(void) {
     cur_name = "T49 quad constraint LO";
     P p; pbegin(&p);
@@ -1831,20 +1853,20 @@ static void test_t49(void) {
     pend(&p);
 }
 
-/* T50: QP objective + cono (deviazione storica chiusa): min 0.5*(x^2+y^2)
- * + x s.t. (1,x,y) in QUAD, x,y liberi. Il cono forza x^2+y^2<=1; il QP
- * minimizza 0.5*r^2 - r*cos(theta)... con c=(1,0): min 0.5*(x^2+y^2)+x
- * s.t. sqrt(x^2+y^2) <= 1 -> ottimo x=-1, y=0, obj = 0.5 - 1 = -0.5. */
+/* T50: QP objective + cone (closed historical deviation): min 0.5*(x^2+y^2)
+ * + x s.t. (1,x,y) in QUAD, x,y free. The cone forces x^2+y^2<=1; the QP
+ * minimizes 0.5*r^2 - r*cos(theta)... with c=(1,0): min 0.5*(x^2+y^2)+x
+ * s.t. sqrt(x^2+y^2) <= 1 -> optimum x=-1, y=0, obj = 0.5 - 1 = -0.5. */
 static void test_t50(void) {
     cur_name = "T50 QP obj + cono QUAD";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);
     for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
-    PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);   /* t del cono */
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);   /* the cone's t */
     PRIMAL_putcj(t, 1, 1.0);
     PRIMAL_putqobj(t, 2, (int[]){1, 2}, (int[]){1, 2}, (double[]){1.0, 1.0});
-    /* (t, x, y) in QUAD: t >= sqrt(x^2+y^2), t=1 fisso */
+    /* (t, x, y) in QUAD: t >= sqrt(x^2+y^2), t=1 fixed */
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0, 1, 2});
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize QP+cone");
@@ -1860,12 +1882,14 @@ static void test_t50(void) {
 /* T51: progress callback: register, solve an LP, expect >= 1 call with the
  * infoconn name prefix; API negative tests. */
 static int prog_calls = 0;
+/* Progress callback: count the calls and echo the info under GMB_DBG. */
 static void progcb1(void *h, const char *info) {
     (void)h;
     prog_calls++;
     if (getenv("GMB_DBG")) fprintf(stderr, "progcb: %s\n", info);
 }
 
+/* T51: progress callback: registration, call count and API negative tests. */
 static void test_t51(void) {
     cur_name = "T51 progress callback";
     P p; pbegin(&p);
@@ -1894,7 +1918,7 @@ static void test_t51(void) {
 }
 
 /* T52: putqconk/getter API: replace semantics, numqconknz, qconkij,
- * errori (indice fuori range, NaN). */
+ * errors (out-of-range index, NaN). */
 static void test_t52(void) {
     cur_name = "T52 putqconk API";
     P p; pbegin(&p);
@@ -1918,7 +1942,7 @@ static void test_t52(void) {
     check(nz == 1, "nz=1 dopo replace");
     PRIMAL_getqconkij(t, 0, 0, 0, &qij); close_enough(qij, 0.0, "q00 azzerato");
     PRIMAL_getqconkij(t, 0, 2, 2, &qij); close_enough(qij, 6.0, "q22=6");
-    /* errori */
+    /* errors */
     check_rc(PRIMAL_putqconk(t, 5, 0, NULL, NULL, NULL), PRIMAL_RES_ERR_ARG, "row OOR");
     check_rc(PRIMAL_putqconk(t, 0, 1, (int[]){7}, (int[]){0}, (double[]){1.0}),
              PRIMAL_RES_ERR_ARG, "var OOR");
@@ -1929,17 +1953,17 @@ static void test_t52(void) {
     pend(&p);
 }
 
-/* T53: solvebasis — LP: max 3x0+x1+5x2+x3 (l'esempio T1) con la base
- * ottimale nota a mano. Problema T1: max 3x0+x1+5x2+x3 s.t.
+/* T53: solvebasis — LP: max 3x0+x1+5x2+x3 (the T1 example) with the
+ * hand-derived optimal basis. T1 problem: max 3x0+x1+5x2+x3 s.t.
  *   3x0+x1+2x3 = 30 (EQ), 2x0+x1+3x2+x3 >= 15 (LO), 2x1+x3 <= 9 (UP)
- * con x bounds [0,inf], x2 in [0,inf], x3 in [0,5] RA... base coerente
- * con la soluzione ottimale di T1: usero' la soluzione T1 stessa per
- * derivare la base: semplifico con un LP piccolo:
+ * with x bounds [0,inf], x2 in [0,inf], x3 in [0,5] RA... basis consistent
+ * with the optimal T1 solution: use the T1 solution itself to
+ * derive the basis: simplify with a small LP:
  *   max x0 + x1  s.t.  x0 + 2x1 <= 4,  x0,x1 >= 0
- * ottimo: x=(4,0) con x0 basic alla riga attiva -> base: skx={BAS,BAS?}
- * Per una base quadrata: 1 riga attiva + 1 var basic oppure slack basic.
- * Base ottima: skc={LOW} (riga attiva), skx={BAS,LOW} (x0 basic, x1 al
- * lower 0): x0 = 4 (dalla riga), x1 = 0. obj = 4. duale y0 = 1 (min-form
+ * optimum: x=(4,0) with x0 basic at the active row -> basis: skx={BAS,BAS?}
+ * For a square basis: 1 active row + 1 basic var or basic slack.
+ * Optimal basis: skc={LOW} (active row), skx={BAS,LOW} (x0 basic, x1 at
+ * lower 0): x0 = 4 (from the row), x1 = 0. obj = 4. dual y0 = 1 (min-form
  * z1 = -(1 - 2*1) = 1 >= 0 ok).
  */
 static void test_t53(void) {
@@ -1955,7 +1979,7 @@ static void test_t53(void) {
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 2.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
-        /* base: x0 BASIC, x1 al LOWER, riga 0 attiva (UPR side) */
+        /* basis: x0 BASIC, x1 at its LOWER, row 0 active (UPR side) */
         PRIMALstakeye skx[2] = { PRIMAL_SK_BAS, PRIMAL_SK_LOW };
         PRIMALstakeye skc[1] = { PRIMAL_SK_UPR };
         check_rc(PRIMAL_putskx(t, PRIMAL_SOL_BAS, skx), PRIMAL_RES_OK, "putskx");
@@ -1992,18 +2016,18 @@ static void test_t53(void) {
         pend(&p);
     }
     {
-        /* base NON ottimale (x1 basic): solvebasis ottimizza da zero */
+        /* NON-optimal basis (x1 basic): solvebasis optimizes from scratch */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
         PRIMAL_appendcons(t, 1);
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, INFINITY);
-        PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 3.0);   /* x1 piu' remunerativo */
+        PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 3.0);   /* x1 more profitable */
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 2.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
-        PRIMALstakeye skx[2] = { PRIMAL_SK_BAS, PRIMAL_SK_LOW };  /* base non ottima */
+        PRIMALstakeye skx[2] = { PRIMAL_SK_BAS, PRIMAL_SK_LOW };  /* non-optimal basis */
         PRIMALstakeye skc[1] = { PRIMAL_SK_UPR };
         PRIMAL_putskx(t, PRIMAL_SOL_BAS, skx);
         PRIMAL_putskc(t, PRIMAL_SOL_BAS, skc);
@@ -2014,8 +2038,8 @@ static void test_t53(void) {
         pend(&p);
     }
     {
-        /* errori: base sovradimensionata (2 basic, 1 riga attiva... qui
-         * 2 basic con 1 attiva = sbilanciata) */
+        /* errors: oversized basis (2 basic, 1 active row... here
+         * 2 basic with 1 active = unbalanced) */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -2031,7 +2055,7 @@ static void test_t53(void) {
         PRIMAL_putskx(t, PRIMAL_SOL_BAS, skx);
         PRIMAL_putskc(t, PRIMAL_SOL_BAS, skc);
         check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_ERR_ARG, "base sbilanciata ERR_ARG");
-        /* senza base: ERR_ARG */
+        /* without a basis: ERR_ARG */
         P q; pbegin(&q);
         PRIMAL_appendvars(q.task, 1);
         check_rc(PRIMAL_solvebasis(q.task), PRIMAL_RES_ERR_ARG, "senza base ERR_ARG");
@@ -2040,9 +2064,9 @@ static void test_t53(void) {
     }
 }
 
-/* T54: SOS1 — min x0+x1 s.t. x0+x1 >= 0.5, SOS1{x0,x1} con pesi (1,2),
- * x in [0,1]. SOS1: al piu' un membro non nullo -> l'ottimo e' il membro
- * col costo... entrambi costo 1: sceglie uno dei due a 0.5: obj=0.5. */
+/* T54: SOS1 — min x0+x1 s.t. x0+x1 >= 0.5, SOS1{x0,x1} with weights (1,2),
+ * x in [0,1]. SOS1: at most one nonzero member -> the optimum is the member
+ * with the cost... both cost 1: picks one of the two at 0.5: obj=0.5. */
 static void test_t54(void) {
     cur_name = "T54 SOS1";
     P p; pbegin(&p);
@@ -2067,13 +2091,13 @@ static void test_t54(void) {
     pend(&p);
 }
 
-/* T55: SOS2 — pesi (1,2,3) su x0,x1,x2; vincolo x0+x1+x2 = 1; obiettivo
- * max 2*x2 - 10*x1: SOS2 ammette al piu' 2 membri non nulli ADIACENTI
- * (per peso). L'ottimo vorrebbe x=(0,0,1) ma per testare l'adiacenza
- * forziamo: membri con pesi 1,2,3; obiettivo premio' x0 e x2 (non
- * adiacenti): max x0 + x2 s.t. x0+x1+x2=1, SOS2 -> ottimo adiacente:
- * (1,0,0) o (0,0,1)... entrambe adiacenti singole: obj=1. Con un bonus
- * su x2: obj = x0 + 2*x2: singolo x2 -> 2. Ottimo: x=(0,0,1), obj=2. */
+/* T55: SOS2 — weights (1,2,3) on x0,x1,x2; constraint x0+x1+x2 = 1; objective
+ * max 2*x2 - 10*x1: SOS2 admits at most 2 nonzero ADJACENT members
+ * (by weight). The optimum would want x=(0,0,1) but to test adjacency
+ * force: members with weights 1,2,3; objective rewards x0 and x2 (non
+ * adjacent): max x0 + x2 s.t. x0+x1+x2=1, SOS2 -> adjacent optimum:
+ * (1,0,0) or (0,0,1)... both adjacent singletons: obj=1. With a bonus
+ * on x2: obj = x0 + 2*x2: single x2 -> 2. Optimum: x=(0,0,1), obj=2. */
 static void test_t55(void) {
     cur_name = "T55 SOS2";
     P p; pbegin(&p);
@@ -2092,18 +2116,18 @@ static void test_t55(void) {
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough(po, 2.0, "pobj 2");
-    /* SOS2 soddisfatto: x0 e x2 non entrambi non nulli */
+    /* SOS2 satisfied: x0 and x2 not both nonzero */
     check(x[0] < 1e-6 || x[2] < 1e-6, "x0/x2 non adiacenti: uno solo");
     pend(&p);
 }
 
-/* T56: semi-continua — min x0 + 2*x1 s.t. x0 + x1 >= 3, x0 SEMI_CONT in
- * [2,10] (x0=0 o 2<=x0<=10), x1 SEMI_CONT in [1,10]. Verifica a mano:
+/* T56: semi-continuous — min x0 + 2*x1 s.t. x0 + x1 >= 3, x0 SEMI_CONT in
+ * [2,10] (x0=0 or 2<=x0<=10), x1 SEMI_CONT in [1,10]. Hand check:
  * x0=0 -> x1>=3 (semi: 3 in [1,10]) cost = 6;
  * x1=0 -> x0>=3 (semi: 3 in [2,10]) cost = 3;
- * entrambi attivi -> min (2,1): cost 4. Ottimo 3 in (3,0).
- * (Il commento diceva 4: era l'ottimo della sola meta' "entrambi attivi", e
- *  nascondeva proprio la deattivazione di x1 che il bug del B&B non esplorava.) */
+ * both active -> min (2,1): cost 4. Optimum 3 at (3,0).
+ * (The comment used to say 4: it was the optimum of the "both active" half alone, and
+ *  hid exactly the x1 deactivation that the B&B bug did not explore.) */
 static void test_t56(void) {
     cur_name = "T56 semi-continuous";
     P p; pbegin(&p);
@@ -2129,8 +2153,8 @@ static void test_t56(void) {
     pend(&p);
 }
 
-/* T57: semi-intera — x SEMI_INT in [2.5, 10], min x s.t. x >= 3.2:
- * ottimo x=4 (intero >= 2.5) oppure x=0; 0 non ammesso (serve x>=3.2) */
+/* T57: semi-integer — x SEMI_INT in [2.5, 10], min x s.t. x >= 3.2:
+ * optimum x=4 (integer >= 2.5) or x=0; 0 not allowed (needs x>=3.2) */
 static void test_t57(void) {
     cur_name = "T57 semi-integer";
     P p; pbegin(&p);
@@ -2151,9 +2175,9 @@ static void test_t57(void) {
     pend(&p);
 }
 
-/* T58: MIQP (QP + interi): max x0 - (x0-1)^2 con x0 intero [0,10]:
- * obiettivo concavo, rilassamento continuo ottimo x0=1 (intero!) ->
- * obj = 1. Con x0 intero in [0,3]: max a x0=1 -> 1. */
+/* T58: MIQP (QP + integers): max x0 - (x0-1)^2 with integer x0 in [0,10]:
+ * concave objective, continuous-relaxation optimum x0=1 (integer!) ->
+ * obj = 1. With integer x0 in [0,3]: max at x0=1 -> 1. */
 static void test_t58(void) {
     cur_name = "T58 MIQP";
     P p; pbegin(&p);
@@ -2161,7 +2185,7 @@ static void test_t58(void) {
     PRIMAL_appendvars(t, 1);
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 3.0);
     PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
-    PRIMAL_putcj(t, 0, 2.0);   /* obj = 2x - x^2 = 1 - (x-1)^2 + ... espansa */
+    PRIMAL_putcj(t, 0, 2.0);   /* obj = 2x - x^2 = 1 - (x-1)^2 + ... expanded */
     PRIMAL_putqobj(t, 1, (int[]){0}, (int[]){0}, (double[]){-2.0});
     PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize MIQP");
@@ -2173,9 +2197,9 @@ static void test_t58(void) {
     pend(&p);
 }
 
-/* T59: mioinitsol: putxx come incumbent iniziale del MIP: soluzione
- * ammissibile intera (accettata: nodo radice la migliora o la tiene) e
- * soluzione NON ammissibile (rifiutata: l'ottimo resta corretto). */
+/* T59: mioinitsol: putxx as the MIP initial incumbent: a feasible
+ * integer solution (accepted: the root node improves or keeps it) and
+ * a NON-feasible solution (rejected: the optimum stays correct). */
 static void test_t59(void) {
     cur_name = "T59 MIP initial solution";
     {
@@ -2189,8 +2213,8 @@ static void test_t59(void) {
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -2.0);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){2.0, 1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 7.0);
-        double warm[2] = {2.0, 3.0};   /* ammissibile, intera: cost -8; il B&B
-                                          la migliora a -14 (x=(0,7)) */
+        double warm[2] = {2.0, 3.0};   /* feasible, integer: cost -8; the B&B
+                                           improves it to -14 (x=(0,7)) */
         PRIMAL_putxx(t, PRIMAL_SOL_ITR, warm);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize con initsol");
         double po, x[2];
@@ -2212,7 +2236,7 @@ static void test_t59(void) {
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -2.0);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){2.0, 1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 7.0);
-        double bad[2] = {50.0, 3.0};   /* NON ammissibile (2*50+3 > 7) */
+        double bad[2] = {50.0, 3.0};   /* NOT feasible (2*50+3 > 7) */
         PRIMAL_putxx(t, PRIMAL_SOL_ITR, bad);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize con initsol rifiutata");
         double po;
@@ -2222,11 +2246,11 @@ static void test_t59(void) {
     }
 }
 
-/* T60: MIP + cono QUAD (mico1-like, verificato a mano):
- *   max x0  s.t. (t, x0, x1) in QUAD (t >= sqrt(x0^2+x1^2)), t=1 fisso,
- *   x0 intera >= 0, x1 >= 0.
- * Rilassamento: x0 <= 1; intero: x0 in {0,1}; con x0=1 -> x1=0.
- * Ottimo x0=1, obj=1. Con extra: -0.5*x1 in obj: max x0-0.5x1 -> x0=1,x1=0 obj 1. */
+/* T60: MIP + QUAD cone (mico1-like, hand-verified):
+ *   max x0  s.t. (t, x0, x1) in QUAD (t >= sqrt(x0^2+x1^2)), t=1 fixed,
+ *   integer x0 >= 0, x1 >= 0.
+ * Relaxation: x0 <= 1; integer: x0 in {0,1}; with x0=1 -> x1=0.
+ * Optimum x0=1, obj=1. With extra: -0.5*x1 in obj: max x0-0.5x1 -> x0=1,x1=0 obj 1. */
 static void test_t60(void) {
     cur_name = "T60 MIP+cone QUAD";
     P p; pbegin(&p);
@@ -2251,10 +2275,10 @@ static void test_t60(void) {
     pend(&p);
 }
 
-/* T61: MIP + cono PEXP (branching su rilassamenti esponenziali):
- *   min u  s.t. (u, 1, x) in PEXP (u >= exp(x)), x intera libera.
- * x=-inf non ammesso (u >= 0? u free...): bound x in [-2, 2].
- * Ottimo: x=-2 (intero), u = e^-2. Verifica obj = exp(-2). */
+/* T61: MIP + PEXP cone (branching over exponential relaxations):
+ *   min u  s.t. (u, 1, x) in PEXP (u >= exp(x)), free integer x.
+ * x=-inf not allowed (u >= 0? u free...): bound x in [-2, 2].
+ * Optimum: x=-2 (integer), u = e^-2. Check obj = exp(-2). */
 static void test_t61(void) {
     cur_name = "T61 MIP+cone PEXP";
     P p; pbegin(&p);
@@ -2277,12 +2301,12 @@ static void test_t61(void) {
     pend(&p);
 }
 
-/* T62: SOC + SDP insieme (verificato a mano):
- *   min x0  s.t. X 2x2 PSD (bar), X00=1, X11=0.1 (righe FX su bar),
- *        2*X01 = 2*x0 (barA + termine lineare), (t,x0,c)=(1,x0,0.75) in QUAD
- * PSD: x0^2 <= X00*X11 = 0.1 -> x0 >= -sqrt(0.1) ~ -0.3162 (attivo).
- * Cono: sqrt(x0^2+0.75^2) <= 1 -> |x0| <= sqrt(7)/4 ~ 0.6614 (inattivo).
- * Ottimo: x0 = -sqrt(0.1), pobj = -sqrt(0.1), X PSD con det = 0. */
+/* T62: SOC + SDP together (hand-verified):
+ *   min x0  s.t. X 2x2 PSD (bar), X00=1, X11=0.1 (FX rows on bar),
+ *        2*X01 = 2*x0 (barA + linear term), (t,x0,c)=(1,x0,0.75) in QUAD
+ * PSD: x0^2 <= X00*X11 = 0.1 -> x0 >= -sqrt(0.1) ~ -0.3162 (active).
+ * Cone: sqrt(x0^2+0.75^2) <= 1 -> |x0| <= sqrt(7)/4 ~ 0.6614 (inactive).
+ * Optimum: x0 = -sqrt(0.1), pobj = -sqrt(0.1), X PSD with det = 0. */
 static void test_t62(void) {
     cur_name = "T62 SOC+SDP";
     P q; pbegin(&q);
@@ -2303,11 +2327,11 @@ static void test_t62(void) {
     PRIMAL_putconbound(t2, 0, PRIMAL_BK_FX, 1.0, 1.0);
     PRIMAL_putbaraij(t2, 1, 0, 1, (int[]){m112}, (double[]){1.0});
     PRIMAL_putconbound(t2, 1, PRIMAL_BK_FX, 0.1, 0.1);
-    /* riga 2: 2*X01 - 2*x0 = 0 */
+    /* row 2: 2*X01 - 2*x0 = 0 */
     PRIMAL_putbaraij(t2, 2, 0, 1, (int[]){mO2}, (double[]){1.0});   /* 2*X01 */
     PRIMAL_putarow(t2, 2, 1, (int[]){0}, (double[]){-2.0});          /* -2*x0 */
     PRIMAL_putconbound(t2, 2, PRIMAL_BK_FX, 0.0, 0.0);
-    /* cono: (t, x0, c) in QUAD: 1 >= sqrt(x0^2 + 0.75^2) */
+    /* cone: (t, x0, c) in QUAD: 1 >= sqrt(x0^2 + 0.75^2) */
     int mem[3] = {1, 0, 2};
     PRIMAL_appendcone(t2, PRIMAL_CT_QUAD, 0.0, 3, mem);
     check_rc(PRIMAL_optimize(t2), PRIMAL_RES_OK, "optimize SOC+SDP");
@@ -2326,13 +2350,13 @@ static void test_t62(void) {
     pend(&q);
 }
 
-/* T63: CBF CHANGE + putbarablockij + getter bar.
- * Parte 1: file CBF con sezione CHANGE che aggiunge una variabile x_new
- * (L+) e una riga (L+): -x_new + x0 <= -3 (BCOORD), obj +x_new.
- * Il problema base: min x0 s.t. x0 >= 1 (L+). Dopo CHANGE:
+/* T63: CBF CHANGE + putbarablockij + bar getter.
+ * Part 1: CBF file with a CHANGE section adding a variable x_new
+ * (L+) and a row (L+): -x_new + x0 <= -3 (BCOORD), obj +x_new.
+ * The base problem: min x0 s.t. x0 >= 1 (L+). After CHANGE:
  *   min x0 + x_new s.t. x0 >= 1, -x_new + x0 <= -3, x_new >= 0
- * => x_new >= x0 + 3 >= 4: ottimo x0=1, x_new=4, pobj=5.
- * Parte 2: putbarablockij/getbaraidxij/getbarcidxj round-trip su SDP. */
+ * => x_new >= x0 + 3 >= 4: optimum x0=1, x_new=4, pobj=5.
+ * Part 2: putbarablockij/getbaraidxij/getbarcidxj round-trip on SDP. */
 static void test_t63(void) {
     cur_name = "T63 CBF CHANGE + bar block API";
     /* ---- CHANGE ---- */
@@ -2340,14 +2364,14 @@ static void test_t63(void) {
         FILE *f = fopen("/tmp/mc_t63.cbf", "w");
         check(f != NULL, "open file");
         if (f) {
-            /* base: min x0 s.t. x0 - s = 1 con s >= 0 (L+ riga, x0 free):
-             * CBF: riga L+ con b: expr - v = -b, v >= 0 <=> expr >= b.
+            /* base: min x0 s.t. x0 - s = 1 with s >= 0 (L+ row, free x0):
+             * CBF: L+ row with b: expr - v = -b, v >= 0 <=> expr >= b.
              * ACOORD: (0,0)=1 (x0); BCOORD: b=1 -> x0 >= 1 */
             fprintf(f, "VER\n4\nOBJSENSE\nMIN\nVAR\n1 1\nF 1\nCON\n1 1\nL+ 1\n");
             fprintf(f, "OBJACOORD\n1\n0 1.0\n");          /* min x0 */
             fprintf(f, "ACOORD\n1\n0 0 1.0\n");             /* x0 + b in L+ */
             fprintf(f, "BCOORD\n1\n0 -1.0\n");               /* x0 >= 1 */
-            /* CHANGE: aggiunge x_new >= 0 e riga -x0 + x_new >= 3, obj + x_new */
+            /* CHANGE: adds x_new >= 0 and row -x0 + x_new >= 3, obj + x_new */
             fprintf(f, "CHANGE\n");
             fprintf(f, "VAR\n1 1\nL+ 1\n");
             fprintf(f, "CON\n1 1\nL+ 1\n");
@@ -2380,12 +2404,12 @@ static void test_t63(void) {
         PRIMAL_appendsparsesymmat(t, 2, 1, (int[]){1}, (int[]){1}, (double[]){1.0}, &mI);
         int dim = 2;
         PRIMAL_appendbarvars(t, 1, &dim);
-        /* putbaraij classico: (0,0) con mE coef 2 */
+        /* putbaraij classic: (0,0) with mE coef 2 */
         PRIMAL_putbaraij(t, 0, 0, 1, (int[]){mE}, (double[]){2.0});
-        /* block API per (1,0) con mI coef 3 */
+        /* block API for (1,0) with mI coef 3 */
         check_rc(PRIMAL_putbarablockij(t, 1, 0, 1, (int[]){mI}, (double[]){3.0}),
                  PRIMAL_RES_OK, "putbarablockij");
-        /* letture */
+        /* reads */
         int num;
         int sym[4];
         double val[4];
@@ -2400,7 +2424,7 @@ static void test_t63(void) {
         PRIMAL_putbarcj(t, 0, 1, (int[]){mI}, (double[]){1.5});
         check_rc(PRIMAL_getbarcidxj(t, 0, 4, &num, sym, val), PRIMAL_RES_OK, "getbarcidxj");
         check(num == 1 && sym[0] == mI && fabs(val[0] - 1.5) < 1e-12, "barC letto");
-        /* errori */
+    /* errors */
         check_rc(PRIMAL_putbarablockij(t, 9, 0, 1, (int[]){mI}, (double[]){1.0}),
                  PRIMAL_RES_ERR_ARG, "row OOR");
         check_rc(PRIMAL_getbaraidxij(t, 0, 9, 4, &num, sym, val), PRIMAL_RES_ERR_ARG, "bar OOR");
@@ -2408,10 +2432,10 @@ static void test_t63(void) {
     }
 }
 
-/* T64: KKT conico singolare (2 variabili libere su 1 uguaglianza) — il caso
- * documentato nel TODO (diagnosi logistic.c), ora risolto con la
- * regolarizzazione adattiva di socp.c: min x0+x1 s.t. x0=x1, (t,x0,x1) QUAD,
- * t>=0: ottimo x=(0,0), pobj=0. */
+/* T64: singular conic KKT (2 free variables on 1 equality) — the case
+ * documented in the TODO (logistic.c diagnosis), now solved with the
+ * adaptive regularization of socp.c: min x0+x1 s.t. x0=x1, (t,x0,x1) QUAD,
+ * t>=0: optimum x=(0,0), pobj=0. */
 static void test_t64(void) {
     cur_name = "T64 KKT conico singolare";
     P p; pbegin(&p);
@@ -2436,11 +2460,11 @@ static void test_t64(void) {
 }
 
 /* T65: sensitivity — LP: min x0 + x1 s.t. x0 + 2x1 >= 4, x >= 0.
- * Ottimo: x=(0,2) (x1 copre 2 per unita' di costo), obj=2.
- * y (clone, min) = -1/2 (riga al lower). Ridotti original-form:
- *   z0 = -(c0 + A_0'y) = -(c0 - 1/2) = 1/2 - c0: x0 resta a 0 (lower,
- *   s=+1: ottimale se z <= 0) finche' c0 >= 1/2 -> lcost0 = 1/2.
- *   x1 e' basic (z1 = 0): range degenere [1,1] (senza base esposta). */
+ * Optimum: x=(0,2) (x1 covers 2 per unit of cost), obj=2.
+ * y (clone, min) = -1/2 (row at its lower). Reduced costs, original form:
+ *   z0 = -(c0 + A_0'y) = -(c0 - 1/2) = 1/2 - c0: x0 stays at 0 (lower,
+ *   s=+1: optimal if z <= 0) as long as c0 >= 1/2 -> lcost0 = 1/2.
+ *   x1 is basic (z1 = 0): degenerate range [1,1] (no exposed basis). */
 static void test_t65(void) {
     cur_name = "T65 cost sensitivity";
     P p; pbegin(&p);
@@ -2464,7 +2488,7 @@ static void test_t65(void) {
     check_rc(PRIMAL_costsensitivity(t, 1, &lc, &uc), PRIMAL_RES_OK, "costsens x1");
     close_enough(lc, 1.0, "lcost x1 (basic degenere)");
     close_enough(uc, 1.0, "ucost x1 (basic degenere)");
-    /* errori */
+    /* errors */
     check_rc(PRIMAL_costsensitivity(t, 5, &lc, &uc), PRIMAL_RES_ERR_ARG, "j OOR");
     double lr, ur;
     check_rc(PRIMAL_rhssensitivity(t, 0, &lr, &ur), PRIMAL_RES_OK, "rhssens");
@@ -2472,9 +2496,9 @@ static void test_t65(void) {
     pend(&p);
 }
 
-/* T66: ACC — appendacc: cono QUAD su espressione affine (2x0+x1, x0):
- * (v0,v1) in QUAD con v0 = 2x0+x1, v1 = x0 - 1 (b=(-1) sul secondo):
- * v0 >= |v1|. min x1 s.t. x0=3, x1... fisso x0=3: v1=2, v0=6+x1>=2 ->
+/* T66: ACC — appendacc: QUAD cone on an affine expression (2x0+x1, x0):
+ * (v0,v1) in QUAD with v0 = 2x0+x1, v1 = x0 - 1 (b=(-1) on the second):
+ * v0 >= |v1|. min x1 s.t. x0=3, x1... with x0=3 fixed: v1=2, v0=6+x1>=2 ->
  * x1 >= -4: min x1 = -4. */
 static void test_t66(void) {
     cur_name = "T66 ACC";
@@ -2488,7 +2512,7 @@ static void test_t66(void) {
     PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
     PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 3.0, 3.0);
     /* ACC: (v0, v1) in QUAD, v0 = 2*x0 + x1, v1 = x0 - 1
-     * via AFE + dominio + appendacc (API del riferimento) */
+     * via AFE + domain + appendacc (reference API) */
     PRIMAL_appendafes(t, 2);
     PRIMAL_putafefentry(t, 0, 0, 2.0);
     PRIMAL_putafefentry(t, 0, 1, 1.0);
@@ -2504,7 +2528,7 @@ static void test_t66(void) {
     PRIMAL_getnumacc(t, &nacc);
     check(nacc == 1, "getnumacc 1");
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize ACC");
-    double x[8], po;   /* le ausiliarie ACC estendono numvar (qui 4) */
+    double x[8], po;   /* the ACC auxiliaries extend numvar (here 4) */
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(x[1], -4.0, 1e-5, "x1=-4");
@@ -2512,9 +2536,9 @@ static void test_t66(void) {
     pend(&p);
 }
 
-/* T67: DJC — stile riferimento (appenddjcs + putdjc su AFE/domini):
- * x0 <= 2 OR x0 >= 5, min x0 in [0,10] -> 0 (prima clausola).
- * Secondo caso: (x0 >= 6 AND x0 <= 7) OR (x0 <= 1) -> 0 (seconda). */
+/* T67: DJC — reference style (appenddjcs + putdjc on AFE/domains):
+ * x0 <= 2 OR x0 >= 5, min x0 in [0,10] -> 0 (first clause).
+ * Second case: (x0 >= 6 AND x0 <= 7) OR (x0 <= 1) -> 0 (second). */
 static void test_t67(void) {
     cur_name = "T67 DJC";
     {
@@ -2528,7 +2552,7 @@ static void test_t67(void) {
         PRIMALint64t dminus, dplus;
         PRIMAL_appendrminusdomain(t, 1, &dminus);
         PRIMAL_appendrplusdomain(t, 1, &dplus);
-        /* clausola 0: x0 - 2 <= 0; clausola 1: x0 - 5 >= 0 */
+        /* clause 0: x0 - 2 <= 0; clause 1: x0 - 5 >= 0 */
         PRIMAL_appenddjcs(t, 1);
         PRIMALint64t ts[2] = {1, 1};
         PRIMALint64t dl[2] = {dminus, dplus};
@@ -2537,7 +2561,7 @@ static void test_t67(void) {
         check_rc(PRIMAL_putdjc(t, 0, 2, dl, 2, al, bb, 2, ts),
                  PRIMAL_RES_OK, "putdjc");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize DJC");
-        double x[8], po;   /* DJC aggiunge binarie (numvar > 1) */
+        double x[8], po;   /* DJC adds binaries (numvar > 1) */
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough(x[0], 0.0, "x0=0 (disj1)");
@@ -2545,8 +2569,8 @@ static void test_t67(void) {
         pend(&p);
     }
     {
-        /* clausola 0: (x0 >= 6 AND x0 <= 7); clausola 1: x0 <= 1.
-         * min x0 in [0,10] -> 0 via la seconda */
+        /* clause 0: (x0 >= 6 AND x0 <= 7); clause 1: x0 <= 1.
+         * min x0 in [0,10] -> 0 via the second */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -2565,30 +2589,30 @@ static void test_t67(void) {
         check_rc(PRIMAL_putdjc(t, 0, 3, dl, 3, al, bb, 2, ts),
                  PRIMAL_RES_OK, "putdjc 2-clausole");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize DJC-2");
-        double x[8];   /* DJC aggiunge binarie (numvar > 1) */
+        double x[8];   /* DJC adds binaries (numvar > 1) */
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         close_enough(x[0], 0.0, "x0=0 (disj2)");
         pend(&p);
     }
 }
 
-/* T68 - regressione storage sparso: Cholesky sparsa (left-looking) e IPM LP
- * su equazioni normali. Cattura due bug storici: (1) spchol_factor che leggeva
- * il triangolo sbagliato (fattore L errato), (2) segno invertito nel RHS
- * dell'inizializzazione least-squares di Mehrotra (punto iniziale infeasible
- * -> divergenza). Il transport 4x4 e' rank-deficiente (sum sup == sum dem),
- * la struttura che faceva divergere l'IPM prima delle correzioni. */
+/* T68 - sparse storage regression: sparse Cholesky (left-looking) and LP IPM
+ * on normal equations. Catches two historical bugs: (1) spchol_factor reading
+ * the wrong triangle (wrong factor L), (2) inverted sign in the RHS of the
+ * Mehrotra least-squares initialization (infeasible starting point ->
+ * divergence). The 4x4 transport is rank-deficient (sum sup == sum dem),
+ * the structure that made the IPM diverge before the fixes. */
 static void test_t68(void) {
     cur_name = "T68 sparse Cholesky + sparse normal-equations LP IPM";
 
-    /* --- A) Cholesky sparsa: K = L L', risolvi K x = rhs, verifica residuo --- */
+    /* --- A) sparse Cholesky: K = L L', solve K x = rhs, check the residual --- */
     {
         int n = 4;
         double Kd[4][4] = {{4,1,0,0},{1,5,2,0},{0,2,6,1},{0,0,1,7}};
         int Kp[5], Ki[16]; double Kx[16]; int w = 0;
         for (int j = 0; j < n; j++) {
             Kp[j] = w;
-            for (int i = j; i < n; i++)                 /* triangolo INFERIORE */
+            for (int i = j; i < n; i++)                 /* LOWER triangle */
                 if (Kd[i][j] != 0.0) { Ki[w] = i; Kx[w] = Kd[i][j]; w++; }
         }
         Kp[n] = w;
@@ -2609,16 +2633,16 @@ static void test_t68(void) {
         }
     }
 
-    /* --- B) IPM LP sparso: transport 4x4 (rank-deficiente) --- */
+    /* --- B) sparse LP IPM: 4x4 transport (rank-deficient) --- */
     {
         int M = 4, N = 4, n = M * N, m = M + N;
-        double sup[4] = {20, 30, 25, 25};   /* somma 100 */
-        double dem[4] = {30, 20, 25, 25};   /* somma 100 (bilanciato) */
+        double sup[4] = {20, 30, 25, 25};   /* sum 100 */
+        double dem[4] = {30, 20, 25, 25};   /* sum 100 (balanced) */
         double c[16];
         for (int i = 0; i < M; i++)
             for (int j = 0; j < N; j++)
-                c[i*N+j] = 1.0 + ((i * 7 + j * 3) % 5);   /* costi deterministici */
-        /* CSC: colonna k=(i,j) ha riga i (supply, val 1) e riga M+j (demand, val 1) */
+                c[i*N+j] = 1.0 + ((i * 7 + j * 3) % 5);   /* deterministic costs */
+        /* CSC: column k=(i,j) has row i (supply, val 1) and row M+j (demand, val 1) */
         int Aptr[17], Arow[32]; double Aval[32];
         for (int k = 0; k < n; k++) {
             Aptr[k] = 2*k;
@@ -2633,7 +2657,7 @@ static void test_t68(void) {
         int st = ipm_solve_std_csc(Aptr, Arow, Aval, m, n, b, c,
                                    1e-9, 1e-9, 1e-9, 200, x, y, z, NULL, NULL);
         check(st == 0, "transport 4x4 sparse IPM: status optimal");
-        /* primal feasibility: somme di riga/colonna == sup/dem, x >= 0 */
+        /* primal feasibility: row/column sums == sup/dem, x >= 0 */
         double maxviol = 0.0;
         for (int i = 0; i < M; i++) {
             double s = 0.0;
@@ -2658,19 +2682,19 @@ static void test_t68(void) {
     }
 }
 
-/* T69 - LP presolve: riduzioni (riga singleton, colonna vuota, riga vuota) con
- * postsolve primal+duale esatto. Verifica che presolve ON dia lo stesso ottimo
- * di presolve OFF, che i duali delle righe rimosse siano recuperati (KKT), e che
- * i casi banali ridotti rilevino infeasible/unbounded. */
+/* T69 - LP presolve: reductions (singleton row, empty column, empty row) with
+ * exact primal+dual postsolve. Checks that presolve ON gives the same optimum
+ * as presolve OFF, that the duals of removed rows are recovered (KKT), and that
+ * the trivial reduced cases detect infeasible/unbounded. */
 static void test_t69(void) {
     cur_name = "T69 LP presolve (singleton/empty row+col, postsolve dual)";
 
     /* A) min x0 + x1 + 2 x2 + 5 x3
-     *    row0: x0 = 4        (singleton -> fissa x0)
+     *    row0: x0 = 4        (singleton -> fixes x0)
      *    row1: x1 + x2 = 10
-     *    row2: 0 = 0         (riga vuota ridondante)
-     *    x3 in nessuna riga  (colonna vuota, c3>0 -> x3=0)
-     *    ottimo: x=(4,10,0,0), obj=14, y=(1,1,0) */
+     *    row2: 0 = 0         (redundant empty row)
+     *    x3 in no row        (empty column, c3>0 -> x3=0)
+     *    optimum: x=(4,10,0,0), obj=14, y=(1,1,0) */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2704,7 +2728,7 @@ static void test_t69(void) {
         close_enough(y[2], 0.0,  "y2=0 (riga vuota)");
         expect_kkt(t, 1.0);
 
-        /* presolve OFF: stesso ottimo (cross-validazione) */
+        /* presolve OFF: same optimum (cross-validation) */
         PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE, 0);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "presolve-off A optimize");
         double po2; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po2);
@@ -2719,9 +2743,9 @@ static void test_t69(void) {
         pend(&p);
     }
 
-    /* B) infeasible: due singleton in conflitto (x0=4 e x0=5). Il presolve
-     *    fissa x0=4, la seconda riga diventa 0=1 -> problema ridotto banale
-     *    con nsolve=0, msolve>0 -> infeasible. */
+    /* B) infeasible: two conflicting singletons (x0=4 and x0=5). The presolve
+     *    fixes x0=4, the second row becomes 0=1 -> trivial reduced problem
+     *    with nsolve=0, msolve>0 -> infeasible. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2738,8 +2762,8 @@ static void test_t69(void) {
         pend(&p);
     }
 
-    /* C) unbounded: colonna vuota con c<0 (x1 libera di crescere). Il presolve
-     *    fissa x0=3 e rimuove row0; resta min -x1 senza vincoli -> unbounded. */
+    /* C) unbounded: empty column with c<0 (x1 free to grow). The presolve
+     *    fixes x0=3 and removes row0; min -x1 remains unconstrained -> unbounded. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2757,16 +2781,16 @@ static void test_t69(void) {
     }
 }
 
-/* T70 - presolve avanzato: righe duplicate (y=0) e colonne duplicate (tiene la
- * piu' economica, x=0 sulle altre). Verifica che presolve ON dia lo stesso
- * ottimo di OFF e che il KKT regga; e che due righe con A uguale ma b diverso
- * NON siano fuse (restano -> infeasible rilevato dal solver). */
+/* T70 - advanced presolve: duplicate rows (y=0) and duplicate columns (keeps the
+ * cheapest, x=0 on the others). Checks that presolve ON gives the same optimum
+ * as OFF and that the KKT holds; and that two rows with equal A but different b
+ * are NOT merged (they stay -> infeasible detected by the solver). */
 static void test_t70(void) {
     cur_name = "T70 presolve duplicate rows/cols";
 
-    /* A) min x0 + 2 x1 + 3 x2 ; row0: x0+x1+x2=10 ; row1 = row0 (duplicata).
-     *    righe dup -> row1 rimossa (y1=0); colonne x0,x1,x2 identiche sulle righe
-     *    vive -> tiene x0 (costo min), x1=x2=0. Ottimo: x=(10,0,0), obj=10. */
+    /* A) min x0 + 2 x1 + 3 x2 ; row0: x0+x1+x2=10 ; row1 = row0 (duplicate).
+     *    dup rows -> row1 removed (y1=0); columns x0,x1,x2 identical on the live
+     *    rows -> keeps x0 (min cost), x1=x2=0. Optimum: x=(10,0,0), obj=10. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2799,8 +2823,8 @@ static void test_t70(void) {
         pend(&p);
     }
 
-    /* B) A uguale ma b diverso: row0 x0+x1=5, row1 x0+x1=7 -> NON duplicate,
-     *    il sistema e' infeasible e presolve non deve fonderle. */
+    /* B) equal A but different b: row0 x0+x1=5, row1 x0+x1=7 -> NOT duplicates,
+     *    the system is infeasible and presolve must not merge them. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2819,9 +2843,9 @@ static void test_t70(void) {
         pend(&p);
     }
 
-    /* C) unit: lp_presolve riduce davvero (changed + dimensioni) su un problema
-     *    con riga duplicata e colonne duplicate. A in CSC: 2 righe x 3 col,
-     *    ogni colonna = (row0,1, row1,1) -> row1 == row0 e col0==col1==col2. */
+    /* C) unit: lp_presolve really reduces (changed + dimensions) on a problem
+     *    with a duplicate row and duplicate columns. A in CSC: 2 rows x 3 cols,
+     *    each column = (row0,1, row1,1) -> row1 == row0 and col0==col1==col2. */
     {
         int Aptr[4] = {0, 2, 4, 6};
         int Arow[6] = {0,1, 0,1, 0,1};
@@ -2841,14 +2865,14 @@ static void test_t70(void) {
     }
 }
 
-/* T71 - QP: (A) regressione duali sotto scaling (min QP con Q fuori diagonale e
- * variabili LO: prima della fix il dobj usava il Q scalato con x non scalato ->
- * dualita' forte rotta); (B) percorso IPM QP sparso end-to-end (n=200, Q
- * tridiagonale -> method 3, equazioni normali M=Q+D / K=A M^-1 A'). */
+/* T71 - QP: (A) dual regression under scaling (min QP with off-diagonal Q and
+ * LO variables: before the fix the dobj used the scaled Q with unscaled x ->
+ * strong duality broken); (B) end-to-end sparse QP IPM path (n=200, tridiagonal
+ * Q -> method 3, normal equations M=Q+D / K=A M^-1 A'). */
 static void test_t71(void) {
     cur_name = "T71 QP duals under scaling + sparse-QP normal equations";
 
-    /* A) min 1/2 x'Qx + c'x, Q = Laplaciano+0.5I (tridiagonale), x>=0, 2 righe */
+    /* A) min 1/2 x'Qx + c'x, Q = Laplacian+0.5I (tridiagonal), x>=0, 2 rows */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2875,7 +2899,7 @@ static void test_t71(void) {
         pend(&p);
     }
 
-    /* B) QP sparso grande: n=200, Q tridiagonale, m=3 -> routing QP sparso */
+    /* B) large sparse QP: n=200, tridiagonal Q, m=3 -> sparse QP routing */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -2923,8 +2947,8 @@ static void test_t71(void) {
     }
 }
 
-/* T72 - conico sparso: socp_solve_sparse (M sparsa + LU sparsa) deve dare la
- * stessa soluzione di socp_solve (M densa + LU densa). min x0 s.t. x1=1, x2=0,
+/* T72 - sparse conic: socp_solve_sparse (sparse M + sparse LU) must give the
+ * same solution as socp_solve (dense M + dense LU). min x0 s.t. x1=1, x2=0,
  * (x0,x1,x2) in Q3  ->  x0 >= ||(1,0)|| = 1, obj = 1. */
 static void test_t72(void) {
     cur_name = "T72 sparse conic IPM (splu) == dense";
@@ -2934,7 +2958,7 @@ static void test_t72(void) {
     double c[3] = {1, 0, 0};             /* min x0 */
     double G[9] = {1,0,0, 0,1,0, 0,0,1}; /* K x n = I -> s = x */
     double h[3] = {0, 0, 0};
-    SocpCone cone; cone.type = 1; cone.nmem = 3; cone.mem = NULL;  /* QUAD su (s0,s1,s2) */
+    SocpCone cone; cone.type = 1; cone.nmem = 3; cone.mem = NULL;  /* QUAD on (s0,s1,s2) */
     double xd[3], yd[2], ld[3], xs[3], ys[2], ls[3];
     int rcd = socp_solve(n, p, E, d, c, 1, &cone, G, h, 1e-10, 1e-10, 200, xd, yd, ld);
     int rcs = socp_solve_sparse(n, p, E, d, c, 1, &cone, G, h, 1e-10, 1e-10, 200, xs, ys, ls);
@@ -3132,16 +3156,16 @@ static void test_t77(void) {
       check(expcone_barrier(EXPCONE_PEXP, 0.0, xo, &fv) == -1, "T77 exterior detected"); }
 }
 
-/* T78 - expcone_scaling: Hessian-NT Thin, rt = (-s - smu grad)/scale, la
- * catena e' calcolata alla direzione duale mu-libera sn = s/scale, quindi al
- * punto appaiato Thin e' grad^2 f(z) senza il fattore mu che affondava il polish
- * (test di regressione: Thin e rt invariati sotto s -> lambda*s, smu -> lambda*smu).
- * La metrica non porta alcun peso: sigma compare SOLO in rt, cosicche' il
- * predittore affine (smu = 0) condivide la matrice del corrector senza
- * degenerare.  Il valor di ritorno dice quale metrica e' stata assemblata
- * (1 catena NT, 0 grad^2 f(z), -1 rifiuto).
- * Un duale fuori da int K* (il bordo di K* di un ottimo attivo) non fa fallire il
- * blocco: la riga degrada a grad^2 f(z), che esiste finche' z e' interno. */
+/* T78 - expcone_scaling: Hessian-NT Thin, rt = (-s - smu grad)/scale; the
+ * chain is computed at the mu-free dual direction sn = s/scale, so at the
+ * paired point Thin is grad^2 f(z) without the mu factor that sank the polish
+ * (regression test: Thin and rt unchanged under s -> lambda*s, smu -> lambda*smu).
+ * The metric carries no weight: sigma appears ONLY in rt, so that the
+ * affine predictor (smu = 0) shares the corrector matrix without
+ * degenerating.  The return value says which metric was assembled
+ * (1 NT chain, 0 grad^2 f(z), -1 rejection).
+ * A dual outside int K* (the boundary of K* of an active optimum) does not make
+ * the block fail: the row degrades to grad^2 f(z), which exists as long as z is interior. */
 static void test_t78(void) {
     cur_name = "T78 expcone scaling";
     int kinds[3] = { EXPCONE_PEXP, EXPCONE_PPOW, EXPCONE_RPOW };
@@ -3172,9 +3196,9 @@ static void test_t78(void) {
         for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) sn = fabs(Hz[i*3+j]) > sn ? fabs(Hz[i*3+j]) : sn;
         for (int i = 0; i < 9; i++) { double e = fabs(Tin[i] - Hz[i]); if (e > mp) mp = e; }
         check(mp < 1e-8 * sn, "T78 Thin = grad^2 f(z) al punto appaiato");
-        {   /* smu entra SOLO in rt: la metrica e' funzione del solo punto
-             * corrente, quindi il predittore affine (smu = 0) condivide la
-             * matrice del corrector senza degenerare. */
+        {   /* smu enters ONLY in rt: the metric is a function of the current
+             * point alone, so the affine predictor (smu = 0) shares the
+             * corrector matrix without degenerating. */
             double T0[9], T9[9], Th2[9], rt0[3], rt9[3], sc2 = 0.0;
             double d1 = 0.0, d2 = 0.0, dr = 0.0;
             check(expcone_scaling(kinds[c], alph[c], z[c], s, 0.0, Th2, T0, rt0, &sc2) >= 0,
@@ -3192,13 +3216,13 @@ static void test_t78(void) {
             }
             check(dr < 1e-12, "T78 rt = -s/scale quando sigma = 0");
             dr = 0.0;
-            for (int i = 0; i < 3; i++) {   /* rt scorre con smu: e' la sola parte che dipende da sigma */
+            for (int i = 0; i < 3; i++) {   /* rt moves with smu: it is the only part that depends on sigma */
                 double e = fabs(rt9[i] - rt[i] + (10.0 * mu - 0.7) * g[i] / sc);
                 if (e > dr) dr = e;
             }
             check(dr < 1e-10, "T78 rt porta il peso di sigma, non Thin");
         }
-        for (int q = 0; q < 2; q++) {   /* mu -> lambda*mu: la riga conica non deve muoversi */
+        for (int q = 0; q < 2; q++) {   /* mu -> lambda*mu: the conic row must not move */
             double lam = q ? 1e-13 : 1e-6, sl[3], Th2[9], Tin2[9], rt2[3], sc2 = 0.0;
             double mx = 0.0, mrr = 0.0;
             for (int i = 0; i < 3; i++) sl[i] = lam * s[i];
@@ -3216,9 +3240,9 @@ static void test_t78(void) {
             double Th[9], Tin[9], rt[3], sc = 0.0, Hm[9], gb[3], zs[3], dmax = 0.0;
             int st = expcone_scaling(kinds[c], alph[c], z[c], bad[c], 0.7, Th, Tin, rt, &sc);
             check(expcone_dual_in(kinds[c], alph[c], bad[c]) == 0, "T78 dual exterior detected");
-            /* s fuori da int K* non e' un iterate rotto, e' il bordo di K* di un
-             * ottimo attivo: la riga degrada al Hessiano della barriera (che
-             * esiste finche' z e' interno) invece di far fallire il blocco. */
+            /* an s outside int K* is not a broken iterate, it is the boundary of K* of an
+             * active optimum: the row degrades to the barrier Hessian (which
+             * exists as long as z is interior) instead of failing the block. */
             check(st == 0, "T78 s fuori K* degrada la riga a grad^2 f(z)");
             check(expcone_hess(kinds[c], alph[c], z[c], Hm) == 0, "T78 Hessiano in z disponibile");
             for (int i = 0; i < 9; i++) { double e = fabs(Tin[i] - Hm[i]); if (e > dmax) dmax = e; }
@@ -3227,19 +3251,19 @@ static void test_t78(void) {
             check(isfinite(rt[0]) && isfinite(rt[1]) && isfinite(rt[2]) && sc > 0.0,
                   "T78 rt e scale validi anche degradati");
             expcone_grad(kinds[c], alph[c], z[c], gb);
-            for (int i = 0; i < 3; i++) zs[i] = -0.1 * gb[i];   /* duale appaiato, interno */
+            for (int i = 0; i < 3; i++) zs[i] = -0.1 * gb[i];   /* paired dual, interior */
             check(expcone_scaling(kinds[c], alph[c], z[c], zs, 0.07, Th, Tin, rt, &sc) == 1,
                   "T78 la catena NT resta attiva con s in int K*");
         } }
 }
 
-/* T79 - valori di riferimento dei coni exp/power (promozione a test stabile del
- * probe di riproduzione ex /tmp/expprobe.c).  Ogni caso e' "min t" con gli altri
- * due membri fissati, quindi l'ottimo e' il punto in cui il taglio e' attivo:
+/* T79 - reference values of the exp/power cones (promotion to a stable test of
+ * the reproduction probe ex /tmp/expprobe.c).  Each case is "min t" with the
+ * other two members fixed, so the optimum is the point where the cut is active:
  *   PEXP (t >= u*exp(v/u)):   u=1,v=1 -> t=e ;  u=2,v=1 -> t=2*sqrt(e)
  *   PPOW_a (t^a u^(1-a)>=|v|): a=0.3, u=1, v=2 -> t=2^(1/0.3)
  *   RPOW_a (sqrt2 t^a u^(1-a)>=|v|): a=0.4, u=1, v=1 -> t=2^(-1.25)
- * Verifica: valore noto a mano, appartenenza al cono, dualita' forte. */
+ * Check: known value by hand, cone membership, strong duality. */
 static void test_t79(void) {
     cur_name = "T79 exp/power cone reference values";
     PRIMALconetypee ct[4] = { PRIMAL_CT_PEXP, PRIMAL_CT_PEXP, PRIMAL_CT_PPOW, PRIMAL_CT_RPOW };
@@ -3275,30 +3299,30 @@ static void test_t79(void) {
     }
 }
 
-/* T80 - cono duale e punto di scaling di expcone.c.  Identita' verificate in
- * modo indipendente, per ogni tipo di cono e su punti interni diversi:
- *  1. omogeneita' logaritmica della barriera:  <z, grad f(z)> = -nu,
- *     con nu = 2 per PEXP e nu = 3 per PPOW/RPOW;
- *  2. la mappa del gradiente e' involutiva: posto s = -mu grad f(z), il punto
- *     di scaling W = (grad f)^{-1}(-s) restituisce -grad f(W) = s;
- *  3. conseguenza di 1+2 sulla coppia appaiata:  <z, s> = nu*mu;
- *  4. polarita': un altro punto interno x di K ha <x, s> >= 0;
- *  5. un vettore che viola le condizioni di K* e' rifiutato da dual_in e da
- *     dual_point (questi coni non sono auto-dui). */
+/* T80 - dual cone and scaling point of expcone.c.  Identities verified
+ * independently, for every cone type and on different interior points:
+ *  1. logarithmic homogeneity of the barrier:  <z, grad f(z)> = -nu,
+ *     with nu = 2 for PEXP and nu = 3 for PPOW/RPOW;
+ *  2. the gradient map is involutive: with s = -mu grad f(z), the scaling
+ *     point W = (grad f)^{-1}(-s) returns -grad f(W) = s;
+ *  3. consequence of 1+2 on the paired couple:  <z, s> = nu*mu;
+ *  4. polarity: another interior point x of K has <x, s> >= 0;
+ *  5. a vector violating the K* conditions is rejected by dual_in and by
+ *     dual_point (these cones are not self-dual). */
 static void test_t80(void) {
     cur_name = "T80 expcone cono duale + punto di scaling";
     int kinds[3] = { EXPCONE_PEXP, EXPCONE_PPOW, EXPCONE_RPOW };
     double alph[3] = { 0.0, 0.3, 0.4 };
     int nu[3] = { 2, 3, 3 };
-    /* due punti INTERNI per cono (t|u >= u e^{v/u}; t^a u^(1-a) > |v|;
-     * sqrt2 t^a u^(1-a) > |v|), scelti lontani dal bordo della cono */
+    /* two INTERIOR points per cone (t|u >= u e^{v/u}; t^a u^(1-a) > |v|;
+     * sqrt2 t^a u^(1-a) > |v|), chosen far from the boundary of the cone */
     double zp[3][2][3] = {
         { { 2.0, 1.0, 0.3 },  { 5.0, 2.0, -1.0 } },
         { { 1.5, 2.0, 0.5 },  { 11.0, 1.0, 2.0 } },
         { { 1.5, 2.0, 0.5 },  { 2.0, 3.0, 0.5 } },
     };
-    /* un vettore per cono che viola K*: PEXP con s2 >= 0, PPOW/RPOW fuori dalla
-     * disuguaglianza di media geometrica ponderata */
+    /* one vector per cone that violates K*: PEXP with s2 >= 0, PPOW/RPOW outside
+     * the weighted geometric-mean inequality */
     double bad[3][3] = { { 1.0, 0.2, 0.1 }, { 1.0, 1.0, 5.0 }, { 1.0, 1.0, 5.0 } };
     double mus[2] = { 0.37, 1e-4 };
     for (int c = 0; c < 3; c++) {
@@ -3320,10 +3344,10 @@ static void test_t80(void) {
                 for (int i = 0; i < 3; i++) { double e = fabs(-gw[i] - s[i]); if (e > mw) mw = e; }
                 check(mw < 1e-8 * (1.0 + fabs(s[0]) + fabs(s[1]) + fabs(s[2])),
                       "T80 involuzione: -grad f(W) = s");
-                /* Al punto appaiato W = z, quindi H_s = (grad^2 f(z))^{-1}: la
-                 * catena NT si riduce a grad^2 f(z) perche' il sandwich e'
-                 * l'identita'.  E' la ragion d'essere della catena, non un caso
-                 * marginale: deve restare esatta a ogni mu. */
+                /* At the paired point W = z, so H_s = (grad^2 f(z))^{-1}: the
+                 * NT chain reduces to grad^2 f(z) because the sandwich is
+                 * the identity.  This is the raison d'etre of the chain, not a
+                 * marginal case: it must stay exact at every mu. */
                 double m80[EXPCONE_EV_N];
                 check(expcone_nt_metrics(kind, al, z, s, m80) == 0, "T80 metriche al punto appaiato");
                 close_enough_tol(m80[EXPCONE_EV_REL], 1.0, 1e-8, "T80 sandwich = I al punto appaiato");
@@ -3331,7 +3355,7 @@ static void test_t80(void) {
                                  "T80 H_s = (grad^2 f(z))^{-1} al punto appaiato");
                 close_enough_tol(m80[EXPCONE_EV_GAP], mu, 1e-8 * mu, "T80 gap = <z,s>/nu = mu");
                 double zs = 0.0, x2s = 0.0;
-                const double *x = zp[c][1 - pt];       /* altro punto interno di K */
+                const double *x = zp[c][1 - pt];       /* another interior point of K */
                 for (int i = 0; i < 3; i++) { zs += z[i] * s[i]; x2s += x[i] * s[i]; }
                 close_enough_tol(zs, (double)nu[c] * mu, 1e-8, "T80 <z,s> = nu*mu");
                 check(x2s >= 0.0, "T80 polarita' x in K, s in K*");
@@ -3344,13 +3368,13 @@ static void test_t80(void) {
         check(expcone_scaling(kind, al, zp[c][0], bad[c], 0.5, Th, Tin, rt, &sc80) == 0,
               "T80 scaling degrada (non rifiuta) s fuori K*");
     }
-    /* Il verdetto di K* e' una proprieta' della DIREZIONE: un cono e' invariante
-     * per scaling positivo, quindi anche il test lo deve essere.  Misurato su
-     * logistic_large blocco 22 (mu=1.9e-5): lo stesso vettore rispondeva 1 alla
-     * sua scala e 0 normalizzato per gap=1.3e-7.  Qui si pretendono solo direzioni
-     * RISOLVIBILI (margine relativo ben sopra 1e-16): un vettore al bordo entro
-     * 2 ulp non ha verdetto in doppia precisione, e quello e' il caso che T78
-     * copre facendo degradare la riga, non decidendo il segno. */
+    /* The K* verdict is a property of the DIRECTION: a cone is invariant
+     * under positive scaling, so the test must be too.  Measured on
+     * logistic_large block 22 (mu=1.9e-5): the same vector answered 1 at its
+     * own scale and 0 normalized by gap=1.3e-7.  Here we only require SOLVABLE
+     * directions (relative margin well above 1e-16): a vector on the boundary
+     * within 2 ulp has no verdict in double precision, and that is the case T78
+     * covers by degrading the row, not by deciding the sign. */
     {   double vec[5][3] = {
             { 1.0, -0.7, -1.7 }, { 2.0, 1.0, -3.0 }, { 1.0, 5.0, -1.0 },
             { 1.0, 0.2, 0.1 }, { -1.0, 1.0, 1.0 } };
@@ -3368,30 +3392,33 @@ static void test_t80(void) {
         } }
 }
 
-/* T81 - il percorso exp/power NATIVO dell'IPM conico unificato (sdp.c), osservato
- * attraverso il log pubblico: "(SDP IPM)" compare solo quando ha risposto il
- * blocco conico, non l'outer approximation a tagli (GMB_NO_EXP_IPM).
- *   1. i quattro oracoli T79 sono raggiunti dal blocco nativo a 1e-8
- *      (i tagli fermano a ~1e-6..5e-8 perche' ogni taglio e' lineare);
- *   2. parita' dell'obiettivo fra i due percorsi sullo stesso caso;
- *   3. un ottimo sul bordo del cono duale (DEXP, caso T36) e' 100 volte piu'
- *      preciso sul nativo (2.7e-8 contro 1.7e-6 di variabile);
- *   4. il gate di percorso e' la terna di qualita' MISURATA di MOSEK (rel_pri,
- *      rel_dual, rel_gap) confrontata con le tolleranze dichiarate dal task:
- *      un punto che non la soddisfa viene dichiarato non risolto e risponde
- *      l'outer approximation a tagli.  Sul caso degenere T47 la *scelta* del
- *      percorso non e' una proprieta' riproducibile (condz ~2e17 sull'ottimo:
- *      il polish si ferma a rel_gap 8.5e-10 a -O2 e 2.3e-8 a -O0, cioe'
- *      sopra e sotto la stessa soglia di 1e-8), quindi qui si asserisce solo
- *      il RISULTATO, qualunque sia il percorso; il contratto del gate e'
- *      bloccato da T82, dove la tolleranza dichiarata cambia di ordini di
- *      grandezza e il percorso scelto e' deterministico. */
+/* T81 - the NATIVE exp/power path of the unified conic IPM (sdp.c), observed
+ * through the public log: "(SDP IPM)" appears only when the conic block answered,
+ * not the tangent-cut outer approximation (GMB_NO_EXP_IPM).
+ *   1. the four T79 oracles are reached by the native block at 1e-8
+ *      (cuts stop at ~1e-6..5e-8 because every cut is linear);
+ *   2. objective parity between the two paths on the same case;
+ *   3. an optimum on the boundary of the dual cone (DEXP, case T36) is 100 times
+ *      more accurate on the native path (2.7e-8 vs 1.7e-6 in the variable);
+ *   4. the path gate is the MEASURED MOSEK quality triple (rel_pri,
+ *      rel_dual, rel_gap) compared with the tolerances declared by the task:
+ *      a point that does not satisfy it is declared unsolved and the
+ *      tangent-cut outer approximation answers.  On the degenerate case T47 the
+ *      *choice* of path is not a reproducible property (condz ~2e17 at the
+ *      optimum: the polish stops at rel_gap 8.5e-10 at -O2 and 2.3e-8 at -O0,
+ *      i.e. above and below the same 1e-8 threshold), so here only the
+ *      RESULT is asserted, whatever the path; the gate contract is
+ *      pinned by T82, where the declared tolerance changes by orders of
+ *      magnitude and the chosen path is deterministic. */
 static int t81_native;
+/* Log callback: set the flag when the native conic IPM answers. */
 static void t81_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "SDP IPM")) t81_native = 1;
 }
 
+/* Solve one oracle: force the cuts path with GMB_NO_EXP_IPM when cuts != 0 and
+ * read from the log callback which path answered. */
 static void t81_oracle(int cuts, PRIMALconetypee ct, double al, double u, double v,
                        double *t_out, double *po_out, double *dob_out, int *native_out) {
     P p; pbegin(&p);
@@ -3404,8 +3431,8 @@ static void t81_oracle(int cuts, PRIMALconetypee ct, double al, double u, double
     PRIMAL_appendcone(task, ct, al, 3, (int[]){0, 1, 2});
     PRIMAL_setlogcb(task, t81_logcb, NULL);
     PRIMAL_putintparam(task, PRIMAL_IPAR_LOG, 1);
-    /* il dispatch basta che trovi la variabile: per il percorso nativo va
-     * rimossa, non messa a zero */
+    /* the dispatch only needs the variable to be present: for the native path
+     * it must be removed, not set to zero */
     if (cuts) setenv("GMB_NO_EXP_IPM", "1", 1); else unsetenv("GMB_NO_EXP_IPM");
     t81_native = 0;
     PRIMALrescodee rc = PRIMAL_optimize(task);
@@ -3418,6 +3445,8 @@ static void t81_oracle(int cuts, PRIMALconetypee ct, double al, double u, double
     pend(&p);
 }
 
+/* T81: native exp/power path against tangent cuts on the T79 oracles, the DEXP
+ * boundary case and the degenerate CBF T47; only the outcome is asserted. */
 static void test_t81(void) {
     cur_name = "T81 percorso nativo exp/power";
     PRIMALconetypee ct[4] = { PRIMAL_CT_PEXP, PRIMAL_CT_PEXP, PRIMAL_CT_PPOW, PRIMAL_CT_RPOW };
@@ -3441,7 +3470,7 @@ static void test_t81(void) {
         close_enough_tol(dn, dc, 1e-5, "T81 parita' dobj");
         check(sl > -1e-9 && sl < 1e-8, "T81 vincolo conico attivo sul nativo");
     }
-    {   /* caso T36 (DEXP, ottimo sul bordo) affrontato dai blocchi nativi */
+    {   /* case T36 (DEXP, optimum on the boundary) handled by the native blocks */
         P p; pbegin(&p);
         PRIMALtask_t task = p.task;
         PRIMAL_appendvars(task, 3);
@@ -3459,24 +3488,24 @@ static void test_t81(void) {
         PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
         PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
         check(t81_native == 1, "T81 DEXP risolto dai blocchi nativi");
-        /* Il polish chiude a mu = 4.75e-12: l'errore di variabile che il gate
-         * promette su un ottimo sul bordo del cono e' O(sqrt(mu)) = 2.2e-6, e
-         * il nativo risponde a 6.4e-6 (3x quel limite, dentro la 1e-5 del
-         * gate).  I tagli qui fanno meglio (1.7e-6): e' l'unica delle sei casi
-         * di riferimento in cui il percorso di fallback e' piu' preciso, ed e'
-         * il prezzo misurato della metrica non smorzata (bench/expcone_metric_grid.py). */
+        /* The polish closes at mu = 4.75e-12: the variable error the gate
+         * promises on an optimum on the cone boundary is O(sqrt(mu)) = 2.2e-6,
+         * and the native path answers at 6.4e-6 (3x that limit, inside the 1e-5
+         * of the gate).  The cuts do better here (1.7e-6): it is the only one of
+         * the six reference cases where the fallback path is more accurate, and it is
+         * the measured price of the undamped metric (bench/expcone_metric_grid.py). */
         close_enough_tol(x[0], -1.0, 1e-5, "T81 DEXP a (nativo)");
         close_enough_tol(x[2], 0.0, 1e-5, "T81 DEXP c (nativo)");
         close_enough_tol(po, 1.0, 1e-6, "T81 DEXP pobj (nativo)");
         pend(&p);
     }
-    {   /* il caso CBF di T47 (ottimo degenere, un blocco PEXP): qui si assertisce
-         * solo il RISULTATO perche' il percorso che lo produce non e'
-         * riproducibile -- il polish si ferma a rel_gap 8.5e-10 a -O2 (nativo)
-         * e a 2.3e-8 a -O0/-O1 (tagli), intorno alla stessa soglia di 1e-8, e
-         * la differenza e' l'ultimo bit di un sistema condensato a 2e17.
-         * Entrambi i percorsi restano dentro la 1e-4 del caso; la selezione e'
-         * misurata (T82), non lo stato del caso */
+    {   /* the CBF case of T47 (degenerate optimum, one PEXP block): here only
+         * the RESULT is asserted because the path producing it is not
+         * reproducible -- the polish stops at rel_gap 8.5e-10 at -O2 (native)
+         * and at 2.3e-8 at -O0/-O1 (cuts), around the same 1e-8 threshold, and
+         * the difference is the last bit of a system condensed at 2e17.
+         * Both paths stay within the 1e-4 of the case; the selection is
+         * measured (T82), not the state of the case */
         P p; pbegin(&p);
         FILE *f = fopen("/tmp/mc_t81.cbf", "w");
         check(f != NULL, "apertura file T81");
@@ -3496,9 +3525,9 @@ static void test_t81(void) {
         check(t81_nv == 10, "T81 numvar degenere");
         close_enough_tol(po, 4.8083697, 1e-6, "T81 pobj degenere (qualunque percorso)");
         close_enough_tol(po, dob, 1e-6, "T81 dualita' forte degenere (qualunque percorso)");
-        /* v4 e' il membro fisso u=1 del blocco exp: nel percorso conico e' una
-         * variabile della barra e ne condivide il residuo di fattibilita'
-         * (~1e-9 a mu=1e-11), mentre con i tagli era un valore costante esatto */
+        /* v4 is the fixed member u=1 of the exp block: in the conic path it is a
+         * bar variable and shares its feasibility residual
+         * (~1e-9 at mu=1e-11), whereas with cuts it was an exact constant value */
         close_enough_tol(xx[8], 1.0, 1e-7, "T81 ausiliaria del blocco conico");
         double s81 = xx[0] + 2.0 * xx[1];
         close_enough_tol(xx[3], log(s81), 1e-4, "T81 x3 = ln s");
@@ -3507,24 +3536,27 @@ static void test_t81(void) {
     unsetenv("GMB_NO_EXP_IPM");
 }
 
-/* T82 - il gate di percorso exp/power e' un contratto sulle tolleranze
- * DICHIARATE dal task (PRIMAL_DPAR_INTPNT_TOL_{PFEAS,DFEAS,REL_GAP}), non su
- * una soglia interna: la stessa istanza, due giochi di parametri, due percorsi.
- *   1. tol 1e-15: il punto nativo e' accurato a 1e-13 ma NON passa la soglia
- *      dichiarata, quindi il solver lo dichiara non risolto e risponde
- *      l'outer approximation a tagli (che a 1e-15 non arriva e lo dichiara);
- *   2. tol 1e-6 sul caso degenere T47: il nativo risponde sempre, a
- *      qualunque livello di ottimizzazione, perche' la sua terna misurata
- *      (8.5e-10 a -O2, 2.3e-8 a -O0) resta dentro il margine dichiarato.
- * Entrambe le asserzioni sono monotone nelle tolleranze di ordini di
- * grandezza: e' la forma riproducibile del gate, che a 1e-8 di default vede
- * il caso degenere ballare sul filo del rumore (vedi nota in T81). */
+/* T82 - the exp/power path gate is a contract on the tolerances DECLARED by the
+ * task (PRIMAL_DPAR_INTPNT_TOL_{PFEAS,DFEAS,REL_GAP}), not on an internal
+ * threshold: the same instance, two sets of parameters, two paths.
+ *   1. tol 1e-15: the native point is accurate to 1e-13 but does NOT pass the
+ *      declared threshold, so the solver declares it unsolved and the
+ *      tangent-cut outer approximation answers (which at 1e-15 does not get there and says so);
+ *   2. tol 1e-6 on the degenerate case T47: the native path always answers, at
+ *      any optimization level, because its measured triple
+ *      (8.5e-10 at -O2, 2.3e-8 at -O0) stays inside the declared margin.
+ * Both assertions are monotone in the tolerances by orders of
+ * magnitude: it is the reproducible form of the gate, which at the 1e-8 default sees
+ * the degenerate case dancing on the edge of noise (see the note in T81). */
 static int t82_native;
+/* Log callback: set the flag when the native conic IPM answers. */
 static void t82_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "SDP IPM")) t82_native = 1;
 }
 
+/* Run the T47 CBF case at the given tolerance and report rc, which path
+ * answered and pobj; the tolerance must read back unchanged. */
 static void t82_t47(double tol, PRIMALrescodee *rc_out, int *native_out, double *po_out) {
     P p; pbegin(&p);
     FILE *f = fopen("/tmp/mc_t82.cbf", "w");
@@ -3542,13 +3574,15 @@ static void t82_t47(double tol, PRIMALrescodee *rc_out, int *native_out, double 
     *rc_out = PRIMAL_optimize(p.task);
     PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, po_out);
     *native_out = t82_native;
-    /* il parametro deve essere leggibile: il gate giudica la soglia dell'utente */
+    /* the parameter must read back: the gate judges the user's threshold */
     double back = 0.0;
     PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_CO_TOL_REL_GAP, &back);
     check(back == tol, "T82 tol_rel_gap letto back");
     pend(&p);
 }
 
+/* T82: the gate decides on the declared tolerances: at 1e-6 the native path
+ * answers, at 1e-15 it is rejected and the normalized cuts deliver OPTIMAL. */
 static void test_t82(void) {
     cur_name = "T82 gate sulle tolleranze dichiarate";
     PRIMALrescodee rc; int nat; double po;
@@ -3558,13 +3592,13 @@ static void test_t82(void) {
     close_enough_tol(po, 4.8083697, 1e-6, "T82 pobj con tol 1e-6");
     t82_t47(1e-15, &rc, &nat, &po);
     check(nat == 0, "T82 con tol 1e-15 il gate respinge il nativo");
-    /* con i tagli normalizzati il cut path arriva a 1e-15 e il punto consegnato
-     * misura dentro la soglia dichiarata (`[cones] rel_slack=2.1e-16`), quindi
-     * OPTIMAL e' genuino: il gate ha rispettato la tolleranza, non l'ha spacciata. */
+    /* with the normalized cuts the cut path reaches 1e-15 and the delivered point
+     * measures inside the declared threshold (`[cones] rel_slack=2.1e-16`), so
+     * OPTIMAL is genuine: the gate honored the tolerance, it did not fake it. */
     check_rc(rc, PRIMAL_RES_OK, "T82 tol 1e-15 coi tagli normalizzati");
     close_enough_tol(po, 4.8083697, 1e-9, "T82 pobj a 1e-15 dentro la soglia");
-    {   /* lato oracolo: il punto nativo e' a 1e-13 ma la soglia dichiarata e'
-         * piu' stretta di double -> la selezione deve cambiare percorso */
+    {   /* oracle side: the native point is at 1e-13 but the declared threshold is
+         * tighter than double -> the selection must change path */
         P p; pbegin(&p);
         PRIMALtask_t task = p.task;
         PRIMAL_appendvars(task, 3);
@@ -3584,7 +3618,7 @@ static void test_t82(void) {
         check(t82_native == 0, "T82 oracolo a 1e-15 non e' il nativo");
         double xo[3];
         PRIMAL_getxx(task, PRIMAL_SOL_ITR, xo);
-        /* con u e v fissi il taglio tangente in (1,1) e' t >= e: esatto */
+        /* with u and v fixed the tangent cut at (1,1) is t >= e: exact */
         check_rc(rc0, PRIMAL_RES_OK, "T82 oracolo a 1e-15 coi tagli");
         close_enough_tol(xo[0], exp(1.0), 1e-5, "T82 oracolo risolto dai tagli a 1e-15");
         pend(&p);
@@ -3592,32 +3626,34 @@ static void test_t82(void) {
     unsetenv("GMB_NO_EXP_IPM");
 }
 
-/* T83 - variabili scalari RANGED (BK_RA) nel percorso conico/SDP nativo.
- * Fino a qui optimize_sdp_ipm rifiutava il modello con ERR_ARG appena trovava
- * una variabile ranged, e il dispatcher consegnava tutto all'outer approximation
- * a tagli: ceo1 e logistic rispondevano coi tagli anche quando l'IPM aveva gia'
- * la soluzione.  Ora lo scalare bounded diventa x = lo + u, u >= 0, chiuso dalla
- * riga di cappuccio u + s = up - lo (u,s >= 0), come le righe ranged gia'
- * splittate in >= e <=.  Tutti e tre i casi hanno il cappuccio ATTIVO o
- * decisivo: una riga di cap ignorata o di segno sbagliato cambia la risposta.
+/* T83 - RANGED scalar variables (BK_RA) in the native conic/SDP path.
+ * Until now optimize_sdp_ipm refused the model with ERR_ARG as soon as it found
+ * a ranged variable, and the dispatcher handed everything to the tangent-cut
+ * outer approximation: ceo1 and logistic answered with cuts even when the IPM already
+ * had the solution.  Now the bounded scalar becomes x = lo + u, u >= 0, closed by
+ * the cap row u + s = up - lo (u,s >= 0), like the ranged rows already
+ * split into >= and <=.  All three cases have the cap ACTIVE or
+ * decisive: an ignored cap row or one with the wrong sign changes the answer.
  *   A. PEXP  min t  s.t.  t >= u*exp(v/u), u in [1,1.5], v = 2.
- *      f(u) = u e^{2/u} decresce per u < 2, quindi l'ottimo e' sul cappuccio:
- *      t = 1.5 e^{4/3} = 5.690502 (senza cap sarebbe u = 2, t = 2e = 5.436564).
+ *      f(u) = u e^{2/u} decreases for u < 2, so the optimum is on the cap:
+ *      t = 1.5 e^{4/3} = 5.690502 (without the cap it would be u = 2, t = 2e = 5.436564).
  *   B. QUAD+PEXP  min -u  s.t.  t >= |(u,v)|, t = 1, v = 0, u in [0.1, cap],
- *      w in [1,5], w >= u (blocco exp, sempre lasco).
- *      Il cono permette |u| <= 1: con cap 0.8 vince il cappuccio (u = 0.8),
- *      con cap 1.2 vince il cono (u = 1).  Qui la variabile ranged e' MEMBRO
- *      di due coni, quindi passa anche dalle righe di collegamento.
- *   C. barra PSD + scalare ranged: min -x0  s.t.  tr(X) = 4, X >= 0,
- *      x0 in [0,2]  ->  pobj = -2 con y_cap = -1.  Il moltiplicatore del
- *      cappuccio entra nell'unica somma b'y che produce dobj: se la riga non
- *      ci fosse, dobj sarebbe 0 e la dualita' forte si vedrebbe rotta. */
+ *      w in [1,5], w >= u (exp block, always slack).
+ *      The cone allows |u| <= 1: with cap 0.8 the cap wins (u = 0.8),
+ *      with cap 1.2 the cone wins (u = 1).  Here the ranged variable is a MEMBER
+ *      of two cones, so it also passes through the linking rows.
+ *   C. PSD bar + ranged scalar: min -x0  s.t.  tr(X) = 4, X >= 0,
+ *      x0 in [0,2]  ->  pobj = -2 with y_cap = -1.  The multiplier of the
+ *      cap enters the only b'y sum that produces dobj: if the row were not
+ *      there, dobj would be 0 and strong duality would look broken. */
 static int t83_native;
+/* Log callback: set the flag when the native conic IPM answers. */
 static void t83_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "SDP IPM")) t83_native = 1;
 }
 
+/* Enable logging, unset GMB_NO_EXP_IPM and clear the native-answer flag. */
 static void t83_begin(PRIMALtask_t t) {
     PRIMAL_setlogcb(t, t83_logcb, NULL);
     PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
@@ -3625,15 +3661,17 @@ static void t83_begin(PRIMALtask_t t) {
     t83_native = 0;
 }
 
+/* T83: ranged scalar variables on the native conic/SDP path; the cap row is
+ * active or decisive in all three cases (PEXP, QUAD+PEXP, PSD+ranged scalar). */
 static void test_t83(void) {
     cur_name = "T83 variabili ranged nel percorso nativo";
-    {   /* A: PEXP, ottimo sul cappuccio di u */
+    {   /* A: PEXP, optimum on the cap of u */
         for (int c = 0; c < 2; c++) {
             P p; pbegin(&p);
             PRIMALtask_t t = p.task;
             PRIMAL_appendvars(t, 3);
             PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0, 0);                /* t */
-            if (c == 0) PRIMAL_putvarbound(t, 1, PRIMAL_BK_RA, 1.0, 1.5);  /* u cappato */
+            if (c == 0) PRIMAL_putvarbound(t, 1, PRIMAL_BK_RA, 1.0, 1.5);  /* capped u */
             else        PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 1.0, INFINITY);
             PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, 2.0, 2.0);            /* v */
             PRIMAL_putcj(t, 0, 1.0);
@@ -3654,10 +3692,10 @@ static void test_t83(void) {
             pend(&p);
         }
     }
-    {   /* B: QUAD + PEXP, il cappuccio compete con il cono.  Un modello con
-         * soli QUAD non passa di qui (va a optimize_conic), quindi c'e' anche un
-         * blocco exp/power: la variabile ranged u e' membro di ENTRAMBI e viene
-         * collegata sia dalle righe SOC sia da quelle exp. */
+    {   /* B: QUAD + PEXP, the cap competes with the cone.  A model with
+         * only QUAD does not come through here (it goes to optimize_conic), so there is also an
+         * exp/power block: the ranged variable u is a member of BOTH and is
+         * linked by both the SOC rows and the exp rows. */
         double caps[2] = { 0.8, 1.2 };
         for (int c = 0; c < 2; c++) {
             P p; pbegin(&p);
@@ -3686,7 +3724,7 @@ static void test_t83(void) {
             pend(&p);
         }
     }
-    {   /* C: barra PSD + scalare ranged (il duale del cappuccio in dobj) */
+    {   /* C: PSD bar + ranged scalar (the cap dual in dobj) */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -3718,22 +3756,22 @@ static void test_t83(void) {
     }
 }
 
-/* T84 - la tabella dichiarativa dei parametri e' il singolo punto di verita'.
- * Un id = una riga (kind, storage, default, range incluso) in primal.c
- * (PRIMAL_PARAMS): la leggono PRIMAL_maketask (i default), i due setter (la
- * validazione), i due getter e PRIMAL_getparaminfo.  Tre famiglie:
- *   A. coerenza della tabella: il task fresco risponde il default dichiarato,
- *      il default sta dentro il proprio range, un put su un bordo ritorna
- *      identico, un put fuori range NON tocca il valore (NaN compreso);
- *   B. namespace: gli id int e gli id double condividono i numeri
- *      (PRIMAL_IPAR_OPTIMIZER e PRIMAL_DPAR_INTPNT_TOL_PFEAS valgono entrambi
- *      0), quindi un id che esiste in un solo namespace va respinto dall'altro
- *      API e da getparaminfo, che il kind lo chiede in input;
- *   C. cablaggio: ogni parametro nuovo cambia la RISPOSTA misurata dello stesso
- *      modello - un parametro che non governa nulla non e' parita, e' ornato.
- * I casi C sono deterministici per costruzione: contatori di nodi, soglie di
- * integralita' misurate su un vertice frazionario esatto (4.5), e un LP con
- * dinamica 1e8 / 1e5 e termini incrociati. */
+/* T84 - the declarative parameter table is the single point of truth.
+ * One id = one row (kind, storage, default, inclusive range) in primal.c
+ * (PRIMAL_PARAMS): read by PRIMAL_maketask (the defaults), the two setters (the
+ * validation), the two getters and PRIMAL_getparaminfo.  Three families:
+ *   A. table consistency: a fresh task answers the declared default,
+ *      the default is inside its own range, a put on a boundary comes back
+ *      identical, an out-of-range put does NOT touch the value (NaN included);
+ *   B. namespace: int and double ids share the numbers
+ *      (PRIMAL_IPAR_OPTIMIZER and PRIMAL_DPAR_INTPNT_TOL_PFEAS are both
+ *      0), so an id that exists in only one namespace must be rejected by the other
+ *      API and by getparaminfo, which asks the kind as input;
+ *   C. wiring: every new parameter changes the MEASURED ANSWER of the same
+ *      model - a parameter that governs nothing is not parity, it is ornament.
+ * The C cases are deterministic by construction: node counters, integrality
+ * thresholds measured on an exact fractional vertex (4.5), and an LP with
+ * dynamics 1e8 / 1e5 and cross terms. */
 static const int T84_IPAR[] = {
     PRIMAL_IPAR_OPTIMIZER, PRIMAL_IPAR_LOG, PRIMAL_IPAR_SIMPLEX_MAX_ITERATIONS,
     PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, PRIMAL_IPAR_PRESOLVE, PRIMAL_IPAR_SCALING,
@@ -3753,6 +3791,8 @@ static const int T84_DPAR[] = {
     PRIMAL_DPAR_UPPER_OBJ_CUT, PRIMAL_DPAR_SEMIDEFINITE_TOL_APPROX
 };
 
+/* Sweep the declared rows: default inside range, boundary round-trip, out-of-
+ * range and NaN rejected without touching the value. */
 static void t84_rows(const int *ids, int n, int kind) {
     for (int i = 0; i < n; i++) {
         P p; pbegin(&p);
@@ -3787,8 +3827,8 @@ static void t84_rows(const int *ids, int n, int kind) {
                      "T84 put accettato sul bordo basso");
             PRIMAL_getdouparam(p.task, ids[i], &v);
             check(v == lo, "T84 round-trip sul bordo basso");
-            /* Un parametro illimitato sotto (lo == -DBL_MAX) non ha un valore
-             * finito sotto il range da provare: il controllo negativo si salta. */
+            /* A parameter unbounded below (lo == -DBL_MAX) has no finite
+             * value below the range to try: the negative check is skipped. */
             if (lo > -DBL_MAX) {
                 check_rc(PRIMAL_putdouparam(p.task, ids[i], lo > 0.0 ? lo / 10.0 : -1.0),
                          PRIMAL_RES_ERR_ARG, "T84 put sotto il range respinto");
@@ -3808,11 +3848,11 @@ static void t84_rows(const int *ids, int n, int kind) {
     }
 }
 
-/* min -x  s.t.  x <= uc, x >= 0, x intero. Con uc = 4.5 il rilassamento da' il
- * vertice esatto x = 4.5, che richiede un ramo per arrivare a x = 4 (pobj -4);
- * uc = 4.000004 mette il vertice appena SOPRA un intero (dichiara intero solo
- * una soglia larga), uc = 3.99996 appena SOTTO (il rounding viola la riga di
- * 4e-5). seed = 1 semina l'incumbente x = 2 con PRIMAL_putxx (mioinitsol). */
+/* min -x  s.t.  x <= uc, x >= 0, x integer. With uc = 4.5 the relaxation gives
+ * the exact vertex x = 4.5, which needs a branch to reach x = 4 (pobj -4);
+ * uc = 4.000004 puts the vertex just ABOVE an integer (only a wide threshold
+ * declares it integer), uc = 3.99996 just BELOW (the rounding violates the row by
+ * 4e-5). seed = 1 seeds the incumbent x = 2 with PRIMAL_putxx (mioinitsol). */
 static void t84_mip(double rel_gap, double abs_gap, double inther, double feas,
                     int max_nodes, double uc,
                     int seed, PRIMALrescodee *rc_out, double *po_out,
@@ -3839,15 +3879,17 @@ static void t84_mip(double rel_gap, double abs_gap, double inther, double feas,
     pend(&p);
 }
 
+/* T84: the declarative parameter table checked A) against itself, B) across
+ * namespaces, C) by measuring that each wired parameter changes an answer. */
 static void test_t84(void) {
     cur_name = "T84 tabella dichiarativa dei parametri";
-    /* i sotto-test MIP qui misurano il cap nodi e le tolleranze: i tagli CG
-     * chiuderebbero l'albero e li renderebbero vacui. */
+    /* the MIP sub-tests here measure the node cap and the tolerances: CG cuts
+     * would close the tree and make them vacuous. */
     setenv("GMB_NO_MIP_CUTS", "1", 1);
     t84_rows(T84_IPAR, (int)(sizeof T84_IPAR / sizeof T84_IPAR[0]), PRIMAL_PARAM_KIND_INT);
     t84_rows(T84_DPAR, (int)(sizeof T84_DPAR / sizeof T84_DPAR[0]), PRIMAL_PARAM_KIND_DOU);
 
-    {   /* B. i due namespace non si prestano gli id */
+    {   /* B. the two namespaces do not lend each other ids */
         P p; pbegin(&p);
         int iv = -1; double dv = -1;
         check_rc(PRIMAL_getintparam(p.task, PRIMAL_IPAR_SIMPLEX_MAX_ITERATIONS, &iv),
@@ -3865,7 +3907,7 @@ static void test_t84(void) {
                  PRIMAL_RES_ERR_ARG, "T84 id sconosciuto respinto");
         check_rc(PRIMAL_putdouparam(p.task, PRIMAL_DPAR_MIP_TOL_INTHER, 0.0),
                  PRIMAL_RES_ERR_ARG, "T84 soglia di integralita' positiva richiesta");
-        /* l'alias double di uno slot intero: una cella, due API, troncatura */
+        /* the double alias of an int slot: one cell, two APIs, truncation */
         check_rc(PRIMAL_putdouparam(p.task, PRIMAL_DPAR_INTPNT_MAX_ITER, 77.9),
                  PRIMAL_RES_OK, "T84 l'alias double si pu' impostare");
         check_rc(PRIMAL_getintparam(p.task, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &iv),
@@ -3876,9 +3918,9 @@ static void test_t84(void) {
         pend(&p);
     }
 
-    {   /* B2. i limiti di iterazione accettano 0 = nessun limite (il range del
-         * riferimento e' [0,+inf)); il valore letto resta 0 e un modello vi
-         * chiude. Prima di questo giro il range chiedeva >= 1. */
+    {   /* B2. iteration limits accept 0 = no limit (the reference range is
+         * [0,+inf)); the value read stays 0 and a model closes there. Before
+         * this round the range asked for >= 1. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -3900,8 +3942,8 @@ static void test_t84(void) {
         pend(&p);
     }
 
-    {   /* C1. PRIMAL_IPAR_SCALING: stesso optimum con e senza equilibratura,
-         * su un LP con dinamica 1e8 / 1e5 e termini incrociati piccolissimi. */
+    {   /* C1. PRIMAL_IPAR_SCALING: same optimum with and without equilibration,
+         * on an LP with dynamics 1e8 / 1e5 and tiny cross terms. */
         for (int sc = 0; sc <= 1; sc++) {
             P p; pbegin(&p);
             PRIMALtask_t t = p.task;
@@ -3931,9 +3973,9 @@ static void test_t84(void) {
             expect_kkt(t, 1.0);
             pend(&p);
         }
-        /* perche' l'uguaglianza sopra non sia una tautologia: lo stesso CSC ha
-         * fattori di scala NON identita', quindi il passo gated da
-         * PRIMAL_IPAR_SCALING su questo modello lavora davvero. */
+        /* so that the equality above is not a tautology: the same CSC has
+         * scale factors that are NOT identity, so the step gated by
+         * PRIMAL_IPAR_SCALING really works on this model. */
         {
             int ptr[3] = {0, 2, 4}, sub[4] = {0, 1, 0, 1};
             double val[4] = {1e8, 1e-6, 1e-2, 1e5};
@@ -3942,9 +3984,9 @@ static void test_t84(void) {
             double ci[2] = {-1.0, -1.0}, r[2], d[2], lg = 0.0;
             scale_equilibrate(2, 2, ptr, sub, val, lc, uc, lx, ux, ci, NULL, r, d);
             for (int i = 0; i < 2; i++) {
-                /* i fattori sono potenze di 2: la distanza dall'identita' si
-                 * misura in esponente, |r-1| sarebbe ~1 per qualunque fattore
-                 * piccolo e non direbbe nulla */
+                /* the factors are powers of 2: the distance from identity is
+                 * measured in the exponent, |r-1| would be ~1 for any small
+                 * factor and would say nothing */
                 double a = fabs(log2(r[i])), b = fabs(log2(d[i]));
                 if (a > lg) lg = a;
                 if (b > lg) lg = b;
@@ -3953,7 +3995,7 @@ static void test_t84(void) {
         }
     }
 
-    {   /* C2. il cap di nodi e' un contatore, non una soglia galleggiante */
+    {   /* C2. the node cap is a counter, not a floating threshold */
         PRIMALrescodee rc; double po, x;
         t84_mip(0.0, 1e-9, 1e-6, 0.0, 100000, 4.5, 0, &rc, &po, &x, NULL);
         check_rc(rc, PRIMAL_RES_OK, "T84 MIP con il cap di default si risolve");
@@ -3963,10 +4005,10 @@ static void test_t84(void) {
         check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "T84 MIP_MAX_NODES=1 interrompe al root");
     }
 
-    {   /* C3. il gap di pruning governa il branch&bound: con l'incumbente
-         * seminato a -2 e il bordo del root a -4.5, un gap relativo 1.0
-         * (3.0 in valore assoluto su |best|=2) pota il root e consegna il
-         * seme; a gap spento si arriva all'optimum. */
+    {   /* C3. the pruning gap governs the branch&bound: with the incumbent
+         * seeded at -2 and the root bound at -4.5, a relative gap 1.0
+         * (3.0 in absolute value on |best|=2) prunes the root and delivers the
+         * seed; with the gap off the optimum is reached. */
         PRIMALrescodee rc; double po, x;
         t84_mip(1.0, 1e-9, 1e-6, 0.0, 100000, 4.5, 1, &rc, &po, &x, NULL);
         check_rc(rc, PRIMAL_RES_OK, "T84 rel_gap=1 chiude");
@@ -3981,11 +4023,11 @@ static void test_t84(void) {
         close_enough_tol(x, 4.0, 1e-9, "T84 i due gap non sono lo stesso registro");
     }
 
-    {   /* C4. la soglia di integralita' DICHIARA intero un vertice frazionario,
-         * ma non decide che cosa si pubblica: x = 4.5 sta in MIP_TOL_INTHER=0.6,
-         * il suo rounding 5 viola la riga di 0.5, quindi l'albero si raffinano e
-         * il punto registrato e' x = 4. Prima di questa guardia qui usciva -4.5
-         * con solsta INTEGER_OPTIMAL, cioe' un non ammissibile dichiarato ottimo. */
+    {   /* C4. the integrality threshold DECLARES a fractional vertex integer,
+         * but does not decide what is published: x = 4.5 lies in MIP_TOL_INTHER=0.6,
+         * its rounding 5 violates the row by 0.5, so the tree refines and
+         * the recorded point is x = 4. Before this guard -4.5 came out here
+         * with solsta INTEGER_OPTIMAL, i.e. an infeasible point declared optimal. */
         PRIMALrescodee rc; double po, x, pi;
         t84_mip(0.0, 1e-9, 0.6, 0.0, 100000, 4.5, 0, &rc, &po, &x, &pi);
         check_rc(rc, PRIMAL_RES_OK, "T84 int_her=0.6 chiude");
@@ -4003,17 +4045,17 @@ static void test_t84(void) {
         pend(&p);
     }
 
-    {   /* C5. le due soglie non sono lo stesso registro, e ciascuna governa la
-         * cosa che il riferimento le assegna.
-         * INTHER governa la RICERCA: con il vertice a 4.000004 una soglia di
-         * 1e-5 lo dichiara intero, il rounding 4 misura, e la radice e' potata
-         * da sola (1 nodo); a 1e-9 lo stesso vertice e' frazionario e serve un
-         * ramo, che un cap di 1 nodi non lascia fare.
-         * FEAS governa la PUBBLICAZIONE: con il vertice a 3.99996 (tenuto per
-         * intero da int_her=1e-3) il rounding 4 viola la riga di 4e-5. A 1e-6
-         * il punto non esce e si trova x = 3; a 1e-3 il riferimento lo
-         * chiamerebbe ammissibile, e infatti esce x = 4 con la violazione
-         * stessa sotto la tolleranza dichiarata. */
+    {   /* C5. the two thresholds are not the same register, and each governs what
+         * the reference assigns to it.
+         * INTHER governs the SEARCH: with the vertex at 4.000004 a threshold of
+         * 1e-5 declares it integer, the rounding 4 measures, and the root is pruned
+         * by itself (1 node); at 1e-9 the same vertex is fractional and needs a
+         * branch, which a 1-node cap does not allow.
+         * FEAS governs the PUBLICATION: with the vertex at 3.99996 (kept
+         * integer by int_her=1e-3) the rounding 4 violates the row by 4e-5. At 1e-6
+         * the point does not come out and x = 3 is found; at 1e-3 the reference
+         * would call it feasible, and indeed x = 4 comes out with the same
+         * violation below the declared tolerance. */
         PRIMALrescodee rc; double po, x, pi;
         t84_mip(0.0, 1e-9, 1e-5, 0.0, 1, 4.000004, 0, &rc, &po, &x, &pi);
         check_rc(rc, PRIMAL_RES_OK, "T84 int_her=1e-5 pota la radice da sola");
@@ -4034,36 +4076,37 @@ static void test_t84(void) {
     unsetenv("GMB_NO_MIP_CUTS");
 }
 
-/* T85 - i certificati di infeasibilita' come VETTORI (PRIMAL_getdualray /
- * PRIMAL_getprimalray). Un raggio viene pubblicato solo se misura, quindi la
- * verifica qui sotto non usa che i getter pubblici e riscrive il teorema
- * dell'alternativa nello spazio dell'utente:
+/* T85 - infeasibility certificates as VECTORS (PRIMAL_getdualray /
+ * PRIMAL_getprimalray). A ray is published only if it measures, so the check
+ * below uses nothing but the public getters and restates the theorem of the
+ * alternative in the user's space:
  *
- *   raggio duale y (numcon) - il primale non ha punti ammissibili:
- *       sum_i y_i * b_i(usato) - sum_j shift_j * (A'y)_j > 0
- *       con b_i(usato) = bound superiore se y_i > 0, inferiore se y_i < 0
- *       (e' la stessa scelta di segno che vale per i duali ottimali), e
- *       shift_j = il bound che la conversione in forma standard sostituisce;
- *       (A'y)_j <= 0 se x_j ha il bound inferiore finito (tau = +1),
- *                >= 0 se ha solo il superiore (tau = -1, colonna negata),
- *                 = 0 se x_j e' libera (due colonne +1/-1),
- *       nessun vincolo su x_j fissa (sostituita) e su una riga libera (scartata);
- *   raggio primale rho (numvar) - direzione di recessione con obiettivo divergente:
- *       (A rho)_i <= 0 se la riga i ha il bound superiore finito,
- *                  >= 0 se ha l'inferiore finito, = 0 se entrambi (o fissa);
- *       rho_j >= 0 se x_j ha l'inferiore finito, <= 0 se il superiore,
- *              = 0 se li ha entrambi;   s * c'rho < 0 (s = +1 min, -1 max).
+ *   dual ray y (numcon) - the primal has no feasible point:
+ *       sum_i y_i * b_i(used) - sum_j shift_j * (A'y)_j > 0
+ *       with b_i(used) = upper bound if y_i > 0, lower if y_i < 0
+ *       (it is the same sign choice that holds for optimal duals), and
+ *       shift_j = the bound that the standard-form conversion replaces;
+ *       (A'y)_j <= 0 if x_j has a finite lower bound (tau = +1),
+ *                >= 0 if it has only the upper one (tau = -1, negated column),
+ *                 = 0 if x_j is free (two columns +1/-1),
+ *       no constraint on a fixed x_j (substituted) or on a free row (dropped);
+ *   primal ray rho (numvar) - recession direction with diverging objective:
+ *       (A rho)_i <= 0 if row i has a finite upper bound,
+ *                  >= 0 if it has a finite lower one, = 0 if both (or fixed);
+ *       rho_j >= 0 if x_j has a finite lower bound, <= 0 if the upper one,
+ *              = 0 if it has both;   s * c'rho < 0 (s = +1 min, -1 max).
  */
 
+/* Shift that the standard-form conversion substitutes for a variable's bound. */
 static double t85_shift(PRIMALboundkeye bk, double bl, double bu) {
     switch (bk) {
         case PRIMAL_BK_FX: case PRIMAL_BK_LO: case PRIMAL_BK_RA: return bl;
         case PRIMAL_BK_UP: return bu;
-        default: return 0.0;                       /* BK_FR: nessuna sostituzione */
+        default: return 0.0;                       /* BK_FR: no substitution */
     }
 }
 
-/* +1 = witness nel verso del teorema, -1 = il verso opposto, 0 = non misura */
+/* +1 = witness in the theorem's direction, -1 = the opposite, 0 = does not measure */
 static int t85_measures_dual(PRIMALtask_t t, const double *y) {
     int nv, nc;
     PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
@@ -4096,6 +4139,7 @@ static int t85_measures_dual(PRIMALtask_t t, const double *y) {
     return 0;
 }
 
+/* +1 if rho measures as a primal recession ray, else 0. */
 static int t85_measures_primal(PRIMALtask_t t, const double *rho) {
     int nv, nc;
     PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
@@ -4127,18 +4171,20 @@ static int t85_measures_primal(PRIMALtask_t t, const double *rho) {
     return (s * crho < -1e-8 * cabs) ? 1 : 0;
 }
 
+/* max |v_i| over the first n entries. */
 static double t85_maxabs(const double *v, int n) {
     double mx = 0.0;
     for (int i = 0; i < n; i++) if (fabs(v[i]) > mx) mx = fabs(v[i]);
     return mx;
 }
 
+/* T85: infeasibility certificates as vectors (the dual/primal ray must measure). */
 static void test_t85(void) {
     cur_name = "T85 certificati di infeasibilita' come vettori";
     double y[8], rho[8];
 
-    {   /* A: x1 + x2 = -1 con x >= 0: il bound e' negativo, il moltiplicatore
-         *    deve essere negativo (e' l'unica riga, quindi e' forzato). */
+    {   /* A: x1 + x2 = -1 with x >= 0: the bound is negative, the multiplier
+         *    must be negative (it is the only row, so it is forced). */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -4157,7 +4203,7 @@ static void test_t85(void) {
         pend(&p);
     }
     {   /* B: x1 + x2 = 1, x1 = 0.8, x2 = 0.8, x >= 0 -> 1.6 != 1.
-         *    y0 < 0 e' forzato (la riga di somma entra col segno del cappuccio). */
+         *    y0 < 0 is forced (the sum row enters with the sign of the cap). */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 3);
@@ -4175,7 +4221,7 @@ static void test_t85(void) {
         check(y[0] < 0.0, "T85 B la riga di somma entra col segno negativo");
         pend(&p);
     }
-    {   /* C: min -x1-x2  s.t.  x1 - x2 <= 1, x >= 0 -> illimitato. */
+    {   /* C: min -x1-x2  s.t.  x1 - x2 <= 1, x >= 0 -> unbounded. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -4192,8 +4238,8 @@ static void test_t85(void) {
         check(sta == PRIMAL_SOL_STA_DUAL_INFEAS_CER, "T85 C solsta = DUAL_INFEAS_CER");
         pend(&p);
     }
-    {   /* D: min -x0 con x0 libera (la forma di T6): l'unica direzione possibile
-         *    e' +infinito, quindi rho0 > 0 e' forzato. */
+    {   /* D: min -x0 with x0 free (the shape of T6): the only possible direction
+         *    is +infinity, so rho0 > 0 is forced. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -4205,8 +4251,8 @@ static void test_t85(void) {
         check(rho[0] > 0.0, "T85 D rho0 > 0 (min -x0 diverge verso +infinito)");
         pend(&p);
     }
-    {   /* E: maximize x0 con x0 >= 0: il senso dell'obiettivo non cambia il
-         *    insieme ammissibile, ma cambia il verso in cui diverge. */
+    {   /* E: maximize x0 with x0 >= 0: the objective sense does not change the
+         *    feasible set, but changes the direction in which it diverges. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -4219,10 +4265,10 @@ static void test_t85(void) {
         check(rho[0] > 0.0, "T85 E rho0 > 0");
         pend(&p);
     }
-    {   /* F: x1 + x2 = 1, x1 - x2 = 3 con x1 ∈ [0,2] (bound superiore finito:
-         *    la conversione aggiunge la riga di cappuccio, che non ha immagine
-         *    "un numero per vincolo") -> la strada per dimostrarlo c'e' solo se
-         *    il raggio non ne ha bisogno. */
+    {   /* F: x1 + x2 = 1, x1 - x2 = 3 with x1 ∈ [0,2] (finite upper bound:
+         *    the conversion adds the cap row, which has no image
+         *    "one number per constraint") -> the way to prove it exists only if
+         *    the ray does not need one. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
@@ -4240,8 +4286,8 @@ static void test_t85(void) {
               "T85 F il certificato non ha bisogno della riga di cappuccio");
         pend(&p);
     }
-    {   /* G: un modello ottimo non ha certificati: i due getter rispondono
-         *    ERR_ARG, lo stesso codice con cui un getter soluzione dice "no". */
+    {   /* G: an optimal model has no certificates: the two getters answer
+         *    ERR_ARG, the same code with which a solution getter says "no". */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -4254,10 +4300,10 @@ static void test_t85(void) {
         check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T85 G nessun raggio primale su un ottimo");
         pend(&p);
     }
-    {   /* H: la stessa infeasibilita' attaccata dal punto interno, che non ha
-         *    witness espliciti: puo' dichiarare un certificato solo se il suo
-         *    ultimo iterato ne misura uno. Un limite di iterazioni non e' mai un
-         *    certificato (era il difetto che riportava 1002 su ogni status 1). */
+    {   /* H: the same infeasibility attacked by the interior point, which has no
+         *    explicit witnesses: it can declare a certificate only if its
+         *    last iterate measures one. An iteration limit is never a
+         *    certificate (it was the defect that reported 1002 for every status 1). */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 3);
@@ -4282,12 +4328,12 @@ static void test_t85(void) {
         }
         pend(&p);
     }
-    {   /* I: parita' del claim con e senza presolve, su un modello che il
-         *    presolve riduce DAVVERO: le due righe duplicate (stesso pattern,
-         *    stesso RHS) ne lasciano una, le due singleton fissano x1 e x2 e
-         *    la riga di somma resta vuota con |b| = 0.5 (caso ambiguo: va al
-         *    solver).  Il witness dunque vive su una riga ridotta e va
-         *    sollevato attraverso le due operazioni singleton. */
+    {   /* I: claim parity with and without presolve, on a model the
+         *    presolve REALLY reduces: the two duplicate rows (same pattern,
+         *    same RHS) leave one, the two singletons fix x1 and x2 and
+         *    the sum row stays empty with |b| = 0.5 (ambiguous case: it goes to the
+         *    solver).  The witness thus lives on a reduced row and must be
+         *    lifted through the two singleton operations. */
         for (int k = 0; k < 2; k++) {
             P p; pbegin(&p);
             PRIMALtask_t t = p.task;
@@ -4314,26 +4360,26 @@ static void test_t85(void) {
     }
 }
 
-/* T89 — la via a tagli tangenti delle barre (`optimize_sdp`) e' quella che
- * risponde quando l'IPM conico unificato non conclude, e pubblica `dobj = pobj`
- * senza stampare una terna. Quel numero e' giusto per un motivo preciso, non per
- * comodita': quando l'ottimo del rilassamento LP risulta ammissibile per il
- * cono, lo stesso valore e' insieme lower bound del rilassamento (l'insieme e'
- * piu' grande del cono) e upper bound del punto primale, quindi l'ottimalita' e'
- * provata per sandwich. Cio' che il sandwich NON prova da solo e' che la matrice
- * pubblicata da `getbarsj` sia un punto duale ammissibile: Z e' costruita come
- * C_j - sum_i y_i A^i_j SENZA i moltiplicatori dei tagli, quindi il suo essere
- * PSD e' una proprieta' da misurare, non da assumere — e' cio' che il test fa,
- * perche' e' esattamente quella matrice a rendere `dobj` il valore di un duale e
- * non un secondo copia-incolla del primale.
- * Modello: min x0 + x1  s.t.  B = [[x0,1],[1,x1]] in S^2_+,  x >= 0.
- * PSD => x0,x1 >= 0 e x0*x1 >= B01^2 = 1, quindi x0+x1 >= 2 sqrt(x0 x1) >= 2 con
- * uguaglianza solo in x0 = x1 = 1:  obj* = 2,  B* = [[1,1],[1,1]] (rank-one).
- * Senza cono il modello e' limitato (x >= 0) e risponde 0: i tagli servono
- * davvero, e il primo e' esattamente la tangente x0 + x1 >= 2.
- * La via e' forzata dal solo IPAR_INTPNT_MAX_ITERATIONS = 1 (T84: il parametro
- * dichiarato arriva alla conversione): l'IPM non converge, il chiamante passa
- * all'outer approximation. */
+/* T89 — the tangent-cut path for bars (`optimize_sdp`) is the one that
+ * answers when the unified conic IPM does not conclude, and it publishes `dobj = pobj`
+ * without printing a triple. That number is right for a precise reason, not for
+ * convenience: when the optimum of the LP relaxation is feasible for the
+ * cone, the same value is both a lower bound of the relaxation (the set is
+ * larger than the cone) and an upper bound of the primal point, so optimality is
+ * proved by sandwich. What the sandwich does NOT prove by itself is that the matrix
+ * published by `getbarsj` is a feasible dual point: Z is built as
+ * C_j - sum_i y_i A^i_j WITHOUT the cut multipliers, so its being
+ * PSD is a property to measure, not to assume — and that is what the test does,
+ * because it is exactly that matrix that makes `dobj` the value of a dual and
+ * not a second copy-paste of the primal.
+ * Model: min x0 + x1  s.t.  B = [[x0,1],[1,x1]] in S^2_+,  x >= 0.
+ * PSD => x0,x1 >= 0 and x0*x1 >= B01^2 = 1, hence x0+x1 >= 2 sqrt(x0 x1) >= 2 with
+ * equality only at x0 = x1 = 1:  obj* = 2,  B* = [[1,1],[1,1]] (rank-one).
+ * Without the cone the model is bounded (x >= 0) and answers 0: the cuts are
+ * really needed, and the first is exactly the tangent x0 + x1 >= 2.
+ * The path is forced by IPAR_INTPNT_MAX_ITERATIONS = 1 alone (T84: the declared
+ * parameter reaches the conversion): the IPM does not converge, the caller goes
+ * to the outer approximation. */
 static void test_t89(void) {
     cur_name = "T89 via a tagli: sandwich e ammissibilita' duale";
     enum { NB = 2 };
@@ -4371,16 +4417,16 @@ static void test_t89(void) {
     close_enough_tol(x[0], 1.0, 1e-4, "T89 x0 = 1");
     close_enough_tol(x[1], 1.0, 1e-4, "T89 x1 = 1");
     close_enough_tol(po, 2.0, 1e-5, "T89 obj = 2");
-    /* il sandwich: il duale pubblicato non puo' superare il primale, e qui i due
-     * coincidono perche' l'ottimo del rilassamento e' ammissibile per il cono.
-     * Il punto e' a ~5e-5 da (1,1): l'outer approximation arresta sulla sua
-     * tolleranza di autovalore, non sulla terna relativa dell'IPM. */
+    /* the sandwich: the published dual cannot exceed the primal, and here the two
+     * coincide because the optimum of the relaxation is feasible for the cone.
+     * The point is ~5e-5 from (1,1): the outer approximation stops on its
+     * eigenvalue tolerance, not on the relative triple of the IPM. */
     check(dbo <= po + 1e-9, "T89 dualita' debole sul sandwich");
     close_enough_tol(dbo, 2.0, 1e-5, "T89 dobj coincide con il primale");
-    /* E qui sta la verifica che `dobj = pobj` non sia un'assunzione: la matrice
-     * pubblicata da getbarsj deve essere duale ammissibile e complementare, perche'
-     * e' quella che rende quel numero il valore di un punto duale. Misura:
-     * autovalori di Z (1.3e-16, 2) e <Z,B> = 2e-9. */
+    /* And here is the check that `dobj = pobj` is not an assumption: the matrix
+     * published by getbarsj must be dual feasible and complementary, because
+     * it is what makes that number the value of a dual point. Measurement:
+     * eigenvalues of Z (1.3e-16, 2) and <Z,B> = 2e-9. */
     double B[NB * NB];
     check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T89 getbarxj");
     for (int a = 0; a < NB * NB; a++) Ac[a] = Z[a];
@@ -4396,18 +4442,18 @@ static void test_t89(void) {
     pend(&p);
 }
 
-/* T88 — l'IPM conico unificato deve fermarsi sulla terna misurata, non sul
- * pavimento assoluto di mu. Il percorso barre/SOC usciva dal ciclo appena
- * `mu < tol` con tol = 1e-7 CABLATO, mentre il task dichiara 1e-8 sul gap
- * relativo: il gap di un iterato sul percorso centrale e' mu*nu, quindi una
- * barra da 20x20 (nu = 21) non poteva che atterrare intorno a 7e-7. Misura
- * pre-fix sul modello qui sotto, letta dalla traccia allo stesso iterato in cui
- * mu attraversa 1e-7 (it=7, mu=2.82e-08): rel_gap = 1.98e-07, 19.8 volte la
- * soglia asserita. Sui sample, stessa build: rel_gap 2.4e-8 (sdo1), 7.7e-8
- * (sdo2), 1.4e-7 (maxcut_sdp), 1.5e-7 (sparsecholesky) — tutti pubblicati con
+/* T88 — the unified conic IPM must stop on the measured triple, not on the
+ * absolute floor of mu. The bar/SOC path left the loop as soon as
+ * `mu < tol` with tol = 1e-7 HARDCODED, whereas the task declares 1e-8 on the
+ * relative gap: the gap of an iterate on the central path is mu*nu, so a
+ * 20x20 bar (nu = 21) could only land around 7e-7. Pre-fix measurement on the
+ * model below, read from the trace at the same iterate where mu crosses 1e-7
+ * (it=7, mu=2.82e-08): rel_gap = 1.98e-07, 19.8 times the asserted
+ * threshold. On the samples, same build: rel_gap 2.4e-8 (sdo1), 7.7e-8
+ * (sdo2), 1.4e-7 (maxcut_sdp), 1.5e-7 (sparsecholesky) — all published with
  * status=0.
- * Modello: B in S^20_+, <I,B> = 1, x0 = <E00,B>, min -x0. L'ottimo e' il punto
- * di fronte B = diag(1,0,...,0), x0 = 1, obj = dobj = -1. */
+ * Model: B in S^20_+, <I,B> = 1, x0 = <E00,B>, min -x0. The optimum is the
+ * frontal point B = diag(1,0,...,0), x0 = 1, obj = dobj = -1. */
 static void test_t88(void) {
     cur_name = "T88 arresto dell'IPM conico sulla terna misurata";
     enum { D = 20 };
@@ -4439,8 +4485,8 @@ static void test_t88(void) {
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T88 pobj");
     check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dobj), PRIMAL_RES_OK, "T88 dobj");
     close_enough_tol(po, -1.0, 1e-5, "T88 obiettivo");
-    /* qui sta l'asserzione che prima falliva: la qualita' che il solver dichiara
-     * di aver raggiunto, letta dai due obiettivi pubblicati */
+    /* here is the assertion that used to fail: the quality the solver declares
+     * to have reached, read from the two published objectives */
     double relgap = fabs(po - dobj) / (1.0 + fabs(po) + fabs(dobj));
     check(relgap <= 1e-8, "T88 il gap pubblicato sta nella tolleranza dichiarata");
     if (!(relgap <= 1e-8)) printf("  T88 rel_gap=%.3g\n", relgap);
@@ -4456,26 +4502,26 @@ static void test_t88(void) {
     pend(&p);
 }
 
-/* T87 — dominio non convesso nell'encoder QCQP. Il cono RQUAD rappresenta solo
- * il lato convesso: tagliare un autovalore dal lato sbagliato significa
- * rispondere, con PRIMAL_RES_OK, su un modello con un insieme ammissibile (o un
- * obiettivo) diversi da quelli scritti dall'utente. Misura pre-fix, con la
- * guardia disinserita: A) obj = -0.57195 al punto interno (l'obiettivo -2I era
- * stato cancellato, il modello risolto aveva obiettivo 0), B) obj = -2.7071
- * (risolto x0^2 <= 0.5, l'ottimo vero del modello non convesso e' -4), D) già
- * 1001 ma per il motivo sbagliato ("tutte le parti quadratiche sono ~0").
- * Ora: A/B/D rifiutati; C ed E risolti, perché la soglia è relativa alla scala
- * dell'entità (1e-9 * max(1, max|lam|)) e una direzione piattevole resta
- * deficienza di rango, non un rifiuto. Il rifiuto esce come rifiuto anche dai
- * getter: `opt_prepare` azzera `pobj` a ogni solve e `PRIMAL_getprimalobj` non
- * guardava `has_sol` (a differenza del gemello `getdualobj`), quindi su un modello
- * mai risolto rispondeva `OK` con `0`; ora risponde `ERR_ARG` come `getxx`. */
+/* T87 — non-convex domain in the QCQP encoder. The RQUAD cone represents only
+ * the convex side: cutting an eigenvalue from the wrong side means
+ * answering, with PRIMAL_RES_OK, on a model with a feasible set (or an
+ * objective) different from the ones the user wrote. Pre-fix measurement, with the
+ * guard removed: A) obj = -0.57195 at the interior point (the objective -2I had
+ * been erased, the solved model had objective 0), B) obj = -2.7071
+ * (solved x0^2 <= 0.5, the true optimum of the non-convex model is -4), D) already
+ * 1001 but for the wrong reason ("all quadratic parts are ~0").
+ * Now: A/B/D rejected; C and E solved, because the threshold is relative to the scale
+ * of the entity (1e-9 * max(1, max|lam|)) and a flattening direction remains
+ * a rank deficiency, not a rejection. The rejection comes out as a rejection also from the
+ * getters: `opt_prepare` zeroes `pobj` at every solve and `PRIMAL_getprimalobj` did not
+ * look at `has_sol` (unlike its twin `getdualobj`), so on a model
+ * never solved it answered `OK` with `0`; now it answers `ERR_ARG` like `getxx`. */
 static void test_t87(void) {
     cur_name = "T87 dominio non convesso nell'encoder QCQP";
 
     /* A) min -(x0^2+x1^2)  s.t.  x0^2+x1^2 <= 3,  0 <= x <= 2.
-     * Obiettivo NSD in MIN: lato sbagliato. La riga convessa dà nent > 0,
-     * quindi prima del guard la parte quadratica persa non era visibile. */
+     * NSD objective in MIN: wrong side. The convex row gives nent > 0,
+     * so before the guard the lost quadratic part was not visible. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4496,8 +4542,8 @@ static void test_t87(void) {
     }
 
     /* B) min -x0-x1  s.t.  x0^2 - x1^2 <= 0.5,  0 <= x <= 2.
-     * Insieme ammissibile non convesso (sottografo di una funzione convessa);
-     * l'autovalore -2 viene dal lato sbagliato. */
+     * Non-convex feasible set (subgraph of a convex function);
+     * the eigenvalue -2 comes from the wrong side. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4517,8 +4563,8 @@ static void test_t87(void) {
         pend(&p);
     }
 
-    /* C) come B con autovalore -2e-11 contro uno spettro di ampiezza 2: sotto
-     * la soglia, il taglio non cambia la risposta. Ottimo: x = (1/sqrt2, 2),
+    /* C) like B with eigenvalue -2e-11 against a spectrum of amplitude 2: below
+     * the threshold, the cut does not change the answer. Optimum: x = (1/sqrt2, 2),
      * obj = -(2 + 1/sqrt2) = -2.7071067811865475. */
     {
         P p; pbegin(&p);
@@ -4540,9 +4586,9 @@ static void test_t87(void) {
     }
 
     /* D) min x0+x1  s.t.  x0^2+x1^2 >= 3,  0 <= x <= 2.
-     * Riga LO: serve Q NSD, qui e' PSD. Il termine tagliato e' proprio il
-     * vincolo, quindi la risposta precedente (obj 0 nell'origine) non era
-     * nemmeno ammissibile per il modello dell'utente. */
+     * LO row: it needs an NSD Q, here it is PSD. The cut term is exactly the
+     * constraint, so the previous answer (obj 0 at the origin) was not even
+     * feasible for the user's model. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4562,10 +4608,10 @@ static void test_t87(void) {
         pend(&p);
     }
 
-    /* E) discriminante della relativita': min -x0-x1  s.t.  1e6 x0^2 - 1e-4 x1^2
-     * <= 0.5,  0 <= x <= 2. L'autovalore -1e-4 e' 1e5 volte sopra una soglia
-     * assoluta da 1e-9, ma e' 1e-5 volte lo spettro (1e6): direzione piattevole
-     * -> deficienza di rango, il modello si risolve. Ottimo x0 =
+    /* E) relativity discriminator: min -x0-x1  s.t.  1e6 x0^2 - 1e-4 x1^2
+     * <= 0.5,  0 <= x <= 2. The eigenvalue -1e-4 is 1e5 times above an absolute
+     * threshold of 1e-9, but it is 1e-5 times the spectrum (1e6): flattening
+     * direction -> rank deficiency, the model is solved. Optimum x0 =
      * sqrt(0.5 + 4e-4)/1e3 = 7.0738e-4, obj = -(2 + x0). */
     {
         P p; pbegin(&p);
@@ -4587,19 +4633,19 @@ static void test_t87(void) {
     }
 }
 
-/* T86: barre e termini quadratici nella stessa task. Il dispatcher prova la via
- * SDP PRIMA di guardare has_qcon: se una delle due vie SDP non consulta i
- * vincoli quadratici risponde su un modello a cui ne mancano. Qui si misura
- * l'esito giusto — l'encoder RQUAD porta le barre con sé, quindi il modello
- * risolto è ancora il modello dell'utente. */
+/* T86: bars and quadratic terms in the same task. The dispatcher tries the SDP
+ * path BEFORE looking at has_qcon: if one of the two SDP paths does not consult the
+ * quadratic constraints, it answers on a model missing them. Here the right
+ * outcome is measured — the RQUAD encoder carries the bars with it, so the model
+ * solved is still the user's model. */
 static void test_t86(void) {
     cur_name = "T86 barre + obiettivo/vincolo quadratico";
 
     /* A) min -x0-x1  s.t.  x0^2+x1^2 <= 2,  <E00,B> = 1,  B in S^2_+.
-     * Ottimo a mano: x* = (1,1), obj = -2 (la palla e' attiva), B00 = 1 e
-     * B pot' essere diag(1,0). Prima dell'encoder che porta le barre nello
-     * shadow task questo modello rispondeva ERR_UNBOUNDED: la riga quadratica
-     * veniva scartata e il modello risolto non aveva piu' il vincolo. */
+     * Hand optimum: x* = (1,1), obj = -2 (the ball is active), B00 = 1 and
+     * B can be diag(1,0). Before the encoder that carries the bars into the
+     * shadow task this model answered ERR_UNBOUNDED: the quadratic row
+     * was dropped and the solved model no longer had the constraint. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4629,9 +4675,9 @@ static void test_t86(void) {
         pend(&p);
     }
 
-    /* B) min x0^2+x1^2 - x0 - x1  s.t.  <E00,B> = 1: il termine quadratico
-     * dell'obiettivo deve spostare la risposta (x* = (0.5,0.5), obj = -0.5);
-     * prima veniva semplicemente perduto dalla via barre. */
+    /* B) min x0^2+x1^2 - x0 - x1  s.t.  <E00,B> = 1: the quadratic term of the
+     * objective must move the answer (x* = (0.5,0.5), obj = -0.5);
+     * before it was simply lost by the bar path. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4659,12 +4705,12 @@ static void test_t86(void) {
         pend(&p);
     }
 
-    /* C) barra e parte quadratica nella STESSA riga:
+    /* C) bar and quadratic part in the SAME row:
      * min -x0-x1  s.t.  x0^2+x1^2 + <E00,B> <= 3,  B in S^2_+.
-     * Il cappuccio della barra compete con la palla: B00 = 0 e
-     * x* = (sqrt(3/2), sqrt(3/2)), obj = -sqrt(6). Qui si misura che gli
-     * indici di riga sopravvivano all'encoder (le uguaglianze ausiliarie
-     * vengono appese DOPO le righe originali). */
+     * The bar's cap competes with the ball: B00 = 0 and
+     * x* = (sqrt(3/2), sqrt(3/2)), obj = -sqrt(6). Here it is measured that the
+     * row indices survive the encoder (the auxiliary equalities
+     * are appended AFTER the original rows). */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4694,31 +4740,34 @@ static void test_t86(void) {
     }
 }
 
-/* T90: l'arresto della via a tagli giudica l'ammissibilita' di cono NELLE
- * UNITA' DEL CONO, non su un numero preso da una delle sue forme.
- *   (i) una PPOW(a) e' omogenea di grado 1, ma il suo membro t risponde alla
- *       forma t = |v|^(1/a) u^-((1-a)/a) con sensibilita' 1/(a t^(a-1)): per
- *       a=2/3 e t=1e-3 e' 6.67, per a=1/3 e t=1e-6 e' 3333. Misurato su
- *       regression_regularized, la via a tagli consegnava un punto fuori dal
- *       cono 3 di 3.05e-8 RELATIVO contro la tolleranza 1e-8 dichiarata;
- *   (ii) la stessa misura guardava solo il bordo t - f(u,v), mai le facce
- *       t >= 0 e u >= 0. Misurato sul caso A qui sotto: fermando a 2e-3, il
- *       primo iterato aveva |t - f| = 1e-3 dentro la soglia, e il punto
- *       pubblicato era t = -4.7e-11 - fuori dal dominio, dove il cono non ha
- *       nemmeno un valore - con pobj = -4.7e-11 in luogo di 1e-3.
- * Caso A: min t con u=1, v=0.01 fisse → t* = 0.01^(3/2) = 1e-3, che E' il
- * bordo del cono: l'outer approximation arriva dal lato violato. La tolleranza
- * dichiarata (2e-3) sta fra la violazione relativa del primo iterato (5e-3) e
- * la sua misura in forma t (1e-3): e' precisamente la fascia dove le due misure
- * dicono il falso l'una all'altra.
- * Caso B: max t con t+u <= 1 e u >= -5, v=0.4 → (t*,u*) = (0.8, 0.2) perche'
- * tu >= 0.16; il vertice del maestro LP senza i tagli e' t=6, u=-5. */
+/* T90: the cut path's stopping rule judges cone feasibility IN THE UNITS OF THE
+ * CONE, not on a number taken from one of its forms.
+ *   (i) a PPOW(a) is homogeneous of degree 1, but its member t answers the
+ *       form t = |v|^(1/a) u^-((1-a)/a) with sensitivity 1/(a t^(a-1)): for
+ *       a=2/3 and t=1e-3 it is 6.67, for a=1/3 and t=1e-6 it is 3333. Measured on
+ *       regression_regularized, the cut path delivered a point outside the
+ *       cone 3 by 3.05e-8 RELATIVE against the declared 1e-8 tolerance;
+ *   (ii) the same measure looked only at the boundary t - f(u,v), never at the
+ *       faces t >= 0 and u >= 0. Measured on case A below: stopping at 2e-3, the
+ *       first iterate had |t - f| = 1e-3 inside the threshold, and the published
+ *       point was t = -4.7e-11 - outside the domain, where the cone has not
+ *       even a value - with pobj = -4.7e-11 instead of 1e-3.
+ * Case A: min t with u=1, v=0.01 fixed → t* = 0.01^(3/2) = 1e-3, which IS the
+ * boundary of the cone: the outer approximation arrives from the violated side. The
+ * declared tolerance (2e-3) lies between the relative violation of the first
+ * iterate (5e-3) and its measure in t form (1e-3): it is precisely the band where the two
+ * measures contradict each other.
+ * Case B: max t with t+u <= 1 and u >= -5, v=0.4 → (t*,u*) = (0.8, 0.2) because
+ * tu >= 0.16; the vertex of the master LP without the cuts is t=6, u=-5. */
 static int t90_native;
+/* Log callback: set the flag when the native conic IPM answers. */
 static void t90_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "SDP IPM")) t90_native = 1;
 }
 
+/* Solve case cse (0: min t on PPOW(2/3), 1: max t on PPOW(1/2)) with or
+ * without the cuts path, and check the published point lies in the cone. */
 static void t90_case(int cutmode, int cse) {
     const double a[2]  = { 2.0 / 3.0, 0.5 }, vv[2] = { 0.01, 0.4 };
     const double al = a[cse], v = vv[cse];
@@ -4732,7 +4781,7 @@ static void t90_case(int cutmode, int cse) {
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);       /* u */
         PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, v, v);           /* v */
     } else {
-        PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, -5.0, 0.0);      /* u: il dominio */
+        PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, -5.0, 0.0);      /* u: the domain */
         PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, v, v);           /* v */
         PRIMAL_appendcons(t, 1);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
@@ -4748,9 +4797,9 @@ static void t90_case(int cutmode, int cse) {
     t90_native = 0;
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize");
     unsetenv("GMB_NO_EXP_IPM");
-    /* Il percorso non si asserisce sul caso B: li il blocco nativo si congela
-     * sul merito (misurato: [frozen] a it=27, merit=2.56e-5) e risponde la via
-     * a tagli anche senza GMB_NO_EXP_IPM. Cio' che si asserisce e' l'esito. */
+    /* The path is not asserted on case B: there the native block freezes on the
+     * merit (measured: [frozen] at it=27, merit=2.56e-5) and the cut path answers
+     * even without GMB_NO_EXP_IPM. What is asserted is the outcome. */
     if (cse == 0)
         check(cutmode ? t90_native == 0 : t90_native == 1, "ha risposto il percorso atteso");
     double x[3], po;
@@ -4765,8 +4814,8 @@ static void t90_case(int cutmode, int cse) {
         close_enough_tol(x[1], 0.2, 1e-5, "u = 0.2");
         close_enough_tol(po, -0.8, 1e-5, "obj = -0.8");
     }
-    /* L'invariante: il punto pubblicato sta nel cono, facce del dominio
-     * comprese, dentro la tolleranza che il task dichiara. */
+    /* The invariant: the published point lies in the cone, domain faces
+     * included, within the tolerance the task declares. */
     double sc = fabs(x[0]) > fabs(x[1]) ? fabs(x[0]) : fabs(x[1]);
     if (fabs(x[2]) > sc) sc = fabs(x[2]);
     double slack = (x[0] < 0.0 || x[1] < 0.0) ? -HUGE_VAL
@@ -4775,6 +4824,8 @@ static void t90_case(int cutmode, int cse) {
     pend(&p);
 }
 
+/* T90: run both cut/native paths over the two cases and assert the cone
+ * membership of the published point in the units of the cone. */
 static void test_t90(void) {
     cur_name = "T90 tagli: ammissibilita' di cono misurata nelle sue unita'";
     char lbl[64];
@@ -4787,24 +4838,24 @@ static void test_t90(void) {
         }
 }
 
-/* T91: CHE COSA congela il blocco nativo sul caso B di T90 — misurato come
- * funzione del bordo, non come presenza di un bordo.
+/* T91: WHAT freezes the native block on case B of T90 — measured as a
+ * function of the bound, not as the presence of a bound.
  *
- *   max t   con   t + u <= 1,   u >= lob,   v = 0.4 fisso,   (t,u,v) in PPOW(1/2)
- *   ottimo (t*,u*) = (0.8, 0.2) per ogni lob: sqrt(0.8*0.2) = 0.4 = |v| esatto,
- *   quindi l'ottimo E' sul bordo del cono e la riga t+u <= 1 e' attiva: il
- *   limite della traccia centrale non e' strettamente complementare e la
- *   metrica Hessian-NT del blocco degenera (misurato: condz fino a 7.4e+16,
- *   riga che degrada a `hz` perche' la direzione duale esce da int K*).
+ *   max t   with   t + u <= 1,   u >= lob,   v = 0.4 fixed,   (t,u,v) in PPOW(1/2)
+ *   optimum (t*,u*) = (0.8, 0.2) for every lob: sqrt(0.8*0.2) = 0.4 = |v| exactly,
+ *   so the optimum IS on the boundary of the cone and the row t+u <= 1 is active: the
+ *   limit of the central path is not strictly complementary and the
+ *   Hessian-NT metric of the block degenerates (measured: condz up to 7.4e+16,
+ *   row degrading to `hz` because the dual direction leaves int K*).
  *
- * L'ipotesi registrata ieri (lo shift di nonnegativita' fa partire il centro
- * FUORI dal dominio) e' falsificata dalla stessa traccia: a it=0 `mz=0.25 > 0`
- * e `row=nt`, quindi il punto di partenza dentro il cono c'e'.
- * E `u >= 0` non e' affatto "nessun bordo": la conversione (primal.c, ramo
- * BK_LO) shifta ANCHE il bordo zero, percio' le due varianti hanno le stesse
- * righe e differiscono solo per le costanti, cioe' per |b| che passa da 1 a 6
- * e per il residuo primale iniziale (pfeas=5 contro 1). Quello che T91 fissa
- * e' esattamente questo: la risposta non cambia, cambia la strada che la da'. */
+ * The hypothesis recorded yesterday (the nonnegativity shift starts the center
+ * OUTSIDE the domain) is falsified by the same trace: at it=0 `mz=0.25 > 0`
+ * and `row=nt`, so the starting point inside the cone exists.
+ * And `u >= 0` is not at all "no bound": the conversion (primal.c, BK_LO branch)
+ * shifts ALSO the zero bound, so the two variants have the same
+ * rows and differ only in the constants, i.e. in |b| which goes from 1 to 6
+ * and in the initial primal residual (pfeas=5 vs 1). What T91 pins down
+ * is exactly this: the answer does not change, the path that gives it does. */
 static void t91_case(double lob) {
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
@@ -4823,16 +4874,16 @@ static void t91_case(double lob) {
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
     check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
-    /* L'esito non deve dipendere dal bordo: stesso ottimo, stessa accuratezza. */
+    /* The outcome must not depend on the bound: same optimum, same accuracy. */
     close_enough_tol(x[0], 0.8, 1e-5, "t = 0.8");
     close_enough_tol(x[1], 0.2, 1e-5, "u = 0.2");
     close_enough_tol(po, -0.8, 1e-5, "obj = -0.8");
     check(x[1] >= lob - 1e-9, "il bordo dichiarato dall'utente e' rispettato");
-    /* Misura pubblica, indipendente dal percorso: righe e bordi violati, dai
-     * dati del problema come li vedrebbe un utente. */
+    /* Public measurement, independent of the path: violated rows and bounds, from the
+     * problem data as a user would see them. */
     check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "getprimalinfeas");
     check(pinf >= 0.0 && pinf <= 1e-8, "pinf <= tolleranza dichiarata");
-    /* Il cono, nelle sue unita' e con le facce del dominio. */
+    /* The cone, in its units and with the domain faces. */
     double sc = fabs(x[0]) > fabs(x[1]) ? fabs(x[0]) : fabs(x[1]);
     if (fabs(x[2]) > sc) sc = fabs(x[2]);
     double slack = (x[0] < 0.0 || x[1] < 0.0) ? -HUGE_VAL
@@ -4842,17 +4893,19 @@ static void t91_case(double lob) {
     pend(&p);
 }
 
+/* T91: sweep the bound over eleven values; the outcome (0.8, 0.2) is asserted,
+ * not the path, which is not reproducible across optimization levels. */
 static void test_t91(void) {
-    /* Il percorso che risponde NON si asserisce: e' misurato, e cambia con il
-     * livello di ottimizzazione. Sul primo run il blocco nativo si congela su
-     * -5 e -100 (metrica degenerata sull'ottimo al bordo: NT chain indisponibile,
-     * condz~1e16, passo duale che collassa); il retry secante di `a4a829b` li
-     * recupera (misurato: 13 [route] = 11 bordi + 2 retry, solo le posizioni 6 e
-     * 12 sono status=1 e la riga successiva e' status=0), quindi tutti e undici
-     * i bordi rispondono in nativo. Cio' che non cambia e' l'esito: (0.8, 0.2)
-     * dentro la tolleranza su ogni bordo, ed e' quello che si asserisce. Nota:
-     * -5 non e' il bordo "peggiore" della lista, quindi la causa non e' il bordo
-     * negativo ne' la scala di |b|. */
+    /* The path that answers is NOT asserted: it is measured, and changes with the
+     * optimization level. On the first run the native block freezes on
+     * -5 and -100 (metric degenerated at the boundary optimum: NT chain unavailable,
+     * condz~1e16, collapsing dual step); the secant retry of `a4a829b` recovers
+     * them (measured: 13 [route] = 11 bounds + 2 retries, only positions 6 and
+     * 12 are status=1 and the next line is status=0), so all eleven
+     * bounds answer natively. What does not change is the outcome: (0.8, 0.2)
+     * within tolerance on every bound, and that is what is asserted. Note:
+     * -5 is not the "worst" bound in the list, so the cause is not the negative
+     * bound nor the scale of |b|. */
     static const double los[11] = { 0.0, -0.5, -1.0, -2.0, -3.0, -5.0,
                                     -7.0, -10.0, -20.0, -50.0, -100.0 };
     char lbl[64];
@@ -4863,16 +4916,16 @@ static void test_t91(void) {
     }
 }
 
-/* T92: la costante dell'obiettivo raggiunge il duale su OGNI percorso che ne
- * pubblica uno. Difetto misurato il 2026-09-15: sull'LP di `T17` con `cfix = 7.5`
- * il duale pubblicato era 2.0 contro il primale 9.5, e l'errore era esattamente
- * la costante — `pobj` parte da `t->cfix`, le somme che costruiscono `dob`
- * (termini di bordo attivi e parte quadratica) no. Aveva la stessa forma il
- * percorso conico denso. Il segno e' la parte delicata: la costante appartiene
- * all'obiettivo **come scritto**, quindi va aggiunta fuori dal fattore di senso
- * `s`; sul caso A (un MAX) moltiplicarla per `s` darebbe 5.5 contro lo 0.5 vero.
- * I cinque modelli sono le forme di T23/T29/T89/T91 con una costante non nulla:
- * ogni valore atteso e' derivato a mano. */
+/* T92: the objective constant reaches the dual on EVERY path that publishes
+ * one. Defect measured on 2026-09-15: on the LP of `T17` with `cfix = 7.5`
+ * the published dual was 2.0 against the primal 9.5, and the error was exactly
+ * the constant — `pobj` starts from `t->cfix`, the sums that build `dob`
+ * (active bound terms and quadratic part) do not. The dense conic path had the
+ * same shape. The sign is the delicate part: the constant belongs to the
+ * objective **as written**, so it must be added outside the sense factor
+ * `s`; on case A (a MAX) multiplying it by `s` would give 5.5 against the true 0.5.
+ * The five models are the shapes of T23/T29/T89/T91 with a nonzero constant:
+ * every expected value is derived by hand. */
 static void t92_check(PRIMALtask_t t, const char *lbl, double want) {
     char msg[160];
     double po = 0.0, dbo = 0.0;
@@ -4887,8 +4940,10 @@ static void t92_check(PRIMALtask_t t, const char *lbl, double want) {
     check(fabs(dbo - po) <= 1e-5 * (1.0 + fabs(po)), msg);
 }
 
+/* T92: the objective constant must reach the published dual on every path;
+ * five models with nonzero cfix, all expected values derived by hand. */
 static void test_t92(void) {
-    /* A: max x0 con x0 <= 3, cfix = -2.5 -> 3 - 2.5 = 0.5 */
+    /* A: max x0 with x0 <= 3, cfix = -2.5 -> 3 - 2.5 = 0.5 */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4903,7 +4958,7 @@ static void test_t92(void) {
         t92_check(t, "A max x0, x0 <= 3, cfix -2.5", 0.5);
         pend(&p);
     }
-    /* B: min x0^2+x1^2-2x0-2x1 su [0,2]^2, cfix = 3.25 -> -2 + 3.25 = 1.25 */
+    /* B: min x0^2+x1^2-2x0-2x1 on [0,2]^2, cfix = 3.25 -> -2 + 3.25 = 1.25 */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4917,7 +4972,7 @@ static void test_t92(void) {
         t92_check(t, "B min x'x-2x, cfix 3.25", 1.25);
         pend(&p);
     }
-    /* C: RQUAD denso di T23 (opt -2), cfix = 5.0 -> 3.0 */
+    /* C: dense RQUAD of T23 (opt -2), cfix = 5.0 -> 3.0 */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4933,7 +4988,7 @@ static void test_t92(void) {
         t92_check(t, "C RQUAD u=1, x2<=2, cfix 5", 3.0);
         pend(&p);
     }
-    /* D: barra 2x2 di T89 (opt 2 per AM-GM), cfix = -1.5 -> 0.5 */
+    /* D: 2x2 bar of T89 (opt 2 by AM-GM), cfix = -1.5 -> 0.5 */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4959,9 +5014,9 @@ static void test_t92(void) {
         t92_check(t, "D min x0+x1 su PSD 2x2, cfix -1.5", 0.5);
         pend(&p);
     }
-    /* E: PPOW(1/2) di T91 (opt -0.8), cfix = 2.0 -> 1.2. Qui il percorso non e'
-     * asserito perche' non e' riproducibile fra livelli di ottimizzazione (T91);
-     * la costante deve arrivare al duale su entrambe le strade. */
+    /* E: PPOW(1/2) of T91 (opt -0.8), cfix = 2.0 -> 1.2. Here the path is not
+     * asserted because it is not reproducible across optimization levels (T91);
+     * the constant must reach the dual on both paths. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -4992,7 +5047,7 @@ static void test_t92(void) {
  * DUAL_INFEAS_CER was 5 (PRIM_INFEAS_CER). Asserted on the raw integers the
  * getters return, not just on the names: a name-only check passes under any
  * numbering, and the numbering is what a ported comparison reads. */
-/* I due modelli di T95, costruiti con la sola API pubblica. */
+/* The two models of T95, built with the public API only. */
 static void t95_djc(int maximize, double inther, PRIMALrescodee *rc, double *po,
                     double *x0, double *pi) {
     P p; pbegin(&p);
@@ -5001,7 +5056,7 @@ static void t95_djc(int maximize, double inther, PRIMALrescodee *rc, double *po,
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 10.0);
     PRIMAL_putcj(t, 0, 1.0);
     if (maximize) PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
-    /* [ x0 <= 2 ] OR [ 6 <= x0 <= 7 ], codificata con M = 1e6 */
+    /* [ x0 <= 2 ] OR [ 6 <= x0 <= 7 ], encoded with M = 1e6 */
     PRIMAL_appendafes(t, 1);
     PRIMAL_putafefentry(t, 0, 0, 1.0);
     PRIMALint64t dminus, dplus;
@@ -5023,6 +5078,8 @@ static void t95_djc(int maximize, double inther, PRIMALrescodee *rc, double *po,
     pend(&p);
 }
 
+/* Solve a semi-continuous + semi-integer model at an optional integrality
+ * threshold and report rc, the point, pobj and the primal infeasibility. */
 static void t95_semi(double inther, PRIMALrescodee *rc, double *po,
                      double *x, double *pi) {
     P p; pbegin(&p);
@@ -5044,51 +5101,52 @@ static void t95_semi(double inther, PRIMALrescodee *rc, double *po,
     pend(&p);
 }
 
-/* T96 - il fattore di accettazione "near optimal": un verdetto, non uno status.
- * MSK_DPAR_INTPNT_CO_TOL_NEAR_REL (default 1000, accettato [1; +inf], letto da
- * parameters.html) moltiplica TUTTE le tolleranze di terminazione e, se il punto
- * le soddisfa, lo dichiara ottimo.  Nell'enum del riferimento non esiste un
- * membro NEAR_: davanti a un iterato a 1.3x della tolleranza dichiarata MOSEK
- * non inventa un terzo verdetto, dice OPTIMAL perche' la tolleranza effettiva
- * con cui giudica era 1000 volte quella nominale.  Qui il fattore agisce sul gate
- * del percorso conico unificato (sdp.c), che e' il posto dove il verdetto nasce
- * da una terna relativa MISURATA sul punto ripristinato dal polish.
+/* T96 - the "near optimal" acceptance factor: a verdict, not a status.
+ * MSK_DPAR_INTPNT_CO_TOL_NEAR_REL (default 1000, accepted [1; +inf], read from
+ * parameters.html) multiplies ALL the termination tolerances and, if the point
+ * satisfies them, declares it optimal.  The reference enum has no
+ * NEAR_ member: faced with an iterate at 1.3x the declared tolerance MOSEK
+ * does not invent a third verdict, it says OPTIMAL because the effective tolerance
+ * by which it judges was 1000 times the nominal one.  Here the factor acts on the
+ * gate of the unified conic path (sdp.c), which is where the verdict is born
+ * from a relative triple MEASURED on the point restored by the polish.
  *
- * La proprieta' che rende misurabile la sola regola del gate, senza misurare la
- * convergenza: il punto che il percorso integra NON dipende dalla tolleranza
- * dichiarata.  Il selettore classifica per viol = max_i rel_i/tol_i, e il
- * criterio di miglioramento (viol < 0.99 viol_best) e' invariante per una scala
- * unica delle tre tol.  Misurato sul modello A (barra 2x2, ottimo 2 per AM-GM):
- * terna (1.9e-9, 8.6e-9, 3.0e-9) identica cifra per cifra con tol 1e-8, con
- * 1e-10 e con 1e-13.  Muovere la tolleranza muove dunque solo il GIUDIZIO.
- *  A. la riga della tabella: default 1000, range [1; +inf], e 1.0 = regola
- *     disattivata (il round-trip generico sui due bordi lo fa T84, che ora
- *     comprende l'id).
- *  B. dove il fattore E' il verdetto (barra 2x2, nessuna strada alternativa che
- *     misuri meglio): a tol 1e-10 il punto dell'IPM sta fuori di 86x e viene
- *     pubblicato ottimo; con NEAR_REL = 1 lo stesso punto e' rifiutato e
- *     rispondono i tagli, che consegnano un punto MIGLIORE (|pobj-2| = 1e-9
- *     contro 1e-8).  Il fattore non puo' peggiorare cio' che viene consegnato:
- *     allarga solo chi ha risposto.  Con 1e15 torna lo stesso punto dell'IPM,
- *     quindi il numero viene letto davvero e non e' una soglia travestita; con
- *     1e-13 e il default (8.6e4 volte la tol) il fattore non basta e la risposta
- *     torna dai tagli.
- *  C. la chiusura dell'item di policy aperto dal dodicesimo giro: il modello di
- *     T88 (barra 20x20 con l'ottimo sulla faccia) si ferma a 1.01x della
- *     tolleranza dichiarata su rel_pri.  Con il default quel punto e' OPTIMAL --
- *     giudicato, non piu' pubblicato senza giudizio -- e il cono resta tale:
- *     diagonale non negativa e tr(B) = 1.  Con NEAR_REL = 1 lo stesso modello
- *     NON e' risolto: rc = TRM_MAX_ITER, solsta = UNKNOWN, e i getter rifiutano.
- *     Prima di questa modifica rispondevano OK con lo zero lasciato da
- *     opt_prepare: x = 0 e pobj = 0 contro un ottimo di -1.
- *  D. dove il fattore NON tocca la strada (PEXP, nep > 0): la scelta del
- *     percorso resta sulle tolleranze dichiarate, perche' li' l'alternativa c'e'
- *     e misura meglio; a tol 1e-12 il risultato e' lo stesso con NEAR_REL = 1 e
- *     con = 1000.
+ * The property that makes the gate rule alone measurable, without measuring
+ * convergence: the point the path integrates does NOT depend on the declared
+ * tolerance.  The selector ranks by viol = max_i rel_i/tol_i, and the
+ * improvement criterion (viol < 0.99 viol_best) is invariant under a single
+ * scale of the three tolerances.  Measured on model A (2x2 bar, optimum 2 by AM-GM):
+ * triple (1.9e-9, 8.6e-9, 3.0e-9) identical digit for digit with tol 1e-8, with
+ * 1e-10 and with 1e-13.  Moving the tolerance thus moves only the JUDGMENT.
+ *  A. the table row: default 1000, range [1; +inf], and 1.0 = rule
+ *     disabled (the generic two-boundary round-trip is done by T84, which now
+ *     includes the id).
+ *  B. where the factor IS the verdict (2x2 bar, no alternative path that
+ *     measures better): at tol 1e-10 the IPM point is outside by 86x and is
+ *     published optimal; with NEAR_REL = 1 the same point is rejected and
+ *     the cuts answer, delivering a BETTER point (|pobj-2| = 1e-9
+ *     against 1e-8).  The factor cannot worsen what is delivered:
+ *     it widens only whoever already answered.  With 1e15 the same IPM point comes
+ *     back, so the number is really read and is not a disguised threshold; with
+ *     1e-13 and the default (8.6e4 times the tol) the factor is not enough and the answer
+ *     comes back from the cuts.
+ *  C. the closure of the policy item opened in round twelve: the model of
+ *     T88 (20x20 bar with the optimum on the face) stops at 1.01x the
+ *     declared tolerance on rel_pri.  With the default that point is OPTIMAL --
+ *     judged, no longer published without judgment -- and the cone stays as such:
+ *     non-negative diagonal and tr(B) = 1.  With NEAR_REL = 1 the same model
+ *     is NOT solved: rc = TRM_MAX_ITER, solsta = UNKNOWN, and the getters reject.
+ *     Before this change they answered OK with the zero left by
+ *     opt_prepare: x = 0 and pobj = 0 against an optimum of -1.
+ *  D. where the factor does NOT touch the path (PEXP, nep > 0): the choice of
+ *     path stays on the declared tolerances, because there the alternative exists
+ *     and measures better; at tol 1e-12 the result is the same with NEAR_REL = 1 and
+ *     with = 1000.
  */
+/* Build the 2x2 AM-GM bar model used by the near-optimal cases. */
 static void t96_bar2(PRIMALtask_t t) {
     /* min x0+x1  s.t.  <E00,B> = x0, <E11,B> = x1, <S01,B> = 1, B in S^2_+ :
-     * ottimo 2 in (1,1) per AM-GM, ed e' un ottimo sul bordo (B rank-one). */
+     * optimum 2 at (1,1) by AM-GM, and it is a boundary optimum (B rank-one). */
     enum { NB = 2 };
     int m00, m11, m01;
     PRIMAL_appendcons(t, 3);
@@ -5111,9 +5169,10 @@ static void t96_bar2(PRIMALtask_t t) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
 }
 
+/* Build the 20x20 bar model of T88. */
 static void t96_bar20(PRIMALtask_t t) {
-    /* B in S^20_+, <I,B> = 1, x0 = <E00,B>, min -x0 : ottimo -1 sulla faccia
-     * B = diag(1,0,...,0).  E' il modello di T88. */
+    /* B in S^20_+, <I,B> = 1, x0 = <E00,B>, min -x0 : optimum -1 on the face
+     * B = diag(1,0,...,0).  It is the model of T88. */
     enum { D = 20 };
     int si[D], sj[D];
     double sv[D];
@@ -5134,7 +5193,7 @@ static void t96_bar20(PRIMALtask_t t) {
     PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
 }
 
-/* tol <= 0 lascia la dichiarazione della task; near <= 0 likewise. */
+/* tol <= 0 leaves the task's declaration; near <= 0 likewise. */
 static void t96_set(PRIMALtask_t t, double tol, double near) {
     if (tol > 0.0) {
         PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_CO_TOL_PFEAS, tol);
@@ -5144,36 +5203,36 @@ static void t96_set(PRIMALtask_t t, double tol, double near) {
     if (near > 0.0) PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_TOL_NEAR_REL, near);
 }
 
-/* T98 — un membro *_CER NOMINA un vettore. T85 ha posto la regola sul percorso
- * LP/QP (ray_publish: lo status CER esce solo con il raggio che misura) e T94
- * l'ha applicata al MIP infeasibile; tre siti la violavano ancora, e due di loro
- * la violavano pubblicando un numero che l'utente non puo' verificare: il raggio
- * richiesto risponde ERR_ARG. Misura pre-fix, stessa build:
- *   percorso a tagli, modello primale infeasibile  rc=1002 prosta=4 solsta=5,
+/* T98 — a *_CER member NAMES a vector. T85 set the rule on the LP/QP path
+ * (ray_publish: the CER status comes out only with the ray that measures) and T94
+ * applied it to the infeasible MIP; three sites still violated it, and two of them
+ * violated it by publishing a number the user cannot verify: the requested ray
+ * answers ERR_ARG. Pre-fix measurement, same build:
+ *   cut path, primal infeasible model  rc=1002 prosta=4 solsta=5,
  *     getdualray=1001 getprimalray=1001
- *   percorso a tagli, modello illimitato           rc=1003 prosta=5 solsta=6,
+ *   cut path, unbounded model          rc=1003 prosta=5 solsta=6,
  *     getprimalray=1001
- *   MIP con rilassata illimitata                   rc=1003 prosta=5 solsta=6,
- *     getxx OK con x=0 e pobj=0
- *   solvebasis con una base non ammissibile        rc=1002 solsta=5 e POI
- *     SEGFAULT in PRIMAL_getxx: il ramo alzava has_sol senza chiamare
- *     opt_prepare, che e' l'unico allocatore di t->x -> memcpy da 0x0.
- * Il perche' i primi due non possono avere un raggio sta nel codice: la via a
- * tagli risolve in SPAZIO DEI TAGLI, le cui righe non sono quelle del modello
- * (un testimone dello spazio dei tagli non e' un testimone del modello), e
- * l'albero branch-and-bound non solleva il raggio della rilassata fino al
- * modello intero. Quindi il verdetto resta, in prosta, che e' il numero che
- * risponde alla domanda sul modello, e solsta dice UNKNOWN. Il quarto caso non e'
- * nemmeno un verdetto sul modello: una base che non misura dice che la BASE e'
- * sbagliata, non che il modello e' infeasibile, e la risposta e' risolvere il
- * modello.
- * Controllo positivo (caso E): un LP davvero infeasibile continua a pubblicare
- * PRIM_INFEAS_CER CON il vettore accanto, che e' la meta' del discriminate: senza
- * di esso il test non distinguerebbe "regola applicata" da "certificati spenti". */
+ *   MIP with unbounded relaxation      rc=1003 prosta=5 solsta=6,
+ *     getxx OK with x=0 and pobj=0
+ *   solvebasis with an infeasible basis  rc=1002 solsta=5 and THEN
+ *     SEGFAULT in PRIMAL_getxx: the branch raised has_sol without calling
+ *     opt_prepare, which is the only allocator of t->x -> memcpy from 0x0.
+ * Why the first two cannot have a ray is in the code: the cut path
+ * solves in CUT SPACE, whose rows are not those of the model
+ * (a witness of the cut space is not a witness of the model), and the
+ * branch-and-bound tree does not lift the ray of the relaxation up to the
+ * whole model. So the verdict stays in prosta, which is the number that
+ * answers the question about the model, and solsta says UNKNOWN. The fourth case is not
+ * even a verdict on the model: a basis that does not measure says the BASIS is
+ * wrong, not that the model is infeasible, and the answer is to solve the
+ * model.
+ * Positive control (case E): a truly infeasible LP still publishes
+ * PRIM_INFEAS_CER WITH the vector beside it, which is half of the discriminate: without
+ * it the test would not distinguish "rule applied" from "certificates off". */
 
-/* Il modello 2x2 di T89: x0 = <E00,B>, x1 = <E11,B>, <S01,B> = 1, B in S^2_+
- * (quindi x0*x1 >= 1, x >= 0), IPM ridotto a un iterato perche' risponda la via
- * a tagli. */
+/* The 2x2 model of T89: x0 = <E00,B>, x1 = <E11,B>, <S01,B> = 1, B in S^2_+
+ * (so x0*x1 >= 1, x >= 0), IPM reduced to one iterate so that the cut
+ * path answers. */
 static void t98_bar_amgm(PRIMALtask_t t) {
     enum { NB = 2 };
     int m00, m11, m01;
@@ -5199,8 +5258,8 @@ static void t98_bar_amgm(PRIMALtask_t t) {
     PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1);
 }
 
-/* L'invariante, letta sui getter pubblici: se solsta nomina un certificato, il
- * vettore che nomina deve esserci. */
+/* The invariant, read on the public getters: if solsta names a certificate, the
+ * vector it names must be there. */
 static int t98_cer_has_vector(PRIMALtask_t t, double *y, double *rho) {
     PRIMALsolstae sta = PRIMAL_SOL_STA_UNKNOWN;
     PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
@@ -5211,12 +5270,13 @@ static int t98_cer_has_vector(PRIMALtask_t t, double *y, double *rho) {
     return 1;
 }
 
+/* T98: a *_CER status names a vector; no certificate without one. */
 static void test_t98(void) {
     cur_name = "T98 nessun certificato senza il vettore che lo nomina";
     double y[8], rho[8], x[8];
 
-    {   /* A. la via a tagli su un modello primale infeasibile: x0+x1 <= -1 sta
-         *    fuori da x >= 0, ma il testimone abiterebbe nello spazio dei tagli. */
+    {   /* A. the cut path on a primal infeasible model: x0+x1 <= -1 lies
+         *    outside x >= 0, but the witness would live in cut space. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         t98_bar_amgm(t);
@@ -5235,9 +5295,9 @@ static void test_t98(void) {
         check(t98_cer_has_vector(t, y, rho) == 1, "T98 A l'invariante CER => vettore");
         pend(&p);
     }
-    {   /* B. la via a tagli su un modello illimitato: una variabile libera con
-         *    costo, fuori da ogni riga. La big-M della via barre limita le
-         *    ENTRATE BAR (±1e6), non questa variabile: qui lo e' davvero. */
+    {   /* B. the cut path on an unbounded model: a free variable with
+         *    cost, outside every row. The big-M of the bar path bounds the
+         *    BAR ENTRIES (±1e6), not this variable: here it really is. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         t98_bar_amgm(t);
@@ -5255,8 +5315,8 @@ static void test_t98(void) {
         check(t98_cer_has_vector(t, y, rho) == 1, "T98 B l'invariante CER => vettore");
         pend(&p);
     }
-    {   /* C. MIP con la rilassata illimitata: min -x0, x0 intera non negativa.
-         *    Prima pubblicava DUAL_INFEAS_CER (6) e getxx rispondeva OK con 0. */
+    {   /* C. MIP with the relaxation unbounded: min -x0, x0 integer non-negative.
+         *    Before it published DUAL_INFEAS_CER (6) and getxx answered OK with 0. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -5275,9 +5335,9 @@ static void test_t98(void) {
         check(t98_cer_has_vector(t, y, rho) == 1, "T98 C l'invariante CER => vettore");
         pend(&p);
     }
-    {   /* D. una base che non misura su un modello fattibile: max x0+x1 con
-         *    x0+x1 = 1 e x dichiarata BAS a un estremo che non la soddisfa.
-         *    La risposta e' il modello, non la base. */
+    {   /* D. a basis that does not measure on a feasible model: max x0+x1 with
+         *    x0+x1 = 1 and x declared BAS at an extreme that does not satisfy it.
+         *    The answer is the model, not the basis. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -5308,8 +5368,8 @@ static void test_t98(void) {
         check(t98_cer_has_vector(t, y, rho) == 1, "T98 D l'invariante CER => vettore");
         pend(&p);
     }
-    {   /* E. controllo positivo: il certificato vero continua a uscire, con il
-         *    suo vettore. x0+x1 = -1 con x >= 0. */
+    {   /* E. positive control: the true certificate still comes out, with its
+         *    vector. x0+x1 = -1 with x >= 0. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -5330,32 +5390,32 @@ static void test_t98(void) {
     }
 }
 
-/* T99 — un verdetto NON e' un punto. `has_sol` faceva due mestieri: "esiste un
- * punto pubblicato" e "un verdetto e' stato raggiunto". Un verdetto senza punto
- * — infeasibilita', illimitatezza, cap di nodi senza incumbent — doveva quindi
- * alzare la guardia per non far sparire il verdetto, e con esso i dieci getter
- * che hanno per oggetto il punto: rispondevano OK sul vettore di zeri che
- * `opt_prepare` aveva lasciato.
- * Misurato prima (probe, tree di `T98` committato):
- *   LP infeasibile   rc=1002 solsta=5 | getxx OK x=0, pobj OK 0,
+/* T99 — a verdict is NOT a point. `has_sol` did two jobs: "a published point
+ * exists" and "a verdict has been reached". A verdict without a point
+ * — infeasibility, unboundedness, node cap without an incumbent — therefore had to
+ * raise the guard so as not to make the verdict disappear, and with it the ten getters
+ * whose object is the point: they answered OK on the vector of zeros that
+ * `opt_prepare` had left.
+ * Measured before (probe, committed `T98` tree):
+ *   infeasible LP    rc=1002 solsta=5 | getxx OK x=0, pobj OK 0,
  *                                      getprimalinfeas OK **1**
- *   MIP infeasibile  rc=1002 solsta=0 | getxx OK x=0, getprimalinfeas OK **1.5**
- *                                     (la riga `x >= 1.5` del probe; il caso D di
- *                                      qui sotto e' `x <= 0.5 / x >= 1` e misura 1)
- *   cap senza incumbent rc=1007       | getxx OK x=0, getprimalinfeas OK **0**
- * Cioe', sullo stesso solve, "ecco la soluzione x=0" accanto a "x=0 viola il
- * modello di 1" — e nel terzo caso un `0` di violazione per un punto che nessun
- * nodo ha mai proposto. `getprimalinfeas` misura il punto pubblicato: se il
- * punto pubblicato non c'e', la sua risposta corretta e' rifiutare.
- * Fix: `prosta_of` e `PRIMAL_getsolsta` non consultano piu' la guardia (uno
- * status di problema parla del modello, non di un buffer; e un `*_CER` ha come
- * oggetto un raggio, che vive in `has_dray`/`has_pray`), quindi i rami di
- * verdetto possono lasciare `has_sol` a 0 senza perdere il verdetto.
- * Controlli: A e B asseriscono che IL RAGGIO continua a uscire (e che `T99`
- * non e' verde perche' la pubblicazione e' spenta tutta); G un LP ottimo; H il
- * cap di nodi CON incumbent (T94 H), che un punto lo ha davvero. */
+ *   infeasible MIP   rc=1002 solsta=0 | getxx OK x=0, getprimalinfeas OK **1.5**
+ *                                     (the probe's `x >= 1.5` row; case D of
+ *                                      below is `x <= 0.5 / x >= 1` and measures 1)
+ *   cap without incumbent rc=1007     | getxx OK x=0, getprimalinfeas OK **0**
+ * That is, on the same solve, "here is the solution x=0" beside "x=0 violates the
+ * model by 1" — and in the third case a violation `0` for a point that no
+ * node ever proposed. `getprimalinfeas` measures the published point: if the
+ * published point is not there, its correct answer is to reject.
+ * Fix: `prosta_of` and `PRIMAL_getsolsta` no longer consult the guard (a
+ * problem status talks about the model, not about a buffer; and a `*_CER` has as
+ * object a ray, which lives in `has_dray`/`has_pray`), so the verdict
+ * branches can leave `has_sol` at 0 without losing the verdict.
+ * Controls: A and B assert that THE RAY still comes out (and that `T99`
+ * is not green because publication is all off); G an optimal LP; H the
+ * node cap WITH an incumbent (T94 H), which really has a point. */
 
-/* 1 se ogni getter il cui oggetto e' il PUNTO rifiuta. */
+/* 1 if every getter whose object is the POINT rejects. */
 static int t99_no_point(PRIMALtask_t t) {
     double v[8], po = 0.0;
     if (PRIMAL_getxx(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) return 0;
@@ -5373,8 +5433,8 @@ static int t99_no_point(PRIMALtask_t t) {
     return 1;
 }
 
-/* 1 se ogni getter il cui oggetto e' il PUNTO risponde, con gli stessi numeri
- * che il solve ha pubblicato. */
+/* 1 if every getter whose object is the POINT answers, with the same numbers
+ * the solve published. */
 static int t99_point_answers(PRIMALtask_t t) {
     double v[8], po = 0.0, dob = 0.0;
     if (PRIMAL_getxx(t, PRIMAL_SOL_ITR, v) != PRIMAL_RES_OK) return 0;
@@ -5390,12 +5450,13 @@ static int t99_point_answers(PRIMALtask_t t) {
     return 1;
 }
 
+/* T99: a verdict without a point publishes no point. */
 static void test_t99(void) {
     cur_name = "T99 un verdetto senza punto non pubblica un punto";
     double y[8], rho[8], x[8];
 
-    {   /* A. LP infeasibile CON il certificato: il raggio esce, il punto no.
-         *    Prima: getxx OK con x=0 accanto a getprimalinfeas = 1. */
+    {   /* A. infeasible LP WITH the certificate: the ray comes out, the point does not.
+         *    Before: getxx OK with x=0 beside getprimalinfeas = 1. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -5414,8 +5475,8 @@ static void test_t99(void) {
         check(t99_no_point(t) == 1, "T99 A nessun getter del punto risponde");
         pend(&p);
     }
-    {   /* B. LP illimitato con il raggio primale pubblicato: min -x0, x0 >= 0,
-         *    nessuna riga. Stessa forma, dall'altra parte della dualita'. */
+    {   /* B. unbounded LP with the published primal ray: min -x0, x0 >= 0,
+         *    no row. Same shape, on the other side of duality. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -5430,8 +5491,8 @@ static void test_t99(void) {
         check(t99_no_point(t) == 1, "T99 B nessun getter del punto risponde");
         pend(&p);
     }
-    {   /* C. la via a tagli (T98 A): verdetto in prosta, nessun raggio, nessun
-         *    punto. Qui la guardia era alzata per far passare il `prosta`. */
+    {   /* C. the cut path (T98 A): verdict in prosta, no ray, no
+         *    point. Here the guard was raised to let `prosta` through. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         t98_bar_amgm(t);
@@ -5446,8 +5507,8 @@ static void test_t99(void) {
         check(t99_no_point(t) == 1, "T99 C nessun getter del punto risponde");
         pend(&p);
     }
-    {   /* D. MIP infeasibile: x <= 0.5 e x >= 1 con x intera. Prima: getxx OK con
-         *    x=0 e getprimalinfeas OK con 1 (la riga x >= 1, a x=0). */
+    {   /* D. infeasible MIP: x <= 0.5 and x >= 1 with x integer. Before: getxx OK with
+         *    x=0 and getprimalinfeas OK with 1 (the row x >= 1, at x=0). */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 2);
@@ -5466,7 +5527,7 @@ static void test_t99(void) {
         check(t99_no_point(t) == 1, "T99 D nessun getter del punto risponde");
         pend(&p);
     }
-    {   /* E. MIP con la rilassata illimitata (T98 C). */
+    {   /* E. MIP with the relaxation unbounded (T98 C). */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -5481,9 +5542,9 @@ static void test_t99(void) {
         check(t99_no_point(t) == 1, "T99 E nessun getter del punto risponde");
         pend(&p);
     }
-    {   /* F. cap di nodi SENZA incumbent: 3x0+5x1 <= 8 con x intere non
-         *    negative, un nodo solo. Prima pubblicava x=0 e dichiarava che non
-         *    viola niente: un punto che nessun nodo ha mai proposto. */
+    {   /* F. node cap WITHOUT an incumbent: 3x0+5x1 <= 8 with x integer
+         *    non-negative, a single node. Before it published x=0 and declared it
+         *    violates nothing: a point that no node ever proposed. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -5503,7 +5564,7 @@ static void test_t99(void) {
         check(t99_no_point(t) == 1, "T99 F nessun getter del punto risponde");
         pend(&p);
     }
-    {   /* G. controllo: un LP ottimo continua a rispondere su tutto. */
+    {   /* G. control: an optimal LP keeps answering on everything. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -5519,8 +5580,8 @@ static void test_t99(void) {
         check(pinf <= 1e-9, "T99 G e il punto misura ammissibile, non e' un rifiuto");
         pend(&p);
     }
-    {   /* H. controllo: il cap di nodi CON un incumbent ha un punto davvero, e
-         *    resta leggibile (la stessa costruzione di T94 H). */
+    {   /* H. control: the node cap WITH an incumbent really has a point, and
+         *    it stays readable (the same construction as T94 H). */
         setenv("GMB_NO_MIP_CUTS", "1", 1);
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -5545,74 +5606,74 @@ static void test_t99(void) {
     }
 }
 
-/* T100 — il cappuccio sulle ENTRATE BAR non e' un vincolo del modello, e un
- * punto che ci sta sopra non e' una risposta. `SDP_BIGM = 1e6`
- * limita le entrate bar perche' il primo LP della outer approximation — che non
- * ha ancora nessun taglio — ne abbia comunque uno. Quando il modello scappa oltre
- * quel bordo l'LP si ferma LI', e fino a questa modifica quel valore era
- * pubblicato per quello che sembra.  Il cappuccio esiste su DUE strade: la via a
- * tagli (righe R_+ ± entry <= SDP_BIGM) e la costruzione conica di
- * `optimize_conic` (le stesse righe, la stessa costante), e `bar_cap_verdict` e'
- * UN solo posto che entrambe lo consultano — il verdetto non puo' divergere perche'
- * non ci sono due politiche da tenere in pari.
- * Misurato PRIMA (build -O2, controllo negativo eseguito disinserendo la guardia
- * e ri-misurato su questa tree): il verdetto sbagliato usciva da ENTRAMBE le
- * strade, perche' dove il nativo non converge il dispatcher consegne comunque ai
- * tagli.
- *   A: min -x0-x1 con [[x0,1],[1,x1]] >= 0 -> rc=OK prosta=1 solsta=OPTIMAL,
+/* T100 — the cap on the BAR ENTRIES is not a model constraint, and a
+ * point sitting on it is not an answer. `SDP_BIGM = 1e6`
+ * bounds the bar entries so that the first LP of the outer approximation — which
+ * has no cut yet — has one anyway. When the model runs past
+ * that bound the LP stops THERE, and until this change that value was
+ * published for what it looks like.  The cap exists on TWO paths: the cut
+ * path (rows R_+ ± entry <= SDP_BIGM) and the conic construction of
+ * `optimize_conic` (the same rows, the same constant), and `bar_cap_verdict` is
+ * a SINGLE place both consult — the verdict cannot diverge because
+ * there are not two policies to keep in step.
+ * Measured BEFORE (build -O2, negative control run by removing the guard
+ * and re-measured on this tree): the wrong verdict came out of BOTH
+ * paths, because where the native does not converge the dispatcher still hands off to the
+ * cuts.
+ *   A: min -x0-x1 with [[x0,1],[1,x1]] >= 0 -> rc=OK prosta=1 solsta=OPTIMAL,
  *     pobj = dobj = -2e6, x = (1e6,1e6), Xj = [[1e6,1],[1,1e6]],
- *     Sj = [[-1,0],[0,-1]] — il duale Z = C - Σ y_i A^i SENZA i moltiplicatori
- *     del bordo, quindi fuori dal cono duale: il foro che T89 aveva segnalato.
- *     E le due misure erano gia' d'accordo fra loro e con il modello:
- *     getprimalinfeas = 0 perche' le RIGHE sono soddisfatte, getdualinfeas = 1
- *     perche' lambda_min(Sj) = -1 (e' la guardia di T97): il numero che diceva
- *     la verita' c'era, non era il verdetto ad ascoltarlo.
- *   B: min -<E00,B> con <S01,B> = 1, nessuna variabile scalare -> rc=OK
+ *     Sj = [[-1,0],[0,-1]] — the dual Z = C - Σ y_i A^i WITHOUT the
+ *     cap multipliers, hence outside the dual cone: the hole T89 had flagged.
+ *     And the two measures already agreed with each other and with the model:
+ *     getprimalinfeas = 0 because the ROWS are satisfied, getdualinfeas = 1
+ *     because lambda_min(Sj) = -1 (it is the guard of T97): the number that told
+ *     the truth was there, it was the verdict that did not listen to it.
+ *   B: min -<E00,B> with <S01,B> = 1, no scalar variable -> rc=OK
  *     solsta=OPTIMAL, pobj = -1e6, Sj = [[-1,0],[0,0]].
- *   E: rc = OK con un punto pubblicato, contro un estremo che non esiste.
- * Controllo negativo eseguito (guardia disinserita, stessa build): la suite fa
- * PASS: 1851 FAIL: 12, e i dodici check sono esattamente A, B ed E su entrambe
- * le strade. Con la guardia inserita: FAIL: 0.
- * Ora: la risposta che tocca il cappuccio non e' pubblicata. Si chiede al MODELLO
- * — le sue righe, i suoi bound, il cono rilassato al solo diagonale non negativo,
- * che e' la piu' larga rilassata LP che una matrice PSD ammetta — se ammette una
- * direzione di recessione, e la direzione viene MISURATA: e' la misura a decidere,
- * non l'LP. Se misura, il modello non ha valore finito: rc = ERR_UNBOUNDED,
- * prosta = DUAL_INFEAS, e solsta resta UNKNOWN perche' la direzione vive in parte
- * dentro una barra mentre PRIMAL_getprimalray ha per oggetto numvar scalari (la
- * deviazione che T85 dichiaro' per i percorsi conici). Se non misura non si
- * afferma niente: TRM_MAX_ITER e nessun getter del punto risponde (T99).
- * Perche' il test non sia verde con la via a tagli spenta, i controlli: B la
- * stessa illimitatezza senza una sola variabile scalare; C il modello limitato di
- * T89/T97 consegna ancora 2 con un duale dentro il cono duale; D lo stesso
- * modello con <S01,B> = 1000 — entrate grandi ma NON sul cappuccio — consegna
- * 2000, perche' la guardia non deve accendersi su un valore finito; E un estremo
- * non raggiunto (max -x0 sotto la stessa barra: x0 >= 1/x1 con x1 che deve
- * crescere senza limite) tocca il cappuccio SENZA avere una direzione di
- * recessione, e risponde TRM_MAX_ITER senza pubblicare; F un'illimitatezza
- * SCALARE, senza barra, consegna rc=1003 con solsta = 6 e il vettore accanto —
- * il discriminate della meta' dichiarata in A.
- * A..E sono asseriti su ENTRAMBE le strade: cio' che si asserisce qui e' il
- * VERDETTO, che e' lo stesso su entrambe, mentre il percorso no — come in
+ *   E: rc = OK with a published point, against an extreme that does not exist.
+ * Negative control run (guard removed, same build): the suite gives
+ * PASS: 1851 FAIL: 12, and the twelve checks are exactly A, B and E on both
+ * paths. With the guard in place: FAIL: 0.
+ * Now: the answer that touches the cap is not published. The MODEL is asked
+ * — its rows, its bounds, the cone relaxed to the non-negative diagonal alone,
+ * which is the widest LP relaxation a PSD matrix admits — whether it admits a
+ * recession direction, and the direction is MEASURED: it is the measure that decides,
+ * not the LP. If it measures, the model has no finite value: rc = ERR_UNBOUNDED,
+ * prosta = DUAL_INFEAS, and solsta stays UNKNOWN because the direction lives partly
+ * inside a bar while PRIMAL_getprimalray has as object numvar scalars (the
+ * deviation T85 declared for the conic paths). If it does not measure, nothing is
+ * asserted: TRM_MAX_ITER and no point getter answers (T99).
+ * So that the test is not green with the cut path off, the controls: B the
+ * same unboundedness without a single scalar variable; C the bounded model of
+ * T89/T97 still delivers 2 with a dual inside the dual cone; D the same
+ * model with <S01,B> = 1000 — large entries but NOT on the cap — delivers
+ * 2000, because the guard must not fire on a finite value; E an unreached
+ * extreme (max -x0 under the same bar: x0 >= 1/x1 with x1 that must
+ * grow without bound) touches the cap WITHOUT having a recession
+ * direction, and answers TRM_MAX_ITER without publishing; F a SCALAR
+ * unboundedness, without a bar, delivers rc=1003 with solsta = 6 and the vector beside it —
+ * the discriminate of the half declared in A.
+ * A..E are asserted on BOTH paths: what is asserted here is the
+ * VERDICT, which is the same on both, while the path is not — as in
  * T81/T91.
- * G..M sono la META' CONICA, che A..E non potevano vedere: su un task bar+coni
- * la via a tagli non viene nemmeno provata (numcones > 0 la scavalca), quindi
- * chi risponde alla barra e' la costruzione conica e lo era anche prima della
- * guardia.  Misurato PRIMA, sulla stessa build: rc=0 con pobj = dobj = -2e6,
- * x0 = x1 = 1e6, Sj = [[-1,0],[0,-1]] (duale FUORI dal cono) e getdualinfeas = 1
- * — e con DUE barre il pubblicato era -4e6.  G la stessa illimitatezza affacciata
- * su un cono (rc=1003, prosta=5, nulla pubblicato, e la riga "bar cap" letta dal
- * log pubblico prova che e' stata la via conica a domandare il cappuccio); L il
- * percorso affamato a una sola iterazione (TRM_MAX_ITER, solsta/prosta 0, nessun
- * getter del punto risponde — T99 vale anche qui — e il cappuccio non viene
- * interrogato su un punto che non c'e'); H il positive control limitato (2, con
- * duale in S^2_+); I lo stesso modello a r = 1e3 (2000: grande ma NON sul
- * cappuccio); M due barre con bordi DISTINTI risolte dalla costruzione conica,
- * che e' il controllo di collocamento dei blocchi triangolari. */
+ * G..M are the CONIC HALF, which A..E could not see: on a bar+cones task
+ * the cut path is not even tried (numcones > 0 skips it), so
+ * whoever answers the bar is the conic construction and was so even before the
+ * guard.  Measured BEFORE, on the same build: rc=0 with pobj = dobj = -2e6,
+ * x0 = x1 = 1e6, Sj = [[-1,0],[0,-1]] (dual OUTSIDE the cone) and getdualinfeas = 1
+ * — and with TWO bars the published value was -4e6.  G the same unboundedness faced
+ * on a cone (rc=1003, prosta=5, nothing published, and the "bar cap" line read from the
+ * public log proves that it was the conic path that asked for the cap); L the
+ * path starved to a single iteration (TRM_MAX_ITER, solsta/prosta 0, no
+ * point getter answers — T99 also holds here — and the cap is not
+ * queried on a point that is not there); H the bounded positive control (2, with
+ * dual in S^2_+); I the same model at r = 1e3 (2000: large but NOT on the
+ * cap); M two bars with DISTINCT bounds solved by the conic construction,
+ * which is the placement check for the triangular blocks. */
 
-/* <E00,B> = x0, <E11,B> = x1, <S01,B> = r con B in S^2_+, cioe'
- * B = [[x0,r],[r,x1]]: il modello di T89/T97, che per AM-GM ha min x0+x1 = 2r e
- * nessun bordo superiore. */
+/* <E00,B> = x0, <E11,B> = x1, <S01,B> = r with B in S^2_+, i.e.
+ * B = [[x0,r],[r,x1]]: the model of T89/T97, which by AM-GM has min x0+x1 = 2r and
+ * no upper bound. */
 static void t100_barcone(PRIMALtask_t t, double cj, double r) {
     enum { NB = 2 };
     int m00, m11, m01;
@@ -5636,7 +5697,7 @@ static void t100_barcone(PRIMALtask_t t, double cj, double r) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, r, r);
 }
 
-/* UNA SOLA barra, nessuna variabile scalare: min -<E00,B> con <S01,B> = 1. */
+/* A SINGLE bar, no scalar variable: min -<E00,B> with <S01,B> = 1. */
 static void t100_barebar(PRIMALtask_t t) {
     enum { NB = 2 };
     int m00, m01;
@@ -5651,18 +5712,19 @@ static void t100_barebar(PRIMALtask_t t) {
     PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
 }
 
-/* Testimone di percorso attraverso un'API pubblica: la riga "bar cap" la scrive
- * solo bar_cap_ray, e su un task bar+coni l'unica strada che la chiama e' la
- * costruzione conica (la via a tagli tangenti non viene nemmeno provata, perche'
- * numcones > 0 la scavalca). */
+/* Path witness through a public API: the "bar cap" line is written only by
+ * bar_cap_ray, and on a bar+cones task the only path that calls it is the
+ * conic construction (the tangent-cut path is not even tried, because
+ * numcones > 0 skips it). */
 static int t100_caplog;
+/* Log callback: records whether the "bar cap" line was emitted (T100 path witness). */
 static void t100_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "bar cap")) t100_caplog = 1;
 }
 
-/* Il modello di t100_barcone con un cono QUAD accanto: x2 >= sqrt(0.3^2+0.4^2),
- * tre scalari nuove che non toccano ne' le righe della barra ne' l'obiettivo. */
+/* The t100_barcone model with a QUAD cone beside it: x2 >= sqrt(0.3^2+0.4^2),
+ * three new scalars that touch neither the bar rows nor the objective. */
 static void t100_baroncone(PRIMALtask_t t, double cj, double r) {
     t100_barcone(t, cj, r);
     PRIMAL_appendvars(t, 3);
@@ -5672,14 +5734,14 @@ static void t100_baroncone(PRIMALtask_t t, double cj, double r) {
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){2, 3, 4});
 }
 
-/* Due barre con r DISTINTI, un cono QUAD e un cono PEXP.  Il PEXP c'e' perche'
- * sia il nativo a dover rifiutare: con le tre tolleranze dichiarate a 1e-15 la
- * sua terna (misurata 7.4e-9) non passa e il dispatcher, perche' numcones > 0,
- * scavalca i tagli tangenti e consegna alla COSTRUZIONE CONICA.  Lì ogni barra
- * ha il proprio blocco di colonne triangolari dopo le ausiliarie, e il blocco
- * della barra 1 parte dove finisce quello della barra 0: con i due bordi diversi
- * le righe <S01,B_0> = r0 e <S01,B_1> = r1 nominano colonne diverse, e se non le
- * nominassero il modello sarebbe infeasible, non "approssimato male". */
+/* Two bars with DISTINCT r, a QUAD cone and a PEXP cone.  The PEXP is there so that
+ * the native path must reject: with the three tolerances declared at 1e-15 its
+ * triple (measured 7.4e-9) does not pass and the dispatcher, because numcones > 0,
+ * skips the tangent cuts and hands off to the CONIC CONSTRUCTION.  There each bar
+ * has its own block of triangular columns after the auxiliaries, and the block
+ * of bar 1 starts where that of bar 0 ends: with the two different bounds
+ * the rows <S01,B_0> = r0 and <S01,B_1> = r1 name different columns, and if they did not
+ * name them the model would be infeasible, not "badly approximated". */
 static PRIMALtask_t t100_twobars(P *p, double r0, double r1) {
     enum { NB = 2 };
     int m00, m11, m01;
@@ -5692,8 +5754,8 @@ static PRIMALtask_t t100_twobars(P *p, double r0, double r1) {
     PRIMAL_appendsparsesymmat(t, NB, 1, (int[]){0}, (int[]){1}, (double[]){0.5}, &m01);
     int dims[2] = {NB, NB};
     PRIMAL_appendbarvars(t, 2, dims);
-    /* 0..3 i diagonali delle due barre, 4 il t condiviso dai due coni, 5 e 6 le
-     * gambe del QUAD, 7 l'u del PEXP. */
+    /* 0..3 the diagonals of the two bars, 4 the t shared by the two cones, 5 and 6 the
+     * legs of the QUAD, 7 the u of the PEXP. */
     PRIMAL_appendvars(t, 8);
     for (int b = 0; b < 2; b++) {
         for (int j = 2*b; j < 2*b+2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
@@ -5726,10 +5788,10 @@ static PRIMALtask_t t100_twobars(P *p, double r0, double r1) {
     return t;
 }
 
-/* 1 se il solve ha detto "questo modello non ha un valore finito" e non ha
- * pubblicato niente: verdetto in prosta, nessun punto, nessun raggio (che qui
- * sarebbe un vettore di sole coordinate scalari, e la direzione ne vive una di
- * barra). */
+/* 1 if the solve said "this model has no finite value" and published
+ * nothing: verdict in prosta, no point, no ray (which here
+ * would be a vector of scalar coordinates alone, and the direction lives a bar
+ * one). */
 static int t100_no_value(PRIMALtask_t t, PRIMALrescodee rc) {
     double v[8];
     int sta = -9, pro = -9;
@@ -5744,6 +5806,8 @@ static int t100_no_value(PRIMALtask_t t, PRIMALrescodee rc) {
     return 1;
 }
 
+/* Run one T100 case (letter A..E) on the cut or native path and assert the
+ * verdict. */
 static void t100_case(char letter, int cse, int cuts) {
     char lbl[64];
     snprintf(lbl, sizeof lbl, "T100 %c %s", letter, cuts ? "via a tagli" : "via nativa");
@@ -5754,19 +5818,19 @@ static void t100_case(char letter, int cse, int cuts) {
     PRIMALrescodee rc;
 
     switch (cse) {
-    case 0: {                                          /* illimitato nella barra */
+    case 0: {                                          /* unbounded in the bar */
         t100_barcone(t, -1.0, 1.0);
         rc = PRIMAL_optimize(t);
         check(t100_no_value(t, rc) == 1, "rc=1003, prosta=5, solsta=0, nulla pubblicato");
         break;
     }
-    case 1: {                                          /* illimitato, sola barra */
+    case 1: {                                          /* unbounded, bar only */
         t100_barebar(t);
         rc = PRIMAL_optimize(t);
         check(t100_no_value(t, rc) == 1, "vale anche senza una scalare da incappucciare");
         break;
     }
-    case 2: {                                          /* limitato: AM-GM, 2 */
+    case 2: {                                          /* bounded: AM-GM, 2 */
         double x[2] = {0,0}, po = 0.0, dob = 0.0, pinf = -1.0, dinf = -1.0;
         double Z[4], Bm[4], Zc[4], ev[2], evec[4];
         t100_barcone(t, 1.0, 1.0);
@@ -5782,8 +5846,8 @@ static void t100_case(char letter, int cse, int cuts) {
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, Bm), PRIMAL_RES_OK, "getbarxj");
         check(fabs(Bm[0] - x[0]) <= 1e-4 && fabs(Bm[3] - x[1]) <= 1e-4,
               "la barra pubblicata e' [[x0,1],[1,x1]]");
-        /* La guardia sul controllo negativo: prima Sj era [[-1,0],[0,-1]], che
-         * non e' in S^2_+; qui il duale pubblicato deve starci dentro. */
+        /* The guard on the negative control: before Sj was [[-1,0],[0,-1]], which
+         * is not in S^2_+; here the published dual must lie inside it. */
         check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, Z), PRIMAL_RES_OK, "getbarsj");
         for (int a = 0; a < 4; a++) Zc[a] = Z[a];
         dmat_eig_jacobi(2, Zc, ev, evec);
@@ -5792,7 +5856,7 @@ static void t100_case(char letter, int cse, int cuts) {
         check(dinf >= -ev[0] - 1e-9, "getdualinfeas vede Z, come in T97");
         break;
     }
-    case 3: {                       /* entrate grandi, ma NON sul cappuccio: 2r */
+    case 3: {                       /* large entries, but NOT on the cap: 2r */
         double po = 0.0, dob = 0.0, pinf = -1.0;
         t100_barcone(t, 1.0, 1000.0);
         rc = PRIMAL_optimize(t);
@@ -5805,12 +5869,12 @@ static void t100_case(char letter, int cse, int cuts) {
         check(pinf >= 0.0 && pinf <= 1e-6, "e il punto sta dentro il cono");
         break;
     }
-    default: {         /* estremo inferiore non raggiunto: cappuccio, non raggio */
+    default: {         /* lower extreme not reached: cap, not ray */
         double v[8];
         int sta = -9, pro = -9;
         t100_barcone(t, -1.0, 1.0);
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
-        PRIMAL_putcj(t, 1, 0.0);           /* max -x0: estremo 0, mai raggiunto */
+        PRIMAL_putcj(t, 1, 0.0);           /* max -x0: extreme 0, never reached */
         rc = PRIMAL_optimize(t);
         check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "nessuna direzione misura: nessun verdetto");
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
@@ -5825,6 +5889,7 @@ static void t100_case(char letter, int cse, int cuts) {
     pend(&p);
 }
 
+/* Build the bar+cone model with logging and the iteration cap, for cases G..M. */
 static PRIMALtask_t t100_conic(P *p, double cj, double r, int iters) {
     pbegin(p);
     t100_caplog = 0;
@@ -5835,64 +5900,64 @@ static PRIMALtask_t t100_conic(P *p, double cj, double r, int iters) {
     return p->task;
 }
 
-/* ---- T101: una strada conica risponde del MODELLO, non del proprio iterato.
+/* ---- T101: a conic path answers for the MODEL, not for its own iterate.
  *
- * Tre domande che un IPM conico non puo' rispondere con i numeri suoi, e una
- * quarta che poteva ma non aveva risposto nel verso giusto.
+ * Three questions a conic IPM cannot answer with its own numbers, and a
+ * fourth it could but had not answered in the right direction.
  *
- * 1. Un cono non ha righe da lasciare insoddisfatte: il vertice di un blocco
- *    QUAD soddisfa ogni equazione che il modello ha, quindi la terna
- *    rel_pri/rel_dual/rel_gap -- il numero su cui ogni altra guardia di questa
- *    famiglia legge -- puo' chiudersi li' su un punto che non e' l'ottimo. Cio'
- *    che lo dice e' il COSTO RIDOTTO del blocco, che deve stare in K*. Misurato
- *    prima della guardia: `min -x0` su un QUAD libero senza righe rispondeva
- *    rc=OK, solsta=OPTIMAL, pobj ~ 5e-9 in x = 0 con violazione duale di cono
- *    esattamente 1 (e' la pubblicazione che A ora nega).
- * 2. Una strada che finisce le iterazioni ha detto qualcosa della propria
- *    traiettoria e nulla del modello, e TRM_MAX_ITER e' la risposta che lascia
- *    l'utente senza niente. Due domande sul modello sono decise lo stesso,
- *    ciascuna sulla rilassata che rende SUONA la propria risposta:
- *    l'infeasibilita' chiede un insieme che CONTIENE i coni (solo conseguenze
- *    LINEARI dell'appartenenza), perche' un LP infeasibile su un sottinsieme del
- *    modello non prova nulla; l'illimitatezza chiede un insieme CONTENUTO nei
- *    coni, perche' una direzione di un insieme piu' largo non e' una direzione
- *    del modello. Le due rilassate sono OPPOSTE e nessuna sostituisce l'altra.
- * 3. Il blocco duale e' letto nello spazio dell'utente, dove il fattore di senso
- *    moltiplica anche il COSTO: d = s*(c + A'y), non c + s*A'y. Le due letture
- *    coincidono su un MINIMIZE e differiscono su un MAXIMIZE di esattamente 2*c.
- *    G e' il modello che le separa, e A/B/C/D/E non le possono vedere: A e B non
- *    hanno un duale da leggere, C/D sono MIN, su E la lettura sbagliata cade
- *    comunque dentro K*.
- * 4. La faccia u = 0 di un PEXP non e' una via di fuga: li' il cono si chiude su
- *    {v = 0, t >= 0}, e leggerla come "scarto 0" -- nessun valore assoluto, la
- *    stessa famiglia del `NaN > viol` di T90 -- era cio' che lasciava passare una
- *    direzione che scappa lungo v. Il modello che lo misura e' F, asserito per
- *    ultimo perche' nasce dalla correzione dei due precedenti.
+ * 1. A cone has no rows to leave unsatisfied: the vertex of a QUAD block
+ *    satisfies every equation the model has, so the triple
+ *    rel_pri/rel_dual/rel_gap -- the number every other guard of this
+ *    family reads -- can close there on a point that is not the optimum. What
+ *    says so is the REDUCED COST of the block, which must lie in K*. Measured
+ *    before the guard: `min -x0` on a free QUAD with no rows answered
+ *    rc=OK, solsta=OPTIMAL, pobj ~ 5e-9 at x = 0 with dual cone violation
+ *    exactly 1 (it is the publication that A now denies).
+ * 2. A path that runs out of iterations has said something about its own
+ *    trajectory and nothing about the model, and TRM_MAX_ITER is the answer that leaves
+ *    the user with nothing. Two questions about the model are decided anyway,
+ *    each on the relaxation that makes its own answer SOUND:
+ *    infeasibility asks for a set that CONTAINS the cones (only LINEAR
+ *    consequences of membership), because an infeasible LP on a subset of the
+ *    model proves nothing; unboundedness asks for a set CONTAINED in the
+ *    cones, because a direction of a larger set is not a direction
+ *    of the model. The two relaxations are OPPOSITE and neither replaces the other.
+ * 3. The dual block is read in the user's space, where the sense factor
+ *    multiplies also the COST: d = s*(c + A'y), not c + s*A'y. The two readings
+ *    coincide on a MINIMIZE and differ on a MAXIMIZE by exactly 2*c.
+ *    G is the model that separates them, and A/B/C/D/E cannot see it: A and B do not
+ *    have a dual to read, C/D are MIN, on E the wrong reading falls
+ *    anyway inside K*.
+ * 4. The face u = 0 of a PEXP is not an escape route: there the cone closes on
+ *    {v = 0, t >= 0}, and reading it as "slack 0" -- no absolute value, the
+ *    same family as the `NaN > viol` of T90 -- was what let through a
+ *    direction escaping along v. The model that measures it is F, asserted
+ *    last because it was born from the correction of the two previous.
  *
- * I verdetti escono come T98 li ha stabiliti per un verdetto senza certificato:
- * prosta porta il giudizio, solsta dice UNKNOWN, e nulla del punto viene
- * pubblicato (deviazione T85: le strade conica/SDP/MIP non hanno un vettore di
- * Farkas accanto). Tre controlli negativi:
- *  - le due consulte del dispatcher spente, MISURATO su questa tree:
- *    `PASS: 1983 FAIL: 3`, e i tre sono esattamente A, B e C (D/E/G/H/I/F non si
- *    muovono, perche' non chiedono un verdetto a quella guardia);
- *  - fattore di senso rimesso su `c + s*A'y`, MISURATO: G risponde
- *    `rc=1007 prosta=0 solsta=0` con OGNI getter del punto che rifiuta — non un
- *    numero sbagliato, un verdetto intero che si capovolge — e D, E, i due SOC e
- *    H/I restano identici, come devono perche' sono MIN o cadono dentro K* in
- *    qualunque lettura;
- *  - la faccia u = 0 lasciata leggere come scarto 0: misurato PRIMA di questo
- *    test, su questa tree ma senza T101, ed e' `PASS: 1907 FAIL: 1` sul caso
- *    `tol 1e-15` di T82 (un modello limitato risposto 1003). La ri-esecuzione
- *    con T101 in piedi e' stata rifiutata dal livello di permessi di questa
- *    sessione, quindi quella cifra resta della misura fatta, non di un re-run. ---- */
+ * The verdicts come out as T98 established them for a verdict without a certificate:
+ * prosta carries the judgment, solsta says UNKNOWN, and nothing of the point is
+ * published (T85 deviation: the conic/SDP/MIP paths have no Farkas
+ * vector beside them). Three negative controls:
+ *  - the two dispatcher consults off, MEASURED on this tree:
+ *    `PASS: 1983 FAIL: 3`, and the three are exactly A, B and C (D/E/G/H/I/F do not
+ *    move, because they do not ask that guard for a verdict);
+ *  - sense factor put back on `c + s*A'y`, MEASURED: G answers
+ *    `rc=1007 prosta=0 solsta=0` with EVERY point getter rejecting — not a
+ *    wrong number, an entire verdict flipping — and D, E, the two SOC and
+ *    H/I stay identical, as they must because they are MIN or fall inside K* in
+ *    any reading;
+ *  - the face u = 0 left read as slack 0: measured BEFORE this
+ *    test, on this tree but without T101, and it is `PASS: 1907 FAIL: 1` on the
+ *    `tol 1e-15` case of T82 (a bounded model answered 1003). The re-run
+ *    with T101 in place was refused by the permission level of this
+ *    session, so that figure is from the measurement made, not from a re-run. ---- */
 
-/* (x0,x1,x2) in QUAD con x0 = 5, x1 = 4 e costo cj su tutte e tre le variabili.
- * cj=+1 MIN -> x=(5,4,-3), valore 6.  cj=+1 MAX -> x=(5,4,3), valore 12.
- * cj=-1 MAX -> x=(5,4,-3), valore -6.  Con bndx2 la sola x2 prende un bordo
- * finito (-10, slack all'ottimo): il blocco diventa ILLEGGIBILE, perche' il
- * moltiplicatore del bordo non e' separabile da quello del cono in cio' che viene
- * pubblicato, e il modello deve rispondere comunque. */
+/* (x0,x1,x2) in QUAD with x0 = 5, x1 = 4 and cost cj on all three variables.
+ * cj=+1 MIN -> x=(5,4,-3), value 6.  cj=+1 MAX -> x=(5,4,3), value 12.
+ * cj=-1 MAX -> x=(5,4,-3), value -6.  With bndx2 only x2 takes a finite
+ * bound (-10, slack at the optimum): the block becomes UNREADABLE, because the
+ * bound multiplier is not separable from the cone one in what is
+ * published, and the model must answer anyway. */
 static PRIMALtask_t t101_soc(P *p, double cj, int maxsense, int bndx2) {
     pbegin(p);
     PRIMALtask_t t = p->task;
@@ -5912,53 +5977,53 @@ static PRIMALtask_t t101_soc(P *p, double cj, int maxsense, int bndx2) {
     return t;
 }
 
-/* ---------------- T109: il modello cresce, e le tabelle che non crescono si leggono fuori ----------------
- * Cinque tabelle di `PRIMALtask` sono allocate **pigramente**: alla lunghezza che
- * il modello aveva durante la LORO prima scrittura, e mai piu' ricresciute.
- * `warm_x`/`warm_y` (i vettori consegnati da `putxx`/`puty`), `skx`/`skc` (la
- * base data a `solvebasis` o letta da `readbasis`), i blocchi densi di `qcon`
- * (uno per riga quadratica, `numvar x numvar`) e l'array di puntatori che li
- * tiene (uno per vincolo). Nessuna di queste cinque viene toccata da
- * `PRIMAL_appendvars`/`PRIMAL_appendcons`, che invece `numvar`/`numcon` li muovono
- * — e quelle due cifre sono l'indice con cui le cinque tabelle si leggono E si
- * scrivono. Non e' un arrotondamento e non e' una convenzione: e' una `memcpy` che
- * scrive dove il blocco finisce e un `for (j < numvar)` che legge dove non c'e'
- * niente.
- * **Misurato PRIMA della correzione, build dei sanitizer, tre hit distinti**:
- *   `putxx` dopo `appendvars`  heap-buffer-overflow **WRITE of size 48** (blocco
- *                             da 16 byte allocato in `putxx` stesso)
- *   `getnumqconknz`            heap-buffer-overflow **READ of size 8** (l'array di
- *                             puntatori, 32 byte, indicizzato a `numcon` cresciuto)
- *   `getxx` dopo un solve e `appendvars`: **READ of size 48** (il buffer del punto,
- *                             allocato in `opt_prepare` alla lunghezza del solve)
- * Il terzo non e' della stessa famiglia, e la correzione non e' la stessa: le
- * prime quattro tabelle sono **input** dell'utente, quindi vanno cresciute e
- * conservate (la coda cresce a zero, che li' significa «nessuna opinione»: un
- * incumbent deve comunque misurare, e `PRIMAL_SK_UNDEF == 0` significa «mai
- * impostato» — che e' esattamente lo stato di una coordinata che non esisteva
- * quando la base e' stata scritta, e `solvebasis` la **rifiuta** gia' oggi). Il
- * punto pubblicato no, perche' nessun vettore in questo task sa esprimere il
- * modello cresciuto: li' la regola e' `T99` («`has_sol` risponde a una sola
- * domanda: c'e' un punto da consegnare»), e dopo un append non ce n'e' uno.
- * `qcon` e' il terzo caso, ed e' un componente del modello: i blocchi vengono
- * **ricostruiti** al nuovo stride, riga per riga, transazionalmente (tutti i
- * blocchi nuovi allocati e riempiti prima che qualunque vecchio sia liberato).
- * I valori asseriti sono derivati a mano: il caso D risponde `-6` (la riga
- * quadratica e' `x0^2+x0x1+x1^2 <= 3`, ottimo simmetrico `x0=x1=1` per il massimo
- * di `x0+x1`, piu' le due variabili aggiunte che valgono 2 ciascuna perche' non
- * toccano nessuna riga) e, scritto un termine sulla colonna **nuova**,
- * `-(sqrt(10)+2)` (KKT a mano: `x0=x1=sqrt(0.4)`, `x2=3·sqrt(0.4)=1.897` sotto il
- * proprio bordo, somma `5·sqrt(0.4) = sqrt(10)` esatto).
- * Il caso F e' la meta' che impedisce a questa correzione di essere un
- * «butta tutto»: una crescita di zero elementi non cresce niente e non deve
- * cancellare una risposta.
+/* ---------------- T109: the model grows, and the tables that do not grow are read out of bounds ----------------
+ * Five tables of `PRIMALtask` are allocated **lazily**: at the length the
+ * model had during THEIR first write, and never grown again.
+ * `warm_x`/`warm_y` (the vectors delivered by `putxx`/`puty`), `skx`/`skc` (the
+ * basis given to `solvebasis` or read by `readbasis`), the dense blocks of `qcon`
+ * (one per quadratic row, `numvar x numvar`) and the array of pointers that
+ * holds them (one per constraint). None of these five is touched by
+ * `PRIMAL_appendvars`/`PRIMAL_appendcons`, which instead move `numvar`/`numcon`
+ * — and those two numbers are the index by which the five tables are read AND
+ * written. It is not a rounding and not a convention: it is a `memcpy` that
+ * writes where the block ends and a `for (j < numvar)` that reads where there is
+ * nothing.
+ * **Measured BEFORE the fix, sanitizer build, three distinct hits**:
+ *   `putxx` after `appendvars`  heap-buffer-overflow **WRITE of size 48** (a 16-byte
+ *                             block allocated in `putxx` itself)
+ *   `getnumqconknz`            heap-buffer-overflow **READ of size 8** (the array of
+ *                             pointers, 32 bytes, indexed at the grown `numcon`)
+ *   `getxx` after a solve and `appendvars`: **READ of size 48** (the point buffer,
+ *                             allocated in `opt_prepare` at the solve's length)
+ * The third is not of the same family, and the fix is not the same: the
+ * first four tables are the user's **input**, so they must be grown and
+ * preserved (the tail grows to zero, which there means "no opinion": an
+ * incumbent must still measure, and `PRIMAL_SK_UNDEF == 0` means "never
+ * set" — which is exactly the state of a coordinate that did not exist
+ * when the basis was written, and `solvebasis` **rejects** it already today). The
+ * published point does not, because no vector in this task can express the
+ * grown model: there the rule is `T99` ("`has_sol` answers a single
+ * question: is there a point to deliver"), and after an append there is none.
+ * `qcon` is the third case, and it is a component of the model: the blocks are
+ * **rebuilt** at the new stride, row by row, transactionally (all the new
+ * blocks allocated and filled before any old one is freed).
+ * The asserted values are derived by hand: case D answers `-6` (the quadratic
+ * row is `x0^2+x0x1+x1^2 <= 3`, symmetric optimum `x0=x1=1` for the maximum
+ * of `x0+x1`, plus the two added variables that are worth 2 each because they
+ * touch no row) and, a term written on the **new** column,
+ * `-(sqrt(10)+2)` (KKT by hand: `x0=x1=sqrt(0.4)`, `x2=3·sqrt(0.4)=1.897` below
+ * its own bound, sum `5·sqrt(0.4) = sqrt(10)` exactly).
+ * Case F is the half that keeps this fix from being a
+ * "throw everything away": a growth of zero elements grows nothing and must not
+ * erase an answer.
  */
 static void test_t109(void) {
-    /* A. il vettore dato a putxx sopravvive alla crescita del modello, e la coda
-     *    cresciuta si legge come 0. Warm start MIP (mioinitsol): l'incumbente
-     *    iniziale e' l'UNICA cosa che il task ha in mano con il cap di nodi a 1,
-     *    quindi il numero pubblicato dice se quella tabella e' stata letta — e
-     *    letta alla lunghezza NUOVA. */
+    /* A. the vector given to putxx survives the growth of the model, and the grown
+     *    tail reads as 0. MIP warm start (mioinitsol): the initial incumbent
+     *    is the ONLY thing the task has in hand with the node cap at 1,
+     *    so the published number says whether that table was read — and
+     *    read at the NEW length. */
     {
         cur_name = "T109 A il warm start cresce col modello e conserva";
         setenv("GMB_NO_MIP_CUTS", "1", 1);
@@ -5972,8 +6037,8 @@ static void test_t109(void) {
         PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
         check_rc(PRIMAL_putxx(t, PRIMAL_SOL_ITR, (double[]){2.0}), PRIMAL_RES_OK,
                  "putxx a 1 variabile: alloca LA TABELLA a questa lunghezza");
-        PRIMAL_appendvars(t, 2);              /* warm_x deve arrivare a 3 */
-        for (int j = 1; j < 3; j++) {         /* nessun costo, nessuna riga */
+        PRIMAL_appendvars(t, 2);              /* warm_x must reach 3 */
+        for (int j = 1; j < 3; j++) {         /* no cost, no row */
             PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
             PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT);
         }
@@ -5986,7 +6051,7 @@ static void test_t109(void) {
         check(fabs(x[0] - 2.0) <= 1e-9 && fabs(x[1]) <= 1e-9 && fabs(x[2]) <= 1e-9,
               "x0=2 e' sopravvissuto al realloc e la coda cresce a 0");
         close_enough_tol(po, -2.0, 1e-9, "l'incumbente pubblicato e' quel punto");
-        /* e la seconda meta': scrivere 3 doppi dove il blocco era da 1. */
+        /* and the second half: write 3 doubles where the block was 1 long. */
         check_rc(PRIMAL_putxx(t, PRIMAL_SOL_ITR, (double[]){1.0, 7.0, 9.0}),
                  PRIMAL_RES_OK, "putxx alla lunghezza nuova non e' fuori dal blocco");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_TRM_MAX_ITER, "di nuovo al cap nodi");
@@ -5999,10 +6064,10 @@ static void test_t109(void) {
         pend(&p);
         unsetenv("GMB_NO_MIP_CUTS");
     }
-    /* B. il punto pubblicato NON cresce: un modello che cambia forma non ha piu'
-     *    una risposta in questo task. Prima della guardia, `getxx` leggeva 48
-     *    byte da un blocco da 16 (il buffer del punto e' di `opt_prepare`, non di
-     *    `appendvars`) e rispondeva NUMERI del modello di prima. */
+    /* B. the published point does NOT grow: a model that changes shape no longer has
+     *    an answer in this task. Before the guard, `getxx` read 48
+     *    bytes from a 16-byte block (the point buffer is `opt_prepare`'s, not
+     *    `appendvars`'s) and answered NUMBERS of the earlier model. */
     {
         cur_name = "T109 B crescere il modello ritira la risposta";
         P p; pbegin(&p);
@@ -6037,9 +6102,9 @@ static void test_t109(void) {
         close_enough_tol(po_old, 2.0, 1e-9, "lo stesso valore, per la stessa ragione");
         pend(&p);
     }
-    /* C. la base: cresce e conserva, e la coda e' UNDEF — che solvebasis rifiuta
-     *    oggi stesso. Un vettore di status che dice «basic» per una variabile che
-     *    non c'era sarebbe una base inventata. */
+    /* C. the basis: grows and preserves, and the tail is UNDEF — which solvebasis
+     *    refuses already today. A status vector that says "basic" for a variable that
+     *    was not there would be an invented basis. */
     {
         cur_name = "T109 C la base cresce e la coda dice UNDEF";
         P p; pbegin(&p);
@@ -6084,17 +6149,17 @@ static void test_t109(void) {
         close_enough_tol(po, 4.0, 1e-9, "e l'obiettivo non e' cambiato");
         pend(&p);
     }
-    /* D. il deposito quadratico: `qcon` e' numvar x numvar DENSA, quindi crescere
-     *    le colonne cambia lo STRIDE, non solo la lunghezza. Lettura e scrittura
-     *    dopo la crescita, e — parte forte — il modello che risponde ancora del
-     *    vincolo che ha in mano: il valore derivato a mano (`-2`, x0=x1=1 sulla
-     *    frontiera `x'Qx = 12 = 2b`) e' asserito PRIMA e DOPO appendvars(2), e i
-     *    due solve coincidono. Se lo stride reshapeato fosse sbagliato — anche di
-     *    una sola riga copiata male — i due numeri si muoverebbero.
-     *    (Nota di storia: la prima stesura di questo caso leggeva `pobj=-3.4641`
-     *    e la registrava come disaccordo di convenzioni sul bordo. Era un difetto
-     *    dell'encoder QCQP — autovalori accoppiati agli autovettori sbagliati —
-     *    ed e' corretto e asserito in `T110`.) */
+    /* D. the quadratic store: `qcon` is numvar x numvar DENSE, so growing
+     *    the columns changes the STRIDE, not only the length. Read and write
+     *    after the growth, and — the strong part — the model still responding to the
+     *    constraint it holds: the hand-derived value (`-2`, x0=x1=1 on the
+     *    frontier `x'Qx = 12 = 2b`) is asserted BEFORE and AFTER appendvars(2), and the
+     *    two solves coincide. If the reshaped stride were wrong — even by
+     *    a single row copied badly — the two numbers would move.
+     *    (History note: the first draft of this case read `pobj=-3.4641`
+     *    and recorded it as a disagreement of conventions on the bound. It was a defect
+     *    of the QCQP encoder — eigenvalues paired with the wrong eigenvectors —
+     *    and it is fixed and asserted in `T110`.) */
     {
         cur_name = "T109 D la Q cresce di stride e resta quella scritta";
         P p; pbegin(&p);
@@ -6104,10 +6169,10 @@ static void test_t109(void) {
                         (double[]){4.0, 2.0, 4.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 6.0);
         for (int j = 0; j < 2; j++)
-            PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 2.0);   /* il quadrato lega
-                                                                  * prima del bordo
-                                                                  * sotto entrambe le
-                                                                  * convenzioni */
+            PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 2.0);   /* the square binds
+                                                                  * before the bound
+                                                                  * under both
+                                                                  * conventions */
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -1.0);
         int want = -1;
         check_rc(PRIMAL_getnumqconknz(t, 0, &want), PRIMAL_RES_OK, "getnumqconknz");
@@ -6125,7 +6190,7 @@ static void test_t109(void) {
         close_enough_tol(po, -2.0, 1e-4,
                          "-2 a mano: x0=x1=1 e' la frontiera di 0.5*x'Qx <= 6");
         PRIMAL_appendvars(t, 2);
-        for (int j = 2; j < 4; j++)     /* costo 0: presenti, non interessate */
+        for (int j = 2; j < 4; j++)     /* cost 0: present, not involved */
             PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 2.0);
         cur_name = "T109 D appendvars(2)";
         want = -1;
@@ -6151,10 +6216,10 @@ static void test_t109(void) {
         close_enough_tol(po, -2.0, 1e-4, "-2 ancora, non solo uguale a se stesso");
         check(fabs(x[0] - x1a) <= 1e-4 && fabs(x[1] - x1a) <= 1e-4,
               "e lo stesso punto, perche' le due variabili nuove non hanno costo");
-        /* e la meta' che nessun confronto fra due solve puo' dare: scrivere su una
-         * colonna CHE NON ESISTEVA quando il blocco e' stato allocato. `putqconk`
-         * ha semantica REPLACE-ROW (T107: `had` + `memset`, come `putarow`), quindi
-         * la riga esce con UNA sola entrata e i tre termini vecchi non ci sono piu'. */
+        /* and the half that no comparison between two solves can give: writing on a
+         * column THAT DID NOT EXIST when the block was allocated. `putqconk`
+         * has REPLACE-ROW semantics (T107: `had` + `memset`, like `putarow`), so
+         * the row comes out with a SINGLE entry and the three old terms are gone. */
         check_rc(PRIMAL_putqconk(t, 0, 1, (int[]){2}, (int[]){2}, (double[]){2.0}),
                  PRIMAL_RES_OK, "putqconk su (2,2), fuori dal vecchio blocco");
         want = -1;
@@ -6173,10 +6238,10 @@ static void test_t109(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "nuovo solve con x2 nella sola Q");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
-        /* Ora la riga quadratica ha UN solo termine, (2,2)=2, contro lo stesso
-         * bordo 6: chiede x2^2 <= 6, cioe' x2 <= 2.45 — sopra il bordo lineare 2
-         * che hanno tutte e quattro le variabili. L'ottimo e' dunque interamente
-         * determinato dai bordi: -8, e la riga quadratica non lega niente. */
+        /* Now the quadratic row has a SINGLE term, (2,2)=2, against the same
+         * bound 6: it asks x2^2 <= 6, i.e. x2 <= 2.45 — above the linear bound 2
+         * that all four variables have. The optimum is thus entirely
+         * determined by the bounds: -8, and the quadratic row binds nothing. */
         close_enough_tol(po, -8.0, 1e-4, "-(2+2+2+2): la Q non lega piu' niente");
         check(po < po1 - 1e-6,
               "e la risposta si MUOVE quando si muove il deposito (min: scende)");
@@ -6188,9 +6253,9 @@ static void test_t109(void) {
         check(pinf <= 1e-6, "e il punto misura nel modello cresciuto");
         pend(&p);
     }
-    /* E. l'array di puntatori-di-riga: una voce per vincolo. Scritta la riga 0 a
-     *    numcon=1, appendcons(2) e poi scrivere sulla riga NUOVA — che e'
-     *    esattamente l'indice 2 di un array lungo 1. */
+    /* E. the array of row-pointers: one entry per constraint. Row 0 written at
+     *    numcon=1, appendcons(2) and then write on the NEW row — which is
+     *    exactly index 2 of an array of length 1. */
     {
         cur_name = "T109 E scrivere su una riga aggiunta dopo";
         P p; pbegin(&p);
@@ -6210,7 +6275,7 @@ static void test_t109(void) {
         check_rc(PRIMAL_getqconkij(t, 0, 0, 0, &d0), PRIMAL_RES_OK, "getqconkij(0,0,0)");
         check_rc(PRIMAL_getqconkij(t, 2, 0, 0, &d2), PRIMAL_RES_OK, "getqconkij(2,0,0)");
         check(d0 == 2.0 && d2 == 3.0, "e i due valori non si sono calpestati");
-        PRIMAL_appendvars(t, 1);   /* ora tocca reshape DI DUE blocchi */
+        PRIMAL_appendvars(t, 1);   /* now it is the reshape of TWO blocks */
         cur_name = "T109 E e la crescita delle colonne";
         int qi[4], qj[4]; double qv[4]; int numret = -1;
         check_rc(PRIMAL_getnumqconknz(t, 0, &n0), PRIMAL_RES_OK, "riga 0 dopo");
@@ -6221,10 +6286,10 @@ static void test_t109(void) {
                  "lettura della riga aggiunta per seconda");
         check(numret == 1 && qi[0] == 0 && qj[0] == 0 && qv[0] == 3.0,
               "e' ancora la sua: 3.0, non il 2.0 dell'altra");
-        pend(&p);                /* qui dentro: liberare una voce per vincolo */
+        pend(&p);                /* in here: free one entry per constraint */
     }
-    /* F. controllo contro il proprio eccesso: appendvars(t,0) non aggiunge niente
-     *    e non deve cancellare niente. */
+    /* F. control against its own excess: appendvars(t,0) adds nothing
+     *    and must not erase anything. */
     {
         cur_name = "T109 F una crescita di zero non ritira la risposta";
         P p; pbegin(&p);
@@ -6250,31 +6315,31 @@ static void test_t109(void) {
     }
 }
 
-/* ---------------- T110: un autovalore accoppiato alla direzione sbagliata ----------------
- * `dmat_eig_jacobi` restituisce l'autovettore k nella COLONNA k di un buffer
- * row-major (il contratto e' scritto in `linalg.h`). `quad_encode_task` leggeva
- * `evec[r*nvar+j]`, cioe' la RIGA r: ogni lambda veniva dunque moltiplicato per
- * la direzione di un altro autovettore. Su una `Q` diagonale le due letture
- * coincidono (nessun termine incrociato, autovettori = versori) e nessun numero
- * si muove — per questo 26 giri di test quadratici non lo hanno visto. Su una
- * `Q` con il termine incrociato no: la forma quadratica RISOLTA era un'altra
- * forma, e `rc=OK` rispondeva di un modello che nessuno ha scritto.
+/* ---------------- T110: an eigenvalue paired with the wrong direction ----------------
+ * `dmat_eig_jacobi` returns eigenvector k in COLUMN k of a row-major buffer
+ * (the contract is written in `linalg.h`). `quad_encode_task` read
+ * `evec[r*nvar+j]`, i.e. ROW r: every lambda was thus multiplied by
+ * the direction of another eigenvector. On a diagonal `Q` the two readings
+ * coincide (no cross term, eigenvectors = unit vectors) and no number
+ * moves — which is why 26 rounds of quadratic tests did not see it. On a
+ * `Q` with a cross term they do not: the quadratic form SOLVED was another
+ * form, and `rc=OK` answered about a model nobody wrote.
  *
- * Misura del difetto, prima della correzione (`min -x0-x1`,
- * `Q = [[4,2],[2,4]]`, bordo `0.5*x'Qx <= 6`, x >= 0):
- *   pubblicato  x = (1.7320508, 1.7320508), pobj = -3.464101615
- *   0.5*x'Qx = 18 contro un bordo dichiarato di 6 — e `getprimalinfeas` lo diceva
- *   gia' (12), e `[cones]` pure (rel_slack -0.632). Il verdetto non ascoltava.
- * Cio' che il modello chiede, derivato a mano: 6a^2 = 6 -> a = 1, `pobj = -2`.
+ * Measurement of the defect, before the fix (`min -x0-x1`,
+ * `Q = [[4,2],[2,4]]`, bound `0.5*x'Qx <= 6`, x >= 0):
+ *   published  x = (1.7320508, 1.7320508), pobj = -3.464101615
+ *   0.5*x'Qx = 18 against a declared bound of 6 — and `getprimalinfeas` already
+ *   said so (12), and `[cones]` too (rel_slack -0.632). The verdict did not listen.
+ * What the model asks, derived by hand: 6a^2 = 6 -> a = 1, `pobj = -2`.
  *
- * E' la famiglia di `T100`/`T101`: non il punto che e' sbagliato per colpa di un
- * bordo messo dal solver, ma la RISPOSTA che non e' del modello. Qui la
- * contraddizione era gia' misurata da due getter e restava senza ascolto.
- * Le asserzioni A e C sono AUTO-DISCRIMINANTI: nominano anche il numero che
- * l'accoppiamento vecchio produceva, quindi sono false sotto il difetto senza
- * dover reinstallare nulla. */
+ * It is the family of `T100`/`T101`: not the point that is wrong because of a
+ * bound set by the solver, but the ANSWER that is not the model's. Here the
+ * contradiction was already measured by two getters and stayed unheard.
+ * Assertions A and C are SELF-DISCRIMINATING: they also name the number that
+ * the old pairing produced, so they are false under the defect without
+ * having to reinstall anything. */
 static void test_t110(void) {
-    /* A. la palla con il termine incrociato, risposta a mano */
+    /* A. the ball with the cross term, answer by hand */
     {
         cur_name = "T110 A riga quadratica con termine incrociato";
         P p; pbegin(&p);
@@ -6297,13 +6362,13 @@ static void test_t110(void) {
         check(pinf <= 1e-6, "e il punto pubblicato misura NEL suo stesso bordo");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dof), PRIMAL_RES_OK, "dobj");
         check(fabs(po - dof) <= 1e-6 * (1.0 + fabs(po)), "dualita' forte");
-        /* il numero dell'accoppiamento vecchio, che NON deve uscire */
+        /* the number of the old pairing, which must NOT come out */
         check(fabs(po + 2.0 * sqrt(3.0)) > 1e-3,
               "-3.4641 (l'altra forma) non e' pubblicato");
         pend(&p);
     }
-    /* B. lo stesso modello in MAXIMIZE: il fattore di senso non c'entra con
-     *    l'accoppiamento, e qui si misura che le due cose non si confondano. */
+    /* B. the same model in MAXIMIZE: the sense factor has nothing to do with
+     *    the pairing, and here it is measured that the two do not get confused. */
     {
         cur_name = "T110 B lo stesso modello in maximize";
         P p; pbegin(&p);
@@ -6326,13 +6391,13 @@ static void test_t110(void) {
         check(pinf <= 1e-6, "ammissibile anche in maximize");
         pend(&p);
     }
-    /* C. diagonali DIVERSI: qui l'accoppiamento vecchio non spostava soltanto il
-     *    numero — la forma che ne risultava era INDEFINITA, quindi l'encoder
-     *    rifiutava il modello (`ERR_ARG`) per un motivo che il modello non ha.
-     *    Q = [[1,1],[1,4]] (la scrittura incrociata vale due meta' dell'operatore,
-     *    T104) con bordo 4.5 chiede 0.5x0^2 + x0x1 + 2x1^2 <= 4.5. Max di x0+x1
-     *    sulla frontiera: il gradiente (x0+x1, x0+4x1) e' parallelo a (1,1) solo
-     *    per x1 = 0 -> x0 = 3, pobj = -3. */
+    /* C. DIFFERENT diagonals: here the old pairing did not merely shift the
+     *    number — the resulting form was INDEFINITE, so the encoder
+     *    rejected the model (`ERR_ARG`) for a reason the model does not have.
+     *    Q = [[1,1],[1,4]] (the cross write is worth two halves of the operator,
+     *    T104) with bound 4.5 asks 0.5x0^2 + x0x1 + 2x1^2 <= 4.5. Max of x0+x1
+     *    on the frontier: the gradient (x0+x1, x0+4x1) is parallel to (1,1) only
+     *    for x1 = 0 -> x0 = 3, pobj = -3. */
     {
         cur_name = "T110 C diagonali dispari: l'altra forma era indefinita";
         P p; pbegin(&p);
@@ -6356,13 +6421,13 @@ static void test_t110(void) {
         check(pinf <= 1e-6, "e il punto sta nel bordo che il modello dichiara");
         pend(&p);
     }
-    /* D. l'OBIETTIVO quadratico con il termine incrociato: lo stesso negozio,
-     *    l'altra meta' dell'encoder. `putqobj` SOMMA ½x'Qx, quindi "max
-     *    x1 - (0.5x0^2 + x0x1 + 2x1^2)" si scrive con la Q NEGAATIVA (il lato
-     *    NSD che MAXIMIZE richiede, T87) su x >= 0:
-     *    d/dx0 = -(x0+x1) < 0 per x1 > 0 -> x0 = 0; resta x1 - 2x1^2 -> x1 = 1/4,
-     *    valore 1/8. Con l'accoppiamento vecchio la forma era indefinita e
-     *    l'encoder rispondeva ERR_ARG. */
+    /* D. the quadratic OBJECTIVE with the cross term: the same store,
+     *    the other half of the encoder. `putqobj` ADDS ½x'Qx, so "max
+     *    x1 - (0.5x0^2 + x0x1 + 2x1^2)" is written with the NEGATIVE Q (the
+     *    NSD side that MAXIMIZE requires, T87) on x >= 0:
+     *    d/dx0 = -(x0+x1) < 0 for x1 > 0 -> x0 = 0; x1 - 2x1^2 remains -> x1 = 1/4,
+     *    value 1/8. With the old pairing the form was indefinite and
+     *    the encoder answered ERR_ARG. */
     {
         cur_name = "T110 D obiettivo quadratico con termine incrociato";
         P p; pbegin(&p);
@@ -6382,10 +6447,10 @@ static void test_t110(void) {
         close_enough_tol(x[1], 0.25, 1e-3, "x1 = 1/4");
         pend(&p);
     }
-    /* E. controllo positivo: una Q DIAGONALE non ha direzioni da accoppiare, e
-     *    il numero che esce e' lo stesso di prima della correzione. Senza questa
-     *    meta' l'asserto direbbe solo "ho cambiato le righe", non "ho cambiato le
-     *    righe CHE DOVEVO". */
+    /* E. positive control: a DIAGONAL Q has no directions to pair, and
+     *    the number that comes out is the same as before the fix. Without this
+     *    half the assertion would only say "I changed the rows", not "I changed the
+     *    rows I HAD TO". */
     {
         cur_name = "T110 E una Q diagonale non si muove";
         P p; pbegin(&p);
@@ -6405,53 +6470,54 @@ static void test_t110(void) {
     }
 }
 
-/* ---------------- T111: l'encoder non nega al modello la strada dei suoi coni ----------------
- * `quad_encode_task` COPIA i coni dell'utente nello shadow (e li copia tali e
- * quali: un PPOW resta un PPOW). Lo shadow senza barre di `regression_regularized`
- * era quindi un modello con quattro blocchi di potenza e nessuna parte quadratica
- * rimasta — esattamente la forma per cui l'IPM conico unificato ESISTE — eppure
- * `optimize_quad` gli offriva solo la via a tagli tangenti. Il dispatcher, sullo
- * STESSO modello scritto senza obiettivo quadratico, fa il contrario (primal.c:
+/* ---------------- T111: the encoder does not deny the model the path of its cones ----------------
+ * `quad_encode_task` COPIES the user's cones into the shadow (and copies them as they
+ * are: a PPOW stays a PPOW). The bar-free shadow of `regression_regularized`
+ * was therefore a model with four power blocks and no quadratic part
+ * left — exactly the shape for which the unified conic IPM EXISTS — yet
+ * `optimize_quad` offered it only the tangent-cut path. The dispatcher, on the
+ * SAME model written without a quadratic objective, does the opposite (primal.c:
  * "exp/power cones are native barrier blocks ... tried there first").
  *
- * Una decisione — quale strada risponde a un modello conico — scritta in due
- * punti con due politiche: e' la famiglia di `T100`/`T110`, e qui il motivo per
- * cui e' campata tanto a lungo e' il difetto di `T110`: con l'accoppiamento
- * sbagliato degli autovettori la forma risposta era un'altra, e sull'altra i
- * tagli convergevano.
+ * One decision — which path answers a conic model — written in two
+ * places with two policies: it is the family of `T100`/`T110`, and here the reason it
+ * survived so long is the defect of `T110`: with the wrong
+ * pairing of the eigenvectors the form answered was another, and on that one the
+ * cuts converged.
  *
- * Il modello A e' scelto per comporre le due guardie: HA un termine incrociato
- * (quindi `T110` c'entra) E un cono di potenza (quindi c'entra questo giro), con
- * l'ottimo derivato a mano.
+ * Model A is chosen to compose the two guards: it HAS a cross term
+ * (so `T110` is involved) AND a power cone (so this round is involved), with
+ * the optimum derived by hand.
  *   min  w0^2 + w0 w1 + w1^2  - w0 - w1 + t0 + t1
- *   con  p_j = w_j  e  (t_j, 1, p_j) in PPOW(1/2)  <=>  t_j >= p_j^2
- *   gradiente di 2w0^2 + w0 w1 + 2w1^2 - w0 - w1: 4w0+w1=1, w0+4w1=1
+ *   with  p_j = w_j  and  (t_j, 1, p_j) in PPOW(1/2)  <=>  t_j >= p_j^2
+ *   gradient of 2w0^2 + w0 w1 + 2w1^2 - w0 - w1: 4w0+w1=1, w0+4w1=1
  *   -> w = (1/5, 1/5), t = (1/25, 1/25), pobj = 1/5 - 2/5 = -1/5.
- * Il testimone e' "optimal solution found (SDP IPM)": lo scrive solo il percorso
- * nativo, e solo se gli e' stato chiesto di rispondere — alla dichiarazione di
- * default (1e-8) il gate consegna ai tagli lo STESSO valore, che e' la policy di
- * `T96`, quindi A allarga la tolleranza e D la lascia: i due casi differiscono
- * **solo** per la dichiarazione, e sono il motivo per cui A non e' vuoto.
- * **Controllo negativo non eseguito e dichiarato**: re-indossare il ladder vecchio
- * (la strada nativa offerta **solo** agli shadow con barre) e' stato **rifiutato** dal
- * classificatore di questa sessione, come nei giri 27/29/31 — quindi che "senza
- * il ladder A tace" e' un'inferenza dal codice, non una misura. Cio' che e'
- * misurato e' l'altro verso: `GMB_NO_EXP_IPM=1` (l'interruttore pubblico che
- * spegne la strada nativa) rende B identico ad A nel valore e muto nel testimone. */
+ * The witness is "optimal solution found (SDP IPM)": only the native path
+ * writes it, and only if it was asked to answer — at the default declaration
+ * (1e-8) the gate hands off to the cuts the SAME value, which is the policy of
+ * `T96`, so A widens the tolerance and D leaves it: the two cases differ
+ * **only** by the declaration, and they are the reason A is not empty.
+ * **Negative control not run and declared**: putting the old ladder back
+ * (the native path offered **only** to shadows with bars) was **refused** by the
+ * classifier of this session, as in rounds 27/29/31 — so that "without
+ * the ladder A stays silent" is an inference from the code, not a measurement. What is
+ * measured is the other direction: `GMB_NO_EXP_IPM=1` (the public switch that
+ * turns off the native path) makes B identical to A in value and silent in the witness. */
 static int t111_native;
+/* Log callback: set the flag when the native conic IPM answers. */
 static void t111_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "SDP IPM")) t111_native = 1;
 }
 
-/* kind 0 = PPOW(1/2) con la variabile "one" fissa a 1; kind 1 = QUAD (t,p). */
+/* kind 0 = PPOW(1/2) with the "one" variable fixed to 1; kind 1 = QUAD (t,p). */
 static void t111_model(PRIMALtask_t t, int kind) {
     int nv = kind == 0 ? 7 : 6;
     PRIMAL_appendvars(t, nv); PRIMAL_appendcons(t, 2);
     for (int j = 0; j < 4; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
     for (int j = 4; j < 6; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
     if (kind == 0) PRIMAL_putvarbound(t, 6, PRIMAL_BK_FX, 1.0, 1.0);
-    /* 1/2 x'Qx con Q = [[2,1],[1,2]]: la incrociata si dichiara UNA volta */
+    /* 1/2 x'Qx with Q = [[2,1],[1,2]]: the cross term is declared ONCE */
     PRIMAL_putqobj(t, 3, (int[]){0, 0, 1}, (int[]){0, 1, 1}, (double[]){2.0, 1.0, 2.0});
     double cj[6] = {kind == 0 ? -1.0 : -2.0, kind == 0 ? -1.0 : -2.0, 0.0, 0.0, 1.0, 1.0};
     for (int j = 0; j < 6; j++) PRIMAL_putcj(t, j, cj[j]);
@@ -6473,8 +6539,8 @@ static void t111_model(PRIMALtask_t t, int kind) {
     t111_native = 0;
 }
 
-/* L'ottimo atteso: PPOW -> -1/5 in (1/5,1/5) con t=1/25; QUAD -> -1/3 in
- * (1/3,1/3) con t=1/3 (l'incrocio e' lo stesso, la penalita' cambia). */
+/* The expected optimum: PPOW -> -1/5 at (1/5,1/5) with t=1/25; QUAD -> -1/3 at
+ * (1/3,1/3) with t=1/3 (the cross term is the same, the penalty changes). */
 static void t111_expect(PRIMALtask_t t, int kind, double *po_out) {
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "rc = OK");
     double x[7] = {0, 0, 0, 0, 0, 0, 0}, po = 0.0, pinf = 1.0;
@@ -6491,23 +6557,25 @@ static void t111_expect(PRIMALtask_t t, int kind, double *po_out) {
     if (kind == 0) close_enough_tol(x[4], w * w, 1e-3, "t0 = p0^2: il cono e' attivo");
     else           close_enough_tol(x[4], w, 1e-3, "t0 = |p0|: il cono e' attivo");
     check(pinf <= 1e-6, "e il punto misura nel modello");
-    /* l'appartenenza al cono, misurata nella forma dell'utente */
+    /* cone membership, measured in the user's form */
     check(x[4] >= x[2] * x[2] - 1e-6 && x[5] >= x[3] * x[3] - 1e-6,
           "t >= p^2 sta in K per come l'ha scritto chi chiama");
     *po_out = po;
 }
 
+/* T111: the QCQP encoder offers the bar-free shadow to the native conic path
+ * when it has power cones; value unchanged, witness names who answered. */
 static void test_t111(void) {
-    /* A. il modello arriva al percorso nativo, e li' risponde.
+    /* A. the model reaches the native path, and answers there.
      *
-     * La testimone nomina chi ha RISPOSTO, non chi e' stato chiamato: alla
-     * dichiarazione di default (1e-8) il nativo gira e il gate consegna ai tagli
-     * (misurato: `rel_gap = 4.97e-07`, `status=1`), che e' la policy di `T96` —
-     * dove esiste un'alternativa la strada la scelgono le tolleranze DICHIARATE.
-     * Quindi qui si dichiara 1e-5, che e' sopra la terna misurata
-     * (2.91e-08 / 1.37e-10 / 4.97e-07): il nativo risponde, e la riga "SDP IPM"
-     * prova che l'encoder ha offerto lo shadow senza barre alla strada che esiste
-     * per i suoi coni. Il valore non cambia (caso D). */
+     * The witness names who ANSWERED, not who was called: at the
+     * default declaration (1e-8) the native path runs and the gate hands off to cuts
+     * (measured: `rel_gap = 4.97e-07`, `status=1`), which is the `T96` policy —
+     * where an alternative exists the DECLARED tolerances choose the path.
+     * So 1e-5 is declared here, which is above the measured triple
+     * (2.91e-08 / 1.37e-10 / 4.97e-07): the native path answers, and the "SDP IPM"
+     * line proves that the encoder offered the bar-free shadow to the path that exists
+     * for its cones. The value does not change (case D). */
     {
         cur_name = "T111 A PPOW + QP con incrocio: risponde il nativo";
         P p; pbegin(&p);
@@ -6522,9 +6590,9 @@ static void test_t111(void) {
               "il nativo ha RISPOSTO: l'encoder lo offre allo shadow senza barre");
         pend(&p);
     }
-    /* B. la stessa risposta quando la strada nativa e' spenta: il testimone
-     *    nomina chi ha risposto, quindi qui deve tacere — e il punto consegnato
-     *    non dipende dalla strada, che e' la policy di T81/T91. */
+    /* B. the same answer when the native path is off: the witness
+     *    names who answered, so here it must stay silent — and the delivered point
+     *    does not depend on the path, which is the T81/T91 policy. */
     {
         cur_name = "T111 B GMB_NO_EXP_IPM: stesso punto, nessun tentativo nativo";
         P p; pbegin(&p);
@@ -6536,9 +6604,9 @@ static void test_t111(void) {
         unsetenv("GMB_NO_EXP_IPM");
         pend(&p);
     }
-    /* C. il contenimento: lo shadow SOC-only NON guadagna la strada nativa.
-     *    Il ladder nuovo mirrora il dispatcher, non allarga il nativo a modelli
-     *    che prima rispondevano su socp.c — che e' cio' che tiene fermo il corpus. */
+    /* C. containment: the SOC-only shadow does NOT gain the native path.
+     *    The new ladder mirrors the dispatcher, it does not widen the native path to models
+     *    that used to answer via socp.c — which is what keeps the corpus fixed. */
     {
         cur_name = "T111 C SOC senza barre: il nativo non viene allargato";
         P p; pbegin(&p);
@@ -6550,15 +6618,15 @@ static void test_t111(void) {
               "un cono QUAD/RQUAD non e' un motivo per chiamare il nativo");
         pend(&p);
     }
-    /* D. lo stesso modello alla dichiarazione DI DEFAULT: il valore e' identico.
-     *    Il primo giro nativo si ferma sopra 1e-8 (misurato: rel_gap 4.97e-07) e
-     *    il gate lo rifiuterebbe; il secondo tentativo in modo SECANTE di
-     *    sdp_ipm (R_+ aumentato, scaling secante primale-duale, passo comune)
-     *    lo porta sotto, quindi a 1e-8 risponde il nativo.  Il contrasto
-     *    originale di D resta come controllo negativo MISURATO: con
-     *    GMB_NO_EXP_RETRY=1 il gate consegna ai tagli e il testimone tace --
-     *    allargare la tolleranza (A) e il secondo tentativo sono due vie
-     *    distinte alla stessa risposta, e nessuna delle due muove il punto. */
+    /* D. the same model at the DEFAULT declaration: the value is identical.
+     *    The first native pass stops above 1e-8 (measured: rel_gap 4.97e-07) and
+     *    the gate would reject it; the second SECANT-mode attempt of
+     *    sdp_ipm (augmented R_+, primal-dual secant scaling, common step)
+     *    brings it below, so at 1e-8 the native path answers.  The
+     *    original D contrast remains as a MEASURED negative control: with
+     *    GMB_NO_EXP_RETRY=1 the gate hands off to cuts and the witness stays silent --
+     *    widening the tolerance (A) and the second attempt are two distinct
+     *    routes to the same answer, and neither moves the point. */
     {
         cur_name = "T111 D dichiarazione di default: stesso valore, altra strada";
         P p; pbegin(&p);
@@ -6585,46 +6653,47 @@ static void test_t111(void) {
     }
 }
 
-/* ---------------- T112: cio' che un file nomina, il task lo chiama cosi' ----------------
- * `PRIMAL_readdata` costruiva il modello e gettava via i nomi. `mpsio.c` tiene le due
- * tabelle del file in due `Names` interne usate SOLO come lookup (`names_get`) e non
- * chiama mai `putvarname`/`putconname`/`putobjname`.
- * **La misura prima, presa collegando la libreria di HEAD** (stessi `.o`, un solo
- * `mpsio.o` ricostruito da `git show 5252592:mpsio.c`, perche' la copia dell'albero in
- * `/tmp` e' la strada gia' rifiutata dai permessi e il giro 30 ha stabilito che il
- * commit precedente e' un oracolo linkabile): `rc=0 numvar=2 numcon=3`,
- * `getallvarname [0]=[]`, `getvarname("alpha") rc=1001`, `getobjname []`. Il modello
- * arrivava, l'etichetta no — e chi legge un file e chiama `getconname("cap")` otteneva
- * un rifiuto sul modello che aveva appena letto.
- * **Cio' che andava deciso, non copiato**, perche' le tabelle di `T102` non potevano
- * dirlo (non erano mai state scritte da un lettore):
- *  - le etichette vanno **all'indice che nominano**: la riga r di `ROWS` E' il vincolo
- *    r per ogni altro `put` del finalize (coefficients, bounds, `putconbound`), quindi
- *    il nome della riga `N` dell'obiettivo finisce in `conname` e `objname` viene SOLO
- *    da `OBJNAME`. Sono due cose diverse nel modello come e' scritto, e `A` le asserisce
- *    entrambe perche' una sola delle due non distingue "il nome della riga" da
- *    "il nome dell'obiettivo";
- *  - un file che da' **lo stesso nome a due righe** non e' un problema di etichette, e'
- *    un modello ambiguo: ogni sezione sotto cerca le righe per nome e `names_get`
- *    risponde la PRIMA occorrenza, quindi la seconda riga non riceve entrate per
- *    nessuna scrittura possibile nel file. HEAD lo leggeva (`rc=0 numcon=3`, con la
- *    terza riga vuota e libera). Ora `ERR_FILE` **prima che qualcosa raggiunga il task**
- *    — la famiglia di `T102` ("un rifiuto non scrive nulla") portata al lettore: qui
- *    "non scrivere" vuol dire non costruire.
- *  - **CBF fuori scope, perche' non e' la stessa domanda**: in un `.cbf` le etichette
- *    nominano **gruppi** (`char nm[16]` + `sz`, cbf.c:971) — un nome per `sz` variabili
- *    o righe — mentre `name_put` ammette **un indice per nome** dentro una tabella.
- *    Copiarle non sarebbe leggere il modello: sarebbe inventare un nome per la meta'
- *    degli indici che il gruppo copre.
- * **Deviazione misurata, non corretta (G)**: `PRIMAL_writedata` resta posizionale —
- * conia `x%d`/`c%d`/`obj` e non consulta le tabelle — e in piu' **inventa una riga**:
- * il task ha gia' una riga per la `N` del file, il writer ne prepone un'altra, quindi
- * read→write→read passa da 3 a 4 vincoli. La quarta e' vacua (`0 <= 0`) e il valore
- * consegnato non si muove (misurato: `pobj=6` su tutti e tre i giri), ma il round-trip
- * NON e' un invariante e i nomi si perdono. Un writer che usi i nomi del task ha anche
- * una unicita' da garantire fra righe e colonne (condividono lo spazio dei token del
- * file), e questa e' un'altra misura, con un diff del corpus suo.
+/* ---------------- T112: what a file names, the task calls it that ----------------
+ * `PRIMAL_readdata` built the model and threw the names away. `mpsio.c` keeps the two
+ * file tables in two internal `Names` used ONLY as lookup (`names_get`) and never
+ * calls `putvarname`/`putconname`/`putobjname`.
+ * **The prior measurement, taken by linking the HEAD library** (same `.o`, a single
+ * `mpsio.o` rebuilt from `git show 5252592:mpsio.c`, because the tree copy in
+ * `/tmp` is the route already refused by permissions and round 30 established that the
+ * previous commit is a linkable oracle): `rc=0 numvar=2 numcon=3`,
+ * `getallvarname [0]=[]`, `getvarname("alpha") rc=1001`, `getobjname []`. The model
+ * arrived, the label did not — and anyone reading a file and calling `getconname("cap")` got
+ * a refusal on the model just read.
+ * **What had to be decided, not copied**, because the `T102` tables could not
+ * say it (no reader had ever written them):
+ *  - labels go **at the index they name**: ROWS row r IS constraint
+ *    r for every other finalize `put` (coefficients, bounds, `putconbound`), so
+ *    the objective `N` row name ends up in `conname` and `objname` comes ONLY
+ *    from `OBJNAME`. They are two different things in the model as written, and `A` asserts
+ *    both because either one alone does not separate "the row name" from
+ *    "the objective name";
+ *  - a file giving **the same name to two rows** is not a label problem, it is
+ *    an ambiguous model: every section below looks rows up by name and `names_get`
+ *    answers the FIRST occurrence, so the second row receives entries for
+ *    no possible write in the file. HEAD read it (`rc=0 numcon=3`, with the
+ *    third row empty and free). Now `ERR_FILE` **before anything reaches the task**
+ *    — the `T102` family ("a refusal writes nothing") carried to the reader: here
+ *    "not writing" means not building.
+ *  - **CBF out of scope, because it is not the same question**: in a `.cbf` labels
+ *    name **groups** (`char nm[16]` + `sz`, cbf.c:971) — one name for `sz` variables
+ *    or rows — while `name_put` admits **one index per name** inside a table.
+ *    Copying them would not read the model: it would invent one name for half
+ *    the indices the group covers.
+ * **Measured deviation, not fixed (G)**: `PRIMAL_writedata` stays positional —
+ * mints `x%d`/`c%d`/`obj` and does not consult the tables — and on top **invents a row**:
+ * the task already has one row for the file `N`, the writer prepends another, so
+ * read→write→read goes from 3 to 4 constraints. The fourth is vacuous (`0 <= 0`) and the
+ * delivered value does not move (measured: `pobj=6` on all three passes), but the round-trip
+ * is NOT an invariant and the names are lost. A writer using the task names also has
+ * a uniqueness to guarantee across rows and columns (they share the file token space),
+ * and that is another measurement, with its own corpus diff.
  */
+/* Writes a text fixture to a path for the T112 reader tests. */
 static void t112_write(const char *path, const char *text) {
     FILE *f = fopen(path, "w");
     if (!f) { check(0, "scrittura del fixture"); return; }
@@ -6632,11 +6701,12 @@ static void t112_write(const char *path, const char *text) {
     fclose(f);
 }
 
+/* T112: what a file names, the task calls it that. */
 static void test_t112(void) {
-    /* A. MPS con nomi veri: le due tabelle rispondono il file, e il modello risponde
-     *    il suo valore.  min 3*alpha + 5*beta con alpha + 2 beta <= 6 (cap),
-     *    alpha + beta >= 2 (mix), 0 <= alpha, 0 <= beta <= 4: tutto su alpha, perche'
-     *    costa meno — alpha=2, beta=0, pobj=6 (derivato a mano). */
+    /* A. MPS with real names: both tables answer the file, and the model answers
+     *    its value.  min 3*alpha + 5*beta with alpha + 2 beta <= 6 (cap),
+     *    alpha + beta >= 2 (mix), 0 <= alpha, 0 <= beta <= 4: all on alpha, because
+     *    it costs less — alpha=2, beta=0, pobj=6 (hand-derived). */
     {
         cur_name = "T112 A MPS: i nomi letti sono nel task, e il modello risponde 6";
         t112_write("/tmp/mc_t112a.mps",
@@ -6672,9 +6742,9 @@ static void test_t112(void) {
               cn[1] && strcmp(cn[1], "cap") == 0 &&
               cn[2] && strcmp(cn[2], "mix") == 0, "A le righe objf, cap, mix");
 
-        /* identita' di puntatore, non solo contenuto: "prestito" e "copia" hanno lo
-         * stesso strcmp e sono due contratti diversi (T103) — e qui e' la prima volta
-         * che una tabella POPOLATA DA UN LETTORE viene letta dai due accessori */
+        /* pointer identity, not just content: "borrowed" and "copied" share
+         * the same strcmp yet are two different contracts (T103) — and here is the first time
+         * a READER-POPULATED table is read through both accessors */
         const char *single = NULL;
         check_rc(PRIMAL_getvarnameidx(t, 0, &single), PRIMAL_RES_OK, "A getvarnameidx");
         check(single == vn[0], "A le due letture danno LO STESSO oggetto, non due copie");
@@ -6687,7 +6757,7 @@ static void test_t112(void) {
         check(PRIMAL_getvarname(t, "nothere", &j) == PRIMAL_RES_ERR_ARG,
               "A un nome che il file non contiene resta un rifiuto");
 
-        /* il nome della riga N e' una cosa, il nome dell'obiettivo un'altra */
+        /* the N-row name is one thing, the objective name another */
         const char *on = NULL;
         check_rc(PRIMAL_getobjname(t, &on), PRIMAL_RES_OK, "A getobjname");
         check(on && strcmp(on, "myobj") == 0, "A OBJNAME finisce su objname");
@@ -6706,21 +6776,21 @@ static void test_t112(void) {
         check(pinf <= 1e-6, "A il punto consegna un modello ammissibile");
         expect_kkt(t, 1.0);
 
-        /* un solve non muove nessun nome (T103), e qui vale anche per una tabella
-         * scritta da un lettore: la soluzione non ha opinioni sulle etichette */
+        /* a solve moves no name (T103), and here that also holds for a table
+         * written by a reader: the solution has no opinion on labels */
         const char *vn2[2] = { NULL, NULL };
         check_rc(PRIMAL_getallvarname(t, vn2), PRIMAL_RES_OK, "A lettura dopo il solve");
         check(vn2[0] == vn[0] && vn2[1] == vn[1], "A il solve non ha mosso i nomi");
         pend(&p);
     }
 
-    /* B. LP: l'etichetta di un vincolo E' il suo nome, e un vincolo SENZA etichetta
-     *    resta senza nome (non c'e' un nome da mettere, non c'e' il nome vuoto da
-     *    mettere). Il vincolo senza etichetta qui viene PRIMA perche' il lettore
-     *    riconosce un vincolo nuovo solo al confine `nome:` — la misura di questa
-     *    modifica non puo' dipendere da quel confine, che e' una regola di lettura
-     *    piu' vecchia e non in discussione qui.
-     *    Stesso modello di A: la risposta non dipende da chi ha etichettato. */
+    /* B. LP: a constraint label IS its name, and a constraint WITHOUT a label
+     *    stays nameless (there is no name to set, no empty name to
+     *    set). The unlabeled constraint comes FIRST here because the reader
+     *    recognizes a new constraint only at the `name:` boundary — the measurement of this
+     *    change cannot depend on that boundary, which is an older reading rule
+     *    and not under discussion here.
+     *    Same model as A: the answer does not depend on who labeled it. */
     {
         cur_name = "T112 B LP: l'etichetta del vincolo e' il suo nome";
         t112_write("/tmp/mc_t112b.lp",
@@ -6763,9 +6833,9 @@ static void test_t112(void) {
         pend(&p);
     }
 
-    /* C. due righe con lo stesso nome: ERR_FILE, e il task non e' stato toccato.
-     *    Su HEAD questo stesso file rispondeva `rc=0 numcon=3` (misurato collegando
-     *    `mpsio.o` di HEAD): il terzo vincolo era irraggiungibile per costruzione. */
+    /* C. two rows sharing one name: ERR_FILE, and the task is left untouched.
+     *    On HEAD this same file answered `rc=0 numcon=3` (measured by linking
+     *    HEAD's `mpsio.o`): the third constraint was unreachable by construction. */
     {
         cur_name = "T112 C due righe con un nome: il file e' rifiutato, il task intatto";
         t112_write("/tmp/mc_t112c.mps",
@@ -6785,9 +6855,9 @@ static void test_t112(void) {
         int nv = -1, nc = -1;
         PRIMAL_getnumvar(p.task, &nv); PRIMAL_getnumcon(p.task, &nc);
         check(nv == 0 && nc == 0, "C il rifiuto non ha costruito niente");
-        /* il veleno di T103, qui a favore contrario: una tabella di un task che non ha
-         * variabili non ha niente da scrivere, e "niente" si dimostra con un indirizzo
-         * che nessuna lettura riuscita ha toccato — `rc` da solo non lo distingue */
+        /* the T103 poison, here to the opposite effect: a table of a task with no
+         * variables has nothing to write, and "nothing" is proved with an address
+         * that no successful read has touched — `rc` alone does not distinguish it */
         char marker; const char *poison = &marker;
         const char *vn[1] = { poison };
         check_rc(PRIMAL_getallvarname(p.task, vn), PRIMAL_RES_OK, "C lettura su un task vuoto");
@@ -6797,7 +6867,7 @@ static void test_t112(void) {
               "C e il nome del file rifiutato non e' nel task");
         pend(&p);
     }
-    /* D. la meta' LP dello stesso rifiuto: due etichette uguali. */
+    /* D. the LP half of the same refusal: two identical labels. */
     {
         cur_name = "T112 D LP con due vincoli omonimi: rifiutato";
         t112_write("/tmp/mc_t112d.lp",
@@ -6816,9 +6886,9 @@ static void test_t112(void) {
         pend(&p);
     }
 
-    /* E. due tabelle, due nomi: una variabile e un vincolo che si chiamano allo stesso
-     *    modo convivono (e' la misura di T105/T106 portata ai lettori — i nomi del
-     *    file entrano nelle stesse due tabelle). */
+    /* E. two tables, two names: a variable and a constraint sharing the same
+     *    name coexist (it is the T105/T106 measurement carried to the readers — the file
+     *    names enter the same two tables). */
     {
         cur_name = "T112 E un nome confonde due tabelle, non una";
         t112_write("/tmp/mc_t112e.mps",
@@ -6844,9 +6914,9 @@ static void test_t112(void) {
         pend(&p);
     }
 
-    /* F. i nomi delle sezioni RHS/RANGES/BOUNDS non sono nomi di variabili: un lettore
-     *    ingenuo ("cerca un token non numerico e nominalo") ne farebbe delle variabili.
-     *    min one s.t. 3 <= one <= 5 (RHS 5, RANGES 2 su una L), one <= 4: one = 3. */
+    /* F. RHS/RANGES/BOUNDS section names are not variable names: a naive reader
+     *    ("pick a non-numeric token and name it") would turn them into variables.
+     *    min one s.t. 3 <= one <= 5 (RHS 5, RANGES 2 on an L), one <= 4: one = 3. */
     {
         cur_name = "T112 F rhs/rng/bnd restano nomi di set, non di variabili";
         t112_write("/tmp/mc_t112f.mps",
@@ -6887,12 +6957,12 @@ static void test_t112(void) {
         pend(&p);
     }
 
-    /* G. il round-trip su un modello LETTO DA FILE e' esatto nel conteggio e nei
-     *    nomi: la riga `N` del file e' gia' il row 0 del task, e il writer la
-     *    riscrive come `N`, cosi' numcon si conserva (prima cresceva di uno). Il
-     *    writer ora nomina righe e colonne come le chiama il TASK (con fallback
-     *    posizionale per i nomi vuoti o con spazi), quindi le etichette
-     *    sopravvivono al round-trip — prima erano perse. */
+    /* G. the round-trip on a FILE-READ model is exact in count and in
+     *    names: the file `N` row is already task row 0, and the writer
+     *    rewrites it as `N`, so numcon is preserved (it used to grow by one). The
+     *    writer now names rows and columns as the TASK calls them (with positional
+     *    fallback for empty or spaced names), so the labels
+     *    survive the round-trip — previously they were lost. */
     {
         cur_name = "T112 G il round-trip conserva numcon e nomi";
         P p; pbegin(&p);
@@ -6932,27 +7002,27 @@ static void test_t112(void) {
     }
 }
 
-/* ---------------- T113: la famiglia delle violazioni di soluzione ----------------
- * Il riferimento (MOSEK 11.2.4) espone `getpviolcon`/`getpviolvar`/
- * `getpviolbarvar`/`getpviolcones` (violazione primale per indice) e
- * `getsolutioninfo` (i massimi di quelle piu' `pobj`/`dobj`). La meta' PRIMALE e'
- * esatta e indipendente dalla convenzione dei duali: per riga `max(l-a'x, a'x-u)`
- * con `a'x` letto da `row_activity` (le tre porte di `T97`: scalare | quadratico |
- * barra), per variabile il bordo/dominio di `var_violation`, per barra
- * `max(-lambda_min(X),0)`, per cono `max(0,-cone_signed_slack)`, per l'integralita'
- * `min(x-floor(x), ceil(x)-x)`. La meta' DUALE e' nella nostra convenzione dei
- * getter (README «Dual conventions»), e i membri di cono restano non misurati.
+/* ---------------- T113: the solution-violation family ----------------
+ * The reference (MOSEK 11.2.4) exposes `getpviolcon`/`getpviolvar`/
+ * `getpviolbarvar`/`getpviolcones` (per-index primal violation) and
+ * `getsolutioninfo` (their maxima plus `pobj`/`dobj`). The PRIMAL half is
+ * exact and independent of the dual convention: per row `max(l-a'x, a'x-u)`
+ * with `a'x` read from `row_activity` (the three `T97` ports: scalar | quadratic |
+ * bar), per variable the edge/domain of `var_violation`, per bar
+ * `max(-lambda_min(X),0)`, per cone `max(0,-cone_signed_slack)`, for integrality
+ * `min(x-floor(x), ceil(x)-x)`. The DUAL half follows our getter
+ * convention (README "Dual conventions"), and cone members stay unmeasured.
  *
- * Cio' che questo test compra, e che un test sui soli ottimi non comprerebbe: il
- * getter legge il MODELLO CORRENTE contro il punto pubblicato, quindi **perturbare
- * un bound dopo il solve** fa nascere una violazione nota a mano (2 sulla riga,
- * 4 sulla variabile). L'invariante che lega la famiglia all'aggregato gia'
- * verificato (`T90`/`T97`) e' `getprimalinfeas == max(per-riga, per-variabile)`:
- * una divergenza fra i due e' un difetto, e i due lati non possono essere
- * aggiustati insieme senza accorgersene.
+ * What this test buys, and an optima-only test would not buy: the
+ * getter reads the CURRENT MODEL against the published point, so **perturbing
+ * a bound after the solve** births a hand-known violation (2 on the row,
+ * 4 on the variable). The invariant binding the family to the already
+ * verified aggregate (`T90`/`T97`) is `getprimalinfeas == max(per-row, per-variable)`:
+ * a divergence between the two is a defect, and the two sides cannot be
+ * adjusted together unnoticed.
  */
 static void test_t113(void) {
-    /* A. per-indice, l'invariante con l'aggregato, e il getter che legge il modello */
+    /* A. per-index, the invariant with the aggregate, and the getter reading the model */
     {
         cur_name = "T113 A violazioni per indice e l'aggregato";
         P p; pbegin(&p);
@@ -6976,8 +7046,8 @@ static void test_t113(void) {
         close_enough(pv[1], 0.0, "A x1 dentro i bound");
         PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);
         close_enough(pinf, 0.0, "A aggregato 0");
-        /* perturbare il modello dopo il solve: la riga chiede 5 (attivita' 3 -> 2),
-         * x1 chiede 4 (valore 0 -> 4) */
+        /* perturb the model after the solve: the row asks 5 (activity 3 -> 2),
+         * x1 asks 4 (value 0 -> 4) */
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 5.0, 0.0);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_RA, 4.0, 10.0);
         PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, i0, pc);
@@ -7004,7 +7074,7 @@ static void test_t113(void) {
               "A le violazioni duali non sono negative");
         pend(&p);
     }
-    /* B. un rifiuto non scrive nulla, e i casi limite della forma */
+    /* B. a refusal writes nothing, and the shape edge cases */
     {
         cur_name = "T113 B un rifiuto non scrive nulla";
         P p; pbegin(&p);
@@ -7048,9 +7118,9 @@ static void test_t113(void) {
         check(sent[0] == -777.0, "B i rifiuti duali non hanno scritto");
         pend(&p);
     }
-    /* C. pviolitg: la distanza dall'intero di una variabile INTERA; su un punto
-     *    continuo e' 0 per costruzione, e `putvartype` dopo il solve la rende
-     *    misurabile sullo stesso punto (x=0.5 -> 0.5). */
+    /* C. pviolitg: the integer distance of an INTEGER variable; on a
+     *    continuous point it is 0 by construction, and `putvartype` after the solve makes it
+     *    measurable on the same point (x=0.5 -> 0.5). */
     {
         cur_name = "T113 C integralita'";
         P p; pbegin(&p);
@@ -7074,8 +7144,8 @@ static void test_t113(void) {
         close_enough(iit, 0.5, "C intero su x=0.5: violazione 0.5");
         pend(&p);
     }
-    /* D. cono: il punto ottimo sta nel cono, quindi pviolcones=0, e un indice
-     *    fuori dominio rifiuta senza scrivere. */
+    /* D. cone: the optimum point is inside the cone, so pviolcones=0, and an
+     *    out-of-domain index refuses without writing. */
     {
         cur_name = "T113 D coni";
         P p; pbegin(&p);
@@ -7106,9 +7176,9 @@ static void test_t113(void) {
         check(sent[0] == -777.0, "D rifiuto cono non scrive");
         pend(&p);
     }
-    /* E. barre: X e' PSD all'ottimo, quindi pviolbarvar=0 e dviolbarvar (la parte
-     *    negativa dello spettro di S) e' piccola. Modello di T40: min <I,X> con
-     *    <E00-E11,X> = 1, X>=0 -> 1 in X=diag(1,0). */
+    /* E. bars: X is PSD at the optimum, so pviolbarvar=0 and dviolbarvar (the
+     *    negative part of the S spectrum) is small. T40 model: min <I,X> with
+     *    <E00-E11,X> = 1, X>=0 -> 1 at X=diag(1,0). */
     {
         cur_name = "T113 E barre";
         P p; pbegin(&p);
@@ -7135,7 +7205,7 @@ static void test_t113(void) {
         check(dvb < 1e-6, "E info.dviolbarvar piccolo");
         pend(&p);
     }
-    /* F. senso MAX: la violazione di riga e' |attivita' - bound| anche massimizzando */
+    /* F. MAX sense: the row violation is |activity - bound| also when maximizing */
     {
         cur_name = "T113 F senso MAX";
         P p; pbegin(&p);
@@ -7165,10 +7235,10 @@ static void test_t113(void) {
         close_enough(ipc, 1.0, "F info.pviolcon 1");
         pend(&p);
     }
-    /* G. la meta' duale: zero su un punto dual-feasibile, e positiva quando un
-     *    moltiplicatore resta su un lato che NON ha un bound. Il punto e' quello
-     *    di A (min x0+2x1, riga x0+x1 >= 3): y0 = -1, e cambiando la riga da LO a
-     *    UP il moltiplicatore -1 resta su un lato senza bordo -> violazione 1. */
+    /* G. the dual half: zero on a dual-feasible point, and positive when a
+     *    multiplier sits on a side with NO bound. The point is the
+     *    A one (min x0+2x1, row x0+x1 >= 3): y0 = -1, and switching the row from LO to
+     *    UP leaves the -1 multiplier on a boundless side -> violation 1. */
     {
         cur_name = "T113 G violazioni duali per indice";
         P p; pbegin(&p);
@@ -7186,11 +7256,11 @@ static void test_t113(void) {
         close_enough(dc[0], 0.0, "G il moltiplicatore sta su un lato con bound");
         check_rc(PRIMAL_getdviolvar(t, PRIMAL_SOL_ITR, 1, j1, dv), PRIMAL_RES_OK, "G getdviolvar");
         close_enough(dv[0], 0.0, "G costo ridotto di x1 coerente col bound");
-        /* il lato su cui siede y0 non ha piu' un bound: la ρ scatta */
+        /* the side y0 sits on no longer has a bound: the rho fires */
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 3.0);
         PRIMAL_getdviolcon(t, PRIMAL_SOL_ITR, 1, i0, dc);
         close_enough(dc[0], 1.0, "G riga UP-only: il moltiplicatore -1 e' su un lato senza bound");
-        /* x1 libera: un costo ridotto non nullo e' ora una violazione duale */
+        /* free x1: a nonzero reduced cost is now a dual violation */
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 3.0, 0.0);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_FR, 0.0, 0.0);
         PRIMAL_getdviolvar(t, PRIMAL_SOL_ITR, 1, j1, dv);
@@ -7204,16 +7274,16 @@ static void test_t113(void) {
     }
 }
 
-/* ---------------- T114: le fette dei bound (get/put variabili e vincoli) ----------------
- * Il riferimento ha `getvarboundslice`/`getconboundslice` e i `put*` corrispondenti:
- * una fetta e' [first, last) e il buffer porta `last-first` entrate. Due contratti
- * portati qui dalla famiglia di `T102`: una lettura rifiutata **non scrive** (il
- * range si valida prima), e una scrittura rifiutata **lascia il modello intatto**
- * (tutta la fetta si valida prima di applicare una sola entrata). La fetta intera
- * deve concordare con i getter per-indice, che sono la lettura gia' verificata. */
+/* ---------------- T114: bound slices (get/put variables and constraints) ----------------
+ * The reference has `getvarboundslice`/`getconboundslice` and the matching `put*`:
+ * a slice is [first, last) and the buffer carries `last-first` entries. Two contracts
+ * carried here from the `T102` family: a refused read **writes nothing** (the
+ * range is validated first), and a refused write **leaves the model intact**
+ * (the whole slice is validated before applying a single entry). The full slice
+ * must agree with the per-index getters, which are the already verified read. */
 static void test_t114(void) {
     enum { N = 8, SENT = -777 };
-    /* A. variabili: slice contro per-indice, e riscrittura che tocca solo il range */
+    /* A. variables: slice vs per-index, and a rewrite touching only the range */
     {
         cur_name = "T114 A fette dei bound delle variabili";
         P p; pbegin(&p);
@@ -7228,13 +7298,13 @@ static void test_t114(void) {
         check(bk[0] == PRIMAL_BK_RA && bk[1] == PRIMAL_BK_UP, "A le chiavi della fetta");
         close_enough(bl[0], 2.0, "A bl[0]=2"); close_enough(bu[0], 5.0, "A bu[0]=5");
         check(bl[1] == -INFINITY && bu[1] == 7.0, "A il lato non usato della UP");
-        /* la fetta concorda con il getter per indice, entrata per entrata */
+        /* the slice agrees with the per-index getter, entry by entry */
         for (int j = 1; j < 3; j++) {
             PRIMALboundkeye b1; double l1, u1;
             PRIMAL_getvarbound(t, j, &b1, &l1, &u1);
             check(b1 == bk[j-1] && l1 == bl[j-1] && u1 == bu[j-1], "A fetta == per-indice");
         }
-        /* riscrivo [1,3): FR e FX non toccano 0 e 3 */
+        /* rewriting [1,3): FR and FX leave 0 and 3 alone */
         PRIMALboundkeye nb[2] = { PRIMAL_BK_FR, PRIMAL_BK_FX };
         double nl[2] = { 0.0, 3.0 }, nu[2] = { 0.0, 3.0 };
         check_rc(PRIMAL_putvarboundslice(t, 1, 3, nb, nl, nu), PRIMAL_RES_OK, "A put slice");
@@ -7249,7 +7319,7 @@ static void test_t114(void) {
         check(b == PRIMAL_BK_FX && l == 4.0, "A la variabile 3 non e' stata toccata");
         pend(&p);
     }
-    /* B. vincoli */
+    /* B. constraints */
     {
         cur_name = "T114 B fette dei bound dei vincoli";
         P p; pbegin(&p);
@@ -7275,7 +7345,7 @@ static void test_t114(void) {
         check(b == PRIMAL_BK_UP && u == 9.0, "B il vincolo 2 non e' stato toccato");
         pend(&p);
     }
-    /* C. rifiuti: la lettura non scrive, la scrittura non applica nulla */
+    /* C. refusals: the read writes nothing, the write applies nothing */
     {
         cur_name = "T114 C un rifiuto non scrive e non applica";
         P p; pbegin(&p);
@@ -7292,7 +7362,7 @@ static void test_t114(void) {
         check((int)bk[0] == SENT && bl[0] == SENT && bu[0] == SENT, "C la lettura rifiutata non ha scritto");
         check_rc(PRIMAL_getvarboundslice(t, 0, 1, NULL, bl, bu), PRIMAL_RES_ERR_NULL, "C bk null");
         check_rc(PRIMAL_getvarboundslice(t, 0, 1, bk, NULL, bu), PRIMAL_RES_ERR_NULL, "C bl null");
-        /* scrittura: una entrata cattiva (chiave invalida, poi RA con bl>bu) ferma TUTTO */
+        /* write: one bad entry (invalid key, then RA with bl>bu) stops EVERYTHING */
         PRIMALboundkeye badk[2] = { PRIMAL_BK_FX, (PRIMALboundkeye)99 };
         double badl[2] = { 5.0, 0.0 }, badu[2] = { 5.0, 0.0 };
         check_rc(PRIMAL_putvarboundslice(t, 0, 2, badk, badl, badu), PRIMAL_RES_ERR_ARG, "C chiave invalida");
@@ -7300,16 +7370,16 @@ static void test_t114(void) {
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_LO && l == 1.0, "C la variabile 0 non e' stata toccata dal rifiuto");
         PRIMALboundkeye rak[2] = { PRIMAL_BK_RA, PRIMAL_BK_RA };
-        double ral[2] = { 1.0, 4.0 }, rau[2] = { 2.0, 1.0 };   /* la seconda ha bl>bu */
+        double ral[2] = { 1.0, 4.0 }, rau[2] = { 2.0, 1.0 };   /* the second has bl>bu */
         check_rc(PRIMAL_putvarboundslice(t, 0, 2, rak, ral, rau), PRIMAL_RES_ERR_ARG, "C RA con bl>bu");
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_LO && l == 1.0, "C nemmeno la prima entrata e' stata applicata");
-        /* fetta vuota: OK, non tocca niente */
+        /* empty slice: OK, touches nothing */
         check_rc(PRIMAL_putvarboundslice(t, 2, 2, rak, ral, rau), PRIMAL_RES_OK, "C fetta vuota in scrittura");
         check_rc(PRIMAL_getvarboundslice(t, 2, 2, bk, bl, bu), PRIMAL_RES_OK, "C fetta vuota in lettura");
         pend(&p);
     }
-    /* D. un modello risolto con i bound messi a fette */
+    /* D. a model solved with slice-set bounds */
     {
         cur_name = "T114 D il modello risolve coi bound dalle fette";
         P p; pbegin(&p);
@@ -7332,18 +7402,18 @@ static void test_t114(void) {
 }
 
 
-/* ---------------- T115: le fette dei vettori di soluzione e i costi ridotti ----------------
- * Il riferimento ha una `*slice` per ogni vettore di soluzione
+/* ---------------- T115: solution-vector slices and reduced costs ----------------
+ * The reference has one `*slice` per solution vector
  * (`getxxslice`, `getyslice`, `getslcslice`, `getsucslice`, `getslxslice`,
- * `getsuxslice`, `getskxslice`, `getskcslice`) e `getreducedcosts`. Non
- * aggiungono regole: aggiungono una seconda lettura della stessa tabella, e la
- * guardia asserisce che **non possa divergere** da quella integrale — la fetta
- * e' un pezzo del vettore intero, entrata per entrata. Il costo ridotto e' la
- * formula del riferimento `(s_l^x)_j - (s_u^x)_j`, che sull' LP di prova vale 1
- * per la variabile al lower (c - A'y = 1) e 0 per la basic. */
+ * `getsuxslice`, `getskxslice`, `getskcslice`) plus `getreducedcosts`. They add
+ * no rules: they add a second read of the same table, and the
+ * guard asserts that it **cannot diverge** from the full one — the slice
+ * is a piece of the whole vector, entry by entry. The reduced cost is the
+ * reference formula `(s_l^x)_j - (s_u^x)_j`, which on the trial LP is 1
+ * for the lower-bound variable (c - A'y = 1) and 0 for the basic one. */
 static void test_t115(void) {
     enum { N = 8, SENT = -777 };
-    /* A. le fette concordano col vettore intero, su un LP risolto */
+    /* A. slices agree with the whole vector, on a solved LP */
     {
         cur_name = "T115 A fette dei vettori di soluzione";
         P p; pbegin(&p);
@@ -7382,13 +7452,13 @@ static void test_t115(void) {
         close_enough(xc[0], 3.0, "A xc = attivita' della riga x0+x1 = 3");
         check_rc(PRIMAL_getxcslice(t, PRIMAL_SOL_ITR, 0, 1, xcs), PRIMAL_RES_OK, "A getxcslice");
         close_enough(xcs[0], 3.0, "A la fetta di xc");
-        /* fetta vuota: OK, non scrive */
+        /* empty slice: OK, writes nothing */
         b2[0] = SENT;
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 2, 2, b2), PRIMAL_RES_OK, "A fetta vuota");
         check(b2[0] == SENT, "A fetta vuota non scrive");
         pend(&p);
     }
-    /* B. costo ridotto: 0 per la basic, 1 per x1 al lower (c - A'y = 1) */
+    /* B. reduced cost: 0 for the basic one, 1 for x1 at lower (c - A'y = 1) */
     {
         cur_name = "T115 B costi ridotti";
         P p; pbegin(&p);
@@ -7413,7 +7483,7 @@ static void test_t115(void) {
         close_enough(one[0], 1.0, "B la fetta del costo ridotto");
         pend(&p);
     }
-    /* C. le fette delle status key seguono putskx/putskc */
+    /* C. the status-key slices follow putskx/putskc */
     {
         cur_name = "T115 C fette delle status key";
         P p; pbegin(&p);
@@ -7430,7 +7500,7 @@ static void test_t115(void) {
         check(skc[0] == PRIMAL_SK_BAS && skc[1] == PRIMAL_SK_SUPBAS, "C la fetta di skc");
         pend(&p);
     }
-    /* D. rifiuti: non scrivono, e prima del solve rispondono ERR_ARG */
+    /* D. refusals: they write nothing, and before the solve they answer ERR_ARG */
     {
         cur_name = "T115 D rifiuti delle fette";
         P p; pbegin(&p);
@@ -7459,14 +7529,14 @@ static void test_t115(void) {
     }
 }
 
-/* ---------------- T116: geometria delle barre e contatori "preallocati" ----------------
- * `getdimbarvarj`/`getlenbarvarj` (la lunghezza e' il triangolo inferiore,
- * d(d+1)/2) e i `getmaxnum*` del riferimento. I contatori var/con qui **sono**
- * il numero corrente (gli array crescono sul posto, deviazione dichiarata); coni
- * e barre hanno invece una capacita' reale che parte da 4, quindi il contatore
- * "max" e' strettamente maggiore del numero presente. */
+/* ---------------- T116: bar geometry and "preallocated" counters ----------------
+ * `getdimbarvarj`/`getlenbarvarj` (the length is the lower triangle, d(d+1)/2)
+ * and the reference `getmaxnum*`. The var/con counters here **are** the current
+ * number (the arrays grow in place, a declared deviation); cones and bars
+ * instead have a real capacity starting at 4, so the "max" counter is strictly
+ * greater than the number present. */
 static void test_t116(void) {
-    /* A. dimensione e lunghezza di una variabile bar */
+    /* A. dimension and length of a bar variable */
     {
         cur_name = "T116 A getdimbarvarj/getlenbarvarj";
         P p; pbegin(&p);
@@ -7488,7 +7558,7 @@ static void test_t116(void) {
         check_rc(PRIMAL_getdimbarvarj(t, 0, NULL), PRIMAL_RES_ERR_NULL, "A null");
         pend(&p);
     }
-    /* B. contatori: var/con sono il corrente, coni/barre la capacita' (>=4) */
+    /* B. counters: var/con are the current number, cones/bars the capacity (>=4) */
     {
         cur_name = "T116 B contatori max";
         P p; pbegin(&p);
@@ -7515,12 +7585,12 @@ static void test_t116(void) {
     }
 }
 
-/* ---------------- T117: A-bar e C-bar in forma a triplette di blocco ----------------
- * `getbarablocktriplet`/`getbarcblocktriplet` espongono il negozio sparso delle
- * matrici simmetriche come una riga per ogni entrata del triangolo inferiore di
- * ogni blocco: `(i,j,k,l,val)` per A, `(j,k,l,val)` per C. I contatori
- * `getnumbarablocktriplets`/`getnumbarcblocktriplets` danno il numero esatto di
- * quelle entrate. Modello di T40: A = A00 + (-1)*B11, C = I. */
+/* ---------------- T117: A-bar and C-bar as block triplets ----------------
+ * `getbarablocktriplet`/`getbarcblocktriplet` expose the sparse store of the
+ * symmetric matrices as one row per entry of the lower triangle of each block:
+ * `(i,j,k,l,val)` for A, `(j,k,l,val)` for C. The counters
+ * `getnumbarablocktriplets`/`getnumbarcblocktriplets` give the exact number of
+ * those entries. T40 model: A = A00 + (-1)*B11, C = I. */
 static void test_t117(void) {
     cur_name = "T117 triplette di blocco di A-bar e C-bar";
     P p; pbegin(&p);
@@ -7538,7 +7608,7 @@ static void test_t117(void) {
     check(na == 2, "A A-bar ha 2 entrate (A00, -B11)");
     check_rc(PRIMAL_getnumbarcblocktriplets(t, &ncc), PRIMAL_RES_OK, "A count C-bar");
     check(ncc == 2, "A C-bar ha 2 entrate (I00, I11)");
-    /* lettura A: (i,j,k,l,val) */
+    /* read A: (i,j,k,l,val) */
     int i4[4], j4[4], k4[4], l4[4]; double va[4];
     PRIMALint64t num = -1;
     check_rc(PRIMAL_getbarablocktriplet(t, 4, &num, i4, j4, k4, l4, va), PRIMAL_RES_OK, "A get A-bar");
@@ -7547,19 +7617,19 @@ static void test_t117(void) {
     close_enough(va[0], 1.0, "A val 1");
     check(i4[1] == 0 && j4[1] == 0 && k4[1] == 1 && l4[1] == 1, "A la seconda e' (0,0,1,1)");
     close_enough(va[1], -1.0, "A val -1 (il -B11)");
-    /* lettura C: (j,k,l,val) */
+    /* read C: (j,k,l,val) */
     int jc[4], kc[4], lc[4]; double vc[4];
     check_rc(PRIMAL_getbarcblocktriplet(t, 4, &num, jc, kc, lc, vc), PRIMAL_RES_OK, "A get C-bar");
     check(num == 2, "A numC = 2");
     check(jc[0] == 0 && kc[0] == 0 && lc[0] == 0, "A C[0] = (0,0,0)");
     check(jc[1] == 0 && kc[1] == 1 && lc[1] == 1, "A C[1] = (0,1,1)");
     close_enough(vc[0], 1.0, "A C val 1");
-    /* solo-conteggio: buffer NULL, maxnum 0 */
+    /* count only: NULL buffer, maxnum 0 */
     num = -1;
     check_rc(PRIMAL_getbarablocktriplet(t, 0, &num, NULL, NULL, NULL, NULL, NULL),
              PRIMAL_RES_OK, "A solo conteggio");
     check(num == 2, "A il conteggio senza buffer");
-    /* capienza insufficiente con buffer: rifiuto, niente scritto */
+    /* insufficient capacity with a buffer: refusal, nothing written */
     int senti[4]; double sentv[4];
     for (int q = 0; q < 4; q++) { senti[q] = -999; sentv[q] = -777.0; }
     check_rc(PRIMAL_getbarablocktriplet(t, 1, &num, senti, senti, senti, senti, sentv),
@@ -7571,13 +7641,13 @@ static void test_t117(void) {
     pend(&p);
 }
 
-/* ---------------- T118: il vettore c e l'entry scalare di Q ----------------
- * `getc`/`getcslice` sono il vettore intero/fetta di `getcj`; `putclist`/
- * `putcslice` scrivono una lista e una fetta (validando tutto prima). `putqobjij`
- * e' l'entry scalare: `q_ij = q_ji = qoij`, solo triangolo inferiore, **rimpiazza**
- * la coppia (a differenza di `putqobj` che accumula), e a 0 la rimuove. */
+/* ---------------- T118: the vector c and the scalar entry of Q ----------------
+ * `getc`/`getcslice` are the whole vector/slice of `getcj`; `putclist`/
+ * `putcslice` write a list and a slice (validating everything first). `putqobjij`
+ * is the scalar entry: `q_ij = q_ji = qoij`, lower triangle only, **replaces**
+ * the pair (unlike `putqobj` which accumulates), and at 0 it removes it. */
 static void test_t118(void) {
-    /* A. getc/getcslice contro getcj */
+    /* A. getc/getcslice against getcj */
     {
         cur_name = "T118 A getc/getcslice";
         P p; pbegin(&p);
@@ -7594,7 +7664,7 @@ static void test_t118(void) {
         check_rc(PRIMAL_getc(t, NULL), PRIMAL_RES_ERR_NULL, "A getc null");
         pend(&p);
     }
-    /* B. putclist validata prima di scrivere; putcslice riscrive la fetta */
+    /* B. putclist validated before writing; putcslice rewrites the slice */
     {
         cur_name = "T118 B putclist/putcslice";
         P p; pbegin(&p);
@@ -7619,7 +7689,7 @@ static void test_t118(void) {
         check_rc(PRIMAL_putcslice(t, 0, 2, NULL), PRIMAL_RES_ERR_NULL, "B putcslice null");
         pend(&p);
     }
-    /* C. putqobjij: rimpiazza, simmetrizza, rimuove a 0, rifiuta l'upper */
+    /* C. putqobjij: replaces, symmetrizes, removes at 0, rejects the upper part */
     {
         cur_name = "T118 C putqobjij";
         P p; pbegin(&p);
@@ -7669,14 +7739,14 @@ static void test_t118(void) {
     }
 }
 
-/* ---------------- T119: A in triplette e i contatori di riga/colonna ----------------
- * `getatrip` (A in forma sparsa), `getarownumnz`/`getacolnumnz` e le loro fette,
- * `putaij` (l'entry scalare che rimpiazza la coppia). I contatori contano le
- * ENTRATE MEMORIZZATE, duplicati inclusi: la stessa quantita' di `getnumanz`, e
- * la guardia lo asserisce. */
+/* ---------------- T119: A as triplets and the row/column counters ----------------
+ * `getatrip` (A in sparse form), `getarownumnz`/`getacolnumnz` and their slices,
+ * `putaij` (the scalar entry that replaces the pair). The counters count the
+ * STORED ENTRIES, duplicates included: the same quantity as `getnumanz`, and the
+ * guard asserts it. */
 static void test_t119(void) {
     enum { SENT = -777 };
-    /* A. contatori e triplette su un A noto */
+    /* A. counters and triplets on a known A */
     {
         cur_name = "T119 A getatrip e contatori";
         P p; pbegin(&p);
@@ -7700,10 +7770,10 @@ static void test_t119(void) {
         check(nz == 3, "A col [1,3) ha 3");
         check_rc(PRIMAL_getarowslicenumnz(t, 1, 2, &nz), PRIMAL_RES_OK, "A rowslice [1,2)");
         check(nz == 2, "A row [1,2) ha 2");
-        /* triplette: 4 entrate, e la somma dei conteggi combacia con numanz */
+        /* triplets: 4 entries, and the sum of the counts matches numanz */
         int ti[8], tj[8]; double tv[8];
         check_rc(PRIMAL_getatrip(t, 4, ti, tj, tv), PRIMAL_RES_OK, "A getatrip");
-        /* verifica esplicita dei quattro (i,j,val) attesi */
+        /* explicit check of the four expected (i,j,val) */
         int hit = 0;
         for (int k = 0; k < 4; k++) {
             if (ti[k] == 0 && tj[k] == 0 && tv[k] == 1.0) hit++;
@@ -7712,20 +7782,20 @@ static void test_t119(void) {
             if (ti[k] == 1 && tj[k] == 2 && tv[k] == 4.0) hit++;
         }
         check(hit == 4, "A le quattro triplette sono tutte presenti");
-        /* capienza insufficiente: rifiuto senza scrivere */
+        /* insufficient capacity: refusal without writing */
         for (int k = 0; k < 8; k++) { ti[k] = -999; tj[k] = -999; tv[k] = SENT; }
         check_rc(PRIMAL_getatrip(t, 3, ti, tj, tv), PRIMAL_RES_ERR_ARG, "A capienza 3 su 4");
         check(ti[0] == -999 && tv[0] == SENT, "A il rifiuto non ha scritto");
         check_rc(PRIMAL_getatrip(t, 4, NULL, tj, tv), PRIMAL_RES_ERR_NULL, "A subi null");
         pend(&p);
     }
-    /* B. putaij: rimpiazza, collassa i duplicati, a 0 rimuove */
+    /* B. putaij: replaces, collapses duplicates, removes at 0 */
     {
         cur_name = "T119 B putaij";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
-        PRIMAL_putacol(t, 0, 2, (int[]){0,0}, (double[]){1.0,2.0});   /* coppia duplicata */
+        PRIMAL_putacol(t, 0, 2, (int[]){0,0}, (double[]){1.0,2.0});   /* duplicated pair */
         double a = 0.0;
         PRIMAL_getaij(t, 0, 0, &a);
         close_enough(a, 3.0, "B la coppia duplicata somma a 3");
@@ -7747,11 +7817,11 @@ static void test_t119(void) {
     }
 }
 
-/* ---------------- T120: liste e fette costanti di bound, e tipi per lista ----------------
- * Le varianti "list" (putvarboundlist/putconboundlist, putvartypelist) validano
- * l'INTERA lista prima di applicare: un indice o un valore fuori dominio in coda
- * lascia il modello intatto. Le "sliceconst" scrivono lo stesso bound su un
- * intervallo. */
+/* ---------------- T120: bound lists and constant slices, and types by list ----------------
+ * The "list" variants (putvarboundlist/putconboundlist, putvartypelist) validate
+ * the WHOLE list before applying: a trailing out-of-domain index or value leaves
+ * the model intact. The "sliceconst" variants write the same bound over an
+ * interval. */
 static void test_t120(void) {
     /* A. putvartypelist/getvartypelist */
     {
@@ -7809,7 +7879,7 @@ static void test_t120(void) {
         check(b == PRIMAL_BK_FX && l == 3.0 && u == 3.0, "B vincolo 1 fx");
         pend(&p);
     }
-    /* C. fette a bound costante */
+    /* C. constant-bound slices */
     {
         cur_name = "T120 C putvarboundsliceconst/putconboundsliceconst";
         P p; pbegin(&p);
@@ -7838,14 +7908,14 @@ static void test_t120(void) {
     }
 }
 
-/* ---------------- T121: nome del task e lunghezze dei nomi ----------------
- * `puttaskname`/`gettaskname`/`gettasknamelen` e le lunghezze per oggetto
- * (`getvarnamelen`/`getconnamelen`/`getobjnamelen`) piu' `getmaxnamelen`. La
- * lunghezza NON conta il terminatore; un nome assente ha lunghezza 0; la lettura
- * nel buffer rifiuta (senza scrivere) se lo spazio non regge anche lo zero. */
+/* ---------------- T121: task name and name lengths ----------------
+ * `puttaskname`/`gettaskname`/`gettasknamelen` and the per-object lengths
+ * (`getvarnamelen`/`getconnamelen`/`getobjnamelen`) plus `getmaxnamelen`. The
+ * length does NOT count the terminator; an absent name has length 0; the
+ * buffer read refuses (writing nothing) if the space cannot hold even the zero. */
 static void test_t121(void) {
     enum { SENT = -777 };
-    /* A. nome del task */
+    /* A. task name */
     {
         cur_name = "T121 A nome del task";
         P p; pbegin(&p);
@@ -7870,14 +7940,14 @@ static void test_t121(void) {
         check(len == 0, "A il nome vuoto ha lunghezza 0");
         pend(&p);
     }
-    /* B. lunghezze per oggetto e massimo */
+    /* B. per-object lengths and the maximum */
     {
         cur_name = "T121 B lunghezze dei nomi";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         PRIMAL_putvarname(t, 0, "alpha");   /* 5 */
-        /* var 1 resta senza nome */
+        /* var 1 stays nameless */
         PRIMAL_putconname(t, 0, "cap");     /* 3 */
         PRIMAL_putobjname(t, "cost");       /* 4 */
         PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, (int[]){0,1});
@@ -7899,10 +7969,10 @@ static void test_t121(void) {
     }
 }
 
-/* ---------------- T122: putqcon (quadratico dei vincoli in blocco) e utility ----------------
- * `putqcon` rimpiazza TUTTI i termini quadratici di TUTTI i vincoli da una lista
- * di triplette con indice di riga, solo triangolo inferiore; i duplicati
- * accumulano e una lista vuota azzera. Piu' `getversion`, `isinfinity`,
+/* ---------------- T122: putqcon (constraint quadratics in bulk) and utilities ----------------
+ * `putqcon` replaces ALL quadratic terms of ALL constraints from a list of
+ * triplets carrying a row index, lower triangle only; duplicates accumulate and
+ * an empty list zeroes everything. Plus `getversion`, `isinfinity`,
  * `getresponseclass`. */
 static void test_t122(void) {
     /* A. getversion / isinfinity / getresponseclass */
@@ -7931,7 +8001,7 @@ static void test_t122(void) {
         check_rc(PRIMAL_getresponseclass(PRIMAL_RES_OK, NULL), PRIMAL_RES_ERR_NULL, "A null");
         pend(&p);
     }
-    /* B. putqcon: sostituzione in blocco, accumulo dei duplicati, azzeramento */
+    /* B. putqcon: bulk replacement, accumulation of duplicates, zeroing */
     {
         cur_name = "T122 B putqcon";
         P p; pbegin(&p);
@@ -7948,7 +8018,7 @@ static void test_t122(void) {
         int nq = -1;
         PRIMAL_getnumqconknz(t, 0, &nq);
         check(nq == 3, "B triangolo superiore: 3 termini");
-        /* rimpiazza tutto: solo la riga 1, un solo termine */
+        /* replaces everything: row 1 only, a single term */
         int k1[1] = {1}, i1[1] = {0}, j1[1] = {0};
         double v1[1] = {5.0};
         check_rc(PRIMAL_putqcon(t, 1, k1, i1, j1, v1), PRIMAL_RES_OK, "B putqcon replace");
@@ -7957,16 +8027,16 @@ static void test_t122(void) {
         PRIMAL_getnumqconknz(t, 1, &nq);
         check(nq == 1, "B la riga 1 ha un termine");
         PRIMAL_getqconkij(t, 1, 0, 0, &q); close_enough(q, 5.0, "B q00 riga1 = 5");
-        /* duplicati nell stessa chiamata accumulano */
+        /* duplicates in the same call accumulate */
         int kd[2] = {0,0}, id[2] = {0,0}, jd[2] = {0,0};
         double vd[2] = {1.0, 2.0};
         check_rc(PRIMAL_putqcon(t, 2, kd, id, jd, vd), PRIMAL_RES_OK, "B putqcon duplicati");
         PRIMAL_getqconkij(t, 0, 0, 0, &q); close_enough(q, 3.0, "B q00 = 1+2");
-        /* lista vuota azzera tutto */
+        /* an empty list zeroes everything */
         check_rc(PRIMAL_putqcon(t, 0, NULL, NULL, NULL, NULL), PRIMAL_RES_OK, "B lista vuota");
         PRIMAL_getnumqconknz(t, 0, &nq); check(nq == 0, "B riga 0 vuota");
         PRIMAL_getnumqconknz(t, 1, &nq); check(nq == 0, "B riga 1 vuota");
-        /* rifiuti: upper triangle, riga fuori dominio, NaN, e nessuna scrittura */
+        /* refusals: upper triangle, out-of-domain row, NaN, and no write */
         int kb[1] = {0}, ib[1] = {0}, jb[1] = {1}; double vb[1] = {1.0};
         check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B upper rifiutato");
         kb[0] = 5;
@@ -7979,14 +8049,14 @@ static void test_t122(void) {
     }
 }
 
-/* ---------------- T123: la disattivazione di una semi-continua ----------------
- * `min x` su `x ∈ {0} ∪ [2,5]` vale 0, non 2. Il B&B diramava sulla semi-continua
- * solo per `0 < x < l` e la rilassata del nodo usava i bound dichiarati `[l,u]`,
- * ignorando lo `0`: il `pmin` non era quindi un minorante e `min x` rispondeva 2.
- * Ora la scatola radice e' rilassata a `[0,u]` (un sovrainsieme valido) e il
- * gap-branch esistente esplora la banda proibita. */
+/* ---------------- T123: the deactivation of a semi-continuous variable ----------------
+ * `min x` over `x ∈ {0} ∪ [2,5]` is 0, not 2. The B&B branched on the
+ * semi-continuous only for `0 < x < l` and the node relaxation used the declared
+ * bounds `[l,u]`, ignoring the `0`: the `pmin` was therefore not a lower bound
+ * and `min x` answered 2. Now the root box is relaxed to `[0,u]` (a valid
+ * superset) and the existing gap-branch explores the forbidden band. */
 static void test_t123(void) {
-    /* A. min x, disattivazione ottima */
+    /* A. min x, deactivation is optimal */
     {
         cur_name = "T123 A min x semi-continuo = 0";
         P p; pbegin(&p);
@@ -8003,7 +8073,7 @@ static void test_t123(void) {
         close_enough(po, 0.0, "A pobj=0");
         pend(&p);
     }
-    /* B. max x, il lato attivo */
+    /* B. max x, the active side */
     {
         cur_name = "T123 B max x semi-continuo = 5";
         P p; pbegin(&p);
@@ -8019,7 +8089,7 @@ static void test_t123(void) {
         close_enough(x, 5.0, "B x=5 (attivo)");
         pend(&p);
     }
-    /* C. la disattivazione e' esclusa da un vincolo: min x = 2 */
+    /* C. the deactivation is excluded by a constraint: min x = 2 */
     {
         cur_name = "T123 C disattivazione esclusa -> 2";
         P p; pbegin(&p);
@@ -8030,14 +8100,14 @@ static void test_t123(void) {
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 2.0, 5.0);
         PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_SEMI_CONT);
         PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
-        PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 1.0, 0.0);   /* x >= 1 esclude 0 */
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 1.0, 0.0);   /* x >= 1 excludes 0 */
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "C optimize");
         double x = 0;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x);
         close_enough(x, 2.0, "C x=2 (attivo, 0 escluso)");
         pend(&p);
     }
-    /* D. semi-intera senza vincoli: la disattivazione batte il minimo attivo */
+    /* D. semi-integer with no constraints: deactivation beats the active minimum */
     {
         cur_name = "T123 D min x semi-intero = 0";
         P p; pbegin(&p);
@@ -8054,22 +8124,25 @@ static void test_t123(void) {
     }
 }
 
-/* ---------------- T124: callback generale e callback di risposta ----------------
- * `putcallbackfunc`/`getcallbackfunc` registrano un callback invocato con un
- * codice di evento (numeri di MSKcallbackcodee) su BEGIN/END di OPTIMIZER, READ e
- * WRITE. `putresponsefunc` e' invocato quando un solve termina con un codice
- * diverso da OK. I vettori di dettaglio sono NULL (deviazione dichiarata). */
+/* ---------------- T124: general callback and response callback ----------------
+ * `putcallbackfunc`/`getcallbackfunc` register a callback invoked with an event
+ * code (MSKcallbackcodee numbers) on BEGIN/END of OPTIMIZER, READ and WRITE.
+ * `putresponsefunc` is invoked when a solve ends with a code other than OK. The
+ * detail vectors are NULL (a declared deviation). */
 static int g_cb[32], g_cbn;
+/* Records callback codes into g_cb for the T124 guard. */
 static void test_cb(PRIMALtask_t tk, void *h, PRIMALcallbackcodee code,
                     const PRIMALrealt *info, const PRIMALint32t *ii, const PRIMALint64t *li) {
     (void)tk; (void)h; (void)info; (void)ii; (void)li;
     if (g_cbn < 32) g_cb[g_cbn++] = (int)code;
 }
 static int g_resp_rc, g_respn;
+/* Records the response code handed to the response callback. */
 static void test_resp(PRIMALtask_t tk, void *h, PRIMALrescodee res) {
     (void)tk; (void)h; g_resp_rc = (int)res; g_respn++;
 }
 
+/* T124: general callback and response callback. */
 static void test_t124(void) {
     cur_name = "T124 callback generale e di risposta";
     P p; pbegin(&p);
@@ -8087,7 +8160,7 @@ static void test_t124(void) {
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A optimize");
     check(g_cbn >= 2 && g_cb[0] == PRIMAL_CALLBACK_BEGIN_OPTIMIZER &&
           g_cb[g_cbn-1] == PRIMAL_CALLBACK_END_OPTIMIZER, "A BEGIN/END optimizer");
-    /* read/write: gli eventi sono i loro */
+    /* read/write: the events are their own */
     g_cbn = 0;
     check_rc(PRIMAL_writedata(t, "/tmp/mc_t124.mps"), PRIMAL_RES_OK, "A write");
     check(g_cbn == 2 && g_cb[0] == PRIMAL_CALLBACK_BEGIN_WRITE &&
@@ -8099,7 +8172,7 @@ static void test_t124(void) {
     check(g_cbn == 2 && g_cb[0] == PRIMAL_CALLBACK_BEGIN_READ &&
           g_cb[1] == PRIMAL_CALLBACK_END_READ, "A BEGIN/END read");
     pend(&q);
-    /* response callback su un solve che termina male: LP infeasible */
+    /* response callback on a solve that ends badly: LP infeasible */
     g_respn = 0; g_resp_rc = 0;
     check_rc(PRIMAL_putresponsefunc(t, test_resp, NULL), PRIMAL_RES_OK, "A putresponsefunc");
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 1.0, 2.0);
@@ -8108,20 +8181,21 @@ static void test_t124(void) {
     PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 0.0);   /* x<=0 vs x>=1 */
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "A infeasible");
     check(g_respn >= 1 && g_resp_rc == (int)PRIMAL_RES_ERR_INFEASIBLE, "A response invocato col codice");
-    /* azzerare il callback */
+    /* clearing the callback */
     check_rc(PRIMAL_putcallbackfunc(t, NULL, NULL), PRIMAL_RES_OK, "A clear callback");
     PRIMAL_getcallbackfunc(t, &got, &gh);
     check(got == NULL, "A il callback e' azzerato");
     pend(&p);
 }
 
-/* ---------------- T125: getsolution in una chiamata ----------------
- * `getsolution` riporta sta/solsta, le chiavi di base, `xc`, `xx`, `y`, gli slack
- * `slc/suc/slx/sux` e `snx`; ogni puntatore e' opzionale. `skn` e `snx` sono le
- * deviazioni dichiarate (SK_UNDEF per cono; 0 per il duale conico per variabile).
- * La guardia asserisce che ogni campo **non possa divergere** dal getter singolo. */
+/* ---------------- T125: getsolution in one call ----------------
+ * `getsolution` reports sta/solsta, the basis keys, `xc`, `xx`, `y`, the slacks
+ * `slc/suc/slx/sux` and `snx`; every pointer is optional. `skn` and `snx` are
+ * the declared deviations (SK_UNDEF per cone; 0 for the per-variable conic
+ * dual). The guard asserts that every field **cannot diverge** from the single
+ * getter. */
 static void test_t125(void) {
-    /* A. LP risolto: ogni campo contro il getter singolo */
+    /* A. solved LP: every field against the single getter */
     {
         cur_name = "T125 A getsolution == getter singoli";
         P p; pbegin(&p);
@@ -8135,7 +8209,7 @@ static void test_t125(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A optimize");
         PRIMALprostae ps = PRIMAL_PRO_STA_UNKNOWN; PRIMALsolstae ss = PRIMAL_SOL_STA_UNKNOWN;
         PRIMALstakeye skc[1], skx[2], skn[1];
-        PRIMALstakeye skn_marker = PRIMAL_SK_BAS;   /* nessun cono: non deve scrivere */
+        PRIMALstakeye skn_marker = PRIMAL_SK_BAS;   /* no cone: must not write */
         skn[0] = skn_marker;
         double xc[1], xx[2], y[1], slc[1], suc[1], slx[2], sux[2], snx[2];
         check_rc(PRIMAL_getsolution(t, PRIMAL_SOL_ITR, &ps, &ss, skc, skx, skn,
@@ -8158,13 +8232,13 @@ static void test_t125(void) {
         close_enough(xc[0], 3.0, "A xc = attivita' 3");
         check(snx[0]==0.0 && snx[1]==0.0, "A snx = 0 (deviazione)");
         check(skn[0] == skn_marker, "A senza coni getsolution non scrive skn");
-        /* tutti NULL: OK */
+        /* all NULL: OK */
         check_rc(PRIMAL_getsolution(t, PRIMAL_SOL_ITR, NULL, NULL, NULL, NULL, NULL,
                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
                  PRIMAL_RES_OK, "A tutti NULL");
         pend(&p);
     }
-    /* B. nessuna soluzione: i buffer del punto rifiutano, gli stati si leggono */
+    /* B. no solution: the point buffers refuse, the states are read */
     {
         cur_name = "T125 B nessuna soluzione";
         P p; pbegin(&p);
@@ -8181,7 +8255,7 @@ static void test_t125(void) {
                  PRIMAL_RES_OK, "B solo stati: OK");
         pend(&p);
     }
-    /* C. cono: skn (UNDEF) e snx (0) */
+    /* C. cone: skn (UNDEF) and snx (0) */
     {
         cur_name = "T125 C cono: skn/snx";
         P p; pbegin(&p);
@@ -8203,10 +8277,10 @@ static void test_t125(void) {
 }
 
 /* ---------------- T126: putaijlist, chg*bound, symmat store, getprobtype ----------------
- * Quattro famiglie self-contained del riferimento: `putaijlist` (lista di A),
- * `chgvarbound`/`chgconbound` (cambiano UN lato del bound e ricalcolano la chiave),
- * `getsparsesymmat`/`appendsparsesymmatlist` (lettura/scrittura in blocco del
- * matrix store), `getprobtype` (la classe del problema). */
+ * Four self-contained families of the reference: `putaijlist` (list of A),
+ * `chgvarbound`/`chgconbound` (change ONE side of a bound and recompute the key),
+ * `getsparsesymmat`/`appendsparsesymmatlist` (bulk read/write of the matrix
+ * store), `getprobtype` (the problem class). */
 static void test_t126(void) {
     /* A. putaijlist */
     {
@@ -8276,7 +8350,7 @@ static void test_t126(void) {
         check_rc(PRIMAL_getsparsesymmat(t, 9, 3, gi, gj, gv), PRIMAL_RES_ERR_ARG, "C idx fuori");
         int nsym = -1; PRIMAL_getnumsymmat(t, &nsym);
         check(nsym == 2, "C due matrici");
-        /* lista con un indice cattivo: nessuna append */
+        /* a list with one bad index: no append */
         int bi[3] = {0,1,0}, bj[3] = {0,1,5};
         check_rc(PRIMAL_appendsparsesymmatlist(t, 2, dims, nz, bi, bj, sv, idx),
                  PRIMAL_RES_ERR_ARG, "C lista rifiutata");
@@ -8323,10 +8397,10 @@ static void test_t126(void) {
     }
 }
 
-/* ---------------- T127: reset dei parametri e contatori a 64 bit ----------------
- * `resetintparam`/`resetdouparam`/`resetparameters` riportano ai default della
- * tabella dichiarativa (una sola sorgente). I contatori `*64` sono gli stessi
- * numeri allargati a 64 bit. */
+/* ---------------- T127: parameter reset and 64-bit counters ----------------
+ * `resetintparam`/`resetdouparam`/`resetparameters` restore the defaults of the
+ * declarative table (a single source). The `*64` counters are the same numbers
+ * widened to 64 bits. */
 static void test_t127(void) {
     /* A. reset */
     {
@@ -8348,7 +8422,7 @@ static void test_t127(void) {
         check_rc(PRIMAL_resetdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS), PRIMAL_RES_OK, "A resetdouparam");
         PRIMAL_getdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv);
         check(dv == 1e-8, "A tol di nuovo 1e-8");
-        /* resetparameters: due parametri mossi, entrambi tornano */
+        /* resetparameters: two parameters moved, both return */
         PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 7);
         PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, 1e-2);
         check_rc(PRIMAL_resetparameters(t), PRIMAL_RES_OK, "A resetparameters");
@@ -8359,7 +8433,7 @@ static void test_t127(void) {
         check_rc(PRIMAL_resetdouparam(t, 99999), PRIMAL_RES_ERR_ARG, "A id ignoto dou");
         pend(&p);
     }
-    /* B. contatori a 64 bit */
+    /* B. 64-bit counters */
     {
         cur_name = "T127 B contatori a 64 bit";
         P p; pbegin(&p);
@@ -8385,11 +8459,11 @@ static void test_t127(void) {
     }
 }
 
-/* ---------------- T128: coni contigui e forme in blocco di A ----------------
- * `appendconeseq`/`appendconesseq` (membri contigui) e i setter in blocco
- * `putarowlist`/`putacollist`/`putarowslice`/`putacolslice` (dati CSR). */
+/* ---------------- T128: contiguous cones and bulk forms of A ----------------
+ * `appendconeseq`/`appendconesseq` (contiguous members) and the bulk setters
+ * `putarowlist`/`putacollist`/`putarowslice`/`putacolslice` (CSR data). */
 static void test_t128(void) {
-    /* A. coni contigui */
+    /* A. contiguous cones */
     {
         cur_name = "T128 A appendconeseq/appendconesseq";
         P p; pbegin(&p);
@@ -8455,10 +8529,10 @@ static void test_t128(void) {
     }
 }
 
-/* ---------------- T129: i nomi simbolici degli enum (*tostr) ----------------
+/* ---------------- T129: the symbolic names of the enums (*tostr) ----------------
  * `prostatostr`/`solstatostr`/`bktostr`/`conetypetostr`/`probtypetostr`/
- * `sktostr`/`rescodetostr`. Il TESTO e' quello di questo solver (deviazione
- * dichiarata: la forma esatta del riferimento non e' stata letta). */
+ * `sktostr`/`rescodetostr`. The TEXT is this solver's own (a declared deviation:
+ * the exact reference form has not been read). */
 static void test_t129(void) {
     cur_name = "T129 nomi simbolici degli enum";
     P p; pbegin(&p);
@@ -8485,13 +8559,13 @@ static void test_t129(void) {
     check(strcmp(s, "TRM_MAX_ITER") == 0, "A TRM_MAX_ITER");
     PRIMAL_rescodetostr(PRIMAL_RES_ERR_INFEASIBLE, s);
     check(strcmp(s, "ERR_INFEASIBLE") == 0, "A ERR_INFEASIBLE");
-    /* str NULL non deve crashare */
+    /* str NULL must not crash */
     check_rc(PRIMAL_bktostr(p.task, PRIMAL_BK_LO, NULL), PRIMAL_RES_OK, "A str null");
     pend(&p);
 }
 
-/* ---------------- T130: version/build/errore e soglia di troncamento di A ----------------
- * `checkversion`/`getbuildinfo`/`getcodedesc`/`getlasterror` e
+/* ---------------- T130: version/build/error and the A truncation threshold ----------------
+ * `checkversion`/`getbuildinfo`/`getcodedesc`/`getlasterror` and
  * `getatruncatetol`/`putatruncatetol`. */
 static void test_t130(void) {
     /* A. checkversion / getbuildinfo / getcodedesc */
@@ -8511,7 +8585,7 @@ static void test_t130(void) {
         check_rc(PRIMAL_getcodedesc(PRIMAL_RES_OK, NULL, NULL), PRIMAL_RES_OK, "A codedesc null ok");
         pend(&p);
     }
-    /* B. getlasterror segue l'ultimo solve */
+    /* B. getlasterror follows the last solve */
     {
         cur_name = "T130 B getlasterror";
         P p; pbegin(&p);
@@ -8531,7 +8605,7 @@ static void test_t130(void) {
         check_rc(PRIMAL_getlasterror(t, &lrc, 64, NULL, msg), PRIMAL_RES_ERR_NULL, "B len null");
         pend(&p);
     }
-    /* C. atruncatetol: memorizzata, non applicata */
+    /* C. atruncatetol: stored, not applied */
     {
         cur_name = "T130 C get/putatruncatetol";
         P p; pbegin(&p);
@@ -8549,10 +8623,10 @@ static void test_t130(void) {
     }
 }
 
-/* ---------------- T131: rimozione di coni e variabili bar ----------------
- * `removecones` compatta la lista dei coni; `removebarvars` rimuove le variabili
- * bar e **rimappa** i termini di A-bar/C-bar. ASan e' la guardia sulla memoria
- * (niente doppio free / puntatori penzolanti). */
+/* ---------------- T131: removal of cones and bar variables ----------------
+ * `removecones` compacts the cone list; `removebarvars` removes the bar variables
+ * and **remaps** the A-bar/C-bar terms. ASan is the memory guard (no double free
+ * / dangling pointers). */
 static void test_t131(void) {
     /* A. removecones */
     {
@@ -8579,7 +8653,7 @@ static void test_t131(void) {
         check_rc(PRIMAL_removecones(t, 2, (int[]){0,0}), PRIMAL_RES_ERR_ARG, "A duplicato");
         pend(&p);
     }
-    /* B. removebarvars: rimozione + rimappatura dei termini */
+    /* B. removebarvars: removal + remapping of the terms */
     {
         cur_name = "T131 B removebarvars";
         P p; pbegin(&p);
@@ -8604,7 +8678,7 @@ static void test_t131(void) {
         int nbc = -1;
         PRIMAL_getnumbarcterm(t, &nbc);
         check(nbc == 2, "B due termini C");
-        /* il termine C della nuova barra 1 e' quello che era della vecchia 2 (sym m2) */
+        /* the C term of the new bar 1 is the one that belonged to old bar 2 (sym m2) */
         int sym = -1; double coef = 0.0;
         PRIMAL_getbarcidxj(t, 1, 1, &nb, &sym, &coef);
         check(sym == m2, "B il termine C rimappato");
@@ -8613,16 +8687,18 @@ static void test_t131(void) {
     }
 }
 
-/* ---------------- T132: stream su file, stream di env, echo ----------------
+/* ---------------- T132: file stream, env stream, echo ----------------
  * `linkfiletotaskstream`/`unlinkfuncfromtaskstream`, `linkfunctoenvstream`/
  * `linkfiletoenvstream`/`unlinkfuncfromenvstream`, `echotask`/`echoenv`/
- * `echointro`. Lo stream di env e' ereditato dai task creati dopo. */
+ * `echointro`. The env stream is inherited by tasks created afterwards. */
 static char g_sb[4096]; static int g_sbn;
+/* Appends stream messages to g_sb for the T132 guard. */
 static void test_stream_cb(void *h, const char *msg) {
     (void)h;
     int n = (int)strlen(msg);
     if (g_sbn + n < (int)sizeof(g_sb)) { memcpy(g_sb + g_sbn, msg, (size_t)n); g_sbn += n; g_sb[g_sbn] = 0; }
 }
+/* Reads up to cap-1 bytes of a file into out for the T132 checks. */
 static void t132_readfile(const char *path, char *out, int cap) {
     out[0] = 0;
     FILE *f = fopen(path, "r");
@@ -8632,8 +8708,9 @@ static void t132_readfile(const char *path, char *out, int cap) {
     fclose(f);
 }
 
+/* T132: task/env file streams and echo. */
 static void test_t132(void) {
-    /* A. stream di env per funzione, ereditato, + echo */
+    /* A. env stream by function, inherited, + echo */
     {
         cur_name = "T132 A stream env per funzione";
         P p; pbegin(&p);
@@ -8652,7 +8729,7 @@ static void test_t132(void) {
         check_rc(PRIMAL_unlinkfuncfromenvstream(p.env, PRIMAL_STREAM_LOG), PRIMAL_RES_OK, "A unlink env");
         pend(&p);
     }
-    /* B. stream su file del task, e unlink */
+    /* B. task file stream, and unlink */
     {
         cur_name = "T132 B stream su file del task";
         P p; pbegin(&p);
@@ -8664,13 +8741,13 @@ static void test_t132(void) {
         char buf[128];
         t132_readfile("/tmp/mc_t132b.txt", buf, sizeof buf);
         check(strcmp(buf, "file 3\n") == 0, "B contenuto del file");
-        /* dopo l'unlink echotask non scrive piu' */
+        /* after the unlink echotask no longer writes */
         PRIMAL_echotask(t, PRIMAL_STREAM_LOG, "dopo");
         t132_readfile("/tmp/mc_t132b.txt", buf, sizeof buf);
         check(strcmp(buf, "file 3\n") == 0, "B dopo l'unlink non scrive");
         pend(&p);
     }
-    /* C. stream su file dell'env, ereditato */
+    /* C. env file stream, inherited */
     {
         cur_name = "T132 C stream su file dell'env";
         P p; pbegin(&p);
@@ -8684,7 +8761,7 @@ static void test_t132(void) {
         char buf[128];
         t132_readfile("/tmp/mc_t132c.txt", buf, sizeof buf);
         check(strcmp(buf, "via env\n") == 0, "C contenuto");
-        /* rifiuti */
+        /* refusals */
         check_rc(PRIMAL_linkfunctotaskstream(p.task, (PRIMALstreamtypee)9, NULL, test_stream_cb),
                  PRIMAL_RES_ERR_ARG, "C stream type invalido");
         check_rc(PRIMAL_echotask(NULL, PRIMAL_STREAM_LOG, "x"), PRIMAL_RES_ERR_NULL, "C task null");
@@ -8692,9 +8769,9 @@ static void test_t132(void) {
     }
 }
 
-/* ---------------- T133: sparsita' e info per blocco di A-bar/C-bar ----------------
- * `getbarasparsity`/`getbaraidxinfo`/`getbaraidx` e le varianti C. `idx` e' la
- * vettorizzazione di questo solver (`i*numbarvar+j` per A-bar, `j` per C-bar). */
+/* ---------------- T133: sparsity and per-block info of A-bar/C-bar ----------------
+ * `getbarasparsity`/`getbaraidxinfo`/`getbaraidx` and the C variants. `idx` is
+ * this solver's vectorization (`i*numbarvar+j` for A-bar, `j` for C-bar). */
 static void test_t133(void) {
     cur_name = "T133 bar sparsity/index info";
     P p; pbegin(&p);
@@ -8713,7 +8790,7 @@ static void test_t133(void) {
     PRIMAL_putbaraij(t, 1, 0, 1, (int[]){sC}, (double[]){3.0});
     PRIMAL_putbarcj(t, 0, 1, (int[]){sD}, (double[]){1.0});
     PRIMAL_putbarcj(t, 1, 2, (int[]){sE, sF}, (double[]){1.0, 1.0});
-    /* A-bar: 3 blocchi, idx = i*2+j */
+    /* A-bar: 3 blocks, idx = i*2+j */
     PRIMALint64t num = -1, idx[4];
     check_rc(PRIMAL_getbarasparsity(t, 4, &num, idx), PRIMAL_RES_OK, "A getbarasparsity");
     check(num == 3, "A tre blocchi");
@@ -8725,7 +8802,7 @@ static void test_t133(void) {
     check_rc(PRIMAL_getbaraidx(t, 2, 4, &gi, &gj, &nt, sub, w), PRIMAL_RES_OK, "A idx 2");
     check(gi == 1 && gj == 0 && nt == 1 && sub[0] == sC && w[0] == 3.0, "A (1,0) decodificato");
     check_rc(PRIMAL_getbaraidxinfo(t, 99, &nt), PRIMAL_RES_ERR_ARG, "A idx fuori");
-    /* C-bar: 2 barre */
+    /* C-bar: 2 bars */
     PRIMALint64t idxc[4];
     check_rc(PRIMAL_getbarcsparsity(t, 4, &num, idxc), PRIMAL_RES_OK, "A getbarcsparsity");
     check(num == 2 && idxc[0] == 0 && idxc[1] == 1, "A due barre C");
@@ -8733,17 +8810,17 @@ static void test_t133(void) {
     check(nt == 2, "A barra 1 ha 2 termini C");
     check_rc(PRIMAL_getbarcidx(t, 1, 4, &gj, &nt, sub, w), PRIMAL_RES_OK, "A cidx 1");
     check(gj == 1 && nt == 2 && sub[0] == sE && sub[1] == sF, "A i due termini C");
-    /* capienza corta: rifiuto */
+    /* short capacity: refusal */
     check_rc(PRIMAL_getbarcidx(t, 1, 1, &gj, &nt, sub, w), PRIMAL_RES_ERR_ARG, "A capienza corta");
     pend(&p);
 }
 
-/* ---------------- T134: inputdata e uso di memoria ----------------
- * `inputdata`/`inputdata64` caricano la parte lineare in una chiamata (A per
- * colonna); `getmemusagetask` stima l'uso di memoria. */
+/* ---------------- T134: inputdata and memory usage ----------------
+ * `inputdata`/`inputdata64` load the linear part in one call (A by column);
+ * `getmemusagetask` estimates the memory usage. */
 static void test_t134(void) {
     cur_name = "T134 inputdata/getmemusagetask";
-    /* A. inputdata su un LP e solve */
+    /* A. inputdata on an LP and solve */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -8766,7 +8843,7 @@ static void test_t134(void) {
         double po = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough(po, 3.0, "A pobj=3");
-        /* inputdata su un task non vuoto: rifiuto */
+        /* inputdata on a non-empty task: refusal */
         check_rc(PRIMAL_inputdata(t, 1, 2, 1, 2, c, 0.0, aptrb, aptre, asub, aval,
                                   bkc, blc, buc, bkx, blx, bux), PRIMAL_RES_ERR_ARG, "A task non vuoto");
         PRIMALint64t mi = 0, mm = 0;
@@ -8774,7 +8851,7 @@ static void test_t134(void) {
         check(mi > 0 && mi == mm, "A memoria stimata");
         pend(&p);
     }
-    /* B. removecons: compatta A, qcon, barA e i nomi */
+    /* B. removecons: compacts A, qcon, barA and the names */
     {
         cur_name = "T134 B removecons";
         P p; pbegin(&p);
@@ -8833,8 +8910,8 @@ static void test_t134(void) {
 }
 
 /* ---------------- T135: removevars ----------------
- * Rimuove una variabile: c/bound/colonne/nomi compattati, `qcon` rimodellato al
- * nuovo stride, `qobj` e i membri di cono rimappati. ASan e' la guardia memoria. */
+ * Removes a variable: c/bounds/columns/names compacted, `qcon` reshaped to the
+ * new stride, `qobj` and the cone members remapped. ASan is the memory guard. */
 static void test_t135(void) {
     cur_name = "T135 removevars";
     P p; pbegin(&p);
@@ -8880,8 +8957,9 @@ static void test_t135(void) {
     pend(&p);
 }
 
-/* ---------------- T136: strtoconetype/strtosk e getnumparam ----------------
- * Gli inversi dei nomi simbolici e il numero di parametri per tipo nella tabella. */
+/* ---------------- T136: strtoconetype/strtosk and getnumparam ----------------
+ * The inverses of the symbolic names and the number of parameters per kind in
+ * the table. */
 static void test_t136(void) {
     cur_name = "T136 strtoconetype/strtosk/getnumparam";
     P p; pbegin(&p);
@@ -8911,9 +8989,9 @@ static void test_t136(void) {
     pend(&p);
 }
 
-/* ---------------- T137: espressioni affini (AFE) ----------------
- * `appendafes`/`getnumafe` e lo storage di F (sparsa per riga) e g:
- * `putafefentry`/`putafefrow`/`putafeg` e i getter. */
+/* ---------------- T137: affine expressions (AFE) ----------------
+ * `appendafes`/`getnumafe` and the storage of F (sparse by row) and g:
+ * `putafefentry`/`putafefrow`/`putafeg` and the getters. */
 static void test_t137(void) {
     cur_name = "T137 AFE: F e g";
     P p; pbegin(&p);
@@ -8934,22 +9012,22 @@ static void test_t137(void) {
     check(nz == 2 && vi[0] == 1 && vi[1] == 2 && vv[0] == 3.0 && vv[1] == 4.0, "la riga 0");
     double g = 0.0;
     PRIMAL_getafeg(t, 0, &g); close_enough(g, 5.0, "g0=5");
-    /* replace di una entrata */
+    /* replace one entry */
     PRIMAL_putafefentry(t, 0, 1, 7.0);
     PRIMAL_getafefrow(t, 0, &nz, vi, vv);
     { int found = 0; for (int e = 0; e < nz; e++) if (vi[e] == 1 && vv[e] == 7.0) found = 1;
       check(nz == 2 && found, "la entrata (0,1) e' 7"); }
-    /* a 0 rimuove */
+    /* at 0 it removes */
     PRIMAL_putafefentry(t, 0, 1, 0.0);
     PRIMAL_getafefrownumnz(t, 0, &nz);
     check(nz == 1 && vi[0] == 2, "rimossa (0,1)");
-    /* putafefrow sostituisce la riga */
+    /* putafefrow replaces the row */
     check_rc(PRIMAL_putafefrow(t, 1, 3, (int[]){0,1,2}, (double[]){1.0,2.0,3.0}), PRIMAL_RES_OK, "frow");
     PRIMAL_getafefrownumnz(t, 1, &nz);
     check(nz == 3, "riga 1 con 3 termini");
     PRIMAL_getafefrow(t, 1, &nz, vi, vv);
     check(vi[0]==0 && vi[1]==1 && vi[2]==2 && vv[2]==3.0, "la riga 1");
-    /* rifiuti */
+    /* refusals */
     check_rc(PRIMAL_putafefentry(t, 9, 0, 1.0), PRIMAL_RES_ERR_ARG, "afeidx fuori");
     check_rc(PRIMAL_putafefentry(t, 0, 9, 1.0), PRIMAL_RES_ERR_ARG, "varidx fuori");
     check_rc(PRIMAL_putafefentry(t, 0, 0, 0.0/0.0), PRIMAL_RES_ERR_ARG, "NaN");
@@ -8959,9 +9037,9 @@ static void test_t137(void) {
     pend(&p);
 }
 
-/* ---------------- T138: domini conici (ACC) ----------------
- * `append*domain` e `getnumdomain`/`getdomaintype`/`getdomainn`. I tipi sono
- * quelli di MSKdomaintypee. */
+/* ---------------- T138: conic domains (ACC) ----------------
+ * `append*domain` and `getnumdomain`/`getdomaintype`/`getdomainn`. The types are
+ * those of MSKdomaintypee. */
 static void test_t138(void) {
     cur_name = "T138 domini conici";
     P p; pbegin(&p);
@@ -8998,10 +9076,10 @@ static void test_t138(void) {
     pend(&p);
 }
 
-/* T139: ACC in stile riferimento — appendacc(domidx, numafeidx, afeidxlist, b),
- * i getter getnumacc/getaccn/getaccdomain/getaccafeidxlist/getaccb, i domini
- * lineari (RPLUS) codificati da righe e i rifiuti (dimensione del dominio
- * diversa dal numero di AFE, domidx/afeidx fuori dominio, lista NULL). */
+/* T139: ACC in reference style — appendacc(domidx, numafeidx, afeidxlist, b),
+ * the getters getnumacc/getaccn/getaccdomain/getaccafeidxlist/getaccb, the
+ * linear domains (RPLUS) encoded by rows and the refusals (domain size different
+ * from the number of AFE, domidx/afeidx out of domain, NULL list). */
 static void test_t139(void) {
     cur_name = "T139 ACC riferimento";
     {
@@ -9019,9 +9097,9 @@ static void test_t139(void) {
         PRIMALint64t dom;
         check_rc(PRIMAL_appendrplusdomain(t, 1, &dom), PRIMAL_RES_OK, "rplus dom");
         PRIMALint64t afeidx[1] = {0};
-        /* convenzione del riferimento: l'espressione e' F x + g - b, quindi per
-         * (x0+x1-2) in RPLUS il b passato e' +2 (il segno e' la meta' che
-         * distingue questa convenzione da quella opposta). */
+        /* reference convention: the expression is F x + g - b, so for
+         * (x0+x1-2) in RPLUS the b passed is +2 (the sign is the half that
+         * distinguishes this convention from the opposite one). */
         double b[1] = {2.0};
         check_rc(PRIMAL_appendacc(t, dom, 1, afeidx, b), PRIMAL_RES_OK, "appendacc rplus");
         PRIMALint64t nacc = -1, dn = -1, got[1] = {-1};
@@ -9071,31 +9149,31 @@ static void test_t139(void) {
     }
 }
 
-/* ---------------- T140: DJC in stile riferimento ----------------
- * appenddjcs pre-alloca slot vuoti; putdjc(djcidx, numdomidx, domidxlist,
- * numafeidx, afeidxlist, b, numterms, termsizelist) descrive un DJC come OR di
- * clausole, ciascuna una congiunzione di domini su espressioni affini; b e' la
- * costante SOTTRATTA (convenzione del riferimento: F x + g - b). I getter
- * leggono la descrizione memorizzata; putdjcslice riempie piu' DJC in una
- * chiamata. Il modello si estende subito (binarie di selezione + righe big-M),
- * quindi un djcidx gia' scritto non e' riscrivibile.
- * A. tutti e quattro i domini lineari in una clausola: R (nessuna riga),
- *    RZERO (uguaglianza), RPLUS (>=), RMINUS (<=), con i metadati riletti.
- *    Derivato a mano: x0 = x1, 2 <= x1 <= 5, min x0 -> 2.
- * B. disgiunzione [x0<=2] OR [6<=x0<=7], max -> 7 (l'esempio djc1).
- * C. b = NULL e' il vettore nullo: RZERO su x0 forza x0 = 0.
- * D. putdjcslice: due DJC indipendenti x0<=5 e x1<=4, max x0+x1 -> 9.
- * E. nomi: namespace separato (lo stesso nome su una variabile e' lecito),
- *    un duplicato dentro la tabella rifiutato, "" toglie, buffer piccolo rifiuta
- *    senza scrivere.
- * F. rifiuti: dominio conico (deviazione), somma termsize != numdomidx, somma
- *    dimensioni != numafeidx, afeidx fuori, b NaN, liste NULL, indice fuori,
- *    riscrittura di uno slot gia' scritto.
- * La convenzione del segno di b e' discriminante: se b fosse SOMMATO, il caso A
- * chiederebbe x1 >= -2 e x1 <= -5 (infeasible) e il caso C non cambierebbe. */
+/* ---------------- T140: DJC in reference style ----------------
+ * appenddjcs pre-allocates empty slots; putdjc(djcidx, numdomidx, domidxlist,
+ * numafeidx, afeidxlist, b, numterms, termsizelist) describes a DJC as an OR of
+ * clauses, each a conjunction of domains on affine expressions; b is the
+ * SUBTRACTED constant (reference convention: F x + g - b). The getters read the
+ * stored description; putdjcslice fills several DJCs in one call. The model
+ * extends immediately (selection binaries + big-M rows), so an already written
+ * djcidx is not rewritable.
+ * A. all four linear domains in one clause: R (no row), RZERO (equality),
+ *    RPLUS (>=), RMINUS (<=), with the metadata read back.
+ *    Hand-derived: x0 = x1, 2 <= x1 <= 5, min x0 -> 2.
+ * B. disjunction [x0<=2] OR [6<=x0<=7], max -> 7 (the djc1 example).
+ * C. b = NULL is the null vector: RZERO on x0 forces x0 = 0.
+ * D. putdjcslice: two independent DJCs x0<=5 and x1<=4, max x0+x1 -> 9.
+ * E. names: separate namespace (the same name on a variable is allowed),
+ *    a duplicate inside the table refused, "" removes, a small buffer refuses
+ *    without writing.
+ * F. refusals: conic domain (deviation), sum termsize != numdomidx, sum
+ *    dimensions != numafeidx, afeidx out, b NaN, NULL lists, index out,
+ *    rewriting an already written slot.
+ * The sign convention of b is discriminating: if b were ADDED, case A would
+ * ask for x1 >= -2 and x1 <= -5 (infeasible) and case C would not change. */
 static void test_t140(void) {
     cur_name = "T140 DJC riferimento";
-    {   /* A. quattro domini lineari, metadati e soluzione a mano */
+    {   /* A. four linear domains, metadata and hand-derived solution */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -9103,7 +9181,7 @@ static void test_t140(void) {
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_FR, -INFINITY, INFINITY);
         PRIMAL_putcj(t, 0, 1.0);
         PRIMAL_appendafes(t, 4);
-        PRIMAL_putafefentry(t, 0, 0, 3.0); PRIMAL_putafeg(t, 0, 7.0);          /* R: ignorata */
+        PRIMAL_putafefentry(t, 0, 0, 3.0); PRIMAL_putafeg(t, 0, 7.0);          /* R: ignored */
         PRIMAL_putafefentry(t, 1, 0, 1.0); PRIMAL_putafefentry(t, 1, 1, -1.0); /* x0-x1 */
         PRIMAL_putafefentry(t, 2, 1, 1.0);                                     /* x1 */
         PRIMAL_putafefentry(t, 3, 1, 1.0);                                     /* x1 */
@@ -9149,7 +9227,7 @@ static void test_t140(void) {
         close_enough_tol(xx[1], 2.0, 1e-6, "A x1=2 (x0=x1, x1>=2)");
         pend(&p);
     }
-    {   /* B. disgiunzione, massimo */
+    {   /* B. disjunction, maximum */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -9173,9 +9251,9 @@ static void test_t140(void) {
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, xx);
         close_enough_tol(po, 7.0, 1e-6, "B pobj 7");
         close_enough_tol(xx[0], 7.0, 1e-6, "B x0=7");
-        /* la violazione primale del DJC: il punto pubblicato sta in una delle
-         * due clausole, quindi la disgiunzione e' soddisfatta (min su i di max
-         * su j) */
+        /* the primal violation of the DJC: the published point lies in one of
+         * the two clauses, so the disjunction is satisfied (min over i of max
+         * over j) */
         PRIMALint64t dl0[1] = {0};
         double dv[1] = {-1.0};
         check_rc(PRIMAL_getpvioldjc(t, PRIMAL_SOL_ITR, 1, dl0, dv), PRIMAL_RES_OK,
@@ -9185,7 +9263,7 @@ static void test_t140(void) {
                  PRIMAL_RES_ERR_ARG, "B djcidx fuori");
         pend(&p);
     }
-    {   /* C. b = NULL e' il vettore nullo; RZERO forza x0 = 0 */
+    {   /* C. b = NULL is the null vector; RZERO forces x0 = 0 */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -9209,7 +9287,7 @@ static void test_t140(void) {
         close_enough_tol(xx[0], 0.0, 1e-9, "C x0=0");
         pend(&p);
     }
-    {   /* D. putdjcslice: due DJC concatenati */
+    {   /* D. putdjcslice: two concatenated DJCs */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -9239,7 +9317,7 @@ static void test_t140(void) {
         close_enough_tol(po, 9.0, 1e-6, "D pobj 9");
         close_enough_tol(xx[0], 5.0, 1e-6, "D x0=5");
         close_enough_tol(xx[1], 4.0, 1e-6, "D x1=4");
-        /* D2. la lettura in blocco (getdjcs) e' la concatenazione delle per-DJC */
+        /* D2. the bulk read (getdjcs) is the concatenation of the per-DJC ones */
         PRIMALint64t tdom = -1, tafe = -1, tterm = -1;
         PRIMAL_getdjcnumdomaintot(t, &tdom);
         PRIMAL_getdjcnumafetot(t, &tafe);
@@ -9256,7 +9334,7 @@ static void test_t140(void) {
         check(gt[0] == 1 && gt[1] == 1, "D2 termsize concatenate");
         pend(&p);
     }
-    {   /* E. nomi */
+    {   /* E. names */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -9278,7 +9356,7 @@ static void test_t140(void) {
         check_rc(PRIMAL_putdjcname(t, 5, "x"), PRIMAL_RES_ERR_ARG, "indice fuori");
         pend(&p);
     }
-    {   /* F. rifiuti */
+    {   /* F. refusals */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -9326,17 +9404,17 @@ static void test_t140(void) {
     }
 }
 
-/* ---------------- T141: Doc 5 — costi di transazione (LP con variabili libere) ----------------
- * Modello del post StackOverflow 37586543 (MOSEK Fusion), n=3:
- *   x0 = (-20,-50,-10), t = (.01,.01,.01), x libera, z libera, l >= 0;
+/* ---------------- T141: Doc 5 — transaction costs (LP with free variables) ----------------
+ * Model from StackOverflow post 37586543 (MOSEK Fusion), n=3:
+ *   x0 = (-20,-50,-10), t = (.01,.01,.01), x free, z free, l >= 0;
  *   long1: l - x0 >= 0; buy: z - (x - x0) >= 0; sell: z - (x0 - x) >= 0;
  *   longeqshort: e'x = 0; min t'z.
- * Derivazione a mano (nel vault): z >= |x - x0| e e'(x-x0) = 80 danno
- * sum z >= 80, con uguaglianza se e solo se ogni x_i >= x0_i. L'ottimo non e'
- * un punto ma una FACIA, il valore e' 0.01*80 = 0.8, e `l` e' una colonna
- * degenere (non compare nell'obiettivo ne' vincola la risposta) che il presolve
- * deve eliminare. L'asserzione giusta e' il valore + l'appartenenza alla faccia,
- * non il vettore del post (uno dei punti della faccia). */
+ * Hand derivation (in the vault): z >= |x - x0| and e'(x-x0) = 80 give
+ * sum z >= 80, with equality if and only if every x_i >= x0_i. The optimum is
+ * not a point but a FACE, the value is 0.01*80 = 0.8, and `l` is a degenerate
+ * column (it appears neither in the objective nor constrains the answer) that
+ * the presolve must eliminate. The right assertion is the value + membership in
+ * the face, not the vector of the post (one of the points of the face). */
 static void test_t141(void) {
     cur_name = "T141 transaction costs (Doc 5)";
     static const double X0[3] = {-20.0, -50.0, -10.0};
@@ -9380,15 +9458,15 @@ static void test_t141(void) {
     pend(&p);
 }
 
-/* ---------------- T142: i due ganci di parita' di Doc 6 / Seven Sins ----------------
- * A. leverage ||w||_1 <= 2 su w LIBERA per segno (max mu'w, e'w = 1):
- *    con mu = e_0, il massimo e' w = (1.5, -0.25, -0.25) e ||w||_1 = 2 esatto
- *    (derivato a mano: w1=w2=-a, w0=1+2a, 1+4a=2 -> a=1/4).
- * B. potenze non intere: |x|^{3/2} e |x|^{4/3} come PPOW(2/3) e PPOW(3/4)
- *    (s >= |x|^p  <=>  s^{1/p} >= |x|): min s con x = 4 da' 8, con x = 8 da' 16.
- *    E' la forma di p_i|x_i-x_i^0|^{3/2} e ^{4/3} del §3.6. */
+/* ---------------- T142: the two parity hooks of Doc 6 / Seven Sins ----------------
+ * A. leverage ||w||_1 <= 2 on sign-FREE w (max mu'w, e'w = 1):
+ *    with mu = e_0, the maximum is w = (1.5, -0.25, -0.25) and ||w||_1 = 2 exactly
+ *    (hand-derived: w1=w2=-a, w0=1+2a, 1+4a=2 -> a=1/4).
+ * B. non-integer powers: |x|^{3/2} and |x|^{4/3} as PPOW(2/3) and PPOW(3/4)
+ *    (s >= |x|^p  <=>  s^{1/p} >= |x|): min s with x = 4 gives 8, with x = 8
+ *    gives 16. It is the form of p_i|x_i-x_i^0|^{3/2} and ^{4/3} of §3.6. */
 static void test_t142(void) {
-    {   /* A. leverage su variabili libere */
+    {   /* A. leverage on free variables */
         cur_name = "T142 A ||w||_1 <= 2 con w libera";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -9418,7 +9496,7 @@ static void test_t142(void) {
         check(fabs(x[0] + x[1] + x[2] - 1.0) <= 1e-6, "A e'w = 1");
         pend(&p);
     }
-    {   /* B. potenza 3/2 via PPOW(2/3) */
+    {   /* B. power 3/2 via PPOW(2/3) */
         cur_name = "T142 B |x|^{3/2} via PPOW(2/3)";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -9435,7 +9513,7 @@ static void test_t142(void) {
         close_enough_tol(po, 8.0, 1e-5, "B s = 4^{3/2} = 8");
         pend(&p);
     }
-    {   /* C. potenza 4/3 via PPOW(3/4) */
+    {   /* C. power 4/3 via PPOW(3/4) */
         cur_name = "T142 C |x|^{4/3} via PPOW(3/4)";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -9454,15 +9532,15 @@ static void test_t142(void) {
     }
 }
 
-/* ---------------- T143: il rapporto di Sharpe (Doc 6, caso A3) via Charnes-Cooper ----------------
- * `max (mu'w - rf)/sqrt(w'Sigma w)` non e' ne' lineare ne' quadratico: e' un
- * razionale non convesso, e il nostro encoder QCQP non deve accettarlo grezzo
- * (T87 copre lo spettro sbagliato, non un rapporto). La forma convessa e' la
- * trasformazione di Charnes-Cooper: kappa = 1/sqrt(w'Sigma w) > 0, y = kappa*w,
+/* ---------------- T143: the Sharpe ratio (Doc 6, case A3) via Charnes-Cooper ----------------
+ * `max (mu'w - rf)/sqrt(w'Sigma w)` is neither linear nor quadratic: it is a
+ * non-convex rational, and our QCQP encoder must not accept it raw (T87 covers
+ * the wrong spectrum, not a ratio). The convex form is the Charnes-Cooper
+ * transformation: kappa = 1/sqrt(w'Sigma w) > 0, y = kappa*w,
  *   max mu'y - rf*kappa   s.t.   y'Sigma y <= 1,   e'y = kappa,   kappa >= 0.
- * Caso a mano: mu = (2,0), rf = 0, Sigma = I. Allora max 2 y0 con
- * y0^2+y1^2 <= 1 e y0+y1 = kappa >= 0: ottimo y = (1,0), kappa = 1, valore 2,
- * e il portafoglio ricostruito e' w = y/kappa = (1,0). */
+ * Hand case: mu = (2,0), rf = 0, Sigma = I. Then max 2 y0 with
+ * y0^2+y1^2 <= 1 and y0+y1 = kappa >= 0: optimum y = (1,0), kappa = 1, value 2,
+ * and the reconstructed portfolio is w = y/kappa = (1,0). */
 static void test_t143(void) {
     cur_name = "T143 rapporto di Sharpe via Charnes-Cooper";
     P p; pbegin(&p);
@@ -9492,11 +9570,11 @@ static void test_t143(void) {
     pend(&p);
 }
 
-/* ---------------- T144: la superficie AFE in blocco ----------------
+/* ---------------- T144: the bulk AFE surface ----------------
  * `emptyafefrow`/`emptyafefcol`, `putafeglist`/`putafegslice`/`getafegslice`,
- * `putafefentrylist`, `getafeftrip` e `getafefnumnz` (delega di
- * `getafefrownumnz`). Nessuna regola nuova: cicli sui getter/putter scalari,
- * una fetta di `g` e l'enumerazione del negozio di F in triplette. */
+ * `putafefentrylist`, `getafeftrip` and `getafefnumnz` (a delegate of
+ * `getafefrownumnz`). No new rule: loops over the scalar getters/putters, a
+ * slice of `g` and the enumeration of the F store as triplets. */
 static void test_t144(void) {
     cur_name = "T144 AFE in blocco";
     P p; pbegin(&p);
@@ -9507,11 +9585,11 @@ static void test_t144(void) {
     PRIMAL_putafefentry(t, 0, 0, 1.0); PRIMAL_putafefentry(t, 0, 1, 2.0);
     PRIMAL_putafefentry(t, 1, 1, 3.0); PRIMAL_putafefentry(t, 1, 2, 4.0);
     PRIMAL_putafefentry(t, 2, 0, 5.0);
-    /* getafefnumnz e' la stessa domanda di getafefrownumnz */
+    /* getafefnumnz is the same question as getafefrownumnz */
     int nz = -1;
     check_rc(PRIMAL_getafefnumnz(t, 0, &nz), PRIMAL_RES_OK, "getafefnumnz");
     check(nz == 2, "row0 ha due termini");
-    /* getafeftrip: tutte le entrate in ordine (riga, colonna, valore) */
+    /* getafeftrip: all entries in order (row, column, value) */
     int tot = 0;
     for (int i = 0; i < 3; i++) { PRIMAL_getafefnumnz(t, i, &nz); tot += nz; }
     check(tot == 5, "cinque termini in tutto");
@@ -9521,7 +9599,7 @@ static void test_t144(void) {
           ta[1] == 0 && tv[1] == 1 && tval[1] == 2.0 &&
           ta[2] == 1 && tv[2] == 1 && tval[2] == 3.0 &&
           ta[4] == 2 && tv[4] == 0 && tval[4] == 5.0, "le triplette di F");
-    /* g: lista e fetta */
+    /* g: list and slice */
     PRIMALint64t gi[3] = {0, 1, 2};
     double gv[3] = {7.0, 8.0, 9.0};
     check_rc(PRIMAL_putafeglist(t, 3, gi, gv), PRIMAL_RES_OK, "putafeglist");
@@ -9533,25 +9611,25 @@ static void test_t144(void) {
     double g1 = 0.0;
     PRIMAL_getafeg(t, 1, &g1);
     check(g1 == 10.0, "la fetta di g scrive le posizioni giuste");
-    /* putafefentrylist sostituisce la riga 1 */
+    /* putafefentrylist replaces row 1 */
     PRIMALint64t ai[2] = {1, 1};
     int vi[2] = {0, 2};
     double vv[2] = {6.0, 7.0};
     check_rc(PRIMAL_putafefentrylist(t, 2, ai, vi, vv), PRIMAL_RES_OK, "putafefentrylist");
     PRIMAL_getafefrownumnz(t, 1, &nz);
-    /* rimpiazza (1,2)=4 con 7 e aggiunge (1,0)=6: la riga ha ancora (1,1)=3 */
+    /* replaces (1,2)=4 with 7 and adds (1,0)=6: the row still has (1,1)=3 */
     check(nz == 3, "la lista rimpiazza le entrate, non svuota la riga");
     /* emptyafefrow */
     check_rc(PRIMAL_emptyafefrow(t, 1), PRIMAL_RES_OK, "emptyafefrow");
     PRIMAL_getafefrownumnz(t, 1, &nz);
     check(nz == 0, "la riga 1 e' vuota");
-    /* emptyafefcol azzera la colonna 0 in tutte le righe */
+    /* emptyafefcol zeroes column 0 in every row */
     check_rc(PRIMAL_emptyafefcol(t, 0), PRIMAL_RES_OK, "emptyafefcol");
     PRIMAL_getafefrownumnz(t, 0, &nz);
     check(nz == 1, "la riga 0 perde la colonna 0");
     PRIMAL_getafefrownumnz(t, 2, &nz);
     check(nz == 0, "la riga 2 aveva solo la colonna 0");
-    /* rifiuti */
+    /* refusals */
     check_rc(PRIMAL_emptyafefrow(t, 9), PRIMAL_RES_ERR_ARG, "riga fuori");
     check_rc(PRIMAL_emptyafefcol(t, 9), PRIMAL_RES_ERR_ARG, "colonna fuori");
     check_rc(PRIMAL_putafegslice(t, 2, 1, gs), PRIMAL_RES_ERR_ARG, "fetta invertita");
@@ -9559,11 +9637,11 @@ static void test_t144(void) {
     pend(&p);
 }
 
-/* ---------------- T145: la superficie ACC in blocco e i nomi ----------------
- * `appendaccs` (piu' ACC in una chiamata), `getaccs` (lettura in blocco),
- * `getaccntot` (somma delle dimensioni), `putaccb` e la sesta tabella dei nomi
- * (`putaccname`/`getaccname`/`getaccnamelen`). Nessuna regola nuova: un ciclo
- * sui getter/putter scalari e gli stessi `name_put`/`name_find`. */
+/* ---------------- T145: the bulk ACC surface and the names ----------------
+ * `appendaccs` (several ACCs in one call), `getaccs` (bulk read), `getaccntot`
+ * (sum of the dimensions), `putaccb` and the sixth name table
+ * (`putaccname`/`getaccname`/`getaccnamelen`). No new rule: a loop over the
+ * scalar getters/putters and the same `name_put`/`name_find`. */
 static void test_t145(void) {
     cur_name = "T145 ACC in blocco e nomi";
     P p; pbegin(&p);
@@ -9590,14 +9668,14 @@ static void test_t145(void) {
     check(gd[0] == dP && gd[1] == dQ, "domini concatenati");
     check(ga[0] == 0 && ga[1] == 1 && ga[2] == 2, "afe concatenate");
     check(gb[0] == 1.0 && gb[1] == 0.0 && gb[2] == 0.0, "b concatenati");
-    /* putaccb riscrive il vettore di un ACC esistente */
+    /* putaccb rewrites the vector of an existing ACC */
     double nb[1] = {4.0};
     check_rc(PRIMAL_putaccb(t, 0, 1, nb), PRIMAL_RES_OK, "putaccb");
     double rb[1] = {0};
     PRIMAL_getaccb(t, 0, rb);
     check(rb[0] == 4.0, "il nuovo b");
     check_rc(PRIMAL_putaccb(t, 0, 2, nb), PRIMAL_RES_ERR_ARG, "lunghezza sbagliata");
-    /* nomi: la sesta tabella, stessa regola delle altre */
+    /* names: the sixth table, the same rule as the others */
     check_rc(PRIMAL_putaccname(t, 0, "acc0"), PRIMAL_RES_OK, "putaccname");
     int len = -1;
     check_rc(PRIMAL_getaccnamelen(t, 0, &len), PRIMAL_RES_OK, "getaccnamelen");
@@ -9612,7 +9690,7 @@ static void test_t145(void) {
     PRIMAL_getaccnamelen(t, 0, &len);
     check(len == 0, "lunghezza 0 dopo la rimozione");
     check_rc(PRIMAL_putaccname(t, 5, "x"), PRIMAL_RES_ERR_ARG, "indice fuori");
-    /* rifiuti di appendaccs */
+    /* refusals of appendaccs */
     check_rc(PRIMAL_appendaccs(t, 2, doms, 2, afes, bb), PRIMAL_RES_ERR_ARG,
              "somma dimensioni != numafeidx");
     check_rc(PRIMAL_appendaccs(t, 1, (PRIMALint64t[]){99}, 1, afes, bb), PRIMAL_RES_ERR_ARG,
@@ -9620,16 +9698,16 @@ static void test_t145(void) {
     pend(&p);
 }
 
-/* ---------------- T146: bar, domini e ACC (superficie del riferimento) ----------------
- * Un blocco di funzioni additive: contatori bar (`getnumbaranz`/`getnumbarcnz`),
- * nomi bar (`putbarvarname`/`getbarvarname`/`getbarvarnameindex`/
- * `getbarvarnamelen`), fette (`getbarxslice`/`getbarsslice`), warm start
- * (`putbarxj`/`putbarsj`), `putmaxnumbarvar`; coni di media geometrica, nomi dei
- * domini (settima tabella), `getpowerdomainalpha`/`getpowerdomaininfo`,
+/* ---------------- T146: bars, domains and ACC (reference surface) ----------------
+ * A block of additive functions: bar counters (`getnumbaranz`/`getnumbarcnz`),
+ * bar names (`putbarvarname`/`getbarvarname`/`getbarvarnameindex`/
+ * `getbarvarnamelen`), slices (`getbarxslice`/`getbarsslice`), warm start
+ * (`putbarxj`/`putbarsj`), `putmaxnumbarvar`; geometric-mean cones, domain names
+ * (seventh table), `getpowerdomainalpha`/`getpowerdomaininfo`,
  * `putmaxnumdomain`; `appendaccseq`/`appendaccsseq`, `evaluateacc`/
  * `evaluateaccs`, `putmaxnumacc/afe/djc`. */
 static void test_t146(void) {
-    /* A. nomi bar, contatori, suggerimenti di capacita' */
+    /* A. bar names, counters, capacity hints */
     {
         cur_name = "T146 A nomi bar e contatori";
         P p; pbegin(&p);
@@ -9656,7 +9734,7 @@ static void test_t146(void) {
         check_rc(PRIMAL_putmaxnumbarvar(t, -1), PRIMAL_RES_ERR_ARG, "negativo rifiutato");
         pend(&p);
     }
-    /* B. domini: nomi, media geometrica, info potenza */
+    /* B. domains: names, geometric mean, power info */
     {
         cur_name = "T146 B domini";
         P p; pbegin(&p);
@@ -9686,7 +9764,7 @@ static void test_t146(void) {
         check_rc(PRIMAL_getpowerdomainalpha(t, dg, &alpha), PRIMAL_RES_ERR_ARG,
                  "alpha su un dominio non di potenza");
         check_rc(PRIMAL_putmaxnumdomain(t, 16), PRIMAL_RES_OK, "putmaxnumdomain");
-        /* sequenze di domini di potenza */
+        /* sequences of power domains */
         PRIMALint64t ns[2] = {3, 3}, nl[2] = {2, 2};
         double al[2] = {0.3, 0.7};
         PRIMALint64t didx[2] = {-1, -1};
@@ -9702,7 +9780,7 @@ static void test_t146(void) {
         check(ty == PRIMAL_DOMAIN_DUAL_POWER_CONE, "tipo dpow seq");
         pend(&p);
     }
-    /* C. ACC contigui, attivita', capacita' */
+    /* C. contiguous ACCs, activity, capacity */
     {
         cur_name = "T146 C ACC contigui e attivita'";
         P p; pbegin(&p);
@@ -9730,9 +9808,9 @@ static void test_t146(void) {
         check_rc(PRIMAL_putmaxnumacc(t, 4), PRIMAL_RES_OK, "putmaxnumacc");
         check_rc(PRIMAL_putmaxnumafe(t, 4), PRIMAL_RES_OK, "putmaxnumafe");
         check_rc(PRIMAL_putmaxnumdjc(t, 4), PRIMAL_RES_OK, "putmaxnumdjc");
-        /* min x0+x1 s.t. x0 >= 3, (x0,x1) in QUAD: l'ottimo e' una faccia
-         * (x1 = -x0, x0 >= 3), quindi l'attivita' si asserisce come identita'
-         * con getxx e come appartenenza, non con un valore puntuale. */
+        /* min x0+x1 s.t. x0 >= 3, (x0,x1) in QUAD: the optimum is a face
+         * (x1 = -x0, x0 >= 3), so the activity is asserted as an identity
+         * with getxx and as membership, not with a pointwise value. */
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize");
         double xx[8] = {0};
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, xx);
@@ -9747,7 +9825,7 @@ static void test_t146(void) {
         check_rc(PRIMAL_evaluateacc(t, PRIMAL_SOL_ITR, 0, a0), PRIMAL_RES_OK, "evaluateacc");
         close_enough_tol(a0[0], act[0], 1e-9, "evaluateacc coerente con evaluateaccs");
         check_rc(PRIMAL_evaluateacc(t, PRIMAL_SOL_ITR, 9, a0), PRIMAL_RES_ERR_ARG, "accidx fuori");
-        /* i duali degli ACC: i moltiplicatori delle righe che hanno prodotto */
+        /* the duals of the ACCs: the multipliers of the rows they produced */
         double dy0[1] = {9}, dy1[2] = {9, 9};
         check_rc(PRIMAL_getaccdoty(t, PRIMAL_SOL_ITR, 0, dy0), PRIMAL_RES_OK, "getaccdoty 0");
         check_rc(PRIMAL_getaccdoty(t, PRIMAL_SOL_ITR, 1, dy1), PRIMAL_RES_OK, "getaccdoty 1");
@@ -9759,7 +9837,7 @@ static void test_t146(void) {
         double dys[3] = {0, 0, 0};
         check_rc(PRIMAL_getaccdotys(t, PRIMAL_SOL_ITR, dys), PRIMAL_RES_OK, "getaccdotys");
         check(dys[0] == dy0[0] && dys[1] == dy1[0] && dys[2] == dy1[1], "concatenati");
-        /* violazione duale degli ACC: doty in K* */
+        /* dual violation of the ACCs: doty in K* */
         PRIMALint64t dalist[2] = {0, 1};
         double dv[2] = {9, 9};
         check_rc(PRIMAL_getdviolacc(t, PRIMAL_SOL_ITR, 2, dalist, dv), PRIMAL_RES_OK, "getdviolacc");
@@ -9769,10 +9847,10 @@ static void test_t146(void) {
         double dy0b[1] = {0};
         PRIMAL_getaccdoty(t, PRIMAL_SOL_ITR, 0, dy0b);
         check(dy0b[0] == 7.0, "putaccdoty scrive");
-        /* putaccbj aggiorna un componente di b */
+        /* putaccbj updates one component of b */
         check_rc(PRIMAL_putaccbj(t, 0, 0, 3.0), PRIMAL_RES_OK, "putaccbj");
         check_rc(PRIMAL_putaccbj(t, 0, 5, 1.0), PRIMAL_RES_ERR_ARG, "componente fuori");
-        /* violazione primale degli ACC (RPLUS e QUAD) */
+        /* primal violation of the ACCs (RPLUS and QUAD) */
         PRIMALint64t alist[2] = {0, 1};
         double av[2] = {9, 9};
         check_rc(PRIMAL_getpviolacc(t, PRIMAL_SOL_ITR, 2, alist, av), PRIMAL_RES_OK, "getpviolacc");
@@ -9784,11 +9862,11 @@ static void test_t146(void) {
     }
 }
 
-/* ---------------- T147: scritture bar in blocco e letture ACC implicite ----------------
- * `putbarablocktriplet`/`putbarcblocktriplet`/`putbaraijlist` aggiungono termini
- * al negozio bar (come `putbaraij`/`putbarcj`); `getaccfnumnz`/`getaccgvector`/
- * `getaccftrip` leggono la F e la g che l'ordine degli AFE dentro gli ACC
- * implica. */
+/* ---------------- T147: bulk bar writes and implicit ACC reads ----------------
+ * `putbarablocktriplet`/`putbarcblocktriplet`/`putbaraijlist` add terms to the
+ * bar store (like `putbaraij`/`putbarcj`); `getaccfnumnz`/`getaccgvector`/
+ * `getaccftrip` read the F and g that the order of the AFEs inside the ACCs
+ * implies. */
 static void test_t147(void) {
     cur_name = "T147 bar in blocco e ACC impliciti";
     {   /* bar block triplets: min <I,X> s.t. X00 >= 1 -> 1 */
@@ -9817,7 +9895,7 @@ static void test_t147(void) {
                  PRIMAL_RES_ERR_ARG, "entrata fuori dalla matrice");
         pend(&p);
     }
-    {   /* putbaraijlist: la stessa somma via lista di matrici */
+    {   /* putbaraijlist: the same sum via a list of matrices */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int dim = 2;
@@ -9840,7 +9918,7 @@ static void test_t147(void) {
         close_enough_tol(po, 0.0, 1e-6, "nessun costo: obj 0");
         pend(&p);
     }
-    {   /* letture ACC implicite su un ACC con AFE sparsi */
+    {   /* implicit ACC reads on an ACC with sparse AFEs */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -9857,7 +9935,7 @@ static void test_t147(void) {
         check_rc(PRIMAL_appendaccseq(t, dP, 1, 0, b0), PRIMAL_RES_OK, "acc seq");
         double b1[1] = {0.0};
         check_rc(PRIMAL_appendaccseq(t, dP, 1, 1, b1), PRIMAL_RES_OK, "acc seq 2");
-        /* F implicita: comp0 -> (x0,1),(x1,1); comp1 -> (x0,2) */
+        /* implicit F: comp0 -> (x0,1),(x1,1); comp1 -> (x0,2) */
         PRIMALint64t fnnz = -1;
         check_rc(PRIMAL_getaccfnumnz(t, &fnnz), PRIMAL_RES_OK, "getaccfnumnz");
         check(fnnz == 3, "tre nonnulli impliciti");
@@ -9874,14 +9952,14 @@ static void test_t147(void) {
     }
 }
 
-/* ---------------- T148: ricerche per nome, Q, setter di soluzione ----------------
- * `getvarnameindex`/`getconnameindex`/`getconenameindex` (deleghe con asgn=0),
- * `getconenamelen`, `getmaxnumqnz(64)`, `getclist`, i `putmaxnum*` (no-op),
- * `putslc/putsuc/putslx/putsux` e le loro `*slice`, `putvarboundlistconst`/
+/* ---------------- T148: lookups by name, Q, solution setters ----------------
+ * `getvarnameindex`/`getconnameindex`/`getconenameindex` (delegates with asgn=0),
+ * `getconenamelen`, `getmaxnumqnz(64)`, `getclist`, the `putmaxnum*` (no-op),
+ * `putslc/putsuc/putslx/putsux` and their `*slice`, `putvarboundlistconst`/
  * `putconboundlistconst`. */
 static void test_t148(void) {
     cur_name = "T148 nomi, Q e setter di soluzione";
-    {   /* ricerca per nome (var/con) e cono */
+    {   /* lookup by name (var/con) and cone */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -9912,7 +9990,7 @@ static void test_t148(void) {
         check_rc(PRIMAL_putmaxnumvar(t, -1), PRIMAL_RES_ERR_ARG, "negativo rifiutato");
         pend(&p);
     }
-    {   /* nome di un blocco conico */
+    {   /* name of a conic block */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -9927,7 +10005,7 @@ static void test_t148(void) {
         check_rc(PRIMAL_getconenamelen(t, 9, &len), PRIMAL_RES_ERR_ARG, "cono fuori");
         pend(&p);
     }
-    {   /* setter di soluzione e bound list const */
+    {   /* solution setters and const bound list */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -9971,13 +10049,13 @@ static void test_t148(void) {
     }
 }
 
-/* ---------------- T149: A in triplette, AFE in blocco, chiavi e norme ----------------
- * `getarowslicetrip`/`getacolslicetrip` (A su una fetta in triplette, rifiuto
- * senza scrivere), `emptyafefrowlist`/`emptyafefcollist`/`putafefcol`,
+/* ---------------- T149: A as triplets, bulk AFE, keys and norms ----------------
+ * `getarowslicetrip`/`getacolslicetrip` (A over a slice as triplets, refusal
+ * without writing), `emptyafefrowlist`/`emptyafefcollist`/`putafefcol`,
  * `putskxslice`/`putskcslice`, `getprimalsolutionnorms`. */
 static void test_t149(void) {
     cur_name = "T149 A triplette, AFE blocco, chiavi, norme";
-    {   /* A in triplette */
+    {   /* A as triplets */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
@@ -9997,7 +10075,7 @@ static void test_t149(void) {
               sj[2] == 1 && si[2] == 1 && sv[2] == 3.0, "le triplette delle colonne");
         pend(&p);
     }
-    {   /* AFE: clear liste e colonna */
+    {   /* AFE: clear lists and column */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -10013,7 +10091,7 @@ static void test_t149(void) {
                  "emptyafefcollist");
         PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 1, "riga 0 perde la colonna 0");
         PRIMAL_getafefrownumnz(t, 2, &nz); check(nz == 0, "riga 2 aveva solo la colonna 0");
-        /* putafefcol azzera la colonna 2 e vi scrive due entrate */
+        /* putafefcol zeroes column 2 and writes two entries into it */
         PRIMALint64t af[2] = {0, 1};
         double av[2] = {7.0, 8.0};
         check_rc(PRIMAL_putafefcol(t, 2, 2, af, av), PRIMAL_RES_OK, "putafefcol");
@@ -10024,7 +10102,7 @@ static void test_t149(void) {
         check_rc(PRIMAL_putafefcol(t, 9, 1, af, av), PRIMAL_RES_ERR_ARG, "colonna fuori");
         pend(&p);
     }
-    {   /* chiavi di stato e norme dopo un solve */
+    {   /* status keys and norms after a solve */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -10057,10 +10135,12 @@ static void test_t149(void) {
     }
 }
 
-/* ---------------- T150: gestione task e norme duali ----------------
+/* ---------------- T150: task management and dual norms ----------------
  * `makeemptytask`/`getenv`/`commitchanges`/`resizetask`/`updatesolutioninfo`
- * (no-op)/`deletesolution` e `getdualsolutionnorms`. */
+ * (no-op)/`deletesolution` and `getdualsolutionnorms`. */
+/* No-op exit function registered by the T150 guard. */
 static void t150_exitfn(void *handle, const char *msg) { (void)handle; (void)msg; }
+/* T150: task management and dual norms. */
 static void test_t150(void) {
     cur_name = "T150 gestione task e norme duali";
     PRIMALenv_t env;
@@ -10095,11 +10175,10 @@ static void test_t150(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T151: varianti a 64 bit di A ----------------
+/* ---------------- T151: 64-bit variants of A ----------------
  * `putarowslice64`/`putacolslice64`/`putarowlist64`/`putacollist64`/
- * `putaijlist64` e `getarowslice64`/`getacolslice64`/`getarowslicenumnz64`/
- * `getacolslicenumnz64`: gli stessi lettori/scrittori con i puntatori di riga a
- * 64 bit. */
+ * `putaijlist64` and `getarowslice64`/`getacolslice64`/`getarowslicenumnz64`/
+ * `getacolslicenumnz64`: the same readers/writers with 64-bit row pointers. */
 static void test_t151(void) {
     cur_name = "T151 varianti a 64 bit";
     P p; pbegin(&p);
@@ -10143,11 +10222,11 @@ static void test_t151(void) {
     pend(&p);
 }
 
-/* ---------------- T152: i nomi dei parametri ----------------
- * `getparamname`/`whichparam`/`getparammax`, le ricerche per nome
- * (`isdouparname`/`isintparname`/`isstrparname`) e la lettura per nome
- * (`getnaintparam`/`getnadouparam`/`getnastrparam`). Il nome e' quello del
- * nostro enum; non esiste un parametro stringa. */
+/* ---------------- T152: the parameter names ----------------
+ * `getparamname`/`whichparam`/`getparammax`, the lookups by name
+ * (`isdouparname`/`isintparname`/`isstrparname`) and the read by name
+ * (`getnaintparam`/`getnadouparam`/`getnastrparam`). The name is that of our
+ * own enum; there is no string parameter. */
 static void test_t152(void) {
     cur_name = "T152 nomi dei parametri";
     P p; pbegin(&p);
@@ -10185,7 +10264,7 @@ static void test_t152(void) {
     check_rc(PRIMAL_getparammax(p.task, PRIMAL_PARAM_KIND_DOU, &pmax), PRIMAL_RES_OK, "getparammax dou");
     check(pmax == 20, "venti parametri double (19 + l'alias)");
     check_rc(PRIMAL_getnastrparam(p.task, "x", 8, &id, nm), PRIMAL_RES_ERR_ARG, "getnastrparam rifiuta");
-    /* setter per nome */
+    /* setters by name */
     check_rc(PRIMAL_putnaintparam(p.task, "PRIMAL_IPAR_SCALING", 0), PRIMAL_RES_OK, "putnaintparam");
     PRIMAL_getintparam(p.task, PRIMAL_IPAR_SCALING, &iv); check(iv == 0, "scaling a 0");
     check_rc(PRIMAL_putnaintparam(p.task, "nope", 0), PRIMAL_RES_ERR_ARG, "nome int ignoto");
@@ -10193,7 +10272,7 @@ static void test_t152(void) {
              "putnadouparam");
     PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv); check(dv == 1e-7, "tol a 1e-7");
     check_rc(PRIMAL_putnadouparam(p.task, "nope", 1.0), PRIMAL_RES_ERR_ARG, "nome dou ignoto");
-    /* famiglia stringa: nessun parametro */
+    /* string family: no parameter */
     check_rc(PRIMAL_putnastrparam(p.task, "x", "y"), PRIMAL_RES_ERR_ARG, "putnastrparam");
     check_rc(PRIMAL_getstrparamlen(p.task, 0, &iv), PRIMAL_RES_ERR_ARG, "getstrparamlen");
     check_rc(PRIMAL_getstrparam(p.task, 0, 8, &iv, nm), PRIMAL_RES_ERR_ARG, "getstrparam");
@@ -10202,9 +10281,9 @@ static void test_t152(void) {
     pend(&p);
 }
 
-/* ---------------- T153: getlasterror64 e i riassunti ----------------
- * `getlasterror64` (stessa lettura di getlasterror, dimensioni a 64 bit) e i
- * tre riassunti su stream (stampano su stdout). */
+/* ---------------- T153: getlasterror64 and the summaries ----------------
+ * `getlasterror64` (the same read as getlasterror, 64-bit sizes) and the three
+ * stream summaries (they print to stdout). */
 static void test_t153(void) {
     cur_name = "T153 last error 64 e riassunti";
     P p; pbegin(&p);
@@ -10233,12 +10312,12 @@ static void test_t153(void) {
     pend(&p);
 }
 
-/* ---------------- T154: Q a 64 bit e fette slc/suc ----------------
- * `getqobj64`/`getqconk64` (varianti a 64 bit di getqobj/getqconk) e
+/* ---------------- T154: 64-bit Q and slc/suc slices ----------------
+ * `getqobj64`/`getqconk64` (64-bit variants of getqobj/getqconk) and
  * `putslcslice`/`putsucslice`. */
 static void test_t154(void) {
     cur_name = "T154 Q a 64 bit e fette slc/suc";
-    {   /* Q a 64 bit */
+    {   /* 64-bit Q */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -10254,7 +10333,7 @@ static void test_t154(void) {
         check(n64 == 1 && qi[0] == 1 && qj[0] == 1 && qv[0] == 3.0, "la tripletta del vincolo");
         pend(&p);
     }
-    {   /* fette di slc/suc dopo un solve */
+    {   /* slc/suc slices after a solve */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -10277,9 +10356,9 @@ static void test_t154(void) {
     }
 }
 
-/* ---------------- T155: I/O del riferimento e pezzo di A ----------------
- * `readtask`/`writetask`/`readdataautoformat`/`readdataformat` (forme attorno a
- * readdata/writedata) e `getapiecenumnz`. */
+/* ---------------- T155: reference I/O and a piece of A ----------------
+ * `readtask`/`writetask`/`readdataautoformat`/`readdataformat` (forms around
+ * readdata/writedata) and `getapiecenumnz`. */
 static void test_t155(void) {
     cur_name = "T155 I/O e getapiecenumnz";
     P p; pbegin(&p);
@@ -10309,12 +10388,12 @@ static void test_t155(void) {
     pend(&p);
 }
 
-/* ---------------- T156: termini bar in un AFE, dentro un ACC ----------------
- * `putafebarfentry` mette `<Fbar_ij, X_j>` nella i-esima espressione; i getter
+/* ---------------- T156: bar terms in an AFE, inside an ACC ----------------
+ * `putafebarfentry` puts `<Fbar_ij, X_j>` into the i-th expression; the getters
  * (`getafebarfrow`/`getafebarfrowinfo`/`getafebarfnumrowentries`/
- * `getafebarfblocktriplet`/`getafebarfnumblocktriplets`) la rileggono;
- * `emptyafebarfrow(list)` la azzera. Il termine entra davvero nella riga
- * dell'ACC: `min <I,X>` con `<E00,X> - 1 in RPLUS` -> `X00 >= 1`, valore 1. */
+ * `getafebarfblocktriplet`/`getafebarfnumblocktriplets`) read it back;
+ * `emptyafebarfrow(list)` zeroes it. The term really enters the ACC row:
+ * `min <I,X>` with `<E00,X> - 1 in RPLUS` -> `X00 >= 1`, value 1. */
 static void test_t156(void) {
     cur_name = "T156 AFE-bar in un ACC";
     P p; pbegin(&p);
@@ -10358,7 +10437,7 @@ static void test_t156(void) {
     PRIMAL_appendrplusdomain(t, 1, &dP);
     double b0[1] = {1.0};
     check_rc(PRIMAL_appendacc(t, dP, 1, (PRIMALint64t[]){0}, b0), PRIMAL_RES_OK, "appendacc");
-    /* Fbar implicita dagli ACC: la componente 0 porta E00 */
+    /* Fbar implied by the ACCs: component 0 carries E00 */
     PRIMALint64t ntrip2 = -1;
     check_rc(PRIMAL_getaccbarfnumblocktriplets(t, &ntrip2), PRIMAL_RES_OK, "getaccbarfnum");
     check(ntrip2 == 1, "un tripletto implicito");
@@ -10373,14 +10452,14 @@ static void test_t156(void) {
     double po = 0.0;
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(po, 1.0, 1e-5, "pobj 1 (X00=1, X11=0)");
-    /* emptyafebarfrow svuota (su un secondo AFE, per non toccare il risolto) */
+    /* emptyafebarfrow clears (on a second AFE, so as not to touch the solved one) */
     check_rc(PRIMAL_emptyafebarfrow(t, 0), PRIMAL_RES_OK, "emptyafebarfrow");
     PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 0, "riga bar vuota");
     check_rc(PRIMAL_putafebarfentry(t, 0, 0, 1, &m0, (double[]){2.0}), PRIMAL_RES_OK, "riscrivi");
     PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "una entry di nuovo");
     check_rc(PRIMAL_emptyafebarfrowlist(t, 1, (PRIMALint64t[]){0}), PRIMAL_RES_OK, "list");
     PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 0, "svuotata dalla lista");
-    /* putafebarfentrylist e putafebarfrow */
+    /* putafebarfentrylist and putafebarfrow */
     PRIMALint64t li_afe[1] = {0}, li_nt[1] = {1}, li_pt[1] = {0}, li_ti[1] = {m11};
     int li_bv[1] = {0};
     double li_tw[1] = {1.0};
@@ -10404,10 +10483,10 @@ static void test_t156(void) {
     pend(&p);
 }
 
-/* ---------------- T157: algebra lineare del riferimento ----------------
+/* ---------------- T157: reference linear algebra ----------------
  * `dot`/`axpy`/`gemv`/`gemm`/`syrk`/`potrf`/`syeig`/`syevd`/
- * `sparsetriangularsolvedense`. Matrici dense colonna-major, `uplo`/`transpose`
- * coi valori del riferimento. */
+ * `sparsetriangularsolvedense`. Dense column-major matrices, `uplo`/`transpose`
+ * with the reference values. */
 static void test_t157(void) {
     cur_name = "T157 algebra lineare";
     PRIMALenv_t env;
@@ -10418,7 +10497,7 @@ static void test_t157(void) {
     close_enough(d, 32.0, "dot = 32");
     check_rc(PRIMAL_axpy(env, 3, 2.0, x, y), PRIMAL_RES_OK, "axpy");
     check(y[0] == 6 && y[1] == 9 && y[2] == 12, "y += 2x");
-    /* gemv: A (2x3) = [[1,2,3],[4,5,6]] colonna-major */
+    /* gemv: A (2x3) = [[1,2,3],[4,5,6]] column-major */
     double A[6] = {1, 4, 2, 5, 3, 6}, v[3] = {1, 1, 1}, r[3] = {0, 0, 0};
     check_rc(PRIMAL_gemv(env, PRIMAL_TRANSPOSE_NO, 2, 3, 1.0, A, v, 0.0, r), PRIMAL_RES_OK, "gemv");
     check(r[0] == 6 && r[1] == 15, "A x = (6,15)");
@@ -10431,7 +10510,7 @@ static void test_t157(void) {
     check_rc(PRIMAL_gemm(env, PRIMAL_TRANSPOSE_NO, PRIMAL_TRANSPOSE_NO, 2, 2, 2,
                          1.0, M, N, 0.0, C), PRIMAL_RES_OK, "gemm");
     check(C[0] == 19 && C[1] == 43 && C[2] == 22 && C[3] == 50, "A B = [[19,22],[43,50]]");
-    /* syrk: C = A A' (triangolo inferiore) */
+    /* syrk: C = A A' (lower triangle) */
     double S[4] = {0, 0, 0, 0};
     check_rc(PRIMAL_syrk(env, PRIMAL_UPLO_LO, PRIMAL_TRANSPOSE_NO, 2, 2, 1.0, M, 0.0, S),
              PRIMAL_RES_OK, "syrk");
@@ -10467,8 +10546,8 @@ static void test_t157(void) {
 }
 
 /* ---------------- T158: solution I/O ----------------
- * `writesolution`/`readsolution` (formato testuale proprio) e `writebsolution`/
- * `readbsolution` (binario proprio), piu' le forme `*file`. */
+ * `writesolution`/`readsolution` (own text format) and `writebsolution`/
+ * `readbsolution` (own binary), plus the `*file` forms. */
 static void test_t158(void) {
     cur_name = "T158 solution I/O";
     P p; pbegin(&p);
@@ -10484,7 +10563,7 @@ static void test_t158(void) {
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     check_rc(PRIMAL_writesolution(t, PRIMAL_SOL_ITR, "/tmp/t158.sol"), PRIMAL_RES_OK, "writesolution");
-    /* rileggi in un task con lo stesso modello */
+    /* read back into a task with the same model */
     P q; pbegin(&q);
     PRIMAL_appendvars(q.task, 2); PRIMAL_appendcons(q.task, 1);
     PRIMAL_putvarbound(q.task, 0, PRIMAL_BK_LO, 0.0, INFINITY);
@@ -10497,7 +10576,7 @@ static void test_t158(void) {
     close_enough(qx[0], x[0], "x0 riletto");
     close_enough(qx[1], x[1], "x1 riletto");
     pend(&q);
-    /* binario */
+    /* binary */
     check_rc(PRIMAL_writebsolution(t, "/tmp/t158.bsol", 0), PRIMAL_RES_OK, "writebsolution");
     P r; pbegin(&r);
     PRIMAL_appendvars(r.task, 2); PRIMAL_appendcons(r.task, 1);
@@ -10506,7 +10585,7 @@ static void test_t158(void) {
     PRIMAL_getprimalobj(r.task, PRIMAL_SOL_ITR, &ro);
     close_enough(ro, po, "pobj binario");
     pend(&r);
-    /* forme *file */
+    /* *file forms */
     check_rc(PRIMAL_writesolutionfile(t, "/tmp/t158f.sol"), PRIMAL_RES_OK, "writesolutionfile");
     P s; pbegin(&s);
     PRIMAL_appendvars(s.task, 2); PRIMAL_appendcons(s.task, 1);
@@ -10528,15 +10607,15 @@ static void test_t158(void) {
     pend(&p);
 }
 
-/* ---------------- T159: la superficie di parita' del riferimento ----------------
- * parametri long, generatori di nomi, diagnostica, optimize*, repair/sensitivity,
- * putacc/putcone/putafefrowlist, API di soluzione "new", I/O a stringa, basis
- * solve, Cholesky sparsa, clone/duale/subproblem. */
+/* ---------------- T159: the reference parity surface ----------------
+ * long parameters, name generators, diagnostics, optimize*, repair/sensitivity,
+ * putacc/putcone/putafefrowlist, "new" solution API, string I/O, basis solve,
+ * sparse Cholesky, clone/dual/subproblem. */
 static void test_t159(void) {
     cur_name = "T159 superficie di parita'";
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
-    {   /* parametri long, putparam, file dei parametri */
+    {   /* long parameters, putparam, parameter file */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMALint64t lv = -1;
@@ -10561,7 +10640,7 @@ static void test_t159(void) {
         check_rc(PRIMAL_printparam(t), PRIMAL_RES_OK, "printparam");
         PRIMAL_deletetask(&t);
     }
-    {   /* generatori di nomi e diagnostica */
+    {   /* name generators and diagnostics */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMAL_appendvars(t, 3);
@@ -10578,7 +10657,7 @@ static void test_t159(void) {
         check_rc(PRIMAL_readsummary(t, 0), PRIMAL_RES_OK, "readsummary");
         PRIMAL_deletetask(&t);
     }
-    {   /* optimize* e putacc/putacclist */
+    {   /* optimize* and putacc/putacclist */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMAL_appendvars(t, 2);
@@ -10631,7 +10710,7 @@ static void test_t159(void) {
         PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 1, "riga 1 un termine");
         PRIMAL_deletetask(&t);
     }
-    {   /* API di soluzione "new" */
+    {   /* "new" solution API */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -10659,7 +10738,7 @@ static void test_t159(void) {
                  "getsolutioninfonew");
         close_enough_tol(pa, 0.0, 1e-9, "pviolacc 0");
         close_enough_tol(da, 0.0, 1e-9, "dviolacc 0");
-        /* setter per indice */
+        /* setter by index */
         check_rc(PRIMAL_putconsolutioni(t, 0, PRIMAL_SOL_ITR, PRIMAL_SK_BAS, 9.0, 0.0, 0.0),
                  PRIMAL_RES_OK, "putconsolutioni");
         check_rc(PRIMAL_putsolutionyi(t, 0, PRIMAL_SOL_ITR, 2.0), PRIMAL_RES_OK, "putsolutionyi");
@@ -10674,7 +10753,7 @@ static void test_t159(void) {
                  suc, slx, sux, snx, NULL), PRIMAL_RES_OK, "putsolutionnew");
         PRIMAL_deletetask(&t);
     }
-    {   /* I/O a stringa */
+    {   /* string I/O */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         const char *lp = "Minimize\n obj: +1 x0\nSubject To\n c0: +1 x0 >= 2\nEnd\n";
@@ -10701,7 +10780,7 @@ static void test_t159(void) {
         check(nb == 1.0 && nib == 1.0, "cond di I");
         PRIMAL_deletetask(&t);
     }
-    {   /* Cholesky sparsa densa */
+    {   /* sparse dense Cholesky */
         int anzc[2] = {2, 1};
         PRIMALint64t aptrc[2] = {0, 2};
         int asubc[3] = {0, 1, 1};
@@ -10717,7 +10796,7 @@ static void test_t159(void) {
         close_enough(lv[2], sqrt(2.75), "L11 = sqrt(2.75)");
         free(pm); free(dg); free(ln); free(lp); free(ls); free(lv);
     }
-    {   /* clone e duale */
+    {   /* clone and dual */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -10739,7 +10818,7 @@ static void test_t159(void) {
         close_enough_tol(do2, -2.0, 1e-6, "min -2y -> -2");
         PRIMAL_deletetask(&cl); PRIMAL_deletetask(&du); PRIMAL_deletetask(&t);
     }
-    {   /* analyzenames e le varianti "al" dei parametri stringa */
+    {   /* analyzenames and the "al" variants of the string parameters */
         PRIMALtask_t t;
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMAL_appendvars(t, 1);
@@ -10765,16 +10844,18 @@ static void test_t159(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T162: tagli di Chvatal-Gomory ----------------
- * max x0+x1 s.t. 1.1 x0 + 1.1 x1 <= 2.3, x interi >= 0.
- * LP = 2.3/1.1 = 2.0909; il taglio CG `x0+x1 <= floor(2.3) = 2` lo taglia, e
- * l'ottimo intero e' 2. Una riga a coefficienti interi non produce tagli. */
+/* ---------------- T162: Chvatal-Gomory cuts ----------------
+ * max x0+x1 s.t. 1.1 x0 + 1.1 x1 <= 2.3, x integer >= 0.
+ * LP = 2.3/1.1 = 2.0909; the CG cut `x0+x1 <= floor(2.3) = 2` cuts it off, and
+ * the integer optimum is 2. A row with integer coefficients produces no cuts. */
 static int t162_cg = -1, t162_go = -1;
+/* log callback: records how many CG cuts and Gomory cuts were generated. */
 static void t162_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "Chvatal-Gomory cuts")) t162_cg = atoi(msg + strlen("MIP: "));
     else if (strstr(msg, "Gomory cuts")) t162_go = atoi(msg + strlen("MIP: "));
 }
+/* T162: CG cuts on a fractional knapsack; the user model keeps its single row. */
 static void test_t162(void) {
     cur_name = "T162 tagli di Chvatal-Gomory";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -10797,11 +10878,11 @@ static void test_t162(void) {
     close_enough_tol(po, 2.0, 1e-6, "ottimo intero = 2");
     check(t162_cg == 1, "un taglio CG e' stato generato");
     check(t162_go <= 0, "dati frazionari: il Gomory non e' applicabile");
-    /* il modello pubblicato non e' cambiato: una sola riga, i tagli sono interni */
+    /* the published model is unchanged: a single row, the cuts are internal */
     int nc = -1; PRIMAL_getnumcon(t, &nc);
     check(nc == 1, "il modello dell'utente resta con una riga");
     PRIMAL_deletetask(&t);
-    {   /* una riga a coefficienti interi non produce tagli */
+    {   /* a row with integer coefficients produces no cuts */
         PRIMALtask_t u; PRIMAL_maketask(env, 0, 0, &u);
         PRIMAL_appendvars(u, 2);
         PRIMAL_putobjsense(u, PRIMAL_OPTIMIZE_MAXIMIZE);
@@ -10826,19 +10907,19 @@ static void test_t162(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T171: tagli PPOW con v piccolo (clamp rimosso) ----------------
- * min t s.t. (t, 1, v) in PPOW(2/3), v = -0.005 fisso -> t = |v|^{3/2} = 3.5355e-4.
- * Con il vecchio clamp |v|>=0.01 il taglio nasceva a v=-0.01 e il loop non
- * convergeva (rel_viol costante); senza clamp converge. */
-/* T172: il percorso nativo exp/power e i tagli danno la STESSA risposta su un
- * risk-budgeting deterministico, e il punto consegnato e' ammissibile.
- *   min t - (log x0 + log x1),  t >= sqrt(x0^2+x1^2)  (S = I, G identita')
+/* ---------------- T171: PPOW cuts with small v (clamp removed) ----------------
+ * min t s.t. (t, 1, v) in PPOW(2/3), v = -0.005 fixed -> t = |v|^{3/2} = 3.5355e-4.
+ * With the old clamp |v|>=0.01 the cut was born at v=-0.01 and the loop did not
+ * converge (rel_viol constant); without the clamp it converges. */
+/* T172: the native exp/power path and the cuts give the SAME answer on a
+ * deterministic risk-budgeting model, and the delivered point is feasible.
+ *   min t - (log x0 + log x1),  t >= sqrt(x0^2+x1^2)  (S = I, G identity)
  *   (x_i, 1, s_i) in PEXP  =>  x_i = exp(s_i)
- * Ottimo a mano: gradiente x_i/r - 1/x_i = 0 => x_i^2 = r; simmetrico =>
+ * Optimum by hand: gradient x_i/r - 1/x_i = 0 => x_i^2 = r; symmetric =>
  * x = (sqrt2, sqrt2), r = 2, pobj = 2 - log 2 ~ 1.3068528194.
- * Classe di modelli su cui vivono il candidato di fallback del percorso nativo
- * (sdp.c, `fb_ok`) e il restore dell'IPM a tagli (socp.c): `risk_parity` li
- * esercita; questo caso fissa le due strade e l'ammissibilita' del punto. */
+ * Class of models on which the native path's fallback candidate lives
+ * (sdp.c, `fb_ok`) and the cut-IPM restore (socp.c): `risk_parity` exercises
+ * them; this case pins both routes and the feasibility of the point. */
 static void t172_case(int cuts) {
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
@@ -10884,18 +10965,20 @@ static void t172_case(int cuts) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T172: runs t172_case on both routes (native exp/power and cuts). */
 static void test_t172(void) {
-    /* La strada nativa (dove vivono il candidato di fallback e la quarta cifra
-     * del gate). */
+    /* The native path (where the fallback candidate and the fourth digit
+     * of the gate live). */
     cur_name = "T172 risk-budgeting, strada nativa";
     t172_case(0);
-    /* La strada a tagli sullo stesso modello: dopo la normalizzazione delle
-     * righe di taglio il cut LP non e' piu' mal condizionato e converge anche
-     * qui (prima esauriva i round e rispondeva TRM_MAX_ITER). */
+    /* The cut path on the same model: after normalizing the cut rows the cut
+     * LP is no longer badly conditioned and converges here too (before it
+     * exhausted the rounds and answered TRM_MAX_ITER). */
     cur_name = "T172 risk-budgeting, strada a tagli";
     t172_case(1);
 }
 
+/* T171: PPOW cuts with small v; forces the cut path and checks t = |v|^{3/2}. */
 static void test_t171(void) {
     cur_name = "T171 tagli PPOW con v piccolo";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -10906,7 +10989,7 @@ static void test_t171(void) {
     PRIMAL_putvarbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
     PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, -0.005, -0.005);
     PRIMAL_appendcone(t, PRIMAL_CT_PPOW, 2.0 / 3.0, 3, (int[]){0, 1, 2});
-    setenv("GMB_NO_EXP_IPM", "1", 1);   /* forza i tagli: e' li' che il clamp agiva */
+    setenv("GMB_NO_EXP_IPM", "1", 1);   /* force the cuts: that is where the clamp acted */
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve");
     unsetenv("GMB_NO_EXP_IPM");
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
@@ -10916,10 +10999,10 @@ static void test_t171(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T170: optimizer concorrente ----------------
+/* ---------------- T170: concurrent optimizer ----------------
  * min -x0-x1 s.t. x0+x1 <= 1, x0+x1 >= 0.5, x >= 0 -> -1.
- * Con 2 thread il percorso LP esegue simplex e IPM in parallelo e prende chi
- * converge (a parita', il simplesso): stesso ottimo del sequenziale. */
+ * With 2 threads the LP path runs simplex and IPM in parallel and takes whichever
+ * converges (on a tie, simplex): same optimum as the sequential run. */
 static void test_t170(void) {
     cur_name = "T170 optimizer concorrente";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -10945,10 +11028,10 @@ static void test_t170(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T169: B&B parallelo (decomposizione del root) ----------------
- * max x0 s.t. 2x0 <= 5, x0 intero in [0,10]: root frazionario (2.5), i due figli
- * sono x0<=2 (feasible, obj 2) e x0>=3 (infeasible). Con 2 thread la
- * decomposizione del root da' lo stesso ottimo del sequenziale. */
+/* ---------------- T169: parallel B&B (root decomposition) ----------------
+ * max x0 s.t. 2x0 <= 5, x0 integer in [0,10]: fractional root (2.5), the two
+ * children are x0<=2 (feasible, obj 2) and x0>=3 (infeasible). With 2 threads the
+ * root decomposition gives the same optimum as the sequential run. */
 static void test_t169(void) {
     cur_name = "T169 B&B parallelo";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -10976,9 +11059,9 @@ static void test_t169(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T168: probing parallelo ----------------
- * Stesso MIP risolto con 1 e 2 thread: il probing e' deterministico (i fixing
- * non dipendono dall'ordine), quindi stesso punto e stesso obiettivo. */
+/* ---------------- T168: parallel probing ----------------
+ * The same MIP solved with 1 and 2 threads: probing is deterministic (the fixings
+ * do not depend on the order), so the same point and the same objective. */
 static void test_t168(void) {
     cur_name = "T168 probing parallelo";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11009,15 +11092,17 @@ static void test_t168(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T167: presolve conico ----------------
- * min x0 s.t. (x0,x1) in QUAD, x1=1, 0<=x0<=5, x0+x1<=100 (ridondante, max 6).
- * Il presolve conico toglie la riga ridondante (duale 0) prima di optimize_conic. */
+/* ---------------- T167: conic presolve ----------------
+ * min x0 s.t. (x0,x1) in QUAD, x1=1, 0<=x0<=5, x0+x1<=100 (redundant, max 6).
+ * The conic presolve removes the redundant row (dual 0) before optimize_conic. */
 static int t167_rr = -1;
+/* log callback: records how many redundant rows the conic presolve removed. */
 static void t167_logcb(void *h, const char *msg) {
     (void)h;
     if (strstr(msg, "conic: ") && strstr(msg, "redundant rows"))
         t167_rr = atoi(msg + strlen("conic: "));
 }
+/* T167: conic presolve drops a redundant row; turning it off keeps the answer. */
 static void test_t167(void) {
     cur_name = "T167 presolve conico";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11038,8 +11123,8 @@ static void test_t167(void) {
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(po, 1.0, 1e-6, "min x0 = 1");
     check(t167_rr == 1, "una riga ridondante tolta dal percorso conico");
-    /* IPAR_PRESOLVE=0 spegne anche il presolve conico: stessa risposta, nessuna
-     * riga tolta (il parametro e' l'unico interruttore del presolve). */
+    /* IPAR_PRESOLVE=0 also turns off the conic presolve: same answer, no
+     * row removed (the parameter is the only switch for the presolve). */
     check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE, 0), PRIMAL_RES_OK, "presolve off");
     t167_rr = -1;
     setenv("GMB_DBG", "1", 1);
@@ -11051,15 +11136,17 @@ static void test_t167(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T166: implied free (variabile libera limitata da riga) ----
- * min x0 s.t. x0 + x1 >= 5, 0<=x1<=3, x0 LIBERA.
- * La riga implica x0 >= 5 - 3 = 2 (bound tightening su una variabile libera,
- * che senza il conteggio degli infiniti non riceveva bound); ottimo 2. */
+/* ---------------- T166: implied free (free variable bounded by a row) ----
+ * min x0 s.t. x0 + x1 >= 5, 0<=x1<=3, x0 FREE.
+ * The row implies x0 >= 5 - 3 = 2 (bound tightening on a free variable,
+ * which without the infinity counting received no bound); optimum 2. */
 static int t166_bt = -1;
+/* log callback: records how many bounds the LP presolve tightened. */
 static void t166_logcb(void *h, const char *msg) {
     (void)h;
     if (strstr(msg, "tightened bounds")) t166_bt = atoi(msg + strlen("LP: "));
 }
+/* T166: a free variable gets an implied bound from a row; optimum is that bound. */
 static void test_t166(void) {
     cur_name = "T166 implied free";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11084,14 +11171,16 @@ static void test_t166(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T165: probing MIP ----------------
- * min x0 s.t. x0 + x1 >= 1, x1 <= 0, x0,x1 binarie. x0=0 e' infeasible
- * (x1>=1 contro x1<=0), quindi il probing fissa x0=1; ottimo 1. */
+/* ---------------- T165: MIP probing ----------------
+ * min x0 s.t. x0 + x1 >= 1, x1 <= 0, x0,x1 binary. x0=0 is infeasible
+ * (x1>=1 against x1<=0), so probing fixes x0=1; optimum 1. */
 static int t165_pf = -1;
+/* log callback: records how many variables the MIP probing fixed. */
 static void t165_logcb(void *h, const char *msg) {
     (void)h;
     if (strstr(msg, "probed fixings")) t165_pf = atoi(msg + strlen("MIP: "));
 }
+/* T165: probing proves x0=0 infeasible and fixes x0=1 on a two-binary model. */
 static void test_t165(void) {
     cur_name = "T165 probing MIP";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11120,14 +11209,16 @@ static void test_t165(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T164: righe ridondanti ----------------
+/* ---------------- T164: redundant rows ----------------
  * min x0 s.t. x0 >= 2, x0 + x1 <= 10, 0<=x0<=5, 0<=x1<=3.
- * La riga 1 e' implicata dai bound (max 8 <= 10): tolta, il duale sarebbe 0. */
+ * Row 1 is implied by the bounds (max 8 <= 10): removed, its dual would be 0. */
 static int t164_rr = -1;
+/* log callback: records how many redundant rows the LP presolve removed. */
 static void t164_logcb(void *h, const char *msg) {
     (void)h;
     if (strstr(msg, "redundant rows")) t164_rr = atoi(msg + strlen("LP: "));
 }
+/* T164: the LP presolve removes a row already implied by the variable bounds. */
 static void test_t164(void) {
     cur_name = "T164 righe ridondanti";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11152,14 +11243,16 @@ static void test_t164(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T163: bound tightening MIP ----------------
- * min x0 s.t. x0 + x1 >= 8, 0<=x0<=10, 0<=x1<=3, interi.
- * La riga implica x0 >= 8 - 3 = 5 (bound tightening); l'ottimo e' 5. */
+/* ---------------- T163: MIP bound tightening ----------------
+ * min x0 s.t. x0 + x1 >= 8, 0<=x0<=10, 0<=x1<=3, integers.
+ * The row implies x0 >= 8 - 3 = 5 (bound tightening); the optimum is 5. */
 static int t163_bt = -1;
+/* log callback: records how many bounds the MIP bound tightening tightened. */
 static void t163_logcb(void *h, const char *msg) {
     (void)h;
     if (strstr(msg, "tightened bounds")) t163_bt = atoi(msg + strlen("MIP: "));
 }
+/* T163: a knapsack row implies x0 >= 5 on an integer model; the optimum is 5. */
 static void test_t163(void) {
     cur_name = "T163 bound tightening MIP";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11188,8 +11281,8 @@ static void test_t163(void) {
 }
 
 /* ---------------- T161: SDP MIP ----------------
- * min x0, x0 intero in [0,5], con X 2x2 PSD, X00=x0, X11=1, X01=1.
- * La PSD impone x0*1 >= 1, quindi l'ottimo e' x0=1, X=[[1,1],[1,1]]. */
+ * min x0, x0 integer in [0,5], with X 2x2 PSD, X00=x0, X11=1, X01=1.
+ * The PSD constraint enforces x0*1 >= 1, so the optimum is x0=1, X=[[1,1],[1,1]]. */
 static void test_t161(void) {
     cur_name = "T161 SDP MIP";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -11213,9 +11306,9 @@ static void test_t161(void) {
     PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
     PRIMAL_putbaraij(t, 2, 0, 1, &s01, &one);
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
-    /* warm start primale e duale lontani dall'ottimo: l'IPM e' infeasible-start,
-     * quindi i punti innestano solo le colonne scalari / i moltiplicatori di
-     * riga e non cambiano l'ottimo. */
+    /* primal and dual warm start far from the optimum: the IPM is infeasible-start,
+     * so the points only seed the scalar columns / the row multipliers
+     * and do not change the optimum. */
     PRIMAL_putxx(t, PRIMAL_SOL_ITR, (double[]){5.0});
     PRIMAL_puty(t, PRIMAL_SOL_ITR, (double[]){0.5, 0.5, 0.5});
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve SDP MIP");
@@ -11227,7 +11320,7 @@ static void test_t161(void) {
     check(B[0] > 1e-6 && B[3] > 1e-6 && B[0] * B[3] - B[1] * B[2] >= -1e-6,
           "X pubblicata e' PSD");
     PRIMAL_deletetask(&t);
-    {   /* con un termine barC: min x0 + <E00,X> = x0 + X00 = 2 x0 -> 2 a x0=1 */
+    {   /* with a barC term: min x0 + <E00,X> = x0 + X00 = 2 x0 -> 2 at x0=1 */
         PRIMALtask_t u; PRIMAL_maketask(env, 0, 0, &u);
         PRIMAL_appendvars(u, 1);
         PRIMAL_putcj(u, 0, 1.0);
@@ -11255,18 +11348,18 @@ static void test_t161(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T160: gli information item (riferimento) ----------------
- * Gli indici degli enum sono quelli di MOSEK 11.2.4 (constants.html, letti il
- * 2026-09-19): DINF 0..115, IINF 0..136, LIINF 0..21. La superficie di lettura
- * c'e' tutta (getdouinf/getintinf/getlintinf + i due per nome + introspezione);
- * gli item che questo solver non misura rispondono 0 (deviazione dichiarata). */
+/* ---------------- T160: the information items (reference) ----------------
+ * The enum indices are those of MOSEK 11.2.4 (constants.html, read on
+ * 2026-09-19): DINF 0..115, IINF 0..136, LIINF 0..21. The read surface is
+ * complete (getdouinf/getintinf/getlintinf + the two by name + introspection);
+ * the items this solver does not measure answer 0 (a declared deviation). */
 static void test_t160(void) {
     cur_name = "T160 information items";
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t t;
     PRIMAL_maketask(env, 0, 0, &t);
-    /* introspezione: il limite e' END, il nome e' quello del riferimento */
+    /* introspection: the limit is END, the name is the reference one */
     int mx = -1;
     check_rc(PRIMAL_getinfmax(t, PRIMAL_INF_DOU_TYPE, &mx), PRIMAL_RES_OK, "infmax DOU");
     check(mx == 116, "DOU 0..115");
@@ -11289,7 +11382,7 @@ static void test_t160(void) {
              "infname fuori range");
     check_rc(PRIMAL_getinfname(t, PRIMAL_INF_DOU_TYPE, -1, nm), PRIMAL_RES_ERR_ARG,
              "infname negativo");
-    /* nome -> indice, e il giro indice -> nome -> indice */
+    /* name -> index, and the index -> name -> index round-trip */
     int idx = -1;
     check_rc(PRIMAL_getinfindex(t, PRIMAL_INF_DOU_TYPE, "MSK_DINF_SOL_ITR_PRIMAL_OBJ", &idx),
              PRIMAL_RES_OK, "infindex");
@@ -11299,12 +11392,12 @@ static void test_t160(void) {
     check(idx == 135, "SOL_ITR_SOLSTA = 135");
     check_rc(PRIMAL_getinfindex(t, PRIMAL_INF_DOU_TYPE, "NOPE", &idx), PRIMAL_RES_ERR_ARG,
              "nome ignoto");
-    /* i due per nome */
+    /* the two by name */
     PRIMALrealt dv = -1;
     check_rc(PRIMAL_getnadouinf(t, "MSK_DINF_OPTIMIZER_TIME", &dv), PRIMAL_RES_OK, "nadouinf");
     check(dv == 0.0, "prima di un solve il tempo e' 0");
     check_rc(PRIMAL_getnadouinf(t, "MSK_DINF_NOPE", &dv), PRIMAL_RES_ERR_ARG, "nadouinf ignoto");
-    /* modello: x0 in [0,1], x1 >= 0, x2 libera; una riga FX; min x0+x1+x2 */
+    /* model: x0 in [0,1], x1 >= 0, x2 free; one FX row; min x0+x1+x2 */
     PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 1.0);
     PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, INFINITY);
@@ -11329,7 +11422,7 @@ static void test_t160(void) {
     check(lv == 3, "tre nonnulli in A");
     PRIMAL_getlintinf(t, PRIMAL_LIINF_RD_NUMQNZ, &lv); check(lv == 0, "nessun Q");
     check_rc(PRIMAL_getlintinf(t, (PRIMALliinfiteme)22, &lv), PRIMAL_RES_ERR_ARG, "LIINF fuori range");
-    /* solve e gli item misurati */
+    /* solve and the measured items */
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve");
     double po = -1;
     check_rc(PRIMAL_getdouinf(t, PRIMAL_DINF_SOL_ITR_PRIMAL_OBJ, &po), PRIMAL_RES_OK, "pobj item");
@@ -11352,10 +11445,10 @@ static void test_t160(void) {
     check(iv == (int)PRIMAL_PROBTYPE_LO, "RD_PROTYPE = LO");
     PRIMAL_getintinf(t, PRIMAL_IINF_OPT_NUMVAR, &iv); check(iv == 3, "OPT_NUMVAR");
     check_rc(PRIMAL_getdouinf(t, (PRIMALdinfiteme)116, &po), PRIMAL_RES_ERR_ARG, "DINF fuori range");
-    /* un item non misurato risponde 0, non un rifiuto */
+    /* an unmeasured item answers 0, not a refusal */
     PRIMAL_getdouinf(t, PRIMAL_DINF_MIO_CLIQUE_SELECTION_TIME, &po);
     check(po == 0.0, "item non misurato = 0");
-    /* ---- symbolic constants (tabella del riferimento) ---- */
+    /* ---- symbolic constants (reference table) ---- */
     int nsym = -1; size_t smax = 0;
     check_rc(PRIMAL_getsymbcondim(env, &nsym, &smax), PRIMAL_RES_OK, "getsymbcondim");
     check(nsym == 1438 && smax == 60, "1438 simboli, maxlen 60");
@@ -11377,7 +11470,7 @@ static void test_t160(void) {
     check(strcmp(pn, "MSK_ON") == 0, "presolve 1 = ON");
     PRIMAL_iparvaltosymnam(env, PRIMAL_IPAR_LOG, 5, pn);
     check(pn[0] == '\0', "un parametro numerico non ha nome simbolico");
-    /* ---- nomi come stringa (nessun task) ---- */
+    /* ---- names as strings (no task) ---- */
     char ib[PRIMAL_MAX_INFNAME_LEN];
     check_rc(PRIMAL_dinfitemtostr(PRIMAL_DINF_OPTIMIZER_TIME, ib), PRIMAL_RES_OK, "dinfitemtostr");
     check(strcmp(ib, "MSK_DINF_OPTIMIZER_TIME") == 0, "nome DINF");
@@ -11399,32 +11492,32 @@ static void test_t160(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T108: una lista di termini di barra che si tronca da sola ----------------
- * `PRIMAL_getbaraidxij` e `PRIMAL_getbarcidxj` sono gli ultimi due accessori che
- * riempiono buffer dell'utente con una capienza (`maxnum`) e un conteggio (`*num`),
- * e sono gli unici due rimasti fuori dal contratto che `T102` ha dichiarato per la
- * famiglia: contano prima, e se lo spazio non basta rispondono `ERR_ARG` **senza**
- * aver toccato niente. Prima di questo giro facevano `if (n >= maxnum) break;` e
- * rispondevano `PRIMAL_RES_OK` con una lista più corta: il chiamante non può
- * distinguere «questi sono tutti i termini» da «ti sei fermato alla mia capienza»,
- * e un `<A,X>` costruito sul prefisso è un altro modello. È la stessa forma del
- * difetto di `T102` («restituire un prefisso che nessuno ha chiesto è peggio di un
- * rifiuto»), arrivata a due funzioni più vecchie della regola.
- * **Il comportamento vecchio è misurato, non raccontato**: lo stesso probe è stato
- * linkato contro la libreria del baseline (contenuto di git a `1b0557d`, ricostruito
- * in `out/` per il diff del corpus), senza cioè toccare questo albero. Rispondeva
- * `A: rc=0 num=0` (la porta del conteggio mentiva: zero termini dove la coppia ne
- * ha tre), `B: rc=0 num=2` **dopo aver scritto** `val[0]=1` nei buffer di chi chiama,
- * `E: rc=0` su una capienza negativa. I casi che riuscivano — C, D, F con capienza
- * vera, e H con il modello risolto — danno lo STESSO numero su entrambe le librerie:
- * la correzione muove solo il cammino del rifiuto.
- * Nulla della semantica del negozio cambia: una coppia `(i,j)` con tre termini ne
- * ha tre, la lettura integrale del negozio (`getnumbaraterm`) li conta tre, e il
- * caso G asserisce che le due enumerazioni della STESSA tabella concordano termine
- * per termine — che è il modo in cui un troncamento si vede da fuori. Il caso H
- * asserisce anche che il modello, su quei tre termini, risponde 2√15: i termini si
- * SOMMANO (una lettura che ne tenesse uno solo risponderebbe 2), e quattro rifiuti
- * non hanno corrotto il task.
+/* ---------------- T108: a bar-term list that truncates itself ----------------
+ * `PRIMAL_getbaraidxij` and `PRIMAL_getbarcidxj` are the last two accessors that
+ * fill a user buffer with a capacity (`maxnum`) and a count (`*num`),
+ * and they are the only two left outside the contract that `T102` declared for the
+ * family: they count first, and if there is not enough room they answer `ERR_ARG` **without**
+ * having touched anything. Before this round they did `if (n >= maxnum) break;` and
+ * answered `PRIMAL_RES_OK` with a shorter list: the caller cannot
+ * distinguish «these are all the terms» from «you stopped at my capacity»,
+ * and an `<A,X>` built on the prefix is another model. It is the same shape of the
+ * defect of `T102` («returning a prefix that nobody asked for is worse than a
+ * refusal»), reached by two functions older than the rule.
+ * **The old behavior is measured, not told**: the same probe was
+ * linked against the baseline library (git content at `1b0557d`, rebuilt
+ * in `out/` for the corpus diff), that is, without touching this tree. It answered
+ * `A: rc=0 num=0` (the count port lied: zero terms where the pair has
+ * three), `B: rc=0 num=2` **after writing** `val[0]=1` into the caller's buffers,
+ * `E: rc=0` on a negative capacity. The cases that succeeded — C, D, F with real
+ * capacity, and H with the solved model — give the SAME number on both libraries:
+ * the correction moves only the refusal path.
+ * Nothing of the store semantics changes: a pair `(i,j)` with three terms has
+ * three, the integral read of the store (`getnumbaraterm`) counts three, and
+ * case G asserts that the two enumerations of the SAME table agree term
+ * by term — which is the way a truncation is seen from outside. Case H
+ * also asserts that the model, on those three terms, answers 2√15: the terms
+ * ADD UP (a read that kept only one would answer 2), and four refusals
+ * did not corrupt the task.
  */
 static void test_t108(void) {
     enum { NB = 2, SENT = -777 };
@@ -11438,8 +11531,8 @@ static void test_t108(void) {
     int dim = NB;
     PRIMAL_appendbarvars(t, 1, &dim);
     PRIMAL_appendvars(t, 2);
-    /* La riga 0 riceve TRE termini sulla stessa coppia (0,0): 1 ed 2 sulla stessa
-     * matrice E00, e 4 su E11. La riga 1 ne ha uno, la riga 2 uno, la riga 3 zero. */
+    /* Row 0 receives THREE terms on the same pair (0,0): 1 and 2 on the same
+     * matrix E00, and 4 on E11. Row 1 has one, row 2 one, row 3 zero. */
     PRIMAL_putbaraij(t, 0, 0, 1, &m00, (double[]){1.0});
     PRIMAL_putbaraij(t, 0, 0, 1, &m00, (double[]){2.0});
     PRIMAL_putbaraij(t, 0, 0, 1, &m11, (double[]){4.0});
@@ -11451,8 +11544,8 @@ static void test_t108(void) {
     int sym[8]; double val[8];
     for (int k = 0; k < 8; k++) { sym[k] = SENT; val[k] = (double)SENT; }
 
-    /* A. la porta del solo conteggio: due NULL non chiedono niente, quindi non
-     * possono essere rifiutate anche con capienza 0. */
+    /* A. the count-only port: two NULLs ask for nothing, so they cannot
+     * be refused even with capacity 0. */
     cur_name = "T108 A la porta del conteggio non rifiuta";
     int num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 0, 0, 0, &num, NULL, NULL), PRIMAL_RES_OK,
@@ -11462,9 +11555,9 @@ static void test_t108(void) {
     check_rc(PRIMAL_getbarcidxj(t, 0, 0, &num, NULL, NULL), PRIMAL_RES_OK, "porta di barC");
     check(num == 2, "e la barC ne ha due");
 
-    /* B. il rifiuto che non scrive nulla: prima di questo giro la stessa chiamata
-     * rispondeva OK con num=2, cioè una lista monca con l'aria di una lettura
-     * riuscita. */
+    /* B. the refusal that writes nothing: before this round the same call
+     * answered OK with num=2, i.e. a truncated list that looked like a successful
+     * read. */
     cur_name = "T108 B capienza insufficiente = rifiuto senza effetti";
     for (int k = 0; k < 8; k++) { sym[k] = SENT; val[k] = (double)SENT; }
     num = SENT;
@@ -11479,8 +11572,8 @@ static void test_t108(void) {
              "lo stesso sulla barC");
     check(num == SENT, "idem: *num intatto");
 
-    /* C. la capienza esatta: tre entrate, per ordine di scrittura, con i valori
-     * del negozio (non fusi: la somma e' compito di chi risolve). */
+    /* C. the exact capacity: three entries, in write order, with the store's
+     * values (not merged: summing is the job of whoever solves). */
     cur_name = "T108 C la capienza esatta serve tutta la lista";
     num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 0, 0, 3, &num, sym, val), PRIMAL_RES_OK, "3 per 3");
@@ -11493,8 +11586,8 @@ static void test_t108(void) {
     check_rc(PRIMAL_getbarcidxj(t, 0, 2, &num, sym, val), PRIMAL_RES_OK, "2 per 2 sulla barC");
     check(num == 2 && val[0] == 1.0 && val[1] == -1.0, "e i due coefficienti di barC escono");
 
-    /* D. una coppia senza termini: verdetto vuoto, non rifiuto (la stessa
-     * distinzione di `T104` caso D). */
+    /* D. a pair without terms: empty verdict, not a refusal (the same
+     * distinction as `T104` case D). */
     cur_name = "T108 D la riga senza termini risponde 0 con OK";
     for (int k = 0; k < 8; k++) { sym[k] = SENT; val[k] = (double)SENT; }
     num = SENT;
@@ -11505,8 +11598,8 @@ static void test_t108(void) {
     for (int k = 0; k < 8; k++) if (sym[k] != SENT || val[k] != (double)SENT) touched = 1;
     check(!touched, "senza scrivere niente");
 
-    /* E. gli argomenti male-formatati: capienza negativa e indice fuori dominio
-     * rifiutano, e *num resta quello di chi chiama. */
+    /* E. malformed arguments: negative capacity and out-of-domain index
+     * refuse, and *num stays the caller's. */
     cur_name = "T108 E capienza negativa e indice fuori dominio";
     num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 0, 0, -1, &num, sym, val), PRIMAL_RES_ERR_ARG,
@@ -11519,9 +11612,9 @@ static void test_t108(void) {
              "barra fuori dominio");
     check(num == SENT, "e nemmeno qui");
 
-    /* F. le due enumerazioni della stessa tabella non possono divergere: la lettura
-     * integrale conta 5 termini di barA e 2 di barC, e la somma dei conteggi per
-     * coppia fa lo STESSO numero. E' cosi' che un troncamento si vede da fuori. */
+    /* F. the two enumerations of the same table cannot diverge: the integral
+     * read counts 5 barA terms and 2 barC terms, and the sum of the per-pair
+     * counts gives the SAME number. That is how a truncation is seen from outside. */
     cur_name = "T108 F il conteggio integrale e la somma delle coppie";
     int nbarA = -1, nbarC = -1;
     check_rc(PRIMAL_getnumbaraterm(t, &nbarA), PRIMAL_RES_OK, "termini barA");
@@ -11539,8 +11632,8 @@ static void test_t108(void) {
     check_rc(PRIMAL_getbarcidxj(t, 0, 0, &w2, NULL, NULL), PRIMAL_RES_OK, "conteggio barC");
     check(w2 == nbarC, "e anche qui le due enumerazioni concordano");
 
-    /* G. e concordano termine per termine: ogni entrata della lista per coppia e'
-     * una delle entrate della tabella intera, con lo stesso (con,bar,sym,coef). */
+    /* G. and they agree term by term: every entry of the per-pair list is
+     * one of the entries of the whole table, with the same (con,bar,sym,coef). */
     cur_name = "T108 G le due enumerazioni coincidono voce per voce";
     int matched = 0;
     for (int i = 0; i < 4; i++) {
@@ -11564,14 +11657,14 @@ static void test_t108(void) {
     }
     check(matched == nbarA, "e tutti i termini della tabella sono stati nominati una volta");
 
-    /* H. positive control: il modello su quei termini risponde 2*sqrt(15), e lo
-     * risponde DOPO quattro rifiuti. Derivato a mano: la riga 0 e'
-     * 1*<E00,B> + 2*<E00,B> + 4*<E11,B> - x0 = 0, quindi x0 = 3*X00 + 4*X11;
-     * la riga 1 da' x1 = X11; la riga 2 da' X01 = 1. Obiettivo x0 + x1 =
-     * 3*X00 + 5*X11 con X00*X11 >= X01^2 = 1, quindi 2*sqrt(15) per AM-GM.
-     * Se la strada che risolve leggesse un solo termine per coppia risponderebbe
-     * 2 (x0 = X00, x1 = X11, X01 = 1 => X00*X11 >= 1, AM-GM): i tre coefficienti si
-     * SOMMANO, e questa e' la meta' che rende il caso B una guardia e non una rinuncia. */
+    /* H. positive control: the model on those terms answers 2*sqrt(15), and it
+     * answers AFTER four refusals. Derived by hand: row 0 is
+     * 1*<E00,B> + 2*<E00,B> + 4*<E11,B> - x0 = 0, so x0 = 3*X00 + 4*X11;
+     * row 1 gives x1 = X11; row 2 gives X01 = 1. Objective x0 + x1 =
+     * 3*X00 + 5*X11 with X00*X11 >= X01^2 = 1, so 2*sqrt(15) by AM-GM.
+     * If the solving route read a single term per pair it would answer
+     * 2 (x0 = X00, x1 = X11, X01 = 1 => X00*X11 >= 1, AM-GM): the three coefficients
+     * ADD UP, and this is the half that makes case B a guard and not a renunciation. */
     cur_name = "T108 H il modello risponde ancora, e risponde della somma";
     for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putcj(t, 0, 1.0);
@@ -11597,32 +11690,32 @@ static void test_t108(void) {
     pend(&p);
 }
 
-/* ---------------- T107: un (i,j) scritto due volte — il numero scalare risponde
- * dell'OPERATORE, la tabella risponde del NEGOZIO ----------------
- * Misura PRIMA della correzione, stessa build: `putarow(0,{0,0},{1,2})` su `min -x`
- * con `a'x <= 3` risponde `x=1, obj=-1` — il coefficiente RISOLTO è 3 — e
- * `PRIMAL_getaij(0,0)` rispondeva 1. Non un arrotondamento e non una convenzione
- * discutibile: il numero che descrive la riga e la riga che è stata risolta erano
- * due quantità diverse. È la famiglia di `T92`/`T96`/`T97`: non è il solver a
- * sbagliare il punto, è il numero che lo descrive.
- * La scelta NON era fra due letture legittime, perché il gemello di questa
- * funzione — `PRIMAL_getqobjij`, misurato nel caso D — rispondeva già della somma,
- * e `putqconk` accumula in una matrice densa quindi anche `getqconkij` rispondeva
- * della somma. `getaij` era l'unica delle tre a rispondere del negozio, e a
- * contraddire chi risolve.
- * La linea, dichiarata in `primal.h`: il negozio risponde a `getnumanz` (conta le
- * ENTRATE, duplicati compresi), a `getarow`/`getacol` (le restituisce tutte) e
- * alle fette; l'operatore risponde a `getaij`. I due contratti non sono
- * intercambiabili, e il caso C lo misura sul punto dove divergono per davvero: due
- * entrate non nulle che si annullano hanno un coefficiente di 0 e un negozio di 2
- * entrate.
- * Cio' che NON è asserito, perché sarebbe inventarsi il riferimento: la policy di
- * SCRITTURA del riferimento (fusione o accumulo in `putarow`) non è stata letta.
- * Qui non cambia nulla di memorizzato — cambia solo che cosa dice questo numero.
+/* ---------------- T107: an (i,j) written twice — the scalar number answers
+ * for the OPERATOR, the table answers for the STORE ----------------
+ * Measured BEFORE the correction, same build: `putarow(0,{0,0},{1,2})` on `min -x`
+ * with `a'x <= 3` answers `x=1, obj=-1` — the SOLVED coefficient is 3 — and
+ * `PRIMAL_getaij(0,0)` answered 1. Not a rounding and not a debatable
+ * convention: the number that describes the row and the row that was solved were
+ * two different quantities. It is the family of `T92`/`T96`/`T97`: it is not the solver
+ * that gets the point wrong, it is the number that describes it.
+ * The choice was NOT between two legitimate readings, because the twin of this
+ * function — `PRIMAL_getqobjij`, measured in case D — already answered the sum,
+ * and `putqconk` accumulates into a dense matrix so `getqconkij` also answered
+ * the sum. `getaij` was the only one of the three answering for the store, and
+ * contradicting whoever solves.
+ * The line, declared in `primal.h`: the store answers `getnumanz` (it counts the
+ * ENTRIES, duplicates included), `getarow`/`getacol` (it returns them all) and
+ * the slices; the operator answers `getaij`. The two contracts are not
+ * interchangeable, and case C measures it at the point where they really diverge: two
+ * nonzero entries that cancel have a coefficient of 0 and a store of 2
+ * entries.
+ * What is NOT asserted, because it would be inventing the reference: the WRITE
+ * policy of the reference (merge or accumulate in `putarow`) was not read.
+ * Here nothing stored changes — only what this number says changes.
  */
 static void test_t107(void) {
-    /* A. la contraddizione, misurata dove nasce: il numero e la risposta che
-     * quel numero dovrebbe descrivere. */
+    /* A. the contradiction, measured where it is born: the number and the answer
+     * that number should describe. */
     {
         cur_name = "T107 A getaij risponde del coefficiente risolto";
         P p; pbegin(&p);
@@ -11640,11 +11733,11 @@ static void test_t107(void) {
         double a = -1;
         check_rc(PRIMAL_getaij(t, 0, 0, &a), PRIMAL_RES_OK, "lettura scalare");
         close_enough(a, 3.0, "il numero scalare e' la SOMMA, non il primo");
-        /* Il test si autodenuncia discriminatorio: 3 non e' nessuna delle due
-         * entrate, quindi NE' una lettura "primo" NE' una "ultimo" possono
-         * passarlo. E' l'equivalente, dentro un solo build, del controllo
-         * negativo per revert — che il livello di permessi di questa sessione
-         * non ha lasciato rimisurare. */
+        /* The test self-reports as discriminating: 3 is neither of the two
+         * entries, so NEITHER a "first" NOR a "last" read can
+         * pass it. It is the equivalent, within a single build, of the negative
+         * control by revert — which this session's permission level
+         * did not allow re-measuring. */
         check(a != val[0] && a != val[1],
               "e la cifra letta non e' nessuna delle entrate singole: e' il loro totale");
         PRIMAL_putcj(t, 0, -1.0);
@@ -11658,9 +11751,9 @@ static void test_t107(void) {
         close_enough(po, -1.0, "e l'obiettivo e' -1 (a x=3 sarebbe -3)");
         pend(&p);
     }
-    /* B. la stessa scrittura entra dall'altra porta: putacol. Il negozio è
-     * colonnare, quindi il duplicato qui è nativo, e il verdetto non può
-     * dipendere da quale delle due porte l'ha scritto. */
+    /* B. the same write enters through the other port: putacol. The store is
+     * columnwise, so the duplicate here is native, and the verdict cannot
+     * depend on which of the two ports wrote it. */
     {
         cur_name = "T107 B identico da putacol";
         P p; pbegin(&p);
@@ -11678,11 +11771,11 @@ static void test_t107(void) {
         close_enough(a, 3.0, "la lettura scalare dice 3 da entrambe le porte");
         pend(&p);
     }
-    /* C. il punto dove i DUE contratti divergono per davvero: due entrate non
-     * nulle che si annullano. Un negozio di 2 e un operatore di 0 non sono in
-     * contraddizione — sono due domande diverse — ma `getaij` da solo non può
-     * dire se (i,j) è stato scritto e cancellato o mai scritto: lo dice il
-     * negozio. */
+    /* C. the point where the TWO contracts really diverge: two nonzero
+     * entries that cancel. A store of 2 and an operator of 0 are not in
+     * contradiction — they are two different questions — but `getaij` alone cannot
+     * say whether (i,j) was written and cancelled or never written: the store
+     * says it. */
     {
         cur_name = "T107 C due entrate che si annullano";
         P p; pbegin(&p);
@@ -11701,7 +11794,7 @@ static void test_t107(void) {
         double b = -1;
         PRIMAL_getaij(t, 0, 1, &b);
         check(b == 0.0, "e un (i,j) mai scritto dice 0 altrettanto: distinguere e' compito del negozio");
-        /* tre entrate di segni misti: la somma non è né il primo né l'ultimo */
+        /* three entries of mixed signs: the sum is neither the first nor the last */
         PRIMAL_putarow(t, 0, 3, (int[]){1, 1, 1}, (double[]){1.0, -2.0, 4.0});
         PRIMAL_getaij(t, 0, 1, &b);
         close_enough(b, 3.0, "1 - 2 + 4 = 3, non 1 (primo) e non 4 (ultimo)");
@@ -11709,10 +11802,10 @@ static void test_t107(void) {
               "e 3 non e' nessuna delle tre entrate: la lettura non puo' essere una di esse");
         pend(&p);
     }
-    /* D. la parità coi gemelli: le tre letture scalari dei tre negozi rispondono
-     * dell'operatore, e le letture intere rispondono del negozio. Prima di
-     * questo giro `getaij` era l'unica eccezione, e nessun check incrociava le
-     * tre superfici nello stesso stato. */
+    /* D. parity with the twins: the three scalar readings of the three stores answer
+     * for the operator, and the integral reads answer for the store. Before
+     * this round `getaij` was the only exception, and no check crossed the
+     * three surfaces in the same state. */
     {
         cur_name = "T107 D i tre getter scalari rispondono come uno solo";
         P p; pbegin(&p);
@@ -11743,10 +11836,10 @@ static void test_t107(void) {
         check(a00 == q00 && q00 == c00, "tre superfici, una cifra: la divergenza ora e' impossibile");
         pend(&p);
     }
-    /* E. l'invariante che LEGA i due contratti, verificata su OGNI (i,j) di un
-     * modello con duplicati da entrambe le porte: la lettura scalare è la somma
-     * delle entrate che le due letture integrali restituiscono. Non un numero
-     * congelato: se il negozio cambia, questa si muove con lui. */
+    /* E. the invariant that BINDS the two contracts, verified on EVERY (i,j) of a
+     * model with duplicates from both ports: the scalar read is the sum
+     * of the entries that the two integral reads return. Not a frozen
+     * number: if the store changes, this moves with it. */
     {
         cur_name = "T107 E getaij = somma delle entrate di getarow e di getacol";
         P p; pbegin(&p);
@@ -11782,10 +11875,10 @@ static void test_t107(void) {
             tot += ncret;
         }
         check(na == tot, "numanzs e' la somma delle nz delle colonne, duplicati compresi");
-        /* 8, non 9: `putarow(2,...)` ha semantica di SOSTITUZIONE di riga e
-         * cancella, da ogni colonna, l'entrata (2,1) che `putacol(1,...)` aveva
-         * appena scritto. Il conteggio e' quindi del negozio DOPO la
-         * sostituzione, e questa e' la riga che lo misura. */
+        /* 8, not 9: `putarow(2,...)` has ROW-REPLACEMENT semantics and
+         * deletes, from every column, the entry (2,1) that `putacol(1,...)` had
+         * just written. The count is therefore of the store AFTER the
+         * replacement, and this is the line that measures it. */
         check(na == 8, "4 + 3 + 2 scritture, meno la (2,1) sostituita dalla riga 2: 8");
         double a21 = -1;
         PRIMAL_getaij(t, 2, 1, &a21);
@@ -11797,8 +11890,8 @@ static void test_t107(void) {
         check(!still, "e non lascia nemmeno l'entrata nel negozio");
         pend(&p);
     }
-    /* F. il senso non c'entra: la somma è un'addizione, non una convenzione di
-     * segno. Stesso modello di A in MAXIMIZE. */
+    /* F. the sense is irrelevant: the sum is an addition, not a sign
+     * convention. Same model as A in MAXIMIZE. */
     {
         cur_name = "T107 F identico in maximize";
         P p; pbegin(&p);
@@ -11819,10 +11912,10 @@ static void test_t107(void) {
         close_enough(po, 1.0, "max x con x <= 1 vale 1");
         pend(&p);
     }
-    /* G. la misura pubblica e il numero scalare dicono la STESSA riga: era il
-     * modo in cui il difetto si vedeva dall'esterno, e lo stesso KKT checker di
-     * questa suite costruisce `a'x` con questo getter (kkt_check) — prima
-     * verificava un modello che non era quello risolto. */
+    /* G. the public measure and the scalar number say the SAME row: it was the
+     * way the defect was seen from outside, and the same KKT checker of
+     * this suite builds `a'x` with this getter (kkt_check) — before, it
+     * verified a model that was not the one solved. */
     {
         cur_name = "T107 G la misura di ammissibilita' concorda col scalare";
         P p; pbegin(&p);
@@ -11850,39 +11943,39 @@ static void test_t107(void) {
     }
 }
 
-/* ---------------- T106: la QUARTA tabella dei nomi — i coni — e il nome dell'obiettivo ----------------
- * Come `T105` su `T102`: nel codice non c'e' politica nuova. `name_put` e
- * `name_find` sono gli STESSI due siti, e la capacita' della tabella dei nomi dei
- * coni e' la STESSA `cone_cap` di cone_type/cone_nmem/cone_mem/cone_param — una
- * capacita' sola, non cinque da tenere in pari.
- * Due cose pero' qui sono NUOVE e andavano decise e misurate, non assunte.
- * (1) Il namespace: un cono non e' una variabile scalare, non e' un vincolo, non
- * e' una barra. Ma la superficie che nominiamo noi si chiama `getconename` e
- * quella che nominava un vincolo si chiama `getconname`: UNA lettera di
- * differenza. Un commento non chiude una confusione cosi', la chiude un numero:
- * caso C, la STESSA stringa su variabile + vincolo + barra + cono nello stesso
- * task, quattro ricerche che rispondono il proprio indice, e il rifiuto sul
- * SECONDO cono che non tocca il nome del vincolo — perche' se le due tabelle
- * fossero una sola, la misura sarebbe un successo e il test non se ne accorgerebbe.
- * (2) L'obiettivo non e' una tabella: e' UN solo posto. Passato dagli stessi due
- * siti con n = 1, il ciclo di univocita' non ha un secondo slot da guardare e
- * quindi la domanda "dupplicato" non si pone: un secondo nome SOSTITUISCE. E'
- * l'unica differenza, ed e' asserita (caso G) per non lasciarla dedurre.
- * Caso F asserisce a che cosa serve una tabella di nomi: il nome nomina il
- * BLOCCO. Due coni di tipo DIVERSO (QUAD e RQUAD) con membri diversi, localizzati
- * per nome e verificati per tipo, numero di membri e membri — perche' due blocchi
- * che si SCAMBIANO hanno lo stesso conteggio ma non lo stesso tipo — su un modello
- * che risponde sqrt(2) (x2 >= hypot(x0,x1) con x0+x1=2, minimizzato a x0=x1=1, e
- * il blocco RQUAD che chiede 0), con la tabella che non si muove sul solve.
- * Cio' che NON e' asserito, perche' sarebbe inventarsi il riferimento: la regola
- * che il riferimento usa per nominare un cono non e' stata letta (fetch bloccato
- * anche in questo giro) e non e' stata inventata. In particolare qui NON esiste
- * una superficie "nome di funzione" con un (tipo, indice): la numerazione di
- * MSKfunctiontypee non e' conosciuta, e darle numeri nostri sarebbe esattamente il
- * difetto che `T93`/`T94` hanno corretto.
+/* ---------------- T106: the FOURTH name table — the cones — and the name of the objective ----------------
+ * Like `T105` on `T102`: in the code there is no new policy. `name_put` and
+ * `name_find` are the SAME two sites, and the capacity of the cone name table
+ * is the SAME `cone_cap` of cone_type/cone_nmem/cone_mem/cone_param — one
+ * capacity alone, not five to keep in step.
+ * Two things though here are NEW and had to be decided and measured, not assumed.
+ * (1) The namespace: a cone is not a scalar variable, not a constraint, not
+ * a bar. But the surface we name is called `getconename` and
+ * the one that named a constraint is called `getconname`: ONE letter of
+ * difference. A comment does not close such a confusion, a number closes it:
+ * case C, the SAME string on variable + constraint + bar + cone in the same
+ * task, four lookups that answer their own index, and the refusal on the
+ * SECOND cone that does not touch the constraint name — because if the two tables
+ * were one, the measure would be a success and the test would not notice.
+ * (2) The objective is not a table: it is ONE single place. Passed through the same two
+ * sites with n = 1, the uniqueness loop has no second slot to look at and
+ * therefore the "duplicate" question does not arise: a second name REPLACES. It is
+ * the only difference, and it is asserted (case G) so as not to leave it to be deduced.
+ * Case F asserts what a name table is for: the name names the
+ * BLOCK. Two cones of DIFFERENT type (QUAD and RQUAD) with different members, located
+ * by name and verified by type, number of members and members — because two blocks
+ * that SWAP have the same count but not the same type — on a model
+ * that answers sqrt(2) (x2 >= hypot(x0,x1) with x0+x1=2, minimized at x0=x1=1, and
+ * the RQUAD block asking 0), with the table not moving on the solve.
+ * What is NOT asserted, because it would be inventing the reference: the rule
+ * that the reference uses to name a cone was not read (fetch blocked
+ * also in this round) and was not invented. In particular here there is NO
+ * "function name" surface with a (type, index): the numbering of
+ * MSKfunctiontypee is not known, and giving it our numbers would be exactly the
+ * defect that `T93`/`T94` corrected.
  */
 static void test_t106(void) {
-    /* A. le due letture concordano, elemento per elemento. */
+    /* A. the two reads agree, element by element. */
     {
         cur_name = "T106 A la tabella intera e' getconenameidx scritto in fila";
         P p; pbegin(&p);
@@ -11895,7 +11988,7 @@ static void test_t106(void) {
         check_rc(PRIMAL_putconename(t, 0, "K0"), PRIMAL_RES_OK, "nome al cono 0");
         check_rc(PRIMAL_putconename(t, 2, "K2"), PRIMAL_RES_OK, "nome al cono 2");
         char marker;
-        const char *poison = &marker;         /* indirizzo vero, mai letto */
+        const char *poison = &marker;         /* real address, never read */
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
         check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "la quarta tabella si legge");
@@ -11918,15 +12011,15 @@ static void test_t106(void) {
               && all[7] == poison, "si scrivono numcone elementi, non uno di piu'");
         pend(&p);
     }
-    /* B. appendcone accresce la tabella in coda, oltre la capacita', senza
-     * spostare le stringhe prese prima. */
+    /* B. appendcone grows the table at the tail, beyond the capacity, without
+     * moving the strings taken before. */
     {
         cur_name = "T106 B la tabella dei coni cresce in coda con appendcone";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
         int m[3] = {0,1,2};
-        for (int k = 0; k < 4; k++)       /* riempie la capacita' iniziale (4) */
+        for (int k = 0; k < 4; k++)       /* fills the initial capacity (4) */
             check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m), PRIMAL_RES_OK, "cono");
         check_rc(PRIMAL_putconename(t, 0, "K0"), PRIMAL_RES_OK, "il nome del primo");
         const char *first = NULL;
@@ -11950,8 +12043,8 @@ static void test_t106(void) {
               "e la scrittura si ferma a numcone");
         pend(&p);
     }
-    /* C. il namespace dei coni e' separato, e la coppia confondibile
-     * getconname/getconename e' chiusa li', non in un commento. */
+    /* C. the cone namespace is separate, and the confusable pair
+     * getconname/getconename is closed there, not in a comment. */
     {
         cur_name = "T106 C la stessa stringa nomina quattro cose diverse";
         P p; pbegin(&p);
@@ -11992,8 +12085,8 @@ static void test_t106(void) {
               "il cono rifiutato resta senza nome");
         pend(&p);
     }
-    /* D. "" toglie il nome a un cono; un nome cercato e non trovato non muove
-     * l'indice; lo slot liberato e' riusabile. */
+    /* D. "" removes the name from a cone; a name looked up and not found does not move
+     * the index; the freed slot is reusable. */
     {
         cur_name = "T106 D togliere il nome a un cono e' riusare lo slot";
         P p; pbegin(&p);
@@ -12019,8 +12112,8 @@ static void test_t106(void) {
         check(keep == 0, "allo stesso indice");
         pend(&p);
     }
-    /* E. duplicato rifiutato, nome precedente vivo, UNA sola occorrenza nella
-     * lettura intera. */
+    /* E. duplicate refused, previous name alive, ONE single occurrence in the
+     * integral read. */
     {
         cur_name = "T106 E un duplicato esce dalla tabella intera una volta sola";
         P p; pbegin(&p);
@@ -12047,20 +12140,20 @@ static void test_t106(void) {
         check(all[2] == poison && all[3] == poison, "la scrittura non va oltre numcone");
         pend(&p);
     }
-    /* F. il nome nomina il BLOCCO: due coni di tipo diverso, localizzati per nome
-     * e verificati per tipo + membri, su un modello che risponde sqrt(2). */
+    /* F. the name names the BLOCK: two cones of different type, located by name
+     * and verified by type + members, on a model that answers sqrt(2). */
     {
         cur_name = "T106 F il nome nomina il blocco, e il solve non muove la tabella";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 6);
         PRIMAL_appendcons(t, 1);
-        /* riga 0: x0 + x1 = 2 */
+        /* row 0: x0 + x1 = 2 */
         PRIMAL_putarow(t, 0, 2, (int[]){0,1}, (double[]){1.0,1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
-        /* cono 0 "primo":  x2 >= hypot(x0,x1)   ->  x2 >= sqrt(2) a x0=x1=1
-         * cono 1 "secondo": 2*x3*x4 >= x5^2 con x4=1, x5=0  ->  x3 >= 0
-         * obiettivo: min x2 + x3  =  sqrt(2) + 0 */
+        /* cone 0 "primo":  x2 >= hypot(x0,x1)   ->  x2 >= sqrt(2) at x0=x1=1
+         * cone 1 "secondo": 2*x3*x4 >= x5^2 with x4=1, x5=0  ->  x3 >= 0
+         * objective: min x2 + x3  =  sqrt(2) + 0 */
         check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){2,0,1}),
                  PRIMAL_RES_OK, "QUAD (x2,x0,x1)");
         check_rc(PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0.0, 3, (int[]){3,4,5}),
@@ -12106,8 +12199,8 @@ static void test_t106(void) {
         check(al == 0.0, "RQUAD non ha alpha");
         pend(&p);
     }
-    /* G. l'obiettivo: un solo posto. n = 1 toglie la domanda di duplicato, non
-     * la regola di proprieta'. */
+    /* G. the objective: a single place. n = 1 removes the duplicate question, not
+     * the ownership rule. */
     {
         cur_name = "T106 G il nome dell'obiettivo si sostituisce, non si duplica";
         P p; pbegin(&p);
@@ -12135,8 +12228,8 @@ static void test_t106(void) {
         check_rc(PRIMAL_getobjname(t, &e), PRIMAL_RES_OK, "rilettura");
         check(e && e[0] == '\0', "e' vuota, non (null)");
         check_rc(PRIMAL_putobjname(t, "profitto"), PRIMAL_RES_OK, "e il posto si riusa");
-        /* indipendente dalle quattro tabelle: la stessa stringa nomina una
-         * variabile e l'obiettivo, e nessuno dei due lo sa. */
+        /* independent of the four tables: the same string names a
+         * variable and the objective, and neither of the two knows. */
         PRIMAL_appendvars(t, 1);
         check_rc(PRIMAL_putvarname(t, 0, "profitto"), PRIMAL_RES_OK,
                  "la variabile prende lo STESSO nome dell'obiettivo");
@@ -12148,8 +12241,8 @@ static void test_t106(void) {
         check(f && strcmp(f, "profitto") == 0, "stessa stringa, due posti diversi");
         pend(&p);
     }
-    /* H. i guardiani: nessun nuovo accessorio scrive dove non deve, e un task
-     * senza coni risponde come un task senza barre. */
+    /* H. the guards: no new accessor writes where it should not, and a task
+     * without cones answers like a task without bars. */
     {
         cur_name = "T106 H i guardiani della quarta tabella e del nome singolo";
         P p; pbegin(&p);
@@ -12210,42 +12303,42 @@ static void test_t106(void) {
     }
 }
 
-/* ---------------- T105: la TERZA tabella dei nomi — le variabili di barra ----------------
+/* ---------------- T105: the THIRD name table — the bar variables ----------------
  * `putbarname` / `getbarnameidx` / `getbarname` / `getidxbarvar` /
- * `getallbarname` non aggiungono nessuna regola: nel codice non c'e' politica
- * nuova, perche' `name_put` e `name_find` sono gli STESSI due siti di `T102` e
- * la capacita' e' la STESSA `barcap` di barDim/barx/barsj ("una capacita' sola,
- * non due da tenere in pari"). Cio' che e' nuovo e' la tabella, e una seconda
- * (qui terza) lettura della stessa famiglia di regole e' esattamente il posto
- * dove una regola diverge senza che nessuno la guardi.
- * C'e' pero' UNA cosa che le due tabelle scalari non potevano decidere, e che
- * qui andava DECISA e misurata, non assunta: se il namespace dei nomi di barra
- * e' SEPARATO da quello delle variabili scalari. Lo abbiamo dichiarato separato,
- * perche' una barra non e' una delle `numvar` scalari — ha un proprio spazio di
- * indici, una propria dimensione e un proprio blocco di cono, quindi il nome
- * deve poter nominare SOLO una barra. Caso C: la stessa stringa su una variabile,
- * un vincolo e una barra e' accettata e le tre ricerche rispondono il proprio
- * indice; la stessa stringa su DUE barre e' rifiutata, perche' l'univocita' vale
- * DENTRO la tabella. Se il namespace fosse stato condiviso, la prima scrittura
- * della barra sarebbe stata il rifiuto — e il caso e' costruito perche' sia
- * quello il discriminante.
- * Il resto e' `T102`/`T103` capo per capo: univocita' dentro la tabella, `""`
- * che toglie il nome (lettura `""`, mai `(null)`, e mai trovato), duplicato
- * rifiutato senza toccare il nome precedente, puntatore PRESTATO per la vita del
- * task (l'append muove il tavolo, non le stringhe), un rifiuto che non scrive
- * nemmeno l'indice che gli hai dato, `getallbarname` che scrive esattamente
- * `PRIMAL_getnumbarvar` elementi (il veleno dopo l'ultimo resta veleno).
- * Caso F asserisce la cosa per cui una tabella di nomi esiste: il nome nomina il
- * BLOCCO — due barre di dimensione DIVERSA (2 e 3) localizzate per nome e
- * verificate per dimensione, su un modello che risponde 5 (AM-GM sul blocco 2x2
- * e traccia fissata a 3 su quello 3x3), con la tabella che non si muove.
- * Cio' che NON e' asserito, perche' sarebbe inventarsi il riferimento: la regola
- * che il riferimento usa per i NOMI DI BARRA non e' stata letta (fetch dei
- * documenti bloccato anche in questo giro). Questa e' l'estensione coerente
- * della regola nostra misurata in `T102`, non una copia.
+ * `getallbarname` add no rule at all: in the code there is no new policy,
+ * because `name_put` and `name_find` are the SAME two sites of `T102` and
+ * the capacity is the SAME `barcap` of barDim/barx/barsj ("one capacity alone,
+ * not two to keep in step"). What is new is the table, and a second
+ * (here third) read of the same family of rules is exactly the place
+ * where a rule diverges without anyone watching it.
+ * There is though ONE thing that the two scalar tables could not decide, and that
+ * here had to be DECIDED and measured, not assumed: whether the bar name namespace
+ * is SEPARATE from that of the scalar variables. We declared it separate,
+ * because a bar is not one of the `numvar` scalars — it has its own index
+ * space, its own dimension and its own cone block, so the name
+ * must be able to name ONLY a bar. Case C: the same string on a variable,
+ * a constraint and a bar is accepted and the three lookups answer their own
+ * index; the same string on TWO bars is refused, because uniqueness holds
+ * INSIDE the table. If the namespace had been shared, the first bar write
+ * would have been the refusal — and the case is built so that
+ * that is the discriminant.
+ * The rest is `T102`/`T103` chapter by chapter: uniqueness inside the table, `""`
+ * that removes the name (read `""`, never `(null)`, and never found), duplicate
+ * refused without touching the previous name, pointer LENT for the life of the
+ * task (the append moves the table, not the strings), a refusal that does not write
+ * even the index you gave it, `getallbarname` that writes exactly
+ * `PRIMAL_getnumbarvar` elements (the poison after the last stays poison).
+ * Case F asserts the thing a name table exists for: the name names the
+ * BLOCK — two bars of DIFFERENT dimension (2 and 3) located by name and
+ * verified by dimension, on a model that answers 5 (AM-GM on the 2x2 block
+ * and trace fixed at 3 on the 3x3 one), with the table not moving.
+ * What is NOT asserted, because it would be inventing the reference: the rule
+ * that the reference uses for BAR NAMES was not read (document fetch
+ * blocked also in this round). This is the coherent extension
+ * of our rule measured in `T102`, not a copy.
  */
 static void test_t105(void) {
-    /* A. le due letture concordano, elemento per elemento. */
+    /* A. the two reads agree, element by element. */
     {
         cur_name = "T105 A la tabella intera e' getbarnameidx scritto in fila";
         P p; pbegin(&p);
@@ -12255,7 +12348,7 @@ static void test_t105(void) {
         check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "nome alla barra 0");
         check_rc(PRIMAL_putbarname(t, 2, "B4"), PRIMAL_RES_OK, "nome alla barra 2");
         char marker;
-        const char *poison = &marker;         /* indirizzo vero, mai letto */
+        const char *poison = &marker;         /* real address, never read */
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
         check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "la terza tabella si legge");
@@ -12279,7 +12372,7 @@ static void test_t105(void) {
               "si scrivono numbarvar elementi, non uno di piu'");
         pend(&p);
     }
-    /* B. appendbarvars accresce la tabella in coda, senza spostare le stringhe. */
+    /* B. appendbarvars grows the table at the tail, without moving the strings. */
     {
         cur_name = "T105 B la tabella delle barre cresce in coda";
         P p; pbegin(&p);
@@ -12306,8 +12399,8 @@ static void test_t105(void) {
         check(all[2] == poison && all[3] == poison, "e la scrittura si ferma a numbarvar");
         pend(&p);
     }
-    /* C. il namespace delle barre e' separato: la stessa stringa nomina tre
-     * cose diverse, e l'univocita' della tabella delle barre regge da sola. */
+    /* C. the bar namespace is separate: the same string names three
+     * different things, and the uniqueness of the bar table holds by itself. */
     {
         cur_name = "T105 C la barra non compete con le variabili scalari";
         P p; pbegin(&p);
@@ -12328,8 +12421,8 @@ static void test_t105(void) {
         int k = -1;
         check_rc(PRIMAL_getidxbarvar(t, "stessa", &k), PRIMAL_RES_OK, "getidxbarvar risponde");
         check(k == jb, "e' lo stesso nome che cerca la stessa cosa");
-        /* la stessa stringa su UNA SECONDA barra e' invece rifiutata: l'univocita'
-         * vale dentro la tabella, e qui si vede che non e' stata allargata a caso */
+        /* the same string on A SECOND bar is instead refused: uniqueness
+         * holds inside the table, and here one sees that it was not widened by chance */
         int d3 = 3;
         check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "una seconda barra");
         check_rc(PRIMAL_putbarname(t, 1, "stessa"), PRIMAL_RES_ERR_ARG,
@@ -12343,7 +12436,7 @@ static void test_t105(void) {
               "e il nome della variabile non e' stato toccato dal rifiuto");
         pend(&p);
     }
-    /* D. "" toglie il nome, e lo slot si riprende. */
+    /* D. "" removes the name, and the slot is taken back. */
     {
         cur_name = "T105 D togliere e ridare un nome di barra";
         P p; pbegin(&p);
@@ -12367,7 +12460,7 @@ static void test_t105(void) {
         check(j == 0, "all'indice giusto");
         pend(&p);
     }
-    /* E. duplicato rifiutato, il nome precedente sopravvive, una sola occorrenza. */
+    /* E. duplicate refused, the previous name survives, a single occurrence. */
     {
         cur_name = "T105 E un nome, una barra";
         P p; pbegin(&p);
@@ -12389,9 +12482,9 @@ static void test_t105(void) {
         check(all[1] && all[1][0] == '\0', "la 1 non ha mai avuto nome");
         pend(&p);
     }
-    /* F. il nome nomina il BLOCCO: due barre di dimensione diversa, localizzate
-     * per nome, verificate per dimensione e per contenuto pubblicato, su un
-     * modello che risponde un valore derivato a mano. */
+    /* F. the name names the BLOCK: two bars of different dimension, located
+     * by name, verified by dimension and by published content, on a
+     * model that answers a hand-derived value. */
     {
         cur_name = "T105 F il nome nomina il blocco, e il solve non muove la tabella";
         P p; pbegin(&p);
@@ -12405,11 +12498,11 @@ static void test_t105(void) {
         PRIMAL_appendsparsesymmat(t, 2, 2, (int[]){0,1}, (int[]){0,1}, (double[]){1.0,1.0}, &mI2);
         PRIMAL_appendsparsesymmat(t, 3, 3, (int[]){0,1,2}, (int[]){0,1,2},
                                   (double[]){1.0,1.0,1.0}, &mI3);
-        /* riga 0: 0.5 * <S01,X0> = 1  →  X0[0,1] = 1 (l'off-diagonale conta DUE
-         * volte, quindi il coefficiente e' mezzo); con X0 PSD ne segue
-         * X00 + X11 >= 2 (AM-GM), con uguaglianza in X0 = I.
-         * riga 1: <I3,X1> = 3  →  tr(X1) = 3.
-         * obiettivo: tr(X0) + tr(X1) >= 2 + 3 = 5. */
+        /* row 0: 0.5 * <S01,X0> = 1  →  X0[0,1] = 1 (the off-diagonal counts TWICE,
+         * so the coefficient is a half); with X0 PSD it follows
+         * X00 + X11 >= 2 (AM-GM), with equality at X0 = I.
+         * row 1: <I3,X1> = 3  →  tr(X1) = 3.
+         * objective: tr(X0) + tr(X1) >= 2 + 3 = 5. */
         PRIMAL_putbaraij(t, 0, 0, 1, (int[]){mS01_2}, (double[]){0.5});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
         PRIMAL_putbaraij(t, 1, 1, 1, (int[]){mI3}, (double[]){1.0});
@@ -12445,7 +12538,7 @@ static void test_t105(void) {
         close_enough_tol(Y[1], 1.0, 1e-5, "e l'off-diagonale e' il 1 che il nome promette");
         pend(&p);
     }
-    /* G. le guardie: indici fuori range, puntatori nulli, tabella vuota. */
+    /* G. the guards: out-of-range indices, null pointers, empty table. */
     {
         cur_name = "T105 G rifiutare senza scrivere";
         P p; pbegin(&p);
@@ -12461,7 +12554,7 @@ static void test_t105(void) {
         check_rc(PRIMAL_getallbarname(t, NULL), PRIMAL_RES_ERR_NULL, "names NULL");
         check_rc(PRIMAL_getallbarname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL in lettura integrale");
         check(one == poison, "un rifiuto non scrive nemmeno il puntatore che gli hai dato");
-        /* un task senza barre: la tabella esiste e ha zero righe */
+        /* a task without bars: the table exists and has zero rows */
         int j = 0;
         check_rc(PRIMAL_putbarname(t, 0, "x"), PRIMAL_RES_ERR_ARG, "zero barre, niente da nominare");
         check_rc(PRIMAL_getbarnameidx(t, 0, &one), PRIMAL_RES_ERR_ARG, "neppure da leggere");
@@ -12469,7 +12562,7 @@ static void test_t105(void) {
         check(j == 0, "e l'indice dato non e' stato scritto");
         check_rc(PRIMAL_getallbarname(t, &one), PRIMAL_RES_OK, "la tabella vuota si legge: non e' un errore");
         check(one == poison, "e nessun elemento e' scritto");
-        /* ora le barre ci sono: gli indici fuori range restano rifiutati */
+        /* now the bars are there: out-of-range indices stay refused */
         int d2 = 2;
         check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "una barra");
         check_rc(PRIMAL_putbarname(t, -1, "x"), PRIMAL_RES_ERR_ARG, "indice negativo");
@@ -12491,35 +12584,35 @@ static void test_t105(void) {
     }
 }
 
-/* ---------------- T104: le due Q lette tutte in una volta ----------------
- * `getqobj` e `getqconk` non aggiungono nessuna regola: aggiungono una SECONDA
- * LETTURA delle due tabelle che i due contatori gia' raccontano, e il posto dove
- * una regola puo' divergere e' proprio la seconda lettura. Qui le due tabelle
- * SONO DIVERSE, e il test asserisce le due conseguenze separate:
- *   - la Q dell'obiettivo e' un LISTATO di triplette non simmetrizzato: escono le
- *     scritture dell'utente in ORDINE DI SCRITTURA (`putqobj` non ordina niente),
- *     una tripletta di valore 0.0 c'e' ed e' contata (il numero conta le
- *     scritture, non i non nulli dell'operatore), e due chiamate `putqobj`
- *     ACCUMULANO; un termine incrociato (i,j), i != j, esce UNA volta sola anche
- *     se `getqobjij` risponde lo stesso numero su entrambe le meta'. Il caso B
- *     non lascia questa distinzione come una parola: l'obiettivo RISOLTO e'
- *     -2/3 se l'operatore raddoppia la incrociata, -0.8 se non la raddoppia, e i
- *     due valori sono gli unici due che la lettura sbagliata puo' produrre;
- *   - la Q di un vincolo e' una matrice DENSE gia' simmetrizzata alla scrittura:
- *     esce il TRIANGOLO SUPERIORE in ordine crescente, e il conteggio viene DA
- *     `getnumqconknz` stesso, non da un secondo elenco, perche' due enumerazioni
- *     della stessa tabella sono due politiche. Una riga le cui entrate si
- *     annullano (C accumula) misura zero: verdetto vuoto, non rifiuto.
- * In entrambi i casi un `maxnum` che non basta e' RIFIUTATO senza scrivere nulla
- * (buffer e `*numret` intonsi), la stessa regola delle slice di A.
- * Cio' che NON e' asserito, perche' sarebbe inventarsi il riferimento: la FORMA
- * delle due chiamate nel riferimento non e' stata letta (fetch dei documenti
- * bloccato anche in questo giro); la forma qui e' la propria tabella letta dal
- * proprio contatore.
+/* ---------------- T104: the two Q read all at once ----------------
+ * `getqobj` and `getqconk` add no rule: they add a SECOND
+ * READ of the two tables that the two counters already tell, and the place where
+ * a rule can diverge is precisely the second read. Here the two tables
+ * ARE DIFFERENT, and the test asserts the two consequences separately:
+ *   - the objective Q is a NON-symmetrized triplet LIST: the user's
+ *     writes come out in WRITE ORDER (`putqobj` orders nothing),
+ *     a triplet of value 0.0 is there and is counted (the number counts the
+ *     writes, not the nonzeros of the operator), and two `putqobj` calls
+ *     ACCUMULATE; a cross term (i,j), i != j, comes out ONCE even
+ *     if `getqobjij` answers the same number on both halves. Case B
+ *     does not leave this distinction as a word: the SOLVED objective is
+ *     -2/3 if the operator doubles the cross term, -0.8 if it does not, and the
+ *     two values are the only two that the wrong read can produce;
+ *   - the Q of a constraint is a DENSE matrix already symmetrized at write time:
+ *     the UPPER TRIANGLE comes out in increasing order, and the count comes FROM
+ *     `getnumqconknz` itself, not from a second list, because two enumerations
+ *     of the same table are two policies. A row whose entries
+ *     cancel (C accumulates) measures zero: empty verdict, not a refusal.
+ * In both cases a `maxnum` that is not enough is REFUSED without writing anything
+ * (buffers and `*numret` untouched), the same rule as the slices of A.
+ * What is NOT asserted, because it would be inventing the reference: the FORM
+ * of the two calls in the reference was not read (document fetch
+ * blocked also in this round); the form here is our own table read by its
+ * own counter.
  */
 static void test_t104(void) {
-    /* A. il listato dell'obiettivo: ordine di scrittura, zero incluso,
-     * accumulazione fra due putqobj, e lo stesso numero del contatore. */
+    /* A. the objective list: write order, zero included,
+     * accumulation between two putqobj, and the same number as the counter. */
     {
         cur_name = "T104 A getqobj e' il listato come e' stato scritto";
         P p; pbegin(&p);
@@ -12544,17 +12637,17 @@ static void test_t104(void) {
               "non si scrive oltre numret");
         pend(&p);
     }
-    /* B. una scrittura incrociata e' UNA dichiarazione dell'utente e DUE meta'
-     * dell'operatore, e il modello risolto dice quale delle due conta. */
+    /* B. a cross write is ONE declaration of the user and TWO halves
+     * of the operator, and the solved model says which of the two counts. */
     {
         cur_name = "T104 B un termine incrociato: una scrittura, due meta'";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
-        /* Q = [[4,2],[2,4]]: 1/2 x'Qx = 2x0^2 + 2x1^2 + 2x0x1, con c = (-2,-2)
-         * l'ottimo e' (1/3,1/3) con valore -2/3. Se la incrociata scritta una
-         * volta valesse come una sola meta' (2x0x1 -> x0x1) l'ottimo sarebbe
-         * (0.4,0.4) con valore -0.8. */
+        /* Q = [[4,2],[2,4]]: 1/2 x'Qx = 2x0^2 + 2x1^2 + 2x0x1, with c = (-2,-2)
+         * the optimum is (1/3,1/3) with value -2/3. If the cross term written once
+         * counted as a single half (2x0x1 -> x0x1) the optimum would be
+         * (0.4,0.4) with value -0.8. */
         PRIMAL_putqobj(t, 3, (int[]){0, 1, 0}, (int[]){0, 1, 1},
                        (double[]){4.0, 4.0, 2.0});
         PRIMAL_putcj(t, 0, -2.0); PRIMAL_putcj(t, 1, -2.0);
@@ -12581,8 +12674,8 @@ static void test_t104(void) {
                      "l'obiettivo e' quello dell'operatore simmetrico, non del listato");
         pend(&p);
     }
-    /* C. la Q di un vincolo: triangolo superiore crescente, e ogni entrata e'
-     * quello che getqconkij dice a quell'indice e sull'altra meta'. */
+    /* C. the Q of a constraint: increasing upper triangle, and every entry is
+     * what getqconkij says at that index and on the other half. */
     {
         cur_name = "T104 C getqconk: triangolo superiore, e le due letture concordano";
         P p; pbegin(&p);
@@ -12613,8 +12706,8 @@ static void test_t104(void) {
         }
         pend(&p);
     }
-    /* D. due triplette che si annullano: la riga misura zero, e zero scritto non
-     * e' un rifiuto. */
+    /* D. two triplets that cancel: the row measures zero, and a written zero is not
+     * a refusal. */
     {
         cur_name = "T104 D annullamento: verdetto vuoto, non rifiuto";
         P p; pbegin(&p);
@@ -12640,7 +12733,7 @@ static void test_t104(void) {
         check(dij == 0.0, "e l'elemento cancellato risponde zero");
         pend(&p);
     }
-    /* E. maxnum corta di uno: rifiuto, nessun buffer scritto, *numret intatto. */
+    /* E. maxnum is one short: refusal, no buffer written, *numret untouched. */
     {
         cur_name = "T104 E la chiamata corta non scrive niente";
         P p; pbegin(&p);
@@ -12662,13 +12755,13 @@ static void test_t104(void) {
         check(numret == 12345, "*numret nemmeno qui");
         check(qi[0] == -777 && qj[0] == -777 && qv[0] == -777.0,
               "buffer nemmeno qui");
-        /* la capienza giusta, subito dopo, risponde: il rifiuto non ha rotto nulla */
+        /* the right capacity, right after, answers: the refusal broke nothing */
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 2, &numret), PRIMAL_RES_OK,
                  "la stessa lettura con la capienza giusta risponde");
         check(numret == 2, "e scrive le due entrate");
         pend(&p);
     }
-    /* F. una tabella vuota risponde, non rifiuta: zero e' una risposta. */
+    /* F. an empty table answers, does not refuse: zero is an answer. */
     {
         cur_name = "T104 F il modello senza Q risponde zero, non ERR_ARG";
         P p; pbegin(&p);
@@ -12684,7 +12777,7 @@ static void test_t104(void) {
         check(numret == 0, "zero entrate anche qui");
         pend(&p);
     }
-    /* G. le guardie: k del vincolo fuori range, puntatori nulli, capienza negativa. */
+    /* G. the guards: constraint k out of range, null pointers, negative capacity. */
     {
         cur_name = "T104 G le guardie dei due lettori";
         P p; pbegin(&p);
@@ -12713,42 +12806,42 @@ static void test_t104(void) {
     }
 }
 
-/* ---------------- T103: la tabella dei nomi letta tutta in una volta ----------------
- * `getallvarname`/`getallconname` non aggiungono nessuna regola: aggiungono una
- * SECONDA LETTURA delle due tabelle che T102 ha messo in piedi. Due letture
- * della stessa tabella sono il posto dove una regola puo' divergere, quindi cio' che
- * questo test asserisce non e' "esistono dei nomi" (T102 E lo asserisce gia'
- * indice per indice) ma che le due letture NON POSSONO divergere:
- *   - ogni elemento della tabella intera E' la stringa che `getvarnameidx` dice
- *     a quell'indice -- stesso contenuto, e per un nome lo STESSO puntatore,
- *     perche' qui non si copia niente;
- *   - un slot senza nome esce come stringa vuota anche li', e la vuota non e'
- *     un nome prestato (non c'e' niente da prestare): il confronto e' sul
- *     contenuto, non sull'indirizzo;
- *   - si scrivono ESATTAMENTE `numvar` (`numcon`) elementi, non uno di piu': la
- *     prova e' un veleno subito dopo l'ultimo, che deve restare veleno;
- *   - `appendvars` accresce la tabella IN CODA e lascia vive le stringhe gia'
- *     prese in prestito (e' la garanzia di T102 E, qui letta dalla tabella);
- *   - un nome tolto con "" e un nome rifiutato perche' duplice si vedono dalla
- *     tabella intera: nel primo caso lo slot e' vuoto, nel secondo il nome
- *     compare una VOLTA SOLA.
- * Cio' che NON e' asserito, perche' sarebbe inventarsi il riferimento: nel
- * riferimento chi chiama fornisce buffer di caratteri di lunghezza fissa e il
- * solver ci copia dentro; qui escono i puntatori prestati del task (deviazione
- * dichiarata in `primal.h`).
+/* ---------------- T103: the name table read all at once ----------------
+ * `getallvarname`/`getallconname` add no rule: they add a
+ * SECOND READ of the two tables that T102 set up. Two reads
+ * of the same table are the place where a rule can diverge, so what
+ * this test asserts is not "names exist" (T102 E already asserts it
+ * index by index) but that the two reads CANNOT diverge:
+ *   - every element of the whole table IS the string that `getvarnameidx` says
+ *     at that index -- same content, and for a name the SAME pointer,
+ *     because here nothing is copied;
+ *   - a slot without a name comes out as an empty string there too, and the empty
+ *     is not a lent name (there is nothing to lend): the comparison is on
+ *     content, not on address;
+ *   - EXACTLY `numvar` (`numcon`) elements are written, not one more: the
+ *     proof is a poison right after the last, which must stay poison;
+ *   - `appendvars` grows the table AT THE TAIL and leaves alive the strings already
+ *     taken in loan (it is the guarantee of T102 E, here read from the table);
+ *   - a name removed with "" and a name refused because duplicate are seen from the
+ *     whole table: in the first case the slot is empty, in the second the name
+ *     appears a SINGLE TIME.
+ * What is NOT asserted, because it would be inventing the reference: in the
+ * reference the caller supplies fixed-length character buffers and the
+ * solver copies into them; here the lent pointers of the task come out (deviation
+ * declared in `primal.h`).
  */
 static void test_t103(void) {
-    /* A. le due letture concordano, elemento per elemento. */
+    /* A. the two reads agree, element by element. */
     {
         cur_name = "T103 A la tabella intera e' getvarnameidx scritto in fila";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 4); PRIMAL_appendcons(t, 3);
         PRIMAL_putvarname(t, 0, "x0");
-        PRIMAL_putvarname(t, 2, "cost");      /* l'1 e il 3 restano senza nome */
+        PRIMAL_putvarname(t, 2, "cost");      /* 1 and 3 stay unnamed */
         PRIMAL_putconname(t, 1, "domanda");
         char marker;
-        const char *poison = &marker;         /* indirizzo vero, mai letto */
+        const char *poison = &marker;         /* real address, never read */
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
         check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "la tabella delle variabili si legge");
@@ -12781,7 +12874,7 @@ static void test_t103(void) {
         check(all[3] == poison, "e anche qui niente scrittura oltre numcon");
         pend(&p);
     }
-    /* B. appendvars accresce la tabella in coda, senza spostare le stringhe. */
+    /* B. appendvars grows the table at the tail, without moving the strings. */
     {
         cur_name = "T103 B la tabella cresce in coda";
         P p; pbegin(&p);
@@ -12807,7 +12900,7 @@ static void test_t103(void) {
         check(all[0] == first, "la tabella si muove, la stringa no");
         pend(&p);
     }
-    /* C. un nome compare una volta sola: lo si vede in una lettura. */
+    /* C. a name appears only once: one sees it in a read. */
     {
         cur_name = "T103 C un nome, un indice: la tabella lo dice tutta";
         P p; pbegin(&p);
@@ -12824,7 +12917,7 @@ static void test_t103(void) {
         int k = -1;
         check_rc(PRIMAL_getvarname(t, "x1", &k), PRIMAL_RES_OK, "la ricerca per nome ha una risposta");
         check(k == 0, "e' lui");
-        /* "" toglie il nome e si vede dalla tabella */
+        /* "" removes the name and it is seen from the table */
         check_rc(PRIMAL_putvarname(t, 0, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
         check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "rilettura");
         hits = 0;
@@ -12832,7 +12925,7 @@ static void test_t103(void) {
         check(hits == 0, "ora la tabella non nomina piu' niente");
         pend(&p);
     }
-    /* D. le due tabelle restano indipendenti anche lette intere. */
+    /* D. the two tables stay independent even read whole. */
     {
         cur_name = "T103 D la stessa stringa nelle due tabelle";
         P p; pbegin(&p);
@@ -12852,7 +12945,7 @@ static void test_t103(void) {
         check(j == 1 && i == 0, "e le due ricerche restano due domande diverse");
         pend(&p);
     }
-    /* E. un solve non tocca i nomi, e un'ombra non ne scrive. */
+    /* E. a solve does not touch the names, and a shadow writes none. */
     {
         cur_name = "T103 E la tabella sopravvive al solve";
         P p; pbegin(&p);
@@ -12880,7 +12973,7 @@ static void test_t103(void) {
         close_enough(po, 2.0, "e la risposta e' sempre 2");
         pend(&p);
     }
-    /* F. i rifiuti e il modello vuoto. */
+    /* F. the refusals and the empty model. */
     {
         cur_name = "T103 F puntatori nulli e tabella vuota";
         P p; pbegin(&p);
@@ -12893,8 +12986,8 @@ static void test_t103(void) {
         check_rc(PRIMAL_getallvarname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL");
         check_rc(PRIMAL_getallconname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL sui vincoli");
         check(one == poison, "un rifiuto non scrive nemmeno il puntatore che gli hai dato");
-        /* un task appena creato non ha niente da leggere: risponde, e non
-         * scrive -- non e' un "non trovato", la tabella c'e' e ha zero righe */
+        /* a just-created task has nothing to read: it answers, and does not
+         * write -- it is not a "not found", the table is there and has zero rows */
         check_rc(PRIMAL_getallvarname(t, &one), PRIMAL_RES_OK, "variabili zero: non e' un errore");
         check(one == poison, "e nessun elemento e' scritto");
         one = poison;
@@ -12907,29 +13000,29 @@ static void test_t103(void) {
     }
 }
 
-/* ---------------- T102: lettura dei dati del modello e nomi ----------------
- * Il riferimento espone la lettura di A (righe, colonne, conteggio delle
- * entrate) e due tabelle di nomi. Qui quella superficie non c'era: i dati si
- * leggevano entry per entry (getaij) e i nomi non esistevano affatto.
- * Cio' che questo test fissa non e' il valore dei dati (gia' coperto da getaij
- * e dai controlli KKT), ma il CONTRATTO degli accessori:
- *   - una fetta parla della MEMORIZZAZIONE: un'entrata scritta due volte esce
- *     due volte, e uno zero scritto esplicitamente esce come zero;
- *   - una fetta che non ci sta e' RIFIUTATA senza scrivere nulla e senza
- *     toccare numret (la stessa regola dei setter dei parametri, T84);
- *   - `offset` e' una posizione del buffer, e la concatenazione delle fette e'
- *     la lettura integrale;
- *   - i nomi sono due tabelle INDIPENDENTI e univoche, "" toglie il nome, e
- *     un puntatore prestato sopravvive a appendvars perche' le stringhe non si
- *     muovono: si muove la tabella che le indica.
- * Divergenza che qui fu misurata e NON asserita, per non congelare la lettura
- * che perdeva: su un (i,j) scritto due volte getaij leggeva il PRIMO valore,
- * mentre chi risolve il modello li somma. E' stata DECISA da T107 (2026-09-16,
- * ventinovesimo giro) — getaij risponde dell'OPERATORE (la somma), il negozio di
- * T102 (questo: fette e conteggi) risponde delle ENTRATE memorizzate.
+/* ---------------- T102: reading the model data and names ----------------
+ * The reference exposes the read of A (rows, columns, count of
+ * entries) and two name tables. Here that surface did not exist: the data
+ * were read entry by entry (getaij) and the names did not exist at all.
+ * What this test fixes is not the value of the data (already covered by getaij
+ * and the KKT checks), but the CONTRACT of the accessors:
+ *   - a slice talks about the STORAGE: an entry written twice comes out
+ *     twice, and a zero written explicitly comes out as zero;
+ *   - a slice that does not fit is REFUSED without writing anything and without
+ *     touching numret (the same rule as the parameter setters, T84);
+ *   - `offset` is a position of the buffer, and the concatenation of the slices is
+ *     the integral read;
+ *   - the names are two INDEPENDENT and unique tables, "" removes the name, and
+ *     a lent pointer survives appendvars because the strings do not
+ *     move: the table that points to them moves.
+ * Divergence that here was measured and NOT asserted, so as not to freeze the read
+ * that was losing: on an (i,j) written twice getaij read the FIRST value,
+ * while whoever solves the model sums them. It was DECIDED by T107 (2026-09-16,
+ * twenty-ninth round) — getaij answers for the OPERATOR (the sum), the store of
+ * T102 (this: slices and counts) answers for the stored ENTRIES.
  */
 static void test_t102(void) {
-    /* A. i conteggi contano le ENTRATE SCRITTE, duplicati compresi. */
+    /* A. the counts count the WRITTEN ENTRIES, duplicates included. */
     {
         cur_name = "T102 A conteggi: un duplicato scritto due volte conta due volte";
         P p; pbegin(&p);
@@ -12945,7 +13038,7 @@ static void test_t102(void) {
         PRIMAL_putarow(t, 1, 1, (int[]){1}, (double[]){3.0});
         PRIMAL_getnumanz(t, &na);
         check(na == 3, "una terza entrata in un'altra riga: 3");
-        /* la riga 1 riscritta con la colonna 1 DUE volte: nessuna deduplica */
+        /* row 1 rewritten with column 1 TWICE: no deduplication */
         PRIMAL_putarow(t, 1, 2, (int[]){1, 1}, (double[]){7.0, 100.0});
         PRIMAL_getnumanz(t, &na); PRIMAL_getmaxnumanz(t, &mn);
         check(na == 4, "la riga 1 tiene due entrate per la colonna 1: 4 in tutto");
@@ -12958,7 +13051,7 @@ static void test_t102(void) {
         check(nret == 2, "la riga 1 esce con le sue due entrate");
         check(sub[0] == 1 && val[0] == 7.0 && sub[1] == 1 && val[1] == 100.0,
               "il duplicato esce duplicato, per indice crescente");
-        /* Q: lo stesso contratto sul negozio a triplette */
+        /* Q: the same contract on the triplet store */
         int qnz = -1;
         check_rc(PRIMAL_getnumqobjnz(t, &qnz), PRIMAL_RES_OK, "getnumqobjnz risponde");
         check(qnz == 0, "nessun termine quadratico: 0");
@@ -12971,9 +13064,9 @@ static void test_t102(void) {
         check(qnz == 0, "svuotato il quadrato: 0");
         pend(&p);
     }
-    /* B. su un modello senza duplicati la fetta di riga e' esattamente cio' che
-     * getaij riporta: stesso valore per ogni entrata, e l'unica differenza da
-     * un conteggio dei non nulli e' lo zero SCRITTO esplicitamente. */
+    /* B. on a model without duplicates the row slice is exactly what
+     * getaij reports: same value for every entry, and the only difference from
+     * a count of the nonzeros is the zero WRITTEN explicitly. */
     {
         cur_name = "T102 B la fetta di riga risponde come getaij";
         P p; pbegin(&p);
@@ -13012,7 +13105,7 @@ static void test_t102(void) {
         }
         pend(&p);
     }
-    /* C. la fetta che non ci sta non scrive nulla; offset ricompone il tutto. */
+    /* C. a slice that does not fit writes nothing; offset reassembles the whole. */
     {
         cur_name = "T102 C rifiuto senza effetti, offset che ricompone";
         P p; pbegin(&p);
@@ -13035,7 +13128,7 @@ static void test_t102(void) {
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 0, 4, &nret, a_s, a_v), PRIMAL_RES_OK,
                  "lo spazio esatto basta");
         check(nret == 4, "la riga intera: 4 entrate");
-        nret = -1; /* il via-vai precedente ha gia' scritto il numero: va riarmedato */
+        nret = -1; /* the earlier round trip already wrote the count: re-arm it */
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 1, 4, &nret, b_s, b_v), PRIMAL_RES_ERR_ARG,
                  "offset 1 dentro capienza 4 lascia 3 posti per 4 entrate");
         check(nret == -1, "anche qui numret non e' stato scritto");
@@ -13043,7 +13136,7 @@ static void test_t102(void) {
                  "offset 1 con capienza 5: quattro posti ci stanno");
         check(nret == 4 && b_s[0] == -777 && b_s[1] == a_s[0] && b_v[1] == a_v[0],
               "offset e' una posizione del buffer: numret conta le ENTRATE, non l'ultima posizione");
-        /* lettura a due fette per colonne: [0,3) poi [3,5) scritta dopo la prima */
+        /* two-slice column read: [0,3) then [3,5) written after the first */
         int n1 = -1, n2 = -1;
         check_rc(PRIMAL_getarowslice(t, 0, 0, 3, 0, 5, &n1, a_s, a_v), PRIMAL_RES_OK,
                  "prima fetta di colonne [0,3)");
@@ -13056,7 +13149,7 @@ static void test_t102(void) {
         for (int k = 0; k < nret && same; k++)
             if (full_s[k] != a_s[k] || full_v[k] != a_v[k]) same = 0;
         check(same, "la concatenazione delle fette E' la lettura integrale");
-        /* gli indici fuori range non sono un rifiuto silenzioso */
+        /* out-of-range indices are not a silent rejection */
         check_rc(PRIMAL_getarowslice(t, 1, 0, 5, 0, 5, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
                  "riga 1 non esiste (numcon=1)");
         check_rc(PRIMAL_getarowslice(t, 0, 0, 6, 0, 5, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
@@ -13067,8 +13160,8 @@ static void test_t102(void) {
                  "offset oltre maxnum");
         pend(&p);
     }
-    /* D. la colonna risponde nell'ordine in cui e' stata scritta: qui il solver
-     * non richiede (e non impone) indici ordinati in input. */
+    /* D. the column answers in the order it was written: here the solver
+     * neither requires nor enforces sorted input indices. */
     {
         cur_name = "T102 D la colonna esce nell'ordine memorizzato";
         P p; pbegin(&p);
@@ -13099,7 +13192,7 @@ static void test_t102(void) {
         check(nret == 0, "vuota dice zero entrate, non un errore");
         pend(&p);
     }
-    /* E. le due tabelle di nomi. */
+    /* E. the two name tables. */
     {
         cur_name = "T102 E nomi: due tabelle, univoche, prestati";
         P p; pbegin(&p);
@@ -13123,14 +13216,14 @@ static void test_t102(void) {
         check(j == 1, "e la stessa risposta");
         check_rc(PRIMAL_getidxcon(t, "x1", &i), PRIMAL_RES_OK, "getidxcon: la stessa domanda");
         check(i == 0, "e la stessa risposta");
-        /* duplicato rifiutato SENZA toccare il nome precedente */
+        /* duplicate rejected WITHOUT touching the previous name */
         check_rc(PRIMAL_putvarname(t, 1, "x1"), PRIMAL_RES_ERR_ARG,
                  "nome gia' in uso: rifiutato");
         PRIMAL_getvarnameidx(t, 1, &nm);
         check(nm && strcmp(nm, "x2") == 0, "il nome precedente sopravvive al rifiuto");
-        /* rinominare lo stesso indice con lo stesso nome non e' un conflitto */
+        /* renaming the same index with the same name is not a conflict */
         check_rc(PRIMAL_putvarname(t, 1, "x2"), PRIMAL_RES_OK, "ribattere lo stesso nome va bene");
-        /* "" toglie il nome, e il nome tolto si legge come mai messo */
+        /* "" removes the name, and a removed name reads as never set */
         check_rc(PRIMAL_putvarname(t, 1, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
         PRIMAL_getvarnameidx(t, 1, &nm);
         check(nm && nm[0] == '\0', "senza nome di nuovo: stringa vuota");
@@ -13140,13 +13233,13 @@ static void test_t102(void) {
         check(j == -1, "e l'indice restituito non e' toccato");
         check_rc(PRIMAL_getvarname(t, "nessuno", &j), PRIMAL_RES_ERR_ARG, "nome inesistente");
         check(j == -1, "l'indice esce intatto anche qui");
-        /* l'indice fuori range non e' un nome */
+        /* an out-of-range index is not a name */
         check_rc(PRIMAL_putvarname(t, 3, "oltre"), PRIMAL_RES_ERR_ARG, "variabile 3 non esiste");
         check_rc(PRIMAL_putconname(t, 2, "oltre"), PRIMAL_RES_ERR_ARG, "vincolo 2 non esiste");
         check_rc(PRIMAL_getvarnameidx(t, -1, &nm), PRIMAL_RES_ERR_ARG, "indice negativo");
         check_rc(PRIMAL_getconnameidx(t, 5, &nm), PRIMAL_RES_ERR_ARG, "indice oltre numcon");
-        /* il puntatore prestato sopravvive a appendvars: le stringhe non si
-         * muovono, si muove la tabella che le indica */
+        /* the borrowed pointer survives appendvars: the strings do not
+         * move, the table pointing at them moves */
         const char *borrowed = NULL;
         PRIMAL_getvarnameidx(t, 0, &borrowed);
         check_rc(PRIMAL_appendvars(t, 2), PRIMAL_RES_OK, "appendvars dopo il nome");
@@ -13159,7 +13252,7 @@ static void test_t102(void) {
         check(nm && nm[0] == '\0', "la variabile appena aggiunta non ha nome");
         pend(&p);
     }
-    /* F. nessun accessorio accetta un puntatore nullo. */
+    /* F. no accessor accepts a null pointer. */
     {
         cur_name = "T102 F puntatori nulli su tutta la famiglia";
         P p; pbegin(&p);
@@ -13190,10 +13283,10 @@ static void test_t102(void) {
         check_rc(PRIMAL_getidxcon(t, "x", NULL), PRIMAL_RES_ERR_NULL, "getidxcon NULL");
         pend(&p);
     }
-    /* G. nominare non cambia il modello. min x0 + 2*x1 con x0 + x1 = 2 e
-     * 0 <= x <= 3: conviene x0, quindi (2,0,qualsiasi) con obiettivo 2. x2 non
-     * ha costo e non compare nella riga: la sua parte di risposta non e' unica,
-     * e infatti qui non viene asserita. */
+    /* G. naming does not change the model. min x0 + 2*x1 with x0 + x1 = 2 and
+     * 0 <= x <= 3: x0 wins, so (2,0,anything) with objective 2. x2 has
+     * no cost and does not appear in the row: its part of the answer is not unique,
+     * and indeed is not asserted here. */
     {
         cur_name = "T102 G nominare non perturba la risposta";
         P p; pbegin(&p);
@@ -13221,10 +13314,10 @@ static void test_t102(void) {
     }
 }
 
-/* `want_ray`: 0 = nessun vettore (solsta UNKNOWN, entrambi i getter ERR_ARG);
- * 1 = raggio primale (illimitato, solsta DUAL_INFEAS_CER); 2 = raggio duale
- * (infeasibile, solsta PRIM_INFEAS_CER). Un verdetto senza punto resta tale in
- * tutti i casi (t99_no_point). */
+/* `want_ray`: 0 = no vector (solsta UNKNOWN, both getters ERR_ARG);
+ * 1 = primal ray (unbounded, solsta DUAL_INFEAS_CER); 2 = dual ray
+ * (infeasible, solsta PRIM_INFEAS_CER). A verdict without a point stays so in
+ * every case (t99_no_point). */
 static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
                         int want_ray) {
     int sta = -9, pro = -9;
@@ -13242,8 +13335,8 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
                PRIMAL_getdualray(t, w) == PRIMAL_RES_ERR_ARG;
 
     if (want_ray == 2) {
-        /* raggio duale: normalizzato, d = A'y in K* su ogni cono, la
-         * combinazione firmata dei RHS negativa */
+        /* dual ray: normalized, d = A'y in K* on every cone, the
+         * signed combination of the RHS terms negative */
         if (sta != PRIMAL_SOL_STA_PRIM_INFEAS_CER) return 0;
         if (PRIMAL_getprimalray(t, v) != PRIMAL_RES_ERR_ARG) return 0;
         if (PRIMAL_getdualray(t, w) != PRIMAL_RES_OK) return 0;
@@ -13283,7 +13376,7 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
         return 1;
     }
 
-    /* raggio primale: normalizzato, dentro K, A rho = 0, c'rho < 0 */
+    /* primal ray: normalized, inside K, A rho = 0, c'rho < 0 */
     if (PRIMAL_getdualray(t, w) != PRIMAL_RES_ERR_ARG) return 0;
     if (sta != PRIMAL_SOL_STA_DUAL_INFEAS_CER) return 0;
     if (PRIMAL_getprimalray(t, v) != PRIMAL_RES_OK) return 0;
@@ -13299,7 +13392,7 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
         cr += sense * cj * v[j];
     }
     if (!(cr < -1e-8)) return 0;
-    /* il raggio sta in ogni cono del modello (QUAD e' auto-duale) */
+    /* the ray lies in every cone of the model (QUAD is self-dual) */
     int nk_all = 0;
     PRIMAL_getnumcone(t, &nk_all);
     for (int k = 0; k < nk_all; k++) {
@@ -13311,7 +13404,7 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
             if (v[mem[0]] < sqrt(nrm) - 1e-8) return 0;
         }
     }
-    /* ogni riga e' omogenea lungo la direzione */
+    /* every row is homogeneous along the direction */
     for (int i = 0; i < nc; i++) {
         double act = 0.0;
         for (int j = 0; j < nv; j++) {
@@ -13323,8 +13416,9 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
 }
 #define t101_verdict_no_point(t, rc, pro) t101_verdict((t), (rc), (pro), 0)
 
+/* Tests the conic verdict helper on unbounded, infeasible and optimal cone models. */
 static void test_t101(void) {
-    /* A. un cono SENZA righe non ha un valore finito: il vertice chiude la terna. */
+    /* A. a cone WITHOUT rows has no finite value: the vertex closes the triple. */
     {
         cur_name = "T101 A cono illimitato, nessuna riga";
         P p; pbegin(&p);
@@ -13339,9 +13433,9 @@ static void test_t101(void) {
               "rc=1003, prosta=5, solsta=6: il raggio primale misura");
         pend(&p);
     }
-    /* B. la stessa illimitatezza con una riga: qui la strada conica NON converge,
-     * e il verdetto esce dalla direzione misurata sulle righe del modello, non
-     * dalla convergenza. */
+    /* B. the same unboundedness with one row: here the conic route does NOT converge,
+     * and the verdict comes from the direction measured on the model rows, not
+     * from convergence. */
     {
         cur_name = "T101 B cono illimitato, con la riga";
         P p; pbegin(&p);
@@ -13359,9 +13453,9 @@ static void test_t101(void) {
               "il raggio primale misura anche con la riga (A rho = 0)");
         pend(&p);
     }
-    /* C. min x0 su PPOW(1/2) con x0 = -1: il dominio del cono chiede t >= 0 e la
-     * riga chiede -1. Le sole conseguenze lineari dell'appartenenza gia' si
-     * contraddicono, e qui la risposta riguarda il PRIMALE. */
+    /* C. min x0 over PPOW(1/2) with x0 = -1: the cone domain asks t >= 0 while the
+     * row asks -1. The linear consequences of membership alone already
+     * contradict each other, and here the answer concerns the PRIMAL. */
     {
         cur_name = "T101 C cono primale infeasible";
         P p; pbegin(&p);
@@ -13379,9 +13473,9 @@ static void test_t101(void) {
               "rc=1002, prosta=4, solsta=5: il raggio duale misura in K*");
         pend(&p);
     }
-    /* J. la stessa infeasibilita' con un cono QUAD (auto-duale), la forma del
-     * §3.7 di Seven Sins: `x0 = -1` e' fuori da `x0 >= ||(x1,x2)||`. Il
-     * certificato e' y0 = 1 sulla riga, d = (1,0,0) in QUAD, b'y = -1 < 0. */
+    /* J. the same infeasibility with a QUAD cone (self-dual), the form of
+     * Section 3.7 of Seven Sins: `x0 = -1` lies outside `x0 >= ||(x1,x2)||`. The
+     * certificate is y0 = 1 on the row, d = (1,0,0) in QUAD, b'y = -1 < 0. */
     {
         cur_name = "T101 J cono QUAD primale infeasible";
         P p; pbegin(&p);
@@ -13398,14 +13492,14 @@ static void test_t101(void) {
               "rc=1002, prosta=4, solsta=5: raggio duale per il cono QUAD");
         pend(&p);
     }
-    /* D/E/G. lo stesso modello nei tre sensi, con il duale a mano:
-     *   D  min   x0+x1+x2 -> x=(5,4,-3), valore  6, y=( 2/3,-7/3)
-     *   E  max   x0+x1+x2 -> x=(5,4, 3), valore 12, y=(-8/3, 1/3)
-     *   G  max -(x0+x1+x2) -> x=(5,4,-3), valore -6, y=(-2/3, 7/3)
-     * In tutti e tre il blocco d = s*(c+A'y) sta ESATTAMENTE sul bordo di K*
-     * (t = |(u,v)| = 5/3) e soddisfa la complementarita' d*x = 0. Il dinf che T97
-     * misurava sulle sole barre ora include il cono, e su un punto che il duale
-     * lo ha davvero deve leggere 0. */
+    /* D/E/G. the same model in the three senses, with the dual by hand:
+     *   D  min   x0+x1+x2 -> x=(5,4,-3), value  6, y=( 2/3,-7/3)
+     *   E  max   x0+x1+x2 -> x=(5,4, 3), value 12, y=(-8/3, 1/3)
+     *   G  max -(x0+x1+x2) -> x=(5,4,-3), value -6, y=(-2/3, 7/3)
+     * In all three the block d = s*(c+A'y) lies EXACTLY on the boundary of K*
+     * (t = |(u,v)| = 5/3) and satisfies complementarity d*x = 0. The dinf that T97
+     * measured on bars alone now includes the cone, and on a point whose dual
+     * truly exists it must read 0. */
     {
         static const double cj_of[3] = { 1.0, 1.0, -1.0 };
         static const int max_of[3] = { 0, 1, 1 };
@@ -13452,9 +13546,9 @@ static void test_t101(void) {
             pend(&p);
         }
     }
-    /* H. il modello di D con un bordo finito su un MEMBRO del cono: il blocco non
-     * e' leggibile e va lasciato non misurato, non misurato male. Il modello deve
-     * rispondere lo stesso, con lo stesso valore. */
+    /* H. the model of D with a finite bound on a cone MEMBER: the block is not
+     * readable and must be left unmeasured, not measured badly. The model must
+     * still answer, with the same value. */
     {
         cur_name = "T101 H membro del cono bordato: blocco non misurato";
         P p;
@@ -13466,11 +13560,11 @@ static void test_t101(void) {
         close_enough_tol(po, 6.0, 1e-5, "e non ne muove il valore");
         pend(&p);
     }
-    /* I. barra + cono: qui chi risponde e' la costruzione conica (la via a tagli e'
-     * scavalcata da numcones > 0), e la DEVIAZIONE dichiarata e' che il percorso a
-     * barre non pubblica slx/sux per le variabili del cono -- letture azzerate dove
-     * il duale vero e' (5/3,-4/3,1). Cio' che vale comunque: il modello risponde, e
-     * lo zero di quelle colonne non diventa una violazione duale. */
+    /* I. bar + cone: here the conic construction answers (the cut route is
+     * skipped when numcones > 0), and the declared DEVIATION is that the bar
+     * route does not publish slx/sux for cone variables -- zeroed readings where
+     * the true dual is (5/3,-4/3,1). What still holds: the model answers, and
+     * the zero on those columns does not become a dual violation. */
     {
         cur_name = "T101 I barra + cono (deviazione slx/sux non pubblicati)";
         P p;
@@ -13492,11 +13586,11 @@ static void test_t101(void) {
               "e lo zero pubblicato non e' una violazione duale");
         pend(&p);
     }
-    /* F. la faccia u = 0 di un PEXP NON e' una via di fuga: min -x2 con x1 = 0 e
-     * (x0,x1,x2) in PEXP. Su quella faccia il cono si chiude su {v = 0, t >= 0},
-     * quindi x2 = 0 e il valore e' 0; leggere la faccia come "scarto 0" lasciava
-     * passare una direzione che scappa lungo v, e rispondeva 1003 su un modello
-     * limitato. */
+    /* F. the u = 0 face of a PEXP is NOT an escape route: min -x2 with x1 = 0 and
+     * (x0,x1,x2) in PEXP. On that face the cone closes onto {v = 0, t >= 0},
+     * so x2 = 0 and the value is 0; reading the face as "zero gap" used to let
+     * through a direction escaping along v, answering 1003 on a bounded
+     * model. */
     {
         cur_name = "T101 F la faccia u=0 di un PEXP non e' illimitatezza";
         P p; pbegin(&p);
@@ -13521,16 +13615,17 @@ static void test_t101(void) {
     }
 }
 
+/* Tests the solver-built cap verdict on bar models, on cut and native routes. */
 static void test_t100(void) {
     static const char letters[] = "ABCDE";
     for (int cse = 0; cse <= 4; cse++) {
-        t100_case(letters[cse], cse, 1);   /* via a tagli: il percorso cappucciato */
-        t100_case(letters[cse], cse, 0);   /* via nativa: l'IPM conico unificato */
+        t100_case(letters[cse], cse, 1);   /* cut route: the capped path */
+        t100_case(letters[cse], cse, 0);   /* native route: the unified conic IPM */
     }
-    /* F. l'illimitatezza che NON passa da una barra: qui il raggio c'e', ed e'
-     * pubblicato accanto al certificato. E' il discriminate di meta' di A — la
-     * deviazione dichiarata dice che il raggio manca quando la direzione vive in
-     * una barra, non che i percorsi conici non pubblicano mai un 6. */
+    /* F. unboundedness that does NOT go through a bar: here the ray exists, and is
+     * published next to the certificate. It is the half-discriminant of A -- the
+     * declared deviation says the ray is missing when the direction lives in
+     * a bar, not that conic routes never publish a 6. */
     {
         cur_name = "T100 F scalare illimitata (raggio pubblicato)";
         P p; pbegin(&p);
@@ -13548,12 +13643,12 @@ static void test_t100(void) {
         check(t85_measures_primal(t, rho) == 1, "e il vettore misura");
         pend(&p);
     }
-    /* G..I. la STESSA illimitatezza che passa da una barra affacciata su un CONO.
-     * Qui la via a tagli tangenti non e' raggiungibile (numcones > 0 la scavalca)
-     * e chi risponde alla barra e' la COSTRUZIONE CONICA, che cappuccia le stesse
-     * entrate allo stesso modo (+/- entry <= SDP_BIGM) e aveva lo stesso difetto:
-     * misurato prima della guardia, rc=0 con pobj = dobj = -2e6, x0 = x1 = 1e6,
-     * Sj = [[-1,0],[0,-1]] (duale FUORI dal cono) e dinf = 1. */
+    /* G..I. the SAME unboundedness going through a bar facing a CONE.
+     * Here the tangent-cut route is unreachable (numcones > 0 skips it)
+     * and the CONIC CONSTRUCTION answers the bar, capping the same
+     * entries the same way (+/- entry <= SDP_BIGM) with the same defect:
+     * measured before the guard, rc=0 with pobj = dobj = -2e6, x0 = x1 = 1e6,
+     * Sj = [[-1,0],[0,-1]] (dual OUTSIDE the cone) and dinf = 1. */
     {
         cur_name = "T100 G barra su cono, illimitata (via conica)";
         P p;
@@ -13569,11 +13664,11 @@ static void test_t100(void) {
         P p;
         PRIMALtask_t t = t100_conic(&p, -1.0, 1.0, 1);
         int sta = -9, pro = -9;
-        /* La via conica non converge, ma il MODELLO viene comunque interrogato
-         * (il gate sulla quarta faccia consulta ora anche le barre): il modello
-         * e' illimitato attraverso la barra, quindi la risposta e' 1003 con il
-         * verdetto in prosta e nessun vettore -- la stessa famiglia di G, non un
-         * "nessun verdetto". */
+        /* The conic route does not converge, but the MODEL is still queried
+         * (the fourth-face gate now also consults bars): the model
+         * is unbounded through the bar, so the answer is 1003 with the
+         * verdict in prosta and no vector -- the same family as G, not a
+         * "no verdict". */
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED,
                  "la via conica affamata interroga il modello: illimitato");
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
@@ -13621,21 +13716,21 @@ static void test_t100(void) {
         check(t100_caplog == 0, "la guardia non si accende su un valore finito e grande");
         pend(&p);
     }
-    /* M. DUE barre, con r diversi, risolte dalla costruzione conica.  E' il
-     * controllo di collocamento dei blocchi: la barra 1 occupa le colonne
-     * triangolari che seguono quelle della barra 0, e con i blocchi sovrapposti
-     * le due righe <S01,B_b> = r_b nominerebbero la STESSA colonna imponendo
-     * insieme 2 e 3 — il modello non sarebbe approssimato male, sarebbe
-     * infeasible.  Per questo il caso dichiara anche l'ordine invertito: se le
-     * due barre condividessero qualcosa, invertendo i bordi non si invertirebbero
-     * i valori pubblicati.
-     * Misurato: pobj = dobj = 10, x = (2,2,3,3), pinf = 0, con il nativo che
-     * rifiuta (status=1, terne 7.4e-9 contro 1e-15 dichiarata, blocks=1) e due
-     * giri di tagli (round=0 ncuts=1 psd=0, round=1 ncuts=2 psd=2).
-     * CONTROLLO NEGATIVO NON ESEGUITO, e dichiarato: re-indossare la
-     * sovrapposizione e' stato rifiutato dal livello di permessi di questa
-     * sessione (due tentativi, sorgente e copia in /tmp).  Cio' che qui distingue
-     * e' l'asserto sui due ordini, non una build rotta misurata. */
+    /* M. TWO bars, with distinct r, solved by the conic construction. It is the
+     * block-placement check: bar 1 occupies the triangular columns
+     * following those of bar 0, and with overlapping blocks
+     * the two rows <S01,B_b> = r_b would name the SAME column imposing
+     * 2 and 3 together -- the model would not be badly approximated, it would be
+     * infeasible. Hence this case also declares the swapped order: if the
+     * two bars shared anything, swapping the bounds would not swap
+     * the published values.
+     * Measured: pobj = dobj = 10, x = (2,2,3,3), pinf = 0, with the native route
+     * refusing (status=1, triple 7.4e-9 against declared 1e-15, blocks=1) and two
+     * cut rounds (round=0 ncuts=1 psd=0, round=1 ncuts=2 psd=2).
+     * NEGATIVE CHECK NOT RUN, as declared: re-wearing the
+     * overlap was refused by this session's permission level
+     * (two attempts, source and copy in /tmp). What discriminates here
+     * is the assert on the two orders, not a measured broken build. */
     {
         cur_name = "T100 M due barre con r distinti (via conica)";
         P p;
@@ -13677,31 +13772,31 @@ static void test_t100(void) {
     }
 }
 
-/* T97 — i due getter di infeasibility devono leggere il modello COME E'
- * SCRITTO. Prima di questa modifica il loop sulle righe di
- * PRIMAL_getprimalinfeas consultava SOLO la sparsità scalare `cols[]`: una riga
- * con coefficienti di barra ha primo membro scalare identicamente 0, quindi il
- * getter riportava come violazione il bordo della riga stessa. Misurato sul
- * modello 2x2 qui sotto (ottimo 2 per AM-GM, `rel_pri = 1.7e-9`,
- * `[cones] rel_slack = 3.8e-10`): `getprimalinfeas` pubblicava **1.000000**,
- * cioè esattamente `|b|` della riga 2 `<S01,B> = 1`, su un solve che risponde
- * `rc = OK`. E `PRIMAL_getdualinfeas` consultava i soli costi ridotti scalari,
- * quindi il duale di una barra — una MATRICE, `Z_j = C_j - Σ_i y_i A^i_j` — non
- * entrava nella misura per niente: un `Z` con autovalore negativo usciva con un
- *'infeasibility duale che non lo conteneva.
- * Casi: A il 2x2 AM-GM (barre + scalari sulle stesse righe), B la faccia 20x20
- * di T88, C il modello barre+quadratico di T86 A (riga `putqconk` letta con il
- * suo termine), D il cross-check fra `getdualinfeas` e lo spettro di
- * `getbarsj` — asserito in modo che il getter debba CONTENERE la misura del cono
- * (se `Z` ha un autovalore negativo, `dinf` non puo' essere sotto quel valore)
- * e non possa inventarsene altra. */
+/* T97 -- the two infeasibility getters must read the model AS
+ * WRITTEN. Before this change the row loop of
+ * PRIMAL_getprimalinfeas consulted ONLY the scalar sparsity `cols[]`: a row
+ * with bar coefficients has an identically 0 scalar left-hand side, so the
+ * getter reported the row bound itself as the violation. Measured on the
+ * 2x2 model below (optimum 2 by AM-GM, `rel_pri = 1.7e-9`,
+ * `[cones] rel_slack = 3.8e-10`): `getprimalinfeas` published **1.000000**,
+ * i.e. exactly `|b|` of row 2 `<S01,B> = 1`, on a solve answering
+ * `rc = OK`. And `PRIMAL_getdualinfeas` consulted only the scalar reduced costs,
+ * so the dual of a bar -- a MATRIX, `Z_j = C_j - sum_i y_i A^i_j` -- never
+ * entered the measure at all: a `Z` with a negative eigenvalue came out with a
+ * dual infeasibility not containing it.
+ * Cases: A the 2x2 AM-GM (bars + scalars on the same rows), B the 20x20 face
+ * of T88, C the bar+quadratic model of T86 A (a `putqconk` row read with
+ * its term), D the cross-check between `getdualinfeas` and the spectrum of
+ * `getbarsj` -- asserted so that the getter must CONTAIN the cone measure
+ * (if `Z` has a negative eigenvalue, `dinf` cannot lie below that value)
+ * and cannot invent another one. */
 static void test_t97(void) {
     cur_name = "T97 infeasibility misurata sul modello come e' scritto";
     enum { NB = 2, D20 = 20 };
 
-    /* A. min x0+x1  s.t.  <E00,B> = x0, <E11,B> = x1, <S01,B> = 1, B in S^2_+.
-     * Le righe 0 e 1 mescolano scalari e barre; la riga 2 e' SOLO di barra: e'
-     * quella che il getter leggeva come 1. */
+    /* A. min x0+x1 s.t. <E00,B> = x0, <E11,B> = x1, <S01,B> = 1, B in S^2_+.
+     * Rows 0 and 1 mix scalars and bars; row 2 is bar ONLY: it is
+     * the one the getter used to read as 1. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -13730,7 +13825,7 @@ static void test_t97(void) {
         close_enough_tol(po, 2.0, 1e-5, "T97 A obiettivo 2 (AM-GM)");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "T97 A getprimalinfeas risponde");
-        /* La guardia che MORDE: prima pubblicava 1.0 = |b| della riga 2. */
+        /* The biting guard: it used to publish 1.0 = |b| of row 2. */
         check(pinf >= 0.0 && pinf <= 1e-6, "T97 A il primo membro include la barra");
         check(pinf < 1e-3, "T97 A non e' il bordo della riga di barra");
         check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf), PRIMAL_RES_OK,
@@ -13745,15 +13840,15 @@ static void test_t97(void) {
         check(dinf >= -ev[0] - 1e-9, "T97 A getdualinfeas vede Z fuori dal cono duale");
         check(emax <= 2.0, "T97 A il duale pubblicato sta sulla scala del modello");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T97 A getbarxj");
-        /* Le righe 0 e 1 legano le barre alle scalari: se il termine di barra
-         * non fosse sommato, la violazione letta sarebbe |x0| o |x1| (1), non ~0. */
+        /* Rows 0 and 1 tie bars to scalars: if the bar term
+         * were not summed, the read violation would be |x0| or |x1| (1), not ~0. */
         check(fabs(B[0] - x[0]) <= 1e-6 && fabs(B[3] - x[1]) <= 1e-6,
               "T97 A <E00,B> = x0 e <E11,B> = x1 al punto pubblicato");
         pend(&p);
     }
 
-    /* B. la faccia 20x20 di T88: <I,B> = 1 e' una riga SOLA di barra, e il suo
-     * bordo 1 era la "violazione" pubblicata. */
+    /* B. the 20x20 face of T88: <I,B> = 1 is a bar-ONLY row, and its
+     * bound 1 was the published "violation". */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -13791,10 +13886,10 @@ static void test_t97(void) {
         pend(&p);
     }
 
-    /* C. il modello di T86 A: una riga `putqconk` (x0^2+x1^2 <= 2) e una riga
-     * di barra (B00 = 1) nella stessa task. Qui la parte quadratica entra nel
-     * primo membro con il SEGNO della riga: il valore misurato a mano in
-     * (1,1) e' 2, la riga e' attiva, e la misura deve dire ~0 non 2. */
+    /* C. the T86 A model: a `putqconk` row (x0^2+x1^2 <= 2) and a
+     * bar row (B00 = 1) in the same task. Here the quadratic part enters the
+     * left-hand side with the row SIGN: the hand-measured value at
+     * (1,1) is 2, the row is active, and the measure must read ~0 not 2. */
     {
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -13818,21 +13913,22 @@ static void test_t97(void) {
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "T97 C getprimalinfeas");
         check(pinf >= 0.0 && pinf <= 1e-6, "T97 C riga quadratica + riga di barra");
-        /* Il segno della riga quadratica e' verificato a mano sulla soluzione:
-         * x0^2+x1^2 - 2 deve stare dentro la tolleranza, perche' e' questo il
-         * primo membro che il getter deve vedere. */
+        /* The quadratic-row sign is hand-checked on the solution:
+         * x0^2+x1^2 - 2 must lie within tolerance, because that is the
+         * left-hand side the getter must see. */
         double q = x[0] * x[0] + x[1] * x[1] - 2.0;
         check(q <= 1e-6, "T97 C la riga quadratica e' soddisfatta al punto pubblicato");
         pend(&p);
     }
 }
 
+/* Tests the near-optimal factor as a verdict, not a third status. */
 static void test_t96(void) {
     cur_name = "T96 fattore near-optimal: il verdetto, non un terzo status";
     enum { D20 = 20 };
     double po86 = 0.0, po1 = 0.0, poBig = 0.0;
 
-    /* A. la riga dichiarata: il numero e il range del riferimento */
+    /* A. the declared row: the reference number and range */
     {
         P p; pbegin(&p);
         double dflt = 0, lo = 0, hi = 0, v = -1;
@@ -13848,7 +13944,7 @@ static void test_t96(void) {
         pend(&p);
     }
 
-    /* B1. tol 1e-10, fattore di default: 86 volte fuori, pubblicato ottimo */
+    /* B1. tol 1e-10, default factor: 86 times outside, published optimal */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-10, 0.0);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B1 dichiarato risolto dal fattore");
@@ -13859,8 +13955,8 @@ static void test_t96(void) {
         close_enough_tol(po86, 2.0, 1e-7, "B1 il valore pubblicato e' l'ottimo");
         pend(&p);
     }
-    /* B2. le stesse tolleranze, fattore disattivato: quel punto non e' piu'
-     * accettabile e risponde l'altra strada -- che sta meglio. */
+    /* B2. the same tolerances, factor disabled: that point is no longer
+     * acceptable and the other route answers -- which is tighter. */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-10, 1.0);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B2 l'outer approximation risponde");
@@ -13869,7 +13965,7 @@ static void test_t96(void) {
         check(fabs(po1 - 2.0) <= fabs(po86 - 2.0), "B2 rifiutare il punto near non peggiora la risposta");
         pend(&p);
     }
-    /* B3. un fattore enorme riabilita lo stesso punto: il numero e' letto */
+    /* B3. a huge factor re-enables the same point: the number is read */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-13, 1e15);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B3 pubblicato con il fattore grande");
@@ -13877,8 +13973,8 @@ static void test_t96(void) {
         check(fabs(poBig - po86) <= 1e-12, "B3 e' lo stesso punto dell'IPM");
         pend(&p);
     }
-    /* B4. ottomila e seiscento volte la tolleranza non stanno in 1000x: il
-     * fattore non e' un lascia-passare, la risposta torna dai tagli. */
+    /* B4. eighty-six hundred times the tolerance does not fit in 1000x: the
+     * factor is not a free pass, the answer comes back from the cuts. */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-13, 0.0);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B4 risolto dai tagli");
@@ -13889,8 +13985,8 @@ static void test_t96(void) {
         pend(&p);
     }
 
-    /* C1. il modello di T88, che si ferma a 1.01x della tolleranza dichiarata:
-     * con il default E' ottimo, e il cono non si allarga. */
+    /* C1. the T88 model, stopping at 1.01x the declared tolerance:
+     * with the default it IS optimal, and the cone is not widened. */
     {
         P p; pbegin(&p); t96_bar20(p.task);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "C1 1.01x dichiarato ottimo dal fattore");
@@ -13910,9 +14006,9 @@ static void test_t96(void) {
         close_enough_tol(tr, 1.0, 1e-6, "C1 <I,B> = 1");
         pend(&p);
     }
-    /* C2. discriminatori: stesse tolleranze, fattore disattivato.  Il verdetto
-     * debole non deve portare con se' dei numeri: prima di questa modifica
-     * getxx/getprimalobj rispondevano OK con lo zero di opt_prepare. */
+    /* C2. discriminators: same tolerances, factor disabled. The weak verdict
+     * must not carry numbers along: before this change
+     * getxx/getprimalobj answered OK with the opt_prepare zero. */
     {
         P p; pbegin(&p); t96_bar20(p.task); t96_set(p.task, 0.0, 1.0);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_TRM_MAX_ITER, "C2 non risolto senza il fattore");
@@ -13927,8 +14023,8 @@ static void test_t96(void) {
         pend(&p);
     }
 
-    /* D. exp/power: il fattore non sceglie la strada, e il risultato non si
-     * muove fra NEAR_REL = 1 e il default. */
+    /* D. exp/power: the factor does not choose the route, and the result does not
+     * move between NEAR_REL = 1 and the default. */
     {
         double td[2];
         const double nears[2] = { 1.0, 0.0 };
@@ -13954,25 +14050,25 @@ static void test_t96(void) {
     }
 }
 
-/* T95 - cio' che un MIP PUO' PUBBLICARE. La soglia di integralita' dichiara
- * soddisfatto un vincolo intero; non dichiara ammissibile il punto, che deve
- * misurare in un altro registro (nel riferimento sono due parametri diversi:
- * MSK_DPAR_MIO_TOL_ABS_RELAX_INT = 1e-5 e MSK_DPAR_MIO_TOL_FEAS = 1e-6). Qui
- * non si asserisce un x atteso: si asserisce l'invariante che lega il verdetto
- * al punto, su due modelli in cui il rilassamento mente di proposito.
- *  A. disgiunzione big-M (M = 1e6 in appenddjc): un milionesimo tiene il
- *     selettore lontano dall'intero, ma arrotondarlo sposta la riga big-M di
- *     M volte quel milionesimo. Il min vuole x0 = 0, il max vuole x0 = 7; prima
- *     di questa guardia il max pubblicava x0 = 10 -- che non appartiene a
- *     NESSUNA delle due disgiunzioni -- con rc=OK e solsta=INTEGER_OPTIMAL.
- *     L'albero poi si inceppava anche: il ramo prodotto da floor(valore + itol)
- *     ERA il padre, e si arrivava al cap di nodi (100000) senza una risposta.
- *  B. semi-intera con attivazione a 2.5: l'ottimo (3,0) ha x1 SUL punto
- *     inattivo 0, che sta sotto il suo bordo inferiore. Misurare il bordo dice
- *     2.5 di violazione su un punto esatto, e il ramo scartato valeva 8 contro
- *     3. Ora anche il getter lo legge 0.
- * Ciascuno provato a quattro soglie: la soglia cambia il cammino, mai cio' che
- * esce. */
+/* T95 - what a MIP MAY PUBLISH. The integrality threshold declares
+ * an integer constraint satisfied; it does not declare the point feasible, which must
+ * measure in another register (in the reference they are two distinct parameters:
+ * MSK_DPAR_MIO_TOL_ABS_RELAX_INT = 1e-5 and MSK_DPAR_MIO_TOL_FEAS = 1e-6). Here
+ * no expected x is asserted: the invariant tying the verdict
+ * to the point is asserted, on two models where the relaxation lies on purpose.
+ *  A. big-M disjunction (M = 1e6 in appenddjc): a millionth keeps the
+ *     selector away from integrality, but rounding it shifts the big-M row by
+ *     M times that millionth. Min wants x0 = 0, max wants x0 = 7; before
+ *     this guard max published x0 = 10 -- belonging to
+ *     NEITHER disjunction -- with rc=OK and solsta=INTEGER_OPTIMAL.
+ *     The tree also jammed: the branch from floor(value + itol)
+ *     WAS the parent, reaching the node cap (100000) with no answer.
+ *  B. semi-integer with activation at 2.5: the optimum (3,0) has x1 ON the
+ *     inactive point 0, which lies below its lower bound. Measuring the bound says
+ *     2.5 of violation on an exact point, and the pruned branch was worth 8 against
+ *     3. Now the getter reads it as 0 too.
+ * Each tried at four thresholds: the threshold changes the path, never what
+ * comes out. */
 static void test_t95(void) {
     cur_name = "T95 il punto pubblicato da un MIP misura nel modello";
     static const double THR[] = { 0.0, 1e-9, 1e-5, 1e-3 };   /* 0 = default */
@@ -14014,8 +14110,8 @@ static void test_t95(void) {
         check(pi <= 1e-6, msg);
     }
 
-    {   /* C. il verdetto INTEGER_OPTIMAL (9, il numero del riferimento) esce
-         * solo con il punto in mano: letto dai getter, non dal rc. */
+    {   /* C. the INTEGER_OPTIMAL verdict (9, the reference number) comes out
+         * only with the point in hand: read from the getters, not from rc. */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -14044,26 +14140,26 @@ static void test_t95(void) {
     }
 }
 
-/* T94: la numerazione di OGNI enum pubblico e' quella del riferimento, letta in
- * chiaro da docs.mosek.com/latest/capi/constants.html. T93 ha corretto i numeri
- * che escono dai getter; questi sono quelli che ENTRANO, e li il costo di un
- * numero divergente non e' un verdetto letto male: e' un modello costruito
- * diverso da quello che l'utente ha scritto, senza un errore da leggere.
- * Ogni enum e' messo alla prova in due modi: il numero del letterale, e un
- * modello costruito passando il NUMERO del riferimento come input. Il secondo
- * e' quello che serve, perche' il confronto sui nomi e' vero sotto qualunque
- * rinumerazione (la lezione di T93, letta al contrario). */
+/* T94: the numbering of EVERY public enum is the reference one, read in the
+ * open from docs.mosek.com/latest/capi/constants.html. T93 fixed the numbers
+ * coming out of the getters; these are the ones going IN, where the cost of a
+ * divergent number is not a misread verdict: it is a model built
+ * different from what the user wrote, with no error to read.
+ * Each enum is tried in two ways: the literal's number, and a
+ * model built by passing the reference NUMBER as input. The second
+ * is the one that matters, because name comparison holds under any
+ * renumbering (the T93 lesson, read backwards). */
 static void test_t94(void) {
     cur_name = "T94 numerazione degli enum pubblici";
 
-    /* A. bound keys: MSK_BK_LO=0, UP=1, FX=2, FR=3, RA=4. Qui FR/RA/FX stavano
-     * su 2/3/4: il numero del riferimento per una variabile fissata chiedeva una
-     * variabile libera. */
+    /* A. bound keys: MSK_BK_LO=0, UP=1, FX=2, FR=3, RA=4. Here FR/RA/FX used to sit
+     * on 2/3/4: the reference number for a fixed variable asked for a
+     * free variable. */
     check((int)PRIMAL_BK_LO == 0 && (int)PRIMAL_BK_UP == 1 &&
           (int)PRIMAL_BK_FX == 2 && (int)PRIMAL_BK_FR == 3 && (int)PRIMAL_BK_RA == 4,
           "A i cinque bound key sono i numeri del riferimento");
 
-    {   /* il NUMERO 2 = FX: x e' fissato, non libero */
+    {   /* NUMBER 2 = FX: x is fixed, not free */
         P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         double po;
@@ -14075,8 +14171,8 @@ static void test_t94(void) {
         close_enough_tol(po, 5.0, 1e-9, "A il numero 2 fissa x a 5, non a 7");
         pend(&pp);
     }
-    {   /* il NUMERO 3 = FR: i due bordi passati sono ignorati, il modello e'
-         * illimitato. Con la numerazione vecchia 3 era RA e x restava in [5,7]. */
+    {   /* NUMBER 3 = FR: both passed bounds are ignored, the model is
+         * unbounded. With the old numbering 3 was RA and x stayed in [5,7]. */
         P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         PRIMAL_appendvars(t, 1);
@@ -14086,7 +14182,7 @@ static void test_t94(void) {
                  "A il numero 3 libera la variabile");
         pend(&pp);
     }
-    {   /* il NUMERO 4 = RA: entrambi i bordi contano */
+    {   /* NUMBER 4 = RA: both bounds count */
         P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         double po;
@@ -14100,9 +14196,9 @@ static void test_t94(void) {
     }
 
     /* B. cone types: MSK_CT_QUAD=0, RQUAD=1, PEXP=2, DEXP=3, PPOW=4, DPOW=5,
-     * ZERO=6. RPOW e' nostro e non ha un numero nel riferimento: sta dopo la
-     * sua lista, perche' occupare il 5 significava risolvere come rotated power
-     * una chiamata che chiedeva il cono di potenza duale. */
+     * ZERO=6. RPOW is ours and has no number in the reference: it sits after
+     * its list, because occupying 5 meant solving as rotated power
+     * a call asking for the dual power cone. */
     check((int)PRIMAL_CT_QUAD == 0 && (int)PRIMAL_CT_RQUAD == 1 &&
           (int)PRIMAL_CT_PEXP == 2 && (int)PRIMAL_CT_DEXP == 3 &&
           (int)PRIMAL_CT_PPOW == 4 && (int)PRIMAL_CT_RPOW == 7,
@@ -14122,7 +14218,7 @@ static void test_t94(void) {
         pend(&pp);
     }
 
-    /* C. solution keys: MSK_SOL_ITR=0, BAS=1, ITG=2. ITG qui prima non c'era. */
+    /* C. solution keys: MSK_SOL_ITR=0, BAS=1, ITG=2. ITG did not exist here before. */
     check((int)PRIMAL_SOL_ITR == 0 && (int)PRIMAL_SOL_BAS == 1 &&
           (int)PRIMAL_SOL_ITG == 2, "C le tre chiavi soluzione");
     {   P pp; pbegin(&pp);
@@ -14143,7 +14239,7 @@ static void test_t94(void) {
     }
 
     /* D. solution slice items: XC=0, XX=1, Y=2, SLC=3, SUC=4, SLX=5, SUX=6,
-     * SNX=7. Qui XX/SLC/Y stavano su 0/1/5. */
+     * SNX=7. Here XX/SLC/Y used to sit on 0/1/5. */
     check(PRIMAL_SOL_ITEM_XC == 0 && PRIMAL_SOL_ITEM_XX == 1 &&
           PRIMAL_SOL_ITEM_Y == 2 && PRIMAL_SOL_ITEM_SLC == 3 &&
           PRIMAL_SOL_ITEM_SUC == 4 && PRIMAL_SOL_ITEM_SLX == 5 &&
@@ -14162,22 +14258,22 @@ static void test_t94(void) {
                                          0, 2, v), PRIMAL_RES_OK, "D slice XX = 1");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, w), PRIMAL_RES_OK, "D getxx");
         check(v[0] == w[0] && v[1] == w[1], "D l'item 1 porta le x");
-        /* XC (item 0) e' l'attivita' delle righe: qui x0+x1 = 2. SNX (item 7)
-         * resta rifiutato (i moltiplicatori conici per variabile non sono
-         * memorizzati: deviazione dichiarata). */
+        /* XC (item 0) is the row activity: here x0+x1 = 2. SNX (item 7)
+         * stays rejected (per-variable conic multipliers are not
+         * stored: declared deviation). */
         check_rc(PRIMAL_getsolutionslice(t, PRIMAL_SOL_ITR, PRIMAL_SOL_ITEM_XC,
                                          0, 1, v), PRIMAL_RES_OK,
                  "D l'item 0 (XC) e' servito");
         close_enough_tol(v[0], 2.0, 1e-6, "D XC = attivita' della riga x0+x1");
-        /* SNX (item 7) e' ora servito: e' lo storage dei moltiplicatori conici
-         * per variabile (0 finche' nessun percorso lo scrive). */
+        /* SNX (item 7) is now served: it is the storage of conic multipliers
+         * per variable (0 until some route writes it). */
         check_rc(PRIMAL_getsolutionslice(t, PRIMAL_SOL_ITR, PRIMAL_SOL_ITEM_SNX,
                                          0, 2, v), PRIMAL_RES_OK,
                  "D l'item 7 (SNX) e' servito");
         check(v[0] == 0.0 && v[1] == 0.0, "D SNX letto dallo storage");
-        /* i sei item serviti sono lo stesso vettore del getter intero, letto per
-         * numero: se lo 2 (Y) restituisce le x invece dei moltiplicatori la
-         * slice non sta rispondendo a cio' che il numero promette */
+        /* the six served items are the same vector as the whole getter, read by
+         * number: if 2 (Y) returned the x instead of the multipliers the
+         * slice would not be answering what the number promises */
         struct { int item; int len; const char *lbl;
                  PRIMALrescodee (*g)(PRIMALtask_t, PRIMALsolt, double *); } it[] = {
             { PRIMAL_SOL_ITEM_Y,   1, "D Y",   PRIMAL_gety   },
@@ -14207,8 +14303,8 @@ static void test_t94(void) {
     {   P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         double po; int dflt = -1;
-        /* un task fresco deve rispondere il default del riferimento: FREE, cioe'
-         * 2 in MSKoptimizertypee. Tenere 0 avrebbe pubblicato CONIC. */
+        /* a fresh task must answer the reference default: FREE, i.e.
+         * 2 in MSKoptimizertypee. Keeping 0 would have published CONIC. */
         PRIMAL_getintparam(t, PRIMAL_IPAR_OPTIMIZER, &dflt);
         check(dflt == 2, "E il default di IPAR_OPTIMIZER e' FREE = 2");
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -14227,7 +14323,7 @@ static void test_t94(void) {
         pend(&pp);
     }
 
-    /* F. il `kind` di PRIMAL_getparaminfo: MSK_PAR_DOU_TYPE=1, INT_TYPE=2. */
+    /* F. the `kind` of PRIMAL_getparaminfo: MSK_PAR_DOU_TYPE=1, INT_TYPE=2. */
     check(PRIMAL_PARAM_KIND_DOU == 1 && PRIMAL_PARAM_KIND_INT == 2,
           "F i due kind sono i numeri del riferimento");
     {   P pp; pbegin(&pp);
@@ -14235,11 +14331,11 @@ static void test_t94(void) {
         check_rc(PRIMAL_getparaminfo(pp.task, PRIMAL_PARAM_KIND_INT,
                                      PRIMAL_IPAR_OPTIMIZER, &d, &lo, &hi),
                  PRIMAL_RES_OK, "F kind 2 legge un id int");
-        /* Lo stesso numero 0 nei due namespace: il `kind` non e' un ornamento,
-         * e' l'input che sceglie la riga. IPAR_OPTIMIZER ha default 0 e range
-         * 0..8; DPAR_INTPNT_TOL_PFEAS ha default 1e-8 e range [0,1] (il range
-         * del riferimento, parameters.html 11.2.4). Se il kind venisse ignorato
-         * le due query risponderebbero uguale. */
+        /* The same number 0 in both namespaces: `kind` is not decoration,
+         * it is the input selecting the row. IPAR_OPTIMIZER has default 0 and range
+         * 0..8; DPAR_INTPNT_TOL_PFEAS has default 1e-8 and range [0,1] (the
+         * reference range, parameters.html 11.2.4). If kind were ignored
+         * both queries would answer the same. */
         check_rc(PRIMAL_getparaminfo(pp.task, PRIMAL_PARAM_KIND_DOU,
                                      PRIMAL_DPAR_INTPNT_TOL_PFEAS, &d, &lo, &hi),
                  PRIMAL_RES_OK, "F kind 1 legge un id double");
@@ -14254,15 +14350,15 @@ static void test_t94(void) {
         pend(&pp);
     }
 
-    /* G. variable type: MSK_VAR_TYPE_CONT=0, INT=1. I nostri tre in piu'
-     * (INT_BIN, SEMI_CONT, SEMI_INT) sono un'estensione su numeri che il
-     * riferimento non usa per questo enum: il riferimento non ha membri
-     * binary/semi in MSKvariabletypee. */
+    /* G. variable type: MSK_VAR_TYPE_CONT=0, INT=1. Our three extra ones
+     * (INT_BIN, SEMI_CONT, SEMI_INT) extend over numbers that the
+     * reference does not use for this enum: the reference has no
+     * binary/semi members in MSKvariabletypee. */
     check((int)PRIMAL_VAR_TYPE_CONT == 0 && (int)PRIMAL_VAR_TYPE_INT == 1,
           "G cont/int restano i numeri del riferimento");
 
-    /* H. la COPPIA prosta+solsta pubblicata da un solve: tabelle 7.2 (continui)
-     * e 7.3 (interi) del riferimento, asserita sui due numeri grezzi. */
+    /* H. the prosta+solsta PAIR published by a solve: tables 7.2 (continuous)
+     * and 7.3 (integer) of the reference, asserted on the two raw numbers. */
     struct { const char *lbl; int prosta; int solsta; } cs[] = {
         { "H LP ottimo",              1, 1 },   /* PRIM_AND_DUAL_FEAS + OPTIMAL */
         { "H LP infeasibile",         4, 5 },   /* PRIM_INFEAS + PRIM_INFEAS_CER */
@@ -14282,7 +14378,7 @@ static void test_t94(void) {
             PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 2.0, 0.0);
             for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 1.0);
             rc = PRIMAL_optimize(t);
-        } else if (i == 1) {    /* x >= 5 e x <= 3 */
+        } else if (i == 1) {    /* x >= 5 and x <= 3 */
             PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 2);
             PRIMAL_putcj(t, 0, 1.0);
             PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 5.0, 0.0);
@@ -14290,12 +14386,12 @@ static void test_t94(void) {
             PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
             PRIMAL_putacol(t, 0, 2, (int[]){0,1}, (double[]){1.0,1.0});
             rc = PRIMAL_optimize(t);
-        } else if (i == 2) {    /* min -x, x libera */
+        } else if (i == 2) {    /* min -x, x free */
             PRIMAL_appendvars(t, 1);
             PRIMAL_putcj(t, 0, -1.0);
             PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
             rc = PRIMAL_optimize(t);
-        } else if (i == 3 || i == 4) {   /* x int, x <= 0.5 e x >= 1 -> infeas */
+        } else if (i == 3 || i == 4) {   /* x int, x <= 0.5 and x >= 1 -> infeas */
             PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 2);
             PRIMAL_putcj(t, 0, 1.0);
             PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 0.5);
@@ -14305,7 +14401,7 @@ static void test_t94(void) {
             PRIMAL_putarow(t, 1, 1, (int[]){0}, (double[]){1.0});
             PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
             rc = PRIMAL_optimize(t);
-            if (i == 3) {   /* lo stesso modello fattibile: x <= 1 */
+            if (i == 3) {   /* the same model feasible: x <= 1 */
                 PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 1.0);
                 rc = PRIMAL_optimize(t);
             }
@@ -14318,8 +14414,8 @@ static void test_t94(void) {
         check((int)ss == cs[i].solsta, cs[i].lbl);
         pend(&pp);
     }
-    {   /* il punto intero non provato ottimo: nodo-limit con un incumbent.
-         * Tabella 7.3: PRIM_FEAS + PRIM_FEAS, non UNKNOWN. */
+    {   /* the unproven-optimal integer point: node limit with an incumbent.
+         * Table 7.3: PRIM_FEAS + PRIM_FEAS, not UNKNOWN. */
         setenv("GMB_NO_MIP_CUTS", "1", 1);
         P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
@@ -14345,6 +14441,7 @@ static void test_t94(void) {
     }
 }
 
+/* Tests that solution statuses match the reference numbering. */
 static void test_t93(void) {
     cur_name = "T93 solsta = numeri del riferimento";
     check((int)PRIMAL_SOL_STA_UNKNOWN == 0 &&
@@ -14450,18 +14547,18 @@ static void test_t93(void) {
     }
 }
 
-/* T173 - la terna quadratica (PRIMAL_DPAR_INTPNT_QO_TOL_*) governa la rotta
- * quadratica. Non e' la terna piana: su un QP puro (nessun cono) la tolleranza
- * QO decide quando l'IPM si ferma, quindi alzarla cambia la RISPOSTA pubblicata.
- * Il modello ha ottimo derivato a mano: min x0^2+x1^2-2x0-2x1, x>=0 -> x*=(1,1),
- * pobj=-2. Con QO_TOL_*=1.0 l'IPM si ferma al primo iterato e pubblica altro. */
+/* T173 - the quadratic triple (PRIMAL_DPAR_INTPNT_QO_TOL_*) governs the quadratic
+ * route. It is not the plain triple: on a pure QP (no cone) the QO tolerance
+ * decides when the IPM stops, so raising it changes the PUBLISHED answer.
+ * The model has a hand-derived optimum: min x0^2+x1^2-2x0-2x1, x>=0 -> x*=(1,1),
+ * pobj=-2. With QO_TOL_*=1.0 the IPM stops at the first iterate and publishes more. */
 static void test_t173(void) {
     cur_name = "T173 QO_TOL_* governa la rotta quadratica";
-    /* QP tridiagonale n=50 (Q = tridiag(-1,2,-1), c = 1, x>=0): l'IPM converge
-     * in piu' iterati e il punto di arresto dipende dalla terna. Con QO_TOL_* di
-     * default il valore pubblicato e' l'ottimo; alzando la terna QO a 1.0 l'IPM
-     * si ferma prima e pubblica un valore diverso. Se la rotta leggesse la terna
-     * piana, il valore NON cambierebbe (la piana resta 1e-8). */
+    /* Tridiagonal QP n=50 (Q = tridiag(-1,2,-1), c = 1, x>=0): the IPM converges
+     * in several iterates and the stopping point depends on the triple. With default
+     * QO_TOL_* the published value is the optimum; raising the QO triple to 1.0 the IPM
+     * stops earlier and publishes a different value. If the route read the plain
+     * triple, the value would NOT change (the plain one stays 1e-8). */
     int n = 50;
     double po_default = 0.0, po_loose = 0.0;
     for (int loose = 0; loose < 2; loose++) {
@@ -14497,10 +14594,10 @@ static void test_t173(void) {
           "T173 QO_TOL_*=1 ferma prima l'IPM: la rotta quadratica legge la terna QO");
 }
 
-/* T174 - PRIMAL_DPAR_OPTIMIZER_MAX_TIME: cap wall-clock del solve. Con 0 il
- * deadline e' gia' scaduto quando l'IPM fa il primo check, quindi il solve esce
- * TRM_MAX_TIME senza pubblicare un ottimo; col default (-1, nessun limite) lo
- * stesso QP converge. Il cap lo leggono le loop IPM (ipm_set_deadline) e il B&B. */
+/* T174 - PRIMAL_DPAR_OPTIMIZER_MAX_TIME: wall-clock cap on the solve. With 0 the
+ * deadline has already expired when the IPM runs its first check, so the solve exits
+ * TRM_MAX_TIME without publishing an optimum; with the default (-1, no limit) the
+ * same QP converges. The cap is read by the IPM loops (ipm_set_deadline) and the B&B. */
 static void test_t174(void) {
     cur_name = "T174 OPTIMIZER_MAX_TIME ferma il solve";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cap = PRIMAL_RES_OK;
@@ -14531,10 +14628,10 @@ static void test_t174(void) {
           "T174 OPTIMIZER_MAX_TIME=0: il deadline scaduto e' TRM_MAX_TIME");
 }
 
-/* T175 - PRIMAL_DPAR_MIO_MAX_TIME: cap wall-clock della SOLA fase MIP. Con 0 il
- * deadline del B&B e' gia' scaduto: l'albero non parte e il solve esce
- * TRM_MAX_TIME; col default (-1) lo stesso MIP converge. Se il B&B leggesse solo
- * OPTIMIZER_MAX_TIME (qui illimitato) non si fermerebbe. */
+/* T175 - PRIMAL_DPAR_MIO_MAX_TIME: wall-clock cap on the MIP phase ALONE. With 0 the
+ * B&B deadline has already expired: the tree never starts and the solve exits
+ * TRM_MAX_TIME; with the default (-1) the same MIP converges. If the B&B read only
+ * OPTIMIZER_MAX_TIME (unbounded here) it would not stop. */
 static void test_t175(void) {
     cur_name = "T175 MIO_MAX_TIME ferma la fase MIP";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cap = PRIMAL_RES_OK;
@@ -14557,11 +14654,11 @@ static void test_t175(void) {
           "T175 MIO_MAX_TIME=0: il deadline del B&B scaduto e' TRM_MAX_TIME");
 }
 
-/* T176 - PRIMAL_DPAR_LOWER_OBJ_CUT: un punto primale AMMISSIBILE con obiettivo
- * sotto il taglio prova che l'ottimo sta sotto, e il solve termina con
- * TRM_OBJECTIVE_RANGE. Modello min x0^2+x1^2-2x0-2x1 (ottimo -2 in (1,1)): col
- * taglio a -1 l'IPM si ferma appena un iterato ammissibile scende sotto -1; col
- * default (-inf) converge. */
+/* T176 - PRIMAL_DPAR_LOWER_OBJ_CUT: a primal FEASIBLE point with objective
+ * below the cut proves the optimum lies below, and the solve ends with
+ * TRM_OBJECTIVE_RANGE. Model min x0^2+x1^2-2x0-2x1 (optimum -2 at (1,1)): with
+ * the cut at -1 the IPM stops as soon as a feasible iterate drops below -1; with
+ * the default (-inf) it converges. */
 static void test_t176(void) {
     cur_name = "T176 LOWER_OBJ_CUT: ottimo provato sotto il taglio";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cut = PRIMAL_RES_OK;
@@ -14584,12 +14681,12 @@ static void test_t176(void) {
           "T176 LOWER_OBJ_CUT=-1: l'ottimo -2 e' provato sotto il taglio");
 }
 
-/* T177 - PRIMAL_DPAR_UPPER_OBJ_CUT: il gemello duale di LOWER_OBJ_CUT. Un punto
- * DUAL-AMMISSIBILE con obiettivo duale (b'y) sopra il taglio prova che l'ottimo
- * sta sopra, e il solve esce TRM_OBJECTIVE_RANGE. LP min -x0-x1 s.t. x0+x1=2,
- * x>=0: ottimo -2, duale y=-1 con b'y=-2. Col taglio a -3 il duale (-2) e' sopra
- * il taglio; col default (+inf) converge. Rotta IPM forzata (OPTIMIZER=INTPNT),
- * perche' il taglio duale e' cablato sulla rotta LP dell'IPM. */
+/* T177 - PRIMAL_DPAR_UPPER_OBJ_CUT: the dual twin of LOWER_OBJ_CUT. A
+ * DUAL-FEASIBLE point with dual objective (b'y) above the cut proves the optimum
+ * lies above, and the solve exits TRM_OBJECTIVE_RANGE. LP min -x0-x1 s.t. x0+x1=2,
+ * x>=0: optimum -2, dual y=-1 with b'y=-2. With the cut at -3 the dual (-2) is above
+ * the cut; with the default (+inf) it converges. IPM route forced (OPTIMIZER=INTPNT),
+ * because the dual cut is wired into the IPM LP route. */
 static void test_t177(void) {
     cur_name = "T177 UPPER_OBJ_CUT: duale prova l'ottimo sopra il taglio";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cut = PRIMAL_RES_OK;
@@ -14602,7 +14699,7 @@ static void test_t177(void) {
         PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 2.0, 2.0);
         PRIMAL_putintparam(p.task, PRIMAL_IPAR_OPTIMIZER, PRIMAL_OPTIMIZER_INTPNT);
-        PRIMAL_putintparam(p.task, PRIMAL_IPAR_PRESOLVE, 0);   /* l'LP deve arrivare all'IPM */
+        PRIMAL_putintparam(p.task, PRIMAL_IPAR_PRESOLVE, 0);   /* the LP must reach the IPM */
         if (cut) PRIMAL_putdouparam(p.task, PRIMAL_DPAR_UPPER_OBJ_CUT, -3.0);
         PRIMALrescodee rc = PRIMAL_optimize(p.task);
         if (cut) rc_cut = rc; else rc_default = rc;
@@ -14613,12 +14710,12 @@ static void test_t177(void) {
           "T177 UPPER_OBJ_CUT=-3: il duale prova l'ottimo -2 sopra il taglio");
 }
 
-/* T178 - PRIMAL_DPAR_SEMIDEFINITE_TOL_APPROX: la tolleranza che decide se una
- * matrice e' PSD, letta dall'encoder di convessita' (bad_thr = tol*max(lmax,1)).
- * Stesso modello di T87 C (riga UP di spettro {2, -1e-9}): col default 1e-10 la
- * soglia relativa e' 2e-10 e l'autovalore -1e-9 e' oltre -> modello rifiutato
- * (non convesso); alzando la tolleranza a 1e-8 la soglia e' 2e-8 e il modello e'
- * accettato. Prova che il parametro governa la risposta. */
+/* T178 - PRIMAL_DPAR_SEMIDEFINITE_TOL_APPROX: the tolerance that decides whether a
+ * matrix is PSD, read by the convexity encoder (bad_thr = tol*max(lmax,1)).
+ * Same model as T87 C (UP row with spectrum {2, -1e-9}): with the default 1e-10 the
+ * relative threshold is 2e-10 and the eigenvalue -1e-9 is beyond it -> model rejected
+ * (nonconvex); raising the tolerance to 1e-8 makes the threshold 2e-8 and the model
+ * accepted. Proves the parameter governs the answer. */
 static void test_t178(void) {
     cur_name = "T178 SEMIDEFINITE_TOL_APPROX governa la convessita'";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_loose = PRIMAL_RES_OK;
@@ -14641,11 +14738,11 @@ static void test_t178(void) {
              "T178 SEMIDEFINITE_TOL_APPROX=1e-8: lo stesso modello e' accettato");
 }
 
-/* T179 - euristica primale RINS nel B&B. Knapsack binario max 3x0+2x1+4x2+5x3+x4
- * s.t. 2x0+3x1+4x2+5x3+x4 <= 7: ottimo x0=x3=1 (valore 8, peso 7). RINS fissa gli
- * interi su cui la rilassata e l'incumbent concordano e risolve la ridotta: non
- * cambia l'ottimo, quindi il test e' di CORRETTEZZA (stesso 8) e il kill-switch
- * GMB_NO_MIP_RINS=1 non deve cambiare la risposta. */
+/* T179 - RINS primal heuristic in the B&B. Binary knapsack max 3x0+2x1+4x2+5x3+x4
+ * s.t. 2x0+3x1+4x2+5x3+x4 <= 7: optimum x0=x3=1 (value 8, weight 7). RINS fixes the
+ * integers on which the relaxation and the incumbent agree and solves the reduced
+ * problem: it does not change the optimum, so the test is about CORRECTNESS (same 8)
+ * and the kill-switch GMB_NO_MIP_RINS=1 must not change the answer. */
 static void test_t179(void) {
     cur_name = "T179 RINS: euristica primale MIP (stesso ottimo)";
     for (int off = 0; off < 2; off++) {
@@ -14676,51 +14773,51 @@ static void test_t179(void) {
     }
 }
 
-/* T180 - simplesso duale + revised simplex + costi ridotti, portati da
- * gmbortools (`gor_lp_*`). Dual simplex: min 2x1+x2 s.t. x1+x2=2, base {x2}
- * (gia' ottimo); min x1 s.t. x1=-1 (inammissibile); min 3x1+2x2 s.t.
- * -x1+x2=1, base {x1} (richiede iterazione). Revised: dalla base primal
- * ammissibile, con e senza iterazione. */
+/* T180 - dual simplex + revised simplex + reduced costs, ported from
+ * gmbortools (`gor_lp_*`). Dual simplex: min 2x1+x2 s.t. x1+x2=2, basis {x2}
+ * (already optimal); min x1 s.t. x1=-1 (infeasible); min 3x1+2x2 s.t.
+ * -x1+x2=1, basis {x1} (requires an iteration). Revised: from a primal
+ * feasible basis, with and without iteration. */
 static void test_t180(void) {
     cur_name = "T180 simplesso duale + revised (porting gmbortools)";
-    /* dual: gia' ottimo */
+    /* dual: already optimal */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {1}; double x[2];
       int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
       check(rc == 0, "T180 dual gia' ottimo");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 dual gia' ottimo soluzione"); }
-    /* dual: inammissibile */
+    /* dual: infeasible */
     { double A[1] = {1}, b[1] = {-1}, c[1] = {1}; int bas[1] = {0}; double x[1];
       int rc = simplex_dual_solve_std(A, 1, 1, b, c, bas, 100, x, NULL, NULL);
       check(rc == 1, "T180 dual inammissibile"); }
-    /* dual: richiede iterazione */
+    /* dual: requires an iteration */
     { double A[2] = {-1, 1}, b[1] = {1}, c[2] = {3, 2}; int bas[1] = {0}; double x[2];
       int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
       check(rc == 0, "T180 dual iterazione");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 1.0) < 1e-9, "T180 dual iterazione soluzione"); }
-    /* revised: gia' ottimo dalla base {x2} */
+    /* revised: already optimal from basis {x2} */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {1}; double x[2];
       int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL);
       check(rc == 0, "T180 revised gia' ottimo");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised gia' ottimo soluzione"); }
-    /* revised: richiede iterazione dalla base {x1} */
+    /* revised: requires an iteration from basis {x1} */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {0}; double x[2];
       int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL);
       check(rc == 0, "T180 revised iterazione");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised iterazione soluzione"); }
-    /* costi ridotti: c - A'y con y=1 su min 2x1+x2 s.t. x1+x2=2 -> red=(1,0) */
+    /* reduced costs: c - A'y with y=1 on min 2x1+x2 s.t. x1+x2=2 -> red=(1,0) */
     { double A[2] = {1, 1}, c[2] = {2, 1}, y[1] = {1}, red[2];
       simplex_reduced_costs(A, 1, 2, c, y, red);
       check(fabs(red[0] - 1.0) < 1e-12 && fabs(red[1]) < 1e-12, "T180 costi ridotti"); }
-    /* dual m=2: min x0+x1+x2+x3 s.t. x0+x1=2, x2+x3=3, base {x0,x2} = I.
-     * Esercita lo STRIDE della B^-1 (m righe x 2m colonne): con lo stride `m`
-     * del sorgente di origine le righe si sovrappongono e B^-1 e' sbagliata. */
+    /* dual m=2: min x0+x1+x2+x3 s.t. x0+x1=2, x2+x3=3, basis {x0,x2} = I.
+     * Exercises the STRIDE of B^-1 (m rows x 2m columns): with the `m` stride
+     * of the original source the rows overlap and B^-1 is wrong. */
     { double A[8] = {1, 1, 0, 0, 0, 0, 1, 1}; double b[2] = {2, 3};
       double c[4] = {1, 1, 1, 1}; int bas[2] = {0, 2}; double x[4];
       int rc = simplex_dual_solve_std(A, 2, 4, b, c, bas, 100, x, NULL, NULL);
       check(rc == 0, "T180 dual m=2 ottimo");
       check(fabs(x[0] - 2.0) < 1e-9 && fabs(x[1]) < 1e-9 &&
             fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 dual m=2 soluzione"); }
-    /* revised m=2: stesso modello, base {x0,x2} */
+    /* revised m=2: same model, basis {x0,x2} */
     { double A[8] = {1, 1, 0, 0, 0, 0, 1, 1}; double b[2] = {2, 3};
       double c[4] = {1, 1, 1, 1}; int bas[2] = {0, 2}; double x[4];
       int rc = simplex_revised_solve_std(A, 2, 4, b, c, bas, 100, x, NULL);
@@ -14729,11 +14826,11 @@ static void test_t180(void) {
             fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 revised m=2 soluzione"); }
 }
 
-/* T181 - crossover IPM->basis: dopo un LP risolto dall'IPM, getskx/getskc
- * pubblicano una base identificata dal punto interno. LP non degenere
- * min 2x0+x1 s.t. x0+x1=2, x>=0: ottimo unico x=(0,2), quindi x0 e' nonbasic al
- * bound (0) e x1 basic. (Deviazione dichiarata: nessun cleanup col simplesso, la
- * base puo' non essere non singolare su LP degeneri.) */
+/* T181 - IPM->basis crossover: after an LP solved by the IPM, getskx/getskc
+ * publish a basis identified from the interior point. Nondegenerate LP
+ * min 2x0+x1 s.t. x0+x1=2, x>=0: unique optimum x=(0,2), so x0 is nonbasic at the
+ * bound (0) and x1 basic. (Declared deviation: no cleanup with the simplex, the
+ * basis may not be nonsingular on degenerate LPs.) */
 static void test_t181(void) {
     cur_name = "T181 crossover IPM->basis";
     P p; pbegin(&p);
@@ -14753,8 +14850,8 @@ static void test_t181(void) {
     check(skx[1] == PRIMAL_SK_BAS, "T181 x1 (=2) basic");
     check(nbas == 1, "T181 esattamente una variabile basic");
     pend(&p);
-    /* LP degenere min x0+x1 s.t. x0+x1=2: l'IPM da' (1,1) (entrambe "interne",
-     * 2 candidate basic per m=1) -> il cleanup ricostruisce una base quadrata. */
+    /* degenerate LP min x0+x1 s.t. x0+x1=2: the IPM gives (1,1) (both "interior",
+     * 2 basic candidates for m=1) -> the cleanup rebuilds a square basis. */
     {
         P q; pbegin(&q);
         PRIMAL_appendvars(q.task, 2);
@@ -14775,8 +14872,8 @@ static void test_t181(void) {
     }
 }
 
-/* T182: correttori multipli dell'IPM (MSK_IPAR_INTPNT_MAX_NUM_COR). Con 2
- * correttori (higher-order) l'LP si risolve allo stesso ottimo del default. */
+/* T182: multiple IPM correctors (MSK_IPAR_INTPNT_MAX_NUM_COR). With 2
+ * (higher-order) correctors the LP solves to the same optimum as the default. */
 static void test_t182(void) {
     double z[2] = {0.0, 0.0};
     for (int cor = 1; cor <= 2; cor++) {
@@ -14804,9 +14901,9 @@ static void test_t182(void) {
     pend(&p);
 }
 
-/* T183: livello di presolve (MSK_IPAR_PRESOLVE_LEVEL). Un LP con una riga
- * duplicata si risolve allo stesso ottimo ai livelli 0 (off), 1 (base) e 2
- * (aggressive, che rimuove il duplicato). */
+/* T183: presolve level (MSK_IPAR_PRESOLVE_LEVEL). An LP with a duplicated row
+ * solves to the same optimum at levels 0 (off), 1 (basic) and 2
+ * (aggressive, which removes the duplicate). */
 static void test_t183(void) {
     double z[3] = {0.0, 0.0, 0.0};
     for (int lev = 0; lev <= 2; lev++) {
@@ -14836,9 +14933,9 @@ static void test_t183(void) {
     pend(&p);
 }
 
-/* T184: feasibility pump. Knapsack binario con rilassata frazionaria; il pump
- * (arrotonda tutti gli interi e ri-risolve la rilassata sui continui) non
- * peggiora l'ottimo e il kill-switch non cambia la risposta. */
+/* T184: feasibility pump. Binary knapsack with a fractional relaxation; the pump
+ * (rounds all integers and re-solves the relaxation over the continuous ones) does
+ * not worsen the optimum and the kill-switch does not change the answer. */
 static void test_t184(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_NO_MIP_FPUMP", "1", 1); else unsetenv("GMB_NO_MIP_FPUMP");
@@ -14863,10 +14960,10 @@ static void test_t184(void) {
     unsetenv("GMB_NO_MIP_FPUMP");
 }
 
-/* T185: clique cut. Riga 5x0+4x1+x2 <= 6 con binarie: {0,1} e' un clique
- * (5+4>6) -> x0+x1 <= 1. L'ottimo (-3) e' invariato con cut on/off (il cut,
- * valido per il MIP ma non per la rilassata continua, viene scartato dal
- * controllo sui cut "tossici" quando peggiora il bound). */
+/* T185: clique cut. Row 5x0+4x1+x2 <= 6 with binaries: {0,1} is a clique
+ * (5+4>6) -> x0+x1 <= 1. The optimum (-3) is unchanged with cut on/off (the cut,
+ * valid for the MIP but not for the continuous relaxation, is discarded by the
+ * "toxic" cut check when it worsens the bound). */
 static void test_t185(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_NO_MIP_CUTS", "1", 1); else unsetenv("GMB_NO_MIP_CUTS");
@@ -14889,8 +14986,8 @@ static void test_t185(void) {
     unsetenv("GMB_NO_MIP_CUTS");
 }
 
-/* T186: local search (flip delle binarie dall'incumbent). Knapsack binario,
- * ottimo -9 con local search on/off. */
+/* T186: local search (flip the binaries from the incumbent). Binary knapsack,
+ * optimum -9 with local search on/off. */
 static void test_t186(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_NO_MIP_LOCALSEARCH", "1", 1); else unsetenv("GMB_NO_MIP_LOCALSEARCH");
@@ -14915,8 +15012,8 @@ static void test_t186(void) {
     unsetenv("GMB_NO_MIP_LOCALSEARCH");
 }
 
-/* T187: simmetria. Due colonne binarie identiche (x0, x1: stesso coefficiente
- * e stesso costo) -> il vincolo x1 <= x0 non cambia l'ottimo (-1). */
+/* T187: symmetry. Two identical binary columns (x0, x1: same coefficient
+ * and same cost) -> the constraint x1 <= x0 does not change the optimum (-1). */
 static void test_t187(void) {
     P p; pbegin(&p);
     PRIMAL_appendvars(p.task, 2);
@@ -14935,9 +15032,9 @@ static void test_t187(void) {
     pend(&p);
 }
 
-/* T188: CMIR (complemented MIR, gated GMB_MIP_CMIR). Riga con RHS frazionario
- * 2.5x0 + x1 <= 3.5 con binarie: il cut MIR 2x0 + x1 <= 3 non cambia l'ottimo
- * (-2). */
+/* T188: CMIR (complemented MIR, gated by GMB_MIP_CMIR). Row with fractional RHS
+ * 2.5x0 + x1 <= 3.5 with binaries: the MIR cut 2x0 + x1 <= 3 does not change the
+ * optimum (-2). */
 static void test_t188(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_MIP_CMIR", "1", 1); else unsetenv("GMB_MIP_CMIR");
@@ -14960,9 +15057,9 @@ static void test_t188(void) {
     unsetenv("GMB_MIP_CMIR");
 }
 
-/* T189: optimizer concorrente a 3 strategie (simplex + IPM denso + IPM sparse)
- * con PRIMAL_IPAR_NUM_THREADS. Un LP si risolve allo stesso ottimo del percorso
- * sequenziale. */
+/* T189: concurrent optimizer with 3 strategies (simplex + dense IPM + sparse IPM)
+ * via PRIMAL_IPAR_NUM_THREADS. An LP solves to the same optimum as the sequential
+ * path. */
 static void test_t189(void) {
     for (int nt = 1; nt <= 2; nt++) {
         P p; pbegin(&p);
@@ -14985,9 +15082,9 @@ static void test_t189(void) {
     }
 }
 
-/* T190: cut LIPRO (variante lifted del CG, gated GMB_MIP_LIPRO). Riga con
- * coefficienti frazionari 2.5x0 + 3.5x1 <= 5 con binarie: il cut 2x0 + 3x1 <= 5
- * non cambia l'ottimo (-1). */
+/* T190: LIPRO cut (lifted variant of CG, gated by GMB_MIP_LIPRO). Row with
+ * fractional coefficients 2.5x0 + 3.5x1 <= 5 with binaries: the cut 2x0 + 3x1 <= 5
+ * does not change the optimum (-1). */
 static void test_t190(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_MIP_LIPRO", "1", 1); else unsetenv("GMB_MIP_LIPRO");
@@ -15010,8 +15107,8 @@ static void test_t190(void) {
     unsetenv("GMB_MIP_LIPRO");
 }
 
-/* T191: pivot rule steepest-edge (gated GMB_SIMPLEX_STEEPEST). Un LP si risolve
- * allo stesso ottimo con Dantzig (default) e con steepest-edge. */
+/* T191: steepest-edge pivot rule (gated by GMB_SIMPLEX_STEEPEST). An LP solves
+ * to the same optimum with Dantzig (default) and with steepest-edge. */
 static void test_t191(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_SIMPLEX_STEEPEST", "1", 1); else unsetenv("GMB_SIMPLEX_STEEPEST");
@@ -15032,8 +15129,8 @@ static void test_t191(void) {
     unsetenv("GMB_SIMPLEX_STEEPEST");
 }
 
-/* T192: presolve LINDEP-lite. Riga proporzionale (2x0+2x1<=8 = 2*(x0+x1<=4))
- * ridondante: l'ottimo (-4) non cambia. */
+/* T192: LINDEP-lite presolve. Proportional redundant row (2x0+2x1<=8 = 2*(x0+x1<=4)):
+ * the optimum (-4) does not change. */
 static void test_t192(void) {
     P p; pbegin(&p);
     PRIMAL_appendvars(p.task, 2);
@@ -15052,9 +15149,9 @@ static void test_t192(void) {
     pend(&p);
 }
 
-/* T193: implied bound come bound fixing (gated GMB_MIP_IMPLIED_BOUND). Riga
- * 3x0 + 5x1 <= 4 con binarie: il bound implicito x1 <= 0.8 fissa x1 = 0.
- * L'ottimo (-1) e' lo stesso con gate on/off. */
+/* T193: implied bound as bound fixing (gated by GMB_MIP_IMPLIED_BOUND). Row
+ * 3x0 + 5x1 <= 4 with binaries: the implied bound x1 <= 0.8 fixes x1 = 0.
+ * The optimum (-1) is the same with the gate on/off. */
 static void test_t193(void) {
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_MIP_IMPLIED_BOUND", "1", 1); else unsetenv("GMB_MIP_IMPLIED_BOUND");
@@ -15077,25 +15174,28 @@ static void test_t193(void) {
     unsetenv("GMB_MIP_IMPLIED_BOUND");
 }
 
-/* T194 - secure energy efficiency di un beamformer downlink SDMA (port di
- * rezarhp/Secure-EE-SDMA, "Part B": Dinkelbach esterno + SCA interno).  Caso
- * deterministico K=1 (utente legittimo), J=1 (eavesdropper energy-harvesting),
- * Nt=2, canali reali; il RIS e' a fase zero.  Modello risolto: B&B no,
- * un SOCP+exp-cone per ogni iterata SCA, con i tre coni
+/* T194 - secure energy efficiency of a downlink SDMA beamformer (port of
+ * rezarhp/Secure-EE-SDMA, "Part B": outer Dinkelbach + inner SCA).  Deterministic
+ * case K=1 (legitimate user), J=1 (energy-harvesting eavesdropper),
+ * Nt=2, real channels; the RIS is at zero phase.  Solved model: no B&B,
+ * one SOCP+exp-cone per SCA iterate, with the three cones
  *   |h_e^T p|^2 <= sigma^2 rho_e   (RQUAD)
  *   1 + rho_u  >= 2^{f_p}          (PEXP)
  *   ||p||^2    <= Pmax             (QUAD)
- * piu' i surrogate affini di sca_funcs.py.  L'ottimo e' validato contro una
- * ricerca brute-force 2-D dell'obiettivo VERO (indipendente dalle surrogate),
- * come per socp_robust/logistic_large.  Valore atteso SEE ~ 0.4598. */
+ * plus the affine surrogates of sca_funcs.py.  The optimum is validated against a
+ * 2-D brute-force search of the TRUE objective (independent of the surrogates),
+ * as for socp_robust/logistic_large.  Expected SEE value ~ 0.4598. */
 static const double T194_HU[2] = {1.0, 0.5};
 static const double T194_HE[2] = {0.3, 1.0};
+/* 2-vector inner product used by the T194 helpers. */
 static double t194_dot(const double *a, const double *b) { return a[0]*b[0] + a[1]*b[1]; }
+/* inverse of the SAI energy-harvesting function (logistic model). */
 static double t194_sai_inverse(double x) {
     const double b0 = 150.0, b1 = 0.014, phi = 0.024, k1 = 1.0;
     double k2 = phi / (k1 * (1.0 + exp(b0 * b1)));
     return b1 - log(phi / (k1 * (x + k2)) - 1.0) / b0;
 }
+/* evaluates the true secrecy rate and energy efficiency of a beam p. */
 static void t194_eval(const double *p, double *rate, double *ee) {
     double hu = t194_dot(T194_HU, p), he = t194_dot(T194_HE, p);
     double r = log(1.0 + hu * hu) / log(2.0) - log(1.0 + he * he) / log(2.0);
@@ -15106,6 +15206,7 @@ enum { T194_PV0=0, T194_PV1, T194_Y, T194_Z, T194_FP, T194_FE, T194_RU, T194_RE,
        T194_HALFSIG, T194_NVAR };
 enum { T194_RZE, T194_ROBJ, T194_RSEC, T194_REXP, T194_RGAM, T194_RUSR,
        T194_RHARV, T194_RLFP, T194_NR };
+/* solves one SCA subproblem (conic) and returns the beam p; 0 on failure. */
 static int t194_sca(const double *p_old, double rho_u_old, double f_e_old,
                     double eta, double out_p[2]) {
     P p; pbegin(&p);
@@ -15165,6 +15266,7 @@ static int t194_sca(const double *p_old, double rho_u_old, double f_e_old,
     pend(&p);
     return ok;
 }
+/* T194: Dinkelbach+SCA on the SDMA secure-EE model, validated by 2-D brute force. */
 static void test_t194(void) {
     cur_name = "T194 secure energy efficiency SDMA (Dinkelbach+SCA)";
     double ereq = t194_sai_inverse(0.01);
@@ -15196,7 +15298,7 @@ static void test_t194(void) {
     }
     check(solved, "T194 SCA/Dinkelbach converge su ogni sottoproblema");
 
-    /* brute-force 2-D sull'obiettivo VERO (indipendente dalle surrogate) */
+    /* 2-D brute force on the TRUE objective (independent of the surrogates) */
     double best_ee = -1e300, span = 1.4142135623730951;
     int NG = 400;
     for (int a = 0; a <= NG; a++) {
@@ -15220,19 +15322,21 @@ static void test_t194(void) {
     check(rate > 0.0, "T194 secrecy rate positiva");
 }
 
+/* deterministic LCG returning a value in [0,1]. */
 static double t195_rnd(unsigned *st) {
     *st = *st * 1103515245u + 12345u;
     return (double)((*st >> 16) & 0x7fff) / 32767.0;
 }
+/* numerically stable softplus log(1+exp(z)). */
 static double t195_softplus(double z) { return z >= 0.0 ? z + log1p(exp(-z)) : log1p(exp(z)); }
 
 /* T195 - log-contrast LASSO logistic regression (audreyolmsted/admm-portfolio)
- * risolta come programma conico: la softplus t_i >= log(1+exp(z_i)) e'
- * exp(-t)+exp(z-t) <= 1, cioe' DUE coni PEXP per campione; l'L1 e' un epigrafo
- * lineare e il log-contrast un'uguaglianza.  Istanza deterministica n=16, p=3,
- * lambda=0.3: il LASSO azzera b_0, b=(0,-0.16119,0.16119), intercetta 0.27601,
- * obiettivo 0.68265373, validato contro una griglia brute-force 3-D ridotta
- * (somma b=0 lascia solo intercetta, b_1, b_2). */
+ * solved as a conic program: the softplus t_i >= log(1+exp(z_i)) is
+ * exp(-t)+exp(z-t) <= 1, i.e. TWO PEXP cones per sample; the L1 is a linear
+ * epigraph and the log-contrast an equality.  Deterministic instance n=16, p=3,
+ * lambda=0.3: the LASSO zeroes b_0, b=(0,-0.16119,0.16119), intercept 0.27601,
+ * objective 0.68265373, validated against a reduced 3-D brute-force grid
+ * (the constraint sum b=0 leaves only intercept, b_1, b_2). */
 static void test_t195(void) {
     cur_name = "T195 log-contrast LASSO logistic via exponential cones";
     enum { NF = 3, NS = 16, NL = 4 };
@@ -15326,7 +15430,7 @@ static void test_t195(void) {
     for (int j = 0; j < NF; j++) obj += LAM * SIG[j] * fabs(b[1 + j]);
     pend(&p);
 
-    /* brute force sulla spazio ridotto (b0, t1, t2), b3 = -t1-t2 */
+    /* brute force on the reduced space (b0, t1, t2), b3 = -t1-t2 */
     double span = 6.0, best = 1e300; int NG = 120;
     for (int a = 0; a <= NG; a++) {
         double b0 = -span + 2 * span * a / NG;
@@ -15353,16 +15457,17 @@ static void test_t195(void) {
     check(fabs(b[0] - 0.27601) < 1e-3, "T195 intercetta 0.27601");
 }
 
-/* T196 - criteri PPT e CCNR di separabilita' (port di y1-zhu/quantum-
- * correlations, "RobustnessToPPT.jl"/"RobustnessToCCNR.jl").  Stato isotropo
- * 3x3 rho_p=p|Phi+><Phi+|+(1-p)I/9: rho^T ha autovalori (1+2p)/9 e (1-4p)/9,
- * quindi la robustness al rumore bianco vale 1/(1-9 lambda_min)=1/(4p),
- * risolta come SDP  max t  s.t.  (1/9)I+t(rho^T-(1/9)I) >= 0  con una bar 9x9
- * e controbilanciata dalla forma chiusa; il criterio di realignment da'
+/* T196 - PPT and CCNR separability criteria (port of y1-zhu/quantum-
+ * correlations, "RobustnessToPPT.jl"/"RobustnessToCCNR.jl").  Isotropic
+ * 3x3 state rho_p=p|Phi+><Phi+|+(1-p)I/9: rho^T has eigenvalues (1+2p)/9 and (1-4p)/9,
+ * so the white-noise robustness is 1/(1-9 lambda_min)=1/(4p),
+ * solved as the SDP  max t  s.t.  (1/9)I+t(rho^T-(1/9)I) >= 0  with a 9x9 bar
+ * and cross-checked against the closed form; the realignment criterion gives
  * ||R(rho_p)||_1=(1+8p)/3. */
 #define T196_D 3
 #define T196_N (T196_D * T196_D)
 static double t196_RHO[T196_N * T196_N], t196_RHOT[T196_N * T196_N];
+/* builds the isotropic state rho_p and its partial transpose rho^T. */
 static void t196_build(double p) {
     for (int a = 0; a < T196_D; a++)
         for (int b = 0; b < T196_D; b++)
@@ -15379,6 +15484,7 @@ static void t196_build(double p) {
                     t196_RHOT[(a * T196_D + k) * T196_N + (j * T196_D + l)] =
                         t196_RHO[(a * T196_D + l) * T196_N + (j * T196_D + k)];
 }
+/* smallest eigenvalue of a 9x9 matrix via Jacobi. */
 static double t196_lmin(const double *A) {
     double ev[T196_N], evec[T196_N * T196_N];
     dmat_eig_jacobi(T196_N, A, ev, evec);
@@ -15386,6 +15492,7 @@ static double t196_lmin(const double *A) {
     for (int i = 1; i < T196_N; i++) if (ev[i] < m) m = ev[i];
     return m;
 }
+/* nuclear norm ||A||_1 from the singular values. */
 static double t196_nuc(const double *A) {
     double M[T196_N * T196_N];
     for (int i = 0; i < T196_N; i++)
@@ -15400,6 +15507,7 @@ static double t196_nuc(const double *A) {
     for (int i = 0; i < T196_N; i++) s += sqrt(ev[i] > 0.0 ? ev[i] : 0.0);
     return s;
 }
+/* realignment (R) matrix of rho, for the CCNR criterion. */
 static void t196_realign(const double *rho, double *R) {
     for (int i = 0; i < T196_D; i++)
         for (int j = 0; j < T196_D; j++)
@@ -15408,6 +15516,7 @@ static void t196_realign(const double *rho, double *R) {
                     R[(i * T196_D + j) * T196_N + (k * T196_D + l)] =
                         rho[(i * T196_D + k) * T196_N + (j * T196_D + l)];
 }
+/* solves the T196 PPT-robustness SDP; writes t* and returns 1 on success. */
 static int t196_sdp(double *t_out) {
     P p; pbegin(&p);
     PRIMAL_appendvars(p.task, 1);
@@ -15436,6 +15545,7 @@ static int t196_sdp(double *t_out) {
     pend(&p);
     return ok;
 }
+/* T196: PPT robustness by SDP and CCNR by realignment on a qutrit state. */
 static void test_t196(void) {
     cur_name = "T196 PPT/CCNR separability (qutrit isotropic)";
     double Rm[T196_N * T196_N];
@@ -15468,6 +15578,7 @@ static void test_t196(void) {
  * gamma* = -0.85506573.  hsd_psd is otherwise untouched by the rest of the
  * suite (GMB_SDP_HSD defaults off), so this is its only regression cover. */
 #define T197_NP 27  /* Handelman pairs at degree 3 (deg<=1, i,j<=3) */
+/* enumerates the degree-3 Handelman pairs (mirrors gen_m1.py). */
 static void t197_pairs(int pairs[][4], int *out_np) {
     /* anyset: (i,j), 0<i+j<=3; vset subset with i>=1 and j>=1; pairs =
      * unique sorted(u,v) with u in vset, v in anyset (mirrors gen_m1.py). */
@@ -15490,13 +15601,17 @@ static void t197_pairs(int pairs[][4], int *out_np) {
     }
     *out_np = np;
 }
+/* binomial coefficient C(n,k). */
 static double t197_binom(int n, int k) { if (k < 0 || k > n) return 0.0; double r = 1.0; for (int i = 0; i < k; i++) r = r * (n - i) / (i + 1); return r; }
+/* shifted coefficient s_{a,b}(x) = (-1)^{x-a} C(b, x-a). */
 static double t197_scoef(int a, int b, int x) { int e = x - a; if (e < 0 || e > b) return 0.0; double s = t197_binom(b, e); return (e % 2) ? -s : s; }
+/* Handelman coefficient h_p(m,n) as the symmetrized scoeff product. */
 static double t197_hcoef(const int p[4], int m, int n) {
     double f = t197_scoef(p[0], p[1], m) * t197_scoef(p[2], p[3], n);
     double g = t197_scoef(p[2], p[3], m) * t197_scoef(p[0], p[1], n);
     return 0.5 * (f + g);
 }
+/* builds and solves the degree-3 M1 SDP with HSD on; writes the margin. */
 static int t197_solve(double *margin) {
     static const double M0[4][4] = {
         {2.0 / 3, -4, 12, -10}, {-4, 84, -270, 210}, {12, -270, 840, -630}, {-10, 210, -630, 462}};
@@ -15504,7 +15619,7 @@ static int t197_solve(double *margin) {
     int pairs[T197_NP][4], np = 0;
     t197_pairs(pairs, &np);
     check(np == T197_NP, "T197 27 coppie di Handelman al grado 3");
-    int NM = 10; /* monomi (i,j), 0<=i<=j<=3 */
+    int NM = 10; /* monomials (i,j), 0<=i<=j<=3 */
     int mm[10], nn[10], t = 0;
     for (int i = 0; i <= 3; i++) for (int j = i; j <= 3; j++) { mm[t] = i; nn[t] = j; t++; }
     P p; pbegin(&p);
@@ -15555,6 +15670,7 @@ static int t197_solve(double *margin) {
     pend(&p);
     return ok;
 }
+/* T197: opt-in HSD embedding on the degree-3 M1 SDP, vs a reference margin. */
 static void test_t197(void) {
     cur_name = "T197 HSD opt-in su M1 grado 3 (jcpaik/p2-kkt-flag-sos)";
     double margin = 0.0;
@@ -15563,11 +15679,12 @@ static void test_t197(void) {
     check(ok && fabs(margin - (-0.85506573)) < 1e-4, "T197 margine entro 1e-4 dal riferimento -0.85506573");
 }
 
-/* T198 - numero di Lovasz theta come upper bound di max-clique (port di
- * Rudolfovoorg/Improving_Upper_Bounds_of_MCP_using_Reduction_Rules).  Modello
- * SDP:  max <J,X>  s.t.  tr(X)=1, X_ij=0 sui NON-archi, X>=0  (una bar n x n).
- * Casi a mano: C5 (auto-complementare) -> sqrt(5), K3 -> 3, E5 (vuoto) -> 1. */
+/* T198 - Lovasz theta as an upper bound for max-clique (port of
+ * Rudolfovoorg/Improving_Upper_Bounds_of_MCP_using_Reduction_Rules).  SDP
+ * model:  max <J,X>  s.t.  tr(X)=1, X_ij=0 on the NON-edges, X>=0  (one n x n bar).
+ * Hand cases: C5 (self-complementary) -> sqrt(5), K3 -> 3, E5 (empty) -> 1. */
 #define T198_NMAX 5
+/* solves the Lovasz theta SDP for the given graph; writes X and returns theta. */
 static double t198_theta_sdp(int n, const int adj[T198_NMAX][T198_NMAX], int *ok_out, double *X_out) {
     P p; pbegin(&p);
     int dim = n;
@@ -15611,6 +15728,7 @@ static double t198_theta_sdp(int n, const int adj[T198_NMAX][T198_NMAX], int *ok
     *ok_out = ok;
     return th;
 }
+/* checks the returned X: trace 1, PSD, zero on the non-edges. */
 static int t198_X_ok(int n, const int adj[T198_NMAX][T198_NMAX], const double *X) {
     double tr = 0.0;
     for (int i = 0; i < n; i++) tr += X[i * n + i];
@@ -15623,6 +15741,7 @@ static int t198_X_ok(int n, const int adj[T198_NMAX][T198_NMAX], const double *X
             if (!adj[i][j] && fabs(X[i * n + j]) > 1e-6) return 0;
     return 1;
 }
+/* T198: Lovasz theta by SDP on C5, K3 and the empty graph. */
 static void test_t198(void) {
     cur_name = "T198 Lovasz theta per max-clique (SDP bar)";
     int C5[T198_NMAX][T198_NMAX] = {{0}};
@@ -15641,22 +15760,24 @@ static void test_t198(void) {
     check(fabs(the - 1.0) < 1e-6, "T198 theta(E5)=1");
 }
 
-/* T199 - EVaR di portafoglio (MOSEK Portfolio Cookbook, ch8).  Modello:
- * max m'x - delta*EVaR  s.t. sum x = 1, x >= 0, con la prospettiva del
- * log-sum-exp modellata da n coni PEXP (u_i >= s exp((L_i-z)/s), sum p_i u_i
- * <= s) e EVaR = z - s log(1-alpha).  Istanza 2 assets / 4 scenari; l'ottimo
- * conico e' confrontato con un brute force sul simplice (EVaR calcolato a
- * parte per sezione aurea). */
+/* T199 - portfolio EVaR (MOSEK Portfolio Cookbook, ch8).  Model:
+ * max m'x - delta*EVaR  s.t. sum x = 1, x >= 0, with the log-sum-exp
+ * perspective modeled by n PEXP cones (u_i >= s exp((L_i-z)/s), sum p_i u_i
+ * <= s) and EVaR = z - s log(1-alpha).  Instance 2 assets / 4 scenarios; the conic
+ * optimum is compared against a brute force over the simplex (EVaR computed
+ * separately by golden section). */
 #define T199_NA 2
 #define T199_NS 4
 static const double T199_RET[T199_NS][T199_NA] = {
     { 0.10, 0.02}, {-0.05, 0.04}, { 0.20, 0.01}, {-0.10, 0.03}};
 static const double T199_P[T199_NS] = {0.25, 0.25, 0.25, 0.25};
+/* realized loss of portfolio x in scenario i. */
 static double t199_loss(int i, const double *x) {
     double r = 0.0;
     for (int a = 0; a < T199_NA; a++) r += T199_RET[i][a] * x[a];
     return -r;
 }
+/* log-sum-exp expression whose minimum over s is the EVaR of x. */
 static double t199_g(double s, const double *x) {
     double mx = t199_loss(0, x);
     for (int i = 1; i < T199_NS; i++) { double l = t199_loss(i, x); if (l > mx) mx = l; }
@@ -15664,6 +15785,7 @@ static double t199_g(double s, const double *x) {
     for (int i = 0; i < T199_NS; i++) acc += T199_P[i] * exp((t199_loss(i, x) - mx) / s);
     return mx + s * (log(acc) - log(1.0 - 0.95));
 }
+/* EVaR of x by golden-section minimization of t199_g. */
 static double t199_evar(const double *x) {
     double a = -40.0, b = 12.0;
     const double gr = 0.6180339887498949;
@@ -15675,6 +15797,7 @@ static double t199_evar(const double *x) {
     }
     return t199_g(exp(0.5 * (a + b)), x);
 }
+/* T199: portfolio EVaR via exponential cones, checked against a simplex brute force. */
 static void test_t199(void) {
     cur_name = "T199 EVaR portafoglio (coni esponenziali)";
     const double delta = 1.0;
@@ -15739,21 +15862,23 @@ static void test_t199(void) {
     check(fabs(x[0] + x[1] - 1.0) < 1e-7 && x[0] >= -1e-9, "T199 x sul simplice");
 }
 
-/* T200 - portafoglio market-neutral long-short (fy23-art/Portfolio-
+/* T200 - market-neutral long-short portfolio (fy23-art/Portfolio-
  * Optimization, MOSEK.ipynb): max m'x - c*sum(d+ + d-) s.t. factor'x=0,
- * sum|x|<=L, x'Sx<=gamma^2 (putqconk), x-x0=d+-d-.  Con factor=(1,1) e N=2 il
- * modello si riduce a un t (x=(t,-t)): t* e' Tmax se a>2c, altrimenti t0
- * (nessun trade).  Stesse due istanze del sample. */
+ * sum|x|<=L, x'Sx<=gamma^2 (putqconk), x-x0=d+-d-.  With factor=(1,1) and N=2 the
+ * model reduces to a single t (x=(t,-t)): t* is Tmax if a>2c, otherwise t0
+ * (no trade).  Same two instances as the sample. */
 #define T200_NA 2
 static const double T200_S[T200_NA][T200_NA] = {{0.04, 0.01}, {0.01, 0.09}};
 static const double T200_M[T200_NA] = {0.002, 0.0};
 #define T200_GAMMA2 0.01
 #define T200_LEV 2.0
+/* unconstrained trade size: min(leverage cap, risk cap). */
 static double t200_tmax(void) {
     double q = T200_S[0][0] - 2.0 * T200_S[0][1] + T200_S[1][1];
     double tr = T200_LEV / 2.0, tg = sqrt(T200_GAMMA2 / q);
     return tr < tg ? tr : tg;
 }
+/* solves the T200 model for turnover cost c and initial position t0. */
 static int t200_solve(double c, double t0, double *obj_out, double *x_out) {
     enum { XP = 0, Z = T200_NA, DP = 2 * T200_NA, DM = 3 * T200_NA, NV = 4 * T200_NA };
     int R_MN = 0, R_ZP = 1, R_ZN = 1 + T200_NA, R_LEV = 1 + 2 * T200_NA,
@@ -15801,6 +15926,7 @@ static int t200_solve(double c, double t0, double *obj_out, double *x_out) {
     pend(&p);
     return ok;
 }
+/* T200: market-neutral long-short portfolio under leverage, turnover and risk caps. */
 static void test_t200(void) {
     cur_name = "T200 portafoglio market-neutral (leva/turnover/rischio)";
     double T = t200_tmax(), a = T200_M[0] - T200_M[1];
@@ -15816,9 +15942,10 @@ static void test_t200(void) {
 }
 
 /* T201 - smallest enclosing ball (MOSEK/Tutorials, minimum-ellipsoid):
- * min r s.t. r >= ||p0 - p_i|| (un cono QUAD per punto).  Casi a mano: due
- * punti a distanza d -> r=d/2; triangolo equilatero lato a -> r=a/sqrt(3). */
+ * min r s.t. r >= ||p0 - p_i|| (one QUAD cone per point).  Hand cases: two
+ * points at distance d -> r=d/2; equilateral triangle of side a -> r=a/sqrt(3). */
 #define T201_ND 2
+/* solves the enclosing-ball SOCP for k points; returns the radius. */
 static double t201_ball(int k, const double pts[3][T201_ND], int *ok_out) {
     P p; pbegin(&p);
     enum { PX = 0, PY = 1, R = 2, D = 3 };
@@ -15848,6 +15975,7 @@ static double t201_ball(int k, const double pts[3][T201_ND], int *ok_out) {
     *ok_out = ok;
     return r;
 }
+/* T201: smallest enclosing ball for two points and an equilateral triangle. */
 static void test_t201(void) {
     cur_name = "T201 smallest enclosing ball (SOCP)";
     double P2[3][T201_ND] = {{0.0, 0.0}, {2.0, 0.0}, {0.0, 0.0}};
@@ -15859,10 +15987,10 @@ static void test_t201(void) {
     check(ok3 && fabs(r3 - 2.0 / sqrt(3.0)) < 1e-7, "T201 triangolo: r = a/sqrt(3)");
 }
 
-/* T202 - rilassamento SDP di Shor per un problema quadratico binario
+/* T202 - Shor SDP relaxation for a binary quadratic problem
  * (MOSEK/Tutorials binary-quadratic): min R + c'x + <Q,X> s.t.
- * Z=[[X,x],[x',1]]>=0, diag(X)=x, Z_nn=1.  Il valore SDP e' un lower bound
- * dell'ottimo binario (brute force 2^n); caso n=4 con ottimo -4. */
+ * Z=[[X,x],[x',1]]>=0, diag(X)=x, Z_nn=1.  The SDP value is a lower bound
+ * of the binary optimum (brute force 2^n); n=4 case with optimum -4. */
 static void test_t202(void) {
     cur_name = "T202 Shor SDP per binary quadratic";
     enum { N = 4 };
@@ -15902,8 +16030,9 @@ static void test_t202(void) {
     check(sdp <= best + 1e-6 && sdp > best - 1e-3, "T202 SDP e' un lower bound tight (-4)");
 }
 
-/* T203 - exact planar cover (MOSEK/Tutorials exact-planar-cover).  2x3 con
- * domino -> 3 mattoni; 3x3 con quadrati 2x2 -> infeasible. */
+/* T203 - exact planar cover (MOSEK/Tutorials exact-planar-cover).  2x3 with
+ * dominoes -> 3 bricks; 3x3 with 2x2 squares -> infeasible. */
+/* solves the exact-cover MIP on an R x C grid with ns piece shapes. */
 static int t203_cover(int R, int C, int ns, const int h[4], const int w[4], int *nb) {
     int var[4][4][4]; int nv = 0;
     for (int s = 0; s < ns; s++) for (int r = 0; r < R; r++) for (int c = 0; c < C; c++)
@@ -15927,6 +16056,7 @@ static int t203_cover(int R, int C, int ns, const int h[4], const int w[4], int 
     pend(&p);
     return ret;
 }
+/* T203: exact planar cover, feasible domino tiling vs infeasible square tiling. */
 static void test_t203(void) {
     cur_name = "T203 exact planar cover (MIP)";
     int h1[4] = {1, 2}, w1[4] = {2, 1}, h2[4] = {2}, w2[4] = {2}, nb = 0;
@@ -15936,8 +16066,8 @@ static void test_t203(void) {
     check(b == 0, "T203 3x3 con 2x2 -> infeasible");
 }
 
-/* T204 - pwl convex regression (MOSEK/Tutorials pwl-convex-approximation):
- * min m s.t. m >= ||t-Y||^2 (RQUAD) e t_i >= t_j + s_j(X_i-X_j).  X=(0,1,2),
+/* T204 - PWL convex regression (MOSEK/Tutorials pwl-convex-approximation):
+ * min m s.t. m >= ||t-Y||^2 (RQUAD) and t_i >= t_j + s_j(X_i-X_j).  X=(0,1,2),
  * Y=(0,1,0) -> t=(1/3,1/3,1/3), m=2/3. */
 static void test_t204(void) {
     cur_name = "T204 PWL convex regression (cono ruotato)";
@@ -15969,9 +16099,9 @@ static void test_t204(void) {
     pend(&p);
 }
 
-/* T205 - equilibrio di masse appese a fili (MOSEK/Tutorials equilibrium):
- * min y s.t. ||(x,y)-anchor_i|| <= l (un cono QUAD per filo).  Due ancore a
- * (+-1,0), l=2: la massa libera cade in (0,-sqrt(3)). */
+/* T205 - equilibrium of masses hanging from wires (MOSEK/Tutorials equilibrium):
+ * min y s.t. ||(x,y)-anchor_i|| <= l (one QUAD cone per wire).  Two anchors at
+ * (+-1,0), l=2: the free mass falls to (0,-sqrt(3)). */
 static void test_t205(void) {
     cur_name = "T205 equilibrio di masse su fili (SOCP)";
     enum { X0 = 0, X1, D0 = 2, D1 = 4, L = 6, NV = 7 };
@@ -15993,10 +16123,10 @@ static void test_t205(void) {
     pend(&p);
 }
 
-/* T206 - portafoglio distributionally robust (Wasserstein DRO, MOSEK/Tutorials
+/* T206 - distributionally robust portfolio (Wasserstein DRO, MOSEK/Tutorials
  * dist-robust-portfolio): LP min eps*lambda + sum(s)/N s.t. b_k t + a_k<data,x>
- * <= s_i, |a_k x_j| <= lambda, sum x = 1.  Istanza m=2, N=3, eps=0.05 ->
- * x=(1/2,1/2), obiettivo 1.16333333. */
+ * <= s_i, |a_k x_j| <= lambda, sum x = 1.  Instance m=2, N=3, eps=0.05 ->
+ * x=(1/2,1/2), objective 1.16333333. */
 static void test_t206(void) {
     cur_name = "T206 portafoglio dist-robust (Wasserstein DRO, LP)";
     enum { M = 2, NS = 3 };
@@ -16038,11 +16168,11 @@ static void test_t206(void) {
     pend(&p);
 }
 
-/* T207 - il percorso conico somma le entrate duplicate (i,j).  Una riga con
- * un duplicato che si cancella ({T,T} con +1,-1) DEVE leggersi 0<=0 (riga
- * nulla); `conic_aij` restituiva la PRIMA entrata, trasformando la riga nulla
- * in un vincolo reale (-T<=0) e pubblicando un punto subottimale.  Qui
- * min M s.t. M >= (t-1)^2 piu' la riga nulla: l'ottimo resta M=0, t=1. */
+/* T207 - the conic path sums duplicate (i,j) entries.  A row with
+ * a cancelling duplicate ({T,T} with +1,-1) MUST read as 0<=0 (null
+ * row); `conic_aij` returned the FIRST entry, turning the null row
+ * into a real constraint (-T<=0) and publishing a suboptimal point.  Here
+ * min M s.t. M >= (t-1)^2 plus the null row: the optimum stays M=0, t=1. */
 static void test_t207(void) {
     cur_name = "T207 percorso conico somma i duplicati (i,j)";
     enum { M = 0, T = 1, AD = 2, HALF = 3, NV = 4 };
@@ -16067,9 +16197,9 @@ static void test_t207(void) {
     pend(&p);
 }
 
-/* T208 - copertura con k dischi (MOSEK/Tutorials facility-location): MISOCP
- * min t s.t. ||p_i-x_j||<=r_j+M(1-s_ij), sum_j s_ij=1, s binaria, t>=r_j.
- * 4 punti collineari 0..3, k=2 -> t=0.5 (centri 0.5 e 2.5). */
+/* T208 - covering with k disks (MOSEK/Tutorials facility-location): MISOCP
+ * min t s.t. ||p_i-x_j||<=r_j+M(1-s_ij), sum_j s_ij=1, s binary, t>=r_j.
+ * 4 collinear points 0..3, k=2 -> t=0.5 (centers 0.5 and 2.5). */
 static void test_t208(void) {
     cur_name = "T208 copertura con k dischi (MISOCP)";
     enum { NP = 4, NK = 2, DIM = 2 };
@@ -16115,9 +16245,9 @@ static void test_t208(void) {
     pend(&p);
 }
 
-/* T209 - Wasserstein barycenter (MOSEK/Tutorials wasserstein) come LP:
- * min sum_k <d,pi^k> s.t. marginali comuni mu, pi>=0.  x=(0,1,2),
- * nu1=(1/2,1/2,0), nu2=(0,1/2,1/2) -> valore ottimo 1.0. */
+/* T209 - Wasserstein barycenter (MOSEK/Tutorials wasserstein) as an LP:
+ * min sum_k <d,pi^k> s.t. common marginals mu, pi>=0.  x=(0,1,2),
+ * nu1=(1/2,1/2,0), nu2=(0,1/2,1/2) -> optimal value 1.0. */
 static void test_t209(void) {
     cur_name = "T209 Wasserstein barycenter (LP)";
     enum { NB = 3, NK = 2 };
@@ -16157,10 +16287,10 @@ static void test_t209(void) {
     pend(&p);
 }
 
-/* T210 - MLE di densita' log-concava (MOSEK/Tutorials mle-convex-density) via
- * coni esponenziali: min sum w_i u_i s.t. u_i >= -log(x_i) (PEXP), x concava,
- * normalizzazione trapezoidale.  n=3, dy=1/2, w=(1,2,3) -> x=(2/3,2/3,2),
- * obiettivo -3 log(4/3). */
+/* T210 - log-concave density MLE (MOSEK/Tutorials mle-convex-density) via
+ * exponential cones: min sum w_i u_i s.t. u_i >= -log(x_i) (PEXP), x concave,
+ * trapezoidal normalization.  n=3, dy=1/2, w=(1,2,3) -> x=(2/3,2/3,2),
+ * objective -3 log(4/3). */
 static void test_t210(void) {
     cur_name = "T210 MLE densita' log-concava (coni esponenziali)";
     enum { ND = 3 };
@@ -16195,12 +16325,12 @@ static void test_t210(void) {
     pend(&p);
 }
 
-/* T211 - best-subset selection con DJC (MOSEK/Tutorials rank-one-regression):
+/* T211 - best-subset selection with DJC (MOSEK/Tutorials rank-one-regression):
  * min y'y-2y'Xb+t s.t. t>=|Xb|^2 (RQUAD), sum z<=k, |b|<=u, DJC (z_i=1)|(b_i=0).
- * X=[[1,0],[1,1],[0,1]], y=(1,2,1), k=1 -> b=(3/2,0), obiettivo 3/2.  Il
- * MIP aggiunge un taglio di clique identico alla riga sum z<=1; senza il
- * dedup dei tagli (mip_build_cuts) la riga duplicata rende il KKT conico
- * rank-deficient e la rilassata va in NaN. */
+ * X=[[1,0],[1,1],[0,1]], y=(1,2,1), k=1 -> b=(3/2,0), objective 3/2.  The
+ * MIP adds a clique cut identical to the row sum z<=1; without the cut
+ * dedup (mip_build_cuts) the duplicated row makes the conic KKT
+ * rank-deficient and the relaxation goes to NaN. */
 static void test_t211(void) {
     cur_name = "T211 best-subset DJC+RQUAD (rank-one)";
     enum { NPTS = 3, NF = 2, KCAP = 1 };
@@ -16265,12 +16395,12 @@ static void test_t211(void) {
     pend(&p);
 }
 
-/* T212 - k-means come MISOCP + DJC (MOSEK/Tutorials kmeans): min sum d_i s.t.
- * dAux_ij >= ||p_i-c_j||^2 (RQUAD) e, per ogni punto, (d_i >= dAux_ij AND
- * y_i == j) per QUALCHE j (DJC).  Punti 0,1,2,3, K=2, centroidi in [0,3] ->
- * inerzia 1.0 (centri 0.5 e 2.5).  Il DJC usa un big-M dal box quando i bound
- * sono finiti (djc_encode): col fisso 1e6 le righe di y_i in [0,1] diventavano
- * coefficienti 1e6 e l'IPM conico perdeva la rilassata sui nodi. */
+/* T212 - k-means as MISOCP + DJC (MOSEK/Tutorials kmeans): min sum d_i s.t.
+ * dAux_ij >= ||p_i-c_j||^2 (RQUAD) and, for each point, (d_i >= dAux_ij AND
+ * y_i == j) for SOME j (DJC).  Points 0,1,2,3, K=2, centroids in [0,3] ->
+ * inertia 1.0 (centers 0.5 and 2.5).  The DJC uses a big-M from the box when the
+ * bounds are finite (djc_encode): with the fixed 1e6 the rows of y_i in [0,1]
+ * became coefficients 1e6 and the conic IPM lost the relaxation on the nodes. */
 static void test_t212(void) {
     cur_name = "T212 k-means MISOCP+DJC";
     enum { NPTS = 4, NK = 2 };
@@ -16328,11 +16458,12 @@ static void test_t212(void) {
     pend(&p);
 }
 
-/* T213 - progetto di filtro come SDP su polinomi trigonometrici
- * (MOSEK/Tutorials filterdesign): H(w)=x0+2 sum x_i cos(iw) con i coefficienti
- * in K^n_[a,b] (matrici di Toeplitz PSD).  min t s.t. H>=0, 1-d<=H<=1+d sul
- * passabanda, H<=t sull'arresto.  n=3, wp=pi/4, ws=3pi/8: t*=0.648302, le
- * specifiche si verificano per campionamento denso. */
+/* T213 - filter design as an SDP over trigonometric polynomials
+ * (MOSEK/Tutorials filterdesign): H(w)=x0+2 sum x_i cos(iw) with coefficients
+ * in K^n_[a,b] (PSD Toeplitz matrices).  min t s.t. H>=0, 1-d<=H<=1+d on the
+ * passband, H<=t on the stopband.  n=3, wp=pi/4, ws=3pi/8: t*=0.648302, the
+ * specs are checked by dense sampling. */
+/* adds coef times the Toeplitz matrix of cos(i*w) into bar block `bar` of row `row`. */
 static void addT_213(PRIMALtask_t t, int row, int bar, int dim, int i, double coef) {
     int ii = i < 0 ? -i : i;
     if (ii >= dim) return;
@@ -16342,6 +16473,7 @@ static void addT_213(PRIMALtask_t t, int row, int bar, int dim, int i, double co
         double v = coef; PRIMAL_putbaraij(t, row, bar, 1, &m, &v);
     }
 }
+/* T213: filter design as a multi-block Toeplitz SDP with dense spec sampling. */
 static void test_t213(void) {
     cur_name = "T213 progetto di filtro (SDP Toeplitz, rescue multi-blocco)";
     enum { NF = 3 };
@@ -16393,10 +16525,10 @@ static void test_t213(void) {
     check(topt < 1.0 && topt > 0.5, "T213 t* di arresto in (0.5,1)");
 }
 
-/* T214 - allocazione sottoportanti/potenza (MOSEK/Tutorials f-sparc) come
- * MIP + cono esponenziale: max sum z s.t. SIGMA t + sum p = 1, p<=x binaria,
+/* T214 - subcarrier/power allocation (MOSEK/Tutorials f-sparc) as
+ * MIP + exponential cone: max sum z s.t. SIGMA t + sum p = 1, p<=x binary,
  * sum z >= t d, (t+p/n, t, z log2/BW) in PEXP.  I=1,J=1,n=1,d=0.2 ->
- * z*=0.2206127 (t=0.0582), validato contro una scansione densa di t. */
+ * z*=0.2206127 (t=0.0582), validated against a dense scan of t. */
 static void test_t214(void) {
     cur_name = "T214 f-sparc (MIP + cono esponenziale)";
     const double SIGMAp = 10.0, PMAX = 36.0, BWp = 1.25, NOISE = 1.0, DEM = 0.2;
@@ -16430,11 +16562,11 @@ static void test_t214(void) {
     check(fabs(z - best) < 1e-4 * (1.0 + fabs(best)), "T214 z* = scansione di t");
 }
 
-/* T215 - ottimizzazione robusta con disuguaglianza incerta "hard", risolta
- * ESATTAMENTE sui vertici della scatola di incertezza (MOSEK/Tutorials
+/* T215 - robust optimization with a "hard" uncertain inequality, solved
+ * EXACTLY over the vertices of the uncertainty box (MOSEK/Tutorials
  * approx-uncertain-ineq): min sum(x) s.t. sum_i exp((B_i x)'z_k - sum(x)) <= 1
- * per ogni vertice z_k, coni PEXP.  L=1, n=1, p=2, B=(1/2),(1/5) -> x*=1.08673,
- * il piu' piccolo x ammissibile (validato con una scansione densa di x). */
+ * for every vertex z_k, PEXP cones.  L=1, n=1, p=2, B=(1/2),(1/5) -> x*=1.08673,
+ * the smallest feasible x (validated with a dense scan of x). */
 static void test_t215(void) {
     cur_name = "T215 disuguaglianza incerta robusta (vertici, PEXP)";
     enum { L = 1, NPP = 2, NVERT = 2, NH = 4 };
@@ -16476,18 +16608,20 @@ static void test_t215(void) {
     check(fabs(x - xstar) < 1e-4 * (1.0 + fabs(xstar)), "T215 x* = scansione dei vertici");
 }
 
-/* T216 - transformer design come geometric program (MOSEK/Tutorials
- * transformer-design): log-transform + coni esponenziali.  15 variabili GP,
- * 28 vincoli posinomiali; loss = 4.578609, tutti i posinomi <= 1 (verificati
- * sostituendo x = exp(y)). */
+/* T216 - transformer design as a geometric program (MOSEK/Tutorials
+ * transformer-design): log-transform + exponential cones.  15 GP variables,
+ * 28 posynomial constraints; loss = 4.578609, all posynomials <= 1 (checked by
+ * substituting x = exp(y)). */
 typedef struct { double coef; int n; int var[8]; double alpha[8]; } T216Mono;
 typedef struct { int nm; T216Mono m[6]; } T216Posy;
+/* builds a monomial from (var, alpha) pairs packed in p. */
 static T216Mono t216M(double coef, int n, const double *p) {
     T216Mono r; r.coef = coef; r.n = n;
     for (int i = 0; i < n; i++) { r.var[i] = (int)p[2 * i]; r.alpha[i] = p[2 * i + 1]; }
     return r;
 }
 #define T216K(coef, ...) t216M((coef), (int)(sizeof((double[]){__VA_ARGS__}) / sizeof(double) / 2), (double[]){__VA_ARGS__})
+/* T216: transformer design as a geometric program via exponential cones. */
 static void test_t216(void) {
     cur_name = "T216 transformer design (geometric program)";
     enum { VC=0, VT, VBW, VHW, VNP, VNS, VNLS, VB, VJ, VPC, VPCU, VVRR, VVRX, VIM, VHB, NGP };
@@ -16632,12 +16766,15 @@ static void test_t216(void) {
 #define T217NT (2 * T217N)
 #define T217NE (4 * T217N)
 static int t217_E[T217NE][2], t217_D1[T217NV][T217NE], t217_D2[T217NE][T217NT];
+/* index of the undirected edge (a,b), or -1. */
 static int t217_edge(int a, int b) {
     if (a > b) { int t = a; a = b; b = t; }
     for (int i = 0; i < T217NE; i++) if (t217_E[i][0] == a && t217_E[i][1] == b) return i;
     return -1;
 }
+/* like t217_edge, also returning the orientation sign. */
 static int t217_esgn(int a, int b, double *s) { *s = (a <= b) ? 1.0 : -1.0; return t217_edge(a, b); }
+/* T217: shortest cycle in a homology class on a triangulated cylinder. */
 static void test_t217(void) {
     cur_name = "T217 shortest cycle in a homology class";
     int F[T217NT][3]; int nf = 0;
@@ -16719,12 +16856,14 @@ static void test_t217(void) {
  * Log transform + one PEXP per monomial + sum p <= 1.  obj = 10.981644,
  * verified by a 1-D brute force with both constraints tight. */
 typedef struct { double coef; int n; int var[4]; double alpha[4]; } T218Mono;
+/* builds a monomial from (var, alpha) pairs packed in p. */
 static T218Mono t218M(double coef, int n, const double *p) {
     T218Mono r; r.coef = coef; r.n = n;
     for (int i = 0; i < n; i++) { r.var[i] = (int)p[2 * i]; r.alpha[i] = p[2 * i + 1]; }
     return r;
 }
 #define T218K(coef, ...) t218M((coef), (int)(sizeof((double[]){__VA_ARGS__}) / sizeof(double) / 2), (double[]){__VA_ARGS__})
+/* T218: small geometric program via exponential cones, checked by brute force. */
 static void test_t218(void) {
     cur_name = "T218 small geometric program (gp-toolbox)";
     enum { NV = 3 };
@@ -16783,6 +16922,7 @@ static void test_t218(void) {
  * Cases: the repo's tests ([[0,0],[4,0]] -> 2; [[0,0],[4,0],[2,4]] -> 2.5) and
  * a deterministic pseudo-random 8-point set. */
 #define T219K 10
+/* solves the enclosing-circle SOCP for k points; writes center and radius. */
 static double t219_socp(int k, const double P[T219K][2], double c_out[2], int *ok_out) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
@@ -16812,6 +16952,7 @@ static double t219_socp(int k, const double P[T219K][2], double c_out[2], int *o
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     *ok_out = ok; return r;
 }
+/* circumcircle of the first m (2 or 3) indices; writes the center. */
 static double t219_circum(int m, const double P[T219K][2], int idx[3], double c[2]) {
     if (m == 2) {
         for (int d = 0; d < 2; d++) c[d] = 0.5 * (P[idx[0]][d] + P[idx[1]][d]);
@@ -16826,10 +16967,12 @@ static double t219_circum(int m, const double P[T219K][2], int idx[3], double c[
     c[1]=(a2*(cx-bx)+b2*(ax-cx)+c2*(bx-ax))/d;
     return sqrt((ax-c[0])*(ax-c[0])+(ay-c[1])*(ay-c[1]));
 }
+/* 1 if the circle (c,r) contains all k points. */
 static int t219_contains(int k, const double P[T219K][2], double c[2], double r) {
     for (int i = 0; i < k; i++) { double dx=P[i][0]-c[0], dy=P[i][1]-c[1]; if (sqrt(dx*dx+dy*dy) > r+1e-9) return 0; }
     return 1;
 }
+/* exact minimum enclosing circle by trying all pairs and triples. */
 static double t219_exact(int k, const double P[T219K][2]) {
     double best = INFINITY;
     for (int i = 0; i < k; i++) for (int j = i+1; j < k; j++) {
@@ -16842,6 +16985,7 @@ static double t219_exact(int k, const double P[T219K][2]) {
     }
     return best;
 }
+/* T219: enclosing-circle SOCP against an exact oracle on three point sets. */
 static void test_t219(void) {
     cur_name = "T219 minimum enclosing circle SOCP vs exact";
     double P[4][T219K][2];
@@ -16865,6 +17009,7 @@ static void test_t219(void) {
  * is an independent method.  On 20 deterministic pseudo-random point sets the
  * two must agree to 1e-6. */
 typedef struct { double c[2]; double r; } T220Circ;
+/* circumcircle through m (0,1,2,3) boundary points. */
 static T220Circ t220_circ(int m, const double R[3][2]) {
     T220Circ z;
     if (m == 0) { z.c[0] = z.c[1] = 0; z.r = -1.0; return z; }
@@ -16882,10 +17027,12 @@ static T220Circ t220_circ(int m, const double R[3][2]) {
     z.c[1]=(a2*(cx-bx)+b2*(ax-cx)+c2*(bx-ax))/dd;
     z.r=sqrt((ax-z.c[0])*(ax-z.c[0])+(ay-z.c[1])*(ay-z.c[1])); return z;
 }
+/* 1 if point p lies inside the circle. */
 static int t220_inside(const T220Circ *z, const double p[2]) {
     if (z->r < 0) return 0;
     double dx = p[0]-z->c[0], dy = p[1]-z->c[1]; return sqrt(dx*dx+dy*dy) <= z->r+1e-9;
 }
+/* Welzl's exact minimum enclosing circle (recursive). */
 static T220Circ t220_welzl(const double (*P)[2], int n, double R[3][2], int m) {
     if (n == 0 || m == 3) return t220_circ(m, (const double (*)[2])R);
     T220Circ D = t220_welzl(P+1, n-1, R, m);
@@ -16893,6 +17040,7 @@ static T220Circ t220_welzl(const double (*P)[2], int n, double R[3][2], int m) {
     for (int d = 0; d < 2; d++) R[m][d] = P[0][d];
     return t220_welzl(P+1, n-1, R, m+1);
 }
+/* T220: Welzl exact circle vs the SOCP on 20 pseudo-random point sets. */
 static void test_t220(void) {
     cur_name = "T220 Welzl exact circle vs SOCP";
     enum { KP = 10, NS = 20 };
@@ -16919,6 +17067,7 @@ static void test_t220(void) {
  * the model reduces to the QP min ||Xw-rhs||^2 with objective (QP obj)+gamma and
  * the same w (note putqobjij takes the LOWER triangle i>=j).  Case B (M=2):
  * brute force over w_1. */
+/* solves the weighted-L1 positivity least squares as a conic program. */
 static double t221_l1(int N, int M, const double *X, const double *b, const double *gam,
                       const double *w0, double *wout) {
     int W0 = 0, R0 = M, V = M + N, P0 = M + N + 1, T0 = M + N + 1 + M, HALF = M + N + 1 + 2 * M;
@@ -16960,6 +17109,7 @@ static double t221_l1(int N, int M, const double *X, const double *b, const doub
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return obj;
 }
+/* solves the equivalent QP (no L1 term) for case A. */
 static double t221_qp(int N, int M, const double *X, const double *b, double *wout) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 0, 0, &t);
@@ -16984,6 +17134,7 @@ static double t221_qp(int N, int M, const double *X, const double *b, double *wo
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return obj;
 }
+/* T221: weighted-L1 positivity least squares vs the equivalent QP/brute force. */
 static void test_t221(void) {
     cur_name = "T221 weighted-L1 positivity least squares";
     {   /* case A */
@@ -17024,21 +17175,27 @@ static void test_t221(void) {
  * an SOCP.  Reference dat/SR_werner_state.dat: 0 below w~0.56, then 0.1412 at
  * w=0.8 and 0.2679 at w=1.0. */
 typedef struct { double re, im; } T222C;
+/* complex product. */
 static T222C t222_mul(T222C a, T222C b) { T222C r; r.re=a.re*b.re-a.im*b.im; r.im=a.re*b.im+a.im*b.re; return r; }
+/* complex sum. */
 static T222C t222_add(T222C a, T222C b) { T222C r; r.re=a.re+b.re; r.im=a.im+b.im; return r; }
+/* complex conjugate. */
 static T222C t222_conj(T222C a) { T222C r; r.re=a.re; r.im=-a.im; return r; }
+/* the two projective measurement vectors for setting x and outcome a. */
 static void t222_meas(int x, int a, T222C m[2]) {
     double s = 1.0/sqrt(2.0);
     if (x == 1) { m[0].re=s; m[0].im=0; m[1].re=a==1?s:-s; m[1].im=0; }
     else if (x == 2) { m[0].re=s; m[0].im=0; m[1].re=0; m[1].im=a==1?s:-s; }
     else { m[0].re=a==1?1:0; m[0].im=0; m[1].re=a==2?1:0; m[1].im=0; }
 }
+/* builds the two-qubit Werner state of parameter w. */
 static void t222_werner(double w, T222C r[4][4]) {
     for (int i=0;i<4;i++) for (int j=0;j<4;j++) { r[i][j].re=0; r[i][j].im=0; }
     r[0][0].re=(1.0-w)/4; r[3][3].re=(1.0-w)/4;
     r[1][1].re=(1.0+w)/4; r[2][2].re=(1.0+w)/4;
     r[1][2].re=-w/2; r[2][1].re=-w/2;
 }
+/* assembles the steering assemblage for setting x and outcome a. */
 static void t222_assemblage(double w, int x, int a, T222C sig[2][2]) {
     T222C rho[4][4], m[2], P[2][2];
     t222_werner(w, rho); t222_meas(x+1, a+1, m);
@@ -17050,6 +17207,7 @@ static void t222_assemblage(double w, int x, int a, T222C sig[2][2]) {
         sig[iB][jB] = s;
     }
 }
+/* solves the steering-robustness SOCP; no_ns adds the no-signaling rows. */
 static double t222_sr(int no_ns, double w, int *ok_out) {
     enum { OA=2, MA=3, L=8 };
     double sig[OA][MA][4];
@@ -17095,6 +17253,7 @@ static double t222_sr(int no_ns, double w, int *ok_out) {
     *ok_out = (rc == PRIMAL_RES_OK);
     return obj;
 }
+/* T222: steering robustness of the Werner state against reference values. */
 static void test_t222(void) {
     cur_name = "T222 steering robustness of the Werner state";
     const double ws[3]   = {0.0, 0.8, 1.0};
@@ -17152,6 +17311,7 @@ static void test_t224(void) {
  *   x = xp-xm, xp <= M yp, xm <= M ym, yp+ym <= 1, yp,ym binary.
  * The binaries enforce the orthant so |x| = xp+xm and the log stays bounded.
  * Hand case S=I, a=1, b=(1/2,1/2): |x_i| = 1/sqrt(2), obj = 1/2 - log(1/sqrt2). */
+/* solves the long-short risk-budgeting MICP; writes |x|. */
 static double t225_rb(int N, const double *G, const double *b, double a, double *xabs_out, int *ok_out) {
     int X0=0, XP=N, XM=2*N, YP=3*N, YM=4*N, T0=5*N, S0=6*N, Z0=6*N+1, U0=7*N+1, ONE=8*N+1;
     int nv = ONE + 1;
@@ -17204,6 +17364,7 @@ static double t225_rb(int N, const double *G, const double *b, double a, double 
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     *ok_out = (rc == PRIMAL_RES_OK); return obj;
 }
+/* T225: long-short risk budgeting as a mixed-integer conic program. */
 static void test_t225(void) {
     cur_name = "T225 long-short risk budgeting (mixed-integer conic)";
     enum { N = 2 };
@@ -17252,6 +17413,7 @@ static void test_t226(void) {
  * w = y/z, Sharpe = 1/s.  4 assets, Sigma=I, mu=(3,1,3,1), sector {0,1}.
  * cap 0.5 is not binding -> Sharpe = ||mu|| = sqrt(20) exactly at w = mu/8;
  * cap 0.4 binds -> Sharpe drops below sqrt(20). */
+/* solves the max-Sharpe SDP via Charnes-Cooper for a sector cap. */
 static double t227_sharpe(double cap, double wout[4], int *ok_out) {
     static const double mu[4] = {3.0, 1.0, 3.0, 1.0};
     int Y0 = 0, Z = 4, S = 5, nv = 6;
@@ -17282,6 +17444,7 @@ static double t227_sharpe(double cap, double wout[4], int *ok_out) {
     *ok_out = (rc == PRIMAL_RES_OK);
     return sh;
 }
+/* T227: max-Sharpe long-only with a binding and a non-binding sector cap. */
 static void test_t227(void) {
     cur_name = "T227 max-Sharpe long-only with a sector cap";
     double w[4]; int ok = 0;
@@ -17482,12 +17645,14 @@ static void test_t230(void) {
  * area s1+s2 <= 10.  Hand optimum s2 = 10 sqrt10/(sqrt11+sqrt10) = 4.88088482,
  * s1 = 5.11911518, D* = 3.19761770 (log transform + PEXP). */
 typedef struct { double coef; int n; int var[4]; double alpha[4]; } T231Mono;
+/* Builds a monomial record {coef, n, (var_i, alpha_i)} for the T231 GP. */
 static T231Mono t231_mon(double c, int n, const double *p) {
     T231Mono r; r.coef = c; r.n = n;
     for (int i = 0; i < n; i++) { r.var[i] = (int)p[2*i]; r.alpha[i] = p[2*i+1]; }
     return r;
 }
 #define T231_MO(c, ...) t231_mon((c), (int)(sizeof((double[]){__VA_ARGS__})/sizeof(double)/2), (double[]){__VA_ARGS__})
+/* T231: gate sizing as a geometric program, solved in log space via PEXP. */
 static void test_t231(void) {
     cur_name = "T231 gate sizing geometric program";
     enum { NV = 6 };
@@ -17590,6 +17755,7 @@ static void test_t232(void) {
  * sum(s1 val) = sum(s2 val), minimize |s1|+|s2|.  8/11/15 has no degree 1 or 2
  * equation and at degree 3 gives y^3+m^3+dmy+d^2m = my^2+m^2y+dm^2+d^2y+d^3
  * (4 = 5 terms), both 6730. */
+/* list the degree-k monomial values of (d,m,y); returns their count. */
 static long t233_gen(int d, int m, int y, int k, long *val) {
     int n = 0;
     for (int a = 0; a <= k; a++) for (int b = 0; b <= k - a; b++) {
@@ -17601,6 +17767,7 @@ static long t233_gen(int d, int m, int y, int k, long *val) {
     }
     return n;
 }
+/* T233: poly-date MILP; the first degree with a homogeneous identity for 8/11/15. */
 static void test_t233(void) {
     cur_name = "T233 poly-date MILP";
     int d = 8, m = 11, y = 15, first = 0; long L = 0, R = 0; int n1 = 0, n2 = 0;
@@ -17739,6 +17906,7 @@ static void test_t235(void) {
 /* Bounded Real Lemma: min gamma^2 over P>0 with
    [[A'P+PA+C'C, PB+C'D],[B'P+D'C, D'D - gamma^2]] <= 0.
    Returned gamma is sqrt(gamma^2); P is the 1x1 block. */
+/* solves the Bounded Real Lemma LMI; returns gamma and the P block. */
 static double t236_brl(double A, double B, double C, double D, double *Pout) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 0, 0, &t);
@@ -17773,6 +17941,7 @@ static double t236_brl(double A, double B, double C, double D, double *Pout) {
     return sqrt(g2);
 }
 
+/* T236: bounded-real lemma H-infinity norm vs the analytic SISO value. */
 static void test_t236(void) {
     cur_name = "T236 bounded-real lemma (H-infinity norm) in scaled Riccati form";
     double P = 0.0;
@@ -17794,6 +17963,7 @@ static void test_t236(void) {
 
 /* Soft-margin primal SVM via RQUAD: t + c*sum xi, y_i(<X_i,w>-b)+xi_i >= 1,
    (t,1,w) in RQUAD (t >= ||w||^2/2).  Fills obj, w[nd], *b. */
+/* solves the soft-margin primal SVM; fills obj, w and b. */
 static void t237_svm(int nd, int nim, const double X[][2], const double *y,
                      double c, double *obj, double *w, double *b) {
     int T = 0, B = 1, W = 2, XI = 2 + nd, ONE = 2 + nd + nim, NV = 3 + nd + nim;
@@ -17828,6 +17998,7 @@ static void t237_svm(int nd, int nim, const double X[][2], const double *y,
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T237: primal SVM via RQUAD on a separable diamond and a soft-margin case. */
 static void test_t237(void) {
     cur_name = "T237 primal SVM (Cookbook 11.2) via RQUAD, hand instances";
     {   /* A) separable diamond: w=(1/2,1/2), b=0, t=1/4 */
@@ -17851,6 +18022,7 @@ static void test_t237(void) {
     }
 }
 
+/* T238: 4x4 Sudoku as a binary MILP; checks rows, columns, blocks and givens. */
 static void test_t238(void) {
     cur_name = "T238 MILP Sudoku (Cookbook 11.7) on a 4x4 board";
     const int M = 2, N = M * M, NVAR = N * N * N;
@@ -17911,6 +18083,7 @@ static void test_t238(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T239: finite-horizon linear MPC of a double integrator solved as a QP. */
 static void test_t239(void) {
     cur_name = "T239 finite-horizon linear MPC as a QP (double integrator)";
     const int NS = 2, NST = NS + 1;
@@ -17957,6 +18130,7 @@ static void test_t239(void) {
 #undef U239
 }
 
+/* T240: secure-beamforming SOCP, the convex core of the SCA subproblem. */
 static void test_t240(void) {
     cur_name = "T240 secure beamforming SOCP (convex core of the SCA subproblem)";
     const double h[2] = {1.0, 0.0};
@@ -18080,6 +18254,7 @@ static void test_t242(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T243: total-variation denoising of a two-point signal. */
 static void test_t243(void) {
     cur_name = "T243 total-variation denoising (Cookbook 11.3), 1-D two-point";
     const double f[2] = {0.0, 1.0}, sigma = 0.5;
@@ -18115,6 +18290,7 @@ static void test_t243(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* builds and solves the Lowner-John ellipsoid model (T244 inner, T245 all-free). */
 static void lownerjohn_test(int all_free) {
     cur_name = all_free ? "T245 Lowner-John all-free, overlapping cone duals" :
                           "T244 Lowner-John inner ellipse (Cookbook 11.6), det_rootn n=2";
@@ -18199,7 +18375,9 @@ static void lownerjohn_test(int all_free) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T244: Lowner-John inner ellipse, det_rootn n=2 (free=0). */
 static void test_t244(void) { lownerjohn_test(0); }
+/* T245: Lowner-John all-free, overlapping cone duals. */
 static void test_t245(void) { lownerjohn_test(1); }
 
 /* The shared coordinate's dual is -3 = -1 + -2, not two copies of -3
@@ -18438,31 +18616,32 @@ static void test_t250(void) {
     }
 }
 
-/* ---------------- T251: conflict cut da probing a coppie ----------------
- * Due binarie che non possono essere entrambe 1 per una ragione che nessuna
- * riga da sola vede — il caso della nota: due righe che INSIEME escludono la
- * coppia, nessuna delle due da sola.
+/* ---------------- T251: conflict cut from pairwise probing ----------------
+ * Two binaries that cannot both be 1 for a reason no single row sees — the
+ * note's case: two rows that TOGETHER exclude the pair, neither of them alone.
  *   max x0 + x1 + x2
- *   R0: x0 - x1 >= 0        (x1=1 forza x0 >= 1)
- *   R1: x0 + x2 <= 1        (x2=1 forza x0 <= 0)
- *   x0 continua in [0,1], x1,x2 in {0,1}.
- * Le due righe non parlano mai della coppia (x1,x2): R0 nomina x1 e R1 nomina
- * x2, e x1=x2=1 non e' escluso da nessuna delle due presa da sola. Insieme lo
- * escludono: x1=1 chiede x0>=1, x2=1 chiede x0<=0. Quindi `x1 + x2 <= 1` e'
- * valido, e con GMB_MIP_CONFLICT=1 il probing a coppie lo genera.
- * Ottimo a mano: (x0,x1,x2) = (1,1,0) -> 2 (x2=1 darebbe x0=0 quindi x1=0 -> 1).
- * Il cut non taglia l'ottimo (x1+x2 = 1 <= 1), quindi il gate on/off non deve
- * cambiare il valore: e' la validita' che si asserisce, piu' la GENERAZIONE
- * (T188/T190, stessa forma). Nessun altro generatore produce questo cut qui:
- * entrambe le righe hanno x0 continua, quindi CG/cover/clique/LIPRO le
- * saltano, e il `resto` del modello e' due variabili binarie con i soli bound.
- * Nella misura in `out/` il gate off genera 0 conflict cut, il gate on 1. */
+ *   R0: x0 - x1 >= 0        (x1=1 forces x0 >= 1)
+ *   R1: x0 + x2 <= 1        (x2=1 forces x0 <= 0)
+ *   x0 continuous in [0,1], x1,x2 in {0,1}.
+ * The two rows never mention the pair (x1,x2): R0 names x1 and R1 names
+ * x2, and x1=x2=1 is not excluded by either one alone. Together they
+ * exclude it: x1=1 requires x0>=1, x2=1 requires x0<=0. So `x1 + x2 <= 1` is
+ * valid, and with GMB_MIP_CONFLICT=1 pairwise probing generates it.
+ * Optimum by hand: (x0,x1,x2) = (1,1,0) -> 2 (x2=1 would give x0=0 hence x1=0 -> 1).
+ * The cut does not cut off the optimum (x1+x2 = 1 <= 1), so the gate on/off must
+ * not change the value: what is asserted is validity, plus GENERATION
+ * (T188/T190, same shape). No other generator produces this cut here:
+ * both rows have x0 continuous, so CG/cover/clique/LIPRO skip them,
+ * and the model's `rest` is two binary variables with bounds only.
+ * In the `out/` measurement the gate off generates 0 conflict cuts, the gate on 1. */
 
 static int t251_cf = -1;
+/* log callback: records how many conflict cuts were generated. */
 static void t251_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "conflict cuts")) t251_cf = atoi(msg + strlen("MIP: "));
 }
+/* T251: pairwise-probing conflict cut; validity measured on the model, not the gate. */
 static void test_t251(void) {
     cur_name = "T251 conflict cut da probing a coppie";
     for (int off = 0; off <= 1; off++) {
@@ -18498,10 +18677,10 @@ static void test_t251(void) {
         PRIMAL_deleteenv(&env);
         unsetenv("GMB_MIP_CONFLICT");
     }
-    /* La validita' del cut non si asserisce "perche' il probing l'ha detto": si
-     * misura sul MODELLO. Con x1 = x2 = 1 fissate, lo stesso modello e' un LP
-     * infeasibile (R0 chiede x0 >= 1, R1 chiede x0 <= 0): e' la premessa da cui
-     * `x1 + x2 <= 1` discende. Il check e' indipendente dal gate. */
+    /* The validity of the cut is not asserted "because probing said so": it is
+     * measured on the MODEL. With x1 = x2 = 1 fixed, the same model is an
+     * infeasible LP (R0 requires x0 >= 1, R1 requires x0 <= 0): that is the premise
+     * from which `x1 + x2 <= 1` follows. The check is independent of the gate. */
     {
         PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
         PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
@@ -18522,36 +18701,38 @@ static void test_t251(void) {
 }
 
 /* ---------------- T252: diving MIP (default on, kill-switch GMB_NO_MIP_DIVING) -
- * Il fractional diving e' l'ultimo pezzo della famiglia primal-heuristics.
- * Modello dove il ROUNDING DEL ROOT non produce un incumbent (il punto LP
- * (0.91667, 0.91667) arrotondato a (1,1) viola 6 > 5.5) e le altre euristiche
- * sono spente: max x0+x1 con 2x0+4x1 <= 5.5, 4x0+2x1 <= 5.5, interi >= 0.
- *   LP: x0=x1=11/12 -> arrotondamento (1,1) infeasible -> nessun incumbent.
- *   Ottimo intero a mano: (1,0) o (0,1) -> 1 ((1,1) viola entrambe le righe).
- *   Diving: fissa il piu' frazionario (x1 -> 1 da solo e' ancora infeasible,
- *   x0 -> 1 poi x1 = 0.25 -> x1 = 0) e arriva a un punto intero ammissibile.
- * Il punto dell'incumbent viene accettato solo se migliora l'incumbent (best),
- * quindi il log "MIP: diving incumbent" e' il conteggio dei diving che hanno
- * davvero aggiornato best. Kill-switch GMB_NO_MIP_DIVING=1: nessun log,
- * stesso ottimo (il B&B lo trova da solo).
- * Buffer dedicati (dlx/dux/dx): il blocco non tocca flx/flux/xs — l'ipotesi
- * che aveva fatto fallire T84 C5 nelle prime quattro versioni. */
+ * Fractional diving is the last piece of the primal-heuristics family.
+ * A model where the ROOT ROUNDING produces no incumbent (the LP point
+ * (0.91667, 0.91667) rounded to (1,1) violates 6 > 5.5) and the other heuristics
+ * are off: max x0+x1 with 2x0+4x1 <= 5.5, 4x0+2x1 <= 5.5, integers >= 0.
+ *   LP: x0=x1=11/12 -> rounding (1,1) infeasible -> no incumbent.
+ *   Integer optimum by hand: (1,0) or (0,1) -> 1 ((1,1) violates both rows).
+ *   Diving: fixes the most fractional (x1 -> 1 alone is still infeasible,
+ *   x0 -> 1 then x1 = 0.25 -> x1 = 0) and reaches a feasible integer point.
+ * The incumbent point is accepted only if it improves the incumbent (best),
+ * so the log "MIP: diving incumbent" counts the dives that actually
+ * updated best. Kill-switch GMB_NO_MIP_DIVING=1: no log,
+ * same optimum (the B&B finds it by itself).
+ * Dedicated buffers (dlx/dux/dx): the block does not touch flx/flux/xs — the
+ * hypothesis that had made T84 C5 fail in the first four versions. */
 
 static int t252_dive = -1;
+/* log callback: counts the dives that improved the incumbent. */
 static void t252_logcb(void *handle, const char *msg) {
     (void)handle;
     if (strstr(msg, "diving incumbent")) t252_dive++;
 }
+/* T252: fractional diving (default on behind GMB_NO_MIP_DIVING) reaches an incumbent. */
 static void test_t252(void) {
     cur_name = "T252 diving MIP gated";
-    /* le altre euristiche primale spesse: isolano il contributo del diving */
+    /* the other primal heuristics off: they isolate the diving contribution */
     setenv("GMB_NO_MIP_RINS", "1", 1);
     setenv("GMB_NO_MIP_RENS", "1", 1);
     setenv("GMB_NO_MIP_FPUMP", "1", 1);
     setenv("GMB_NO_MIP_LOCALSEARCH", "1", 1);
     for (int off = 0; off <= 1; off++) {
-        /* off = 1: kill-switch GMB_NO_MIP_DIVING (diving spento);
-         * off = 0: default del solver, diving ATTIVO. */
+        /* off = 1: kill-switch GMB_NO_MIP_DIVING (diving off);
+         * off = 0: solver default, diving ON. */
         if (off) setenv("GMB_NO_MIP_DIVING", "1", 1); else unsetenv("GMB_NO_MIP_DIVING");
         PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
         PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
@@ -18581,9 +18762,9 @@ static void test_t252(void) {
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
         unsetenv("GMB_NO_MIP_DIVING");
     }
-    /* Regressione diretta del repro che ha fatto fallire le prime quattro
-     * versioni: T84 C5 (x0 <= 3.99996, inther 1e-3) con il diving ATTIVO di
-     * default deve dare gli stessi verdetti — il blocco non tocca flx/flux/xs. */
+    /* Direct regression of the repro that made the first four versions fail:
+     * T84 C5 (x0 <= 3.99996, inther 1e-3) with diving ON by default
+     * must give the same verdicts — the block does not touch flx/flux/xs. */
     {
         unsetenv("GMB_NO_MIP_DIVING");
         PRIMALrescodee rc; double po, x, pi;
@@ -18622,7 +18803,7 @@ static void test_t253(void) {
             double rhs[4] = {1,2,3,4}, x[4];
             for (int i=0;i<4;i++) x[i]=rhs[i];
             check(spldl_solve(L,x)==0, "T253 A risolve");
-            /* K x deve riprodurre rhs (residuo), e D deve avere segno misto */
+            /* K x must reproduce rhs (residual), and D must have mixed sign */
             double r[4]={0,0,0,0};
             r[0]=2*x[0]+1*x[1]+1*x[2];
             r[1]=1*x[0]+3*x[1]+1*x[3];
@@ -18664,7 +18845,7 @@ static void test_t253(void) {
         }
         free(Kp); free(Ki); free(Kx);
     }
-    {   /* C: diagonale nulla -> rifiuto */
+    {   /* C: zero diagonal -> rejection */
         int Kp[2]={0,1}, Ki[1]={0}; double Kx[1]={0.0};
         SpLdl *L=spldl_factor(1,Kp,Ki,Kx);
         check(L==NULL, "T253 C rifiuta una diagonale nulla");
@@ -18741,14 +18922,17 @@ static void test_t254(void) {
     }
 }
 
-/* ---------------- T255: callback di FASE (la rotta che risponde) ------------
- * L'enum dichiarava BEGIN/END_INTPNT/MIO/CONIC ma il solver emetteva solo
- * OPTIMIZER/READ/WRITE.  Ora la rotta emette anche i propri: SIMPLEX o INTPNT
- * per un LP/QP, MIO per il branch & bound, CONIC per il percorso conico/SDP.
- * I codici sono quelli di MSKcallbackcodee. */
+/* ---------------- T255: PHASE callbacks (the route that answers) ------------
+ * The enum declared BEGIN/END_INTPNT/MIO/CONIC but the solver emitted only
+ * OPTIMIZER/READ/WRITE.  Now the route also emits its own: SIMPLEX or INTPNT
+ * for an LP/QP, MIO for branch & bound, CONIC for the conic/SDP path.
+ * The codes are those of MSKcallbackcodee. */
+/* 1 if the callback code was seen in the last capture. */
 static int cb_seen(int code) { for (int i = 0; i < g_cbn; i++) if (g_cb[i] == code) return 1; return 0; }
+/* number of times the callback code was seen. */
 static int cb_count(int code) { int n = 0; for (int i = 0; i < g_cbn; i++) if (g_cb[i] == code) n++; return n; }
 
+/* T255: phase callbacks (simplex/intpnt/mio/conic) are emitted by the route. */
 static void test_t255(void) {
     cur_name = "T255 callback di fase (rotta)";
     char nm[64];
@@ -18756,7 +18940,7 @@ static void test_t255(void) {
     check(strcmp(nm, "MSK_CALLBACK_BEGIN_SIMPLEX") == 0, "A testo BEGIN_SIMPLEX");
     check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_END_CONIC, nm), PRIMAL_RES_OK, "A nome END_CONIC");
     check(strcmp(nm, "MSK_CALLBACK_END_CONIC") == 0, "A testo END_CONIC");
-    {   /* B: LP -> OPTIMIZER + (SIMPLEX oppure INTPNT), annidati e bilanciati */
+    {   /* B: LP -> OPTIMIZER + (SIMPLEX or INTPNT), nested and balanced */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 1);
@@ -18775,7 +18959,7 @@ static void test_t255(void) {
               "B INTPNT bilanciato");
         pend(&p);
     }
-    {   /* C: SOCP (un cono QUAD) -> CONIC */
+    {   /* C: SOCP (one QUAD cone) -> CONIC */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 2);            /* t, x */
@@ -18792,7 +18976,7 @@ static void test_t255(void) {
               "C CONIC bilanciato");
         pend(&p);
     }
-    {   /* D: MIP -> MIO (e SIMPLEX/INTPNT per i rilassati) */
+    {   /* D: MIP -> MIO (and SIMPLEX/INTPNT for the relaxations) */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 1);
@@ -18809,10 +18993,10 @@ static void test_t255(void) {
     }
 }
 
-/* ---------------- T256: lettore/scrittore OPF (formato di riferimento 16.3) --
- * Tag, espressioni (+, -, *, ^2, parentesi), bounds (con '*' e 'free'), coni e
- * interi.  Ogni caso ha un ottimo verificabile a mano; il testo OPF e' quello
- * delle Listing 16.1-16.4 del riferimento. */
+/* ---------------- T256: OPF reader/writer (reference format 16.3) --
+ * Tags, expressions (+, -, *, ^2, parentheses), bounds (with '*' and 'free'), cones
+ * and integers.  Each case has a hand-checkable optimum; the OPF text is that
+ * of Listings 16.1-16.4 of the reference. */
 static const char *const T256_LIN =
     "[objective maximize 'obj']\n3 x0 + x1 + 5 x2 + x3\n[/objective]\n"
     "[constraints]\n[con 'c1'] 3 x0 + x1 + 2 x2 = 30 [/con]\n"
@@ -18835,6 +19019,7 @@ static const char *const T256_INT =
     "[con 'c2'] 3 x0 - 2 x1 >= -4 [/con]\n[/constraints]\n"
     "[bounds]\n[b] 0 <= * [/b]\n[/bounds]\n[integer]\nx0 x1\n[/integer]\n";
 
+/* parses an OPF string, solves it and returns the objective. */
 static double opf_solve_obj(const char *txt, PRIMALrescodee *rc_out, int *nv, int *nc) {
     P p; pbegin(&p);
     PRIMALrescodee r = PRIMAL_readopfstring(p.task, txt);
@@ -18850,6 +19035,7 @@ static double opf_solve_obj(const char *txt, PRIMALrescodee *rc_out, int *nv, in
     return obj;
 }
 
+/* solves an OPF string, writes and re-reads it, returns the objective. */
 static double opf_roundtrip(const char *txt, const char *path, PRIMALrescodee *rc) {
     P p; pbegin(&p);
     PRIMALrescodee r = PRIMAL_readopfstring(p.task, txt);
@@ -18868,29 +19054,30 @@ static double opf_roundtrip(const char *txt, const char *path, PRIMALrescodee *r
     return obj;
 }
 
+/* T256: OPF reader/writer round-trips for linear, quadratic, conic and integer. */
 static void test_t256(void) {
     cur_name = "T256 lettore/scrittore OPF";
     PRIMALrescodee rc; int nv = 0, nc = 0; double o;
-    /* A: lineare, ottimo a mano 250/3 = 83.3333 (x2=15, x3=25/3, x0=x1=0) */
+    /* A: linear, hand optimum 250/3 = 83.3333 (x2=15, x3=25/3, x0=x1=0) */
     o = opf_solve_obj(T256_LIN, &rc, &nv, &nc);
     check_rc(rc, PRIMAL_RES_OK, "A lin solve");
     check(nv == 4 && nc == 3, "A lin dims");
     check(fabs(o - 250.0/3.0) < 1e-5, "A lin obj=250/3");
-    /* B: obiettivo quadratico (parentesi, ^2, x*x), ottimo -2.5 (x2=5) */
+    /* B: quadratic objective (parentheses, ^2, x*x), optimum -2.5 (x2=5) */
     o = opf_solve_obj(T256_QOBJ, &rc, &nv, &nc);
     check_rc(rc, PRIMAL_RES_OK, "B qobj solve");
     check(nv == 3 && nc == 1, "B qobj dims");
     check(fabs(o + 2.5) < 1e-6, "B qobj obj=-2.5");
-    /* C: conico QUAD+RQUAD, ottimo 1/sqrt(2) */
+    /* C: conic QUAD+RQUAD, optimum 1/sqrt(2) */
     o = opf_solve_obj(T256_CQO1, &rc, &nv, &nc);
     check_rc(rc, PRIMAL_RES_OK, "C cqo1 solve");
     check(nv == 6 && nc == 1, "C cqo1 dims");
     check(fabs(o - 1.0/sqrt(2.0)) < 1e-6, "C cqo1 obj=1/sqrt2");
-    /* D: misto intero, ottimo 5 (x0=5, x1=0) */
+    /* D: mixed integer, optimum 5 (x0=5, x1=0) */
     o = opf_solve_obj(T256_INT, &rc, &nv, &nc);
     check_rc(rc, PRIMAL_RES_OK, "D int solve");
     check(fabs(o - 5.0) < 1e-6, "D int obj=5");
-    /* E: un'uguaglianza quadratica (non convessa) -> rifiuto (T259) */
+    /* E: a quadratic equality (nonconvex) -> rejection (T259) */
     {
         P p; pbegin(&p);
         rc = PRIMAL_readopfstring(p.task,
@@ -18899,7 +19086,7 @@ static void test_t256(void) {
         check(rc != PRIMAL_RES_OK, "E uguaglianza quadratica rifiutata");
         pend(&p);
     }
-    /* F: round-trip su file .opf (dispatch per estensione), lineare/conico/intero */
+    /* F: round-trip on a .opf file (dispatch by extension), linear/conic/integer */
     {
         double o1 = opf_roundtrip(T256_LIN, "/tmp/t256a.opf", &rc);
         check_rc(rc, PRIMAL_RES_OK, "F lin round-trip");
@@ -18911,7 +19098,7 @@ static void test_t256(void) {
         check_rc(rc, PRIMAL_RES_OK, "F int round-trip");
         check(fabs(o3 - 5.0) < 1e-6, "F int round-trip obj");
     }
-    /* G: i nomi del file sopravvivono alla lettura */
+    /* G: the file's names survive the read */
     {
         P p; pbegin(&p);
         PRIMAL_readopfstring(p.task, T256_LIN);
@@ -18923,7 +19110,7 @@ static void test_t256(void) {
         check(vn && strcmp(vn, "x1") == 0, "G varname");
         pend(&p);
     }
-    /* H: i data callback READ_OPF / READ_OPF_SECTION / WRITE_OPF sono emessi */
+    /* H: the READ_OPF / READ_OPF_SECTION / WRITE_OPF data callbacks are emitted */
     {
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
@@ -18938,15 +19125,15 @@ static void test_t256(void) {
     }
 }
 
-/* ---------------- T257: callback per-iterazione / solution-update ----------
- * I codici "middle" del riferimento (CONIC=34, PRIMAL_SIMPLEX=93, INTPNT=90)
- * sono emessi ai punti di aggiornamento: un LP emette il middle della sua
- * rotta ("relaxation solved"), un cono exp con i tagli forzati emette CONIC a
- * ogni round.  Non sono i MSK_CALLBACK_IM_* (per-iterazione interna), che
- * restano non emessi (deviazione dichiarata). */
+/* ---------------- T257: per-iteration / solution-update callbacks ----------
+ * The reference's "middle" codes (CONIC=34, PRIMAL_SIMPLEX=93, INTPNT=90)
+ * are emitted at update points: an LP emits the middle of its
+ * route ("relaxation solved"), an exp cone with cuts forced emits CONIC at
+ * every round.  They are not the MSK_CALLBACK_IM_* (inner per-iteration), which
+ * remain unemitted (declared deviation). */
 static void test_t257(void) {
     cur_name = "T257 callback solution-update";
-    {   /* A: un LP emette il middle SIMPLEX (method 0/4) o INTPNT */
+    {   /* A: an LP emits the SIMPLEX middle (method 0/4) or INTPNT */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 1);
@@ -18958,7 +19145,7 @@ static void test_t257(void) {
               "A LP emette il middle");
         pend(&p);
     }
-    {   /* B: un PEXP min t -> t=e, coi tagli forzati emette CONIC per round */
+    {   /* B: a PEXP min t -> t=e, with cuts forced emits CONIC per round */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 3);
@@ -18976,14 +19163,14 @@ static void test_t257(void) {
     }
 }
 
-/* ---------------- T258: callback per-iterazione INTERNI (hook nei loop) -----
- * I loop di simplex.c (PRIMAL_SIMPLEX=93 / DUAL_SIMPLEX=36), ipm.c (INTPNT=90)
- * e socp.c/sdp.c (CONIC=34) emettono il codice a OGNI iterazione, non solo ai
- * punti di aggiornamento.  Il flag `primal_cb_iter_on` rende la chiamata un
- * load+branch quando nessun callback e' registrato. */
+/* ---------------- T258: INNER per-iteration callbacks (hooks in the loops) -----
+ * The loops of simplex.c (PRIMAL_SIMPLEX=93 / DUAL_SIMPLEX=36), ipm.c (INTPNT=90)
+ * and socp.c/sdp.c (CONIC=34) emit the code at EVERY iteration, not only at
+ * update points.  The flag `primal_cb_iter_on` makes the call a
+ * load+branch when no callback is registered. */
 static void test_t258(void) {
     cur_name = "T258 callback per-iterazione (hook)";
-    {   /* A: un LP emette un'iterazione interna (simplex 93 o ipm 90) */
+    {   /* A: an LP emits an inner iteration (simplex 93 or ipm 90) */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 3);
@@ -18999,7 +19186,7 @@ static void test_t258(void) {
               "A almeno 2 iterazioni interne");
         pend(&p);
     }
-    {   /* B: un SOCP emette CONIC a ogni iterazione */
+    {   /* B: an SOCP emits CONIC at every iteration */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 2);
@@ -19015,9 +19202,9 @@ static void test_t258(void) {
     }
 }
 
-/* ---------------- T259: OPF con vincolo QUADRATICO (era deviazione) ---------
- * UP convesso -> convenzione UP; LO riscritto come -q(x) <= -b; uguaglianza o
- * ranged quadratici sono rifiutati (non convessi / non rappresentabili). */
+/* ---------------- T259: OPF with a QUADRATIC constraint (was a deviation) ---------
+ * Convex UP -> UP convention; LO rewritten as -q(x) <= -b; quadratic
+ * equality or ranged are rejected (nonconvex / not representable). */
 static void test_t259(void) {
     cur_name = "T259 OPF vincolo quadratico";
     PRIMALrescodee rc; int nv = 0, nc = 0; double o;
@@ -19047,7 +19234,7 @@ static void test_t259(void) {
         check(rc != PRIMAL_RES_OK, "D ranged quadratico rifiutato");
         pend(&p);
     }
-    /* E: round-trip del vincolo quadratico (il writer OPF emette la parte Q) */
+    /* E: round-trip of the quadratic constraint (the OPF writer emits the Q part) */
     {
         double o1 = opf_roundtrip("[objective maximize 'o']\nx0 + x1\n[/objective]\n"
                                   "[constraints]\n[con 'c'] x0^2 + x1^2 <= 2 [/con]\n[/constraints]\n"
@@ -19058,12 +19245,12 @@ static void test_t259(void) {
     }
 }
 
-/* ---------------- T260: callback sub-step IM_LU / IM_ORDER ------------------
- * I codici "di servizio" del riferimento (IM_LU=79 alla fattorizzazione LU,
- * IM_ORDER=84 all'ordinamento AMD), emessi dallo stesso hook per-iterazione. */
+/* ---------------- T260: sub-step callbacks IM_LU / IM_ORDER ------------------
+ * The reference's "service" codes (IM_LU=79 at the LU factorization,
+ * IM_ORDER=84 at the AMD ordering), emitted by the same per-iteration hook. */
 static void test_t260(void) {
     cur_name = "T260 callback sub-step IM_LU/IM_ORDER";
-    {   /* A: un SOCP denso fattorizza con dmat_lu_factor -> IM_LU */
+    {   /* A: a dense SOCP factorizes with dmat_lu_factor -> IM_LU */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 2);
@@ -19077,7 +19264,7 @@ static void test_t260(void) {
         check(cb_seen(PRIMAL_CALLBACK_IM_LU), "A IM_LU emesso");
         pend(&p);
     }
-    {   /* B: il percorso sparso usa sym_amd -> IM_ORDER */
+    {   /* B: the sparse path uses sym_amd -> IM_ORDER */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
         PRIMAL_appendvars(p.task, 2);
@@ -19096,10 +19283,10 @@ static void test_t260(void) {
     }
 }
 
-/* ---------------- T261: MPS QCMATRIX (vincoli quadratici) -------------------
- * La sezione QCMATRIX del riferimento (16.2.1.10) non era letta (veniva
- * saltata in silenzio).  Una riga L (UP) e' rappresentabile (forma +1/2 x'Qx);
- * una G/E (non-UP) e' rifiutata invece di perdere la parte quadratica. */
+/* ---------------- T261: MPS QCMATRIX (quadratic constraints) -------------------
+ * The reference's QCMATRIX section (16.2.1.10) was not read (it was silently
+ * skipped).  An L (UP) row is representable (form +1/2 x'Qx);
+ * a G/E (non-UP) row is rejected instead of losing the quadratic part. */
 static void test_t261(void) {
     cur_name = "T261 MPS QCMATRIX";
     {
@@ -19129,10 +19316,10 @@ static void test_t261(void) {
     }
 }
 
-/* ---------------- T262: il writer LP rifiuta il quadratico ------------------
- * Il formato LP supporta il quadratico (rif. 16.1) ma il nostro writer ne
- * emette solo la parte lineare: rifiuta invece di scrivere un file che l'ha
- * persa (OPF e MPS lo emettono). */
+/* ---------------- T262: the LP writer rejects the quadratic ------------------
+ * The LP format supports the quadratic (ref. 16.1) but our writer emits only
+ * the linear part: it rejects instead of writing a file that lost it
+ * (OPF and MPS emit it). */
 static void test_t262(void) {
     cur_name = "T262 LP writer rifiuta il quadratico";
     P p; pbegin(&p);
@@ -19143,8 +19330,8 @@ static void test_t262(void) {
     check(PRIMAL_writedata(p.task, "/tmp/t262.lp") != PRIMAL_RES_OK, "A QP -> .lp rifiutato");
     check_rc(PRIMAL_writedata(p.task, "/tmp/t262.opf"), PRIMAL_RES_OK, "B QP -> .opf scritto");
     pend(&p);
-    {   /* C: il reader LP rifiuta il quadratico ([ ... ]/2) invece di creare una
-         * variabile spazzatura "[" (il formato LP e' lineare-only qui). */
+    {   /* C: the LP reader rejects the quadratic ([ ... ]/2) instead of creating a
+         * garbage variable "[" (the LP format is linear-only here). */
         P q; pbegin(&q);
         const char *lp = "minimize\nobj: [ x0^2 ]/2 + x0\nsubject to\nc0: x0 >= 1\nend\n";
         check(PRIMAL_readlpstring(q.task, lp) != PRIMAL_RES_OK, "C LP quadratico rifiutato");
@@ -19152,9 +19339,9 @@ static void test_t262(void) {
     }
 }
 
-/* ---------------- T263: MPS CSECTION (coni) ---------------------------------
- * La sezione CSECTION (estensione MOSEK, 16.2.1.12) non era riconosciuta: un
- * file con coni veniva mal-parsato.  Header CSECTION kname [value] ktype + membri. */
+/* ---------------- T263: MPS CSECTION (cones) ---------------------------------
+ * The CSECTION section (MOSEK extension, 16.2.1.12) was not recognized: a
+ * file with cones was mis-parsed.  Header CSECTION kname [value] ktype + members. */
 static void test_t263(void) {
     cur_name = "T263 MPS CSECTION";
     {
@@ -19172,7 +19359,7 @@ static void test_t263(void) {
         check(fabs(obj - 1.0) < 1e-6, "A obj=1");
         pend(&p);
     }
-    {   /* C: round-trip del cono (il writer MPS emette CSECTION) */
+    {   /* C: cone round-trip (the MPS writer emits CSECTION) */
         P p; pbegin(&p);
         check_rc(PRIMAL_readdata(p.task, "/tmp/t263.mps"), PRIMAL_RES_OK, "C read");
         check_rc(PRIMAL_writedata(p.task, "/tmp/t263b.mps"), PRIMAL_RES_OK, "C write");
@@ -19197,13 +19384,13 @@ static void test_t263(void) {
     }
 }
 
-/* ---------------- T264: computesparsecholesky sparso (AMD) ----------------
- * Era un fallback denso con perm identita'.  Ora usa spchol_factor_ord: verifica
- * L L' = P A P' e che perm sia una permutazione valida. */
+/* ---------------- T264: sparse computesparsecholesky (AMD) ----------------
+ * It used to be a dense fallback with identity perm.  Now it uses spchol_factor_ord:
+ * checks L L' = P A P' and that perm is a valid permutation. */
 static void test_t264(void) {
     cur_name = "T264 computesparsecholesky sparso (AMD)";
     int n = 5;
-    /* A = tridiagonal(2,-1), triangolo INFERIORE in CSC */
+    /* A = tridiagonal(2,-1), LOWER triangle in CSC */
     int anzc[5] = {2, 2, 2, 2, 1};
     PRIMALint64t aptrc[6] = {0, 2, 4, 6, 8, 9};
     int asubc[9] = {0, 1, 1, 2, 2, 3, 3, 4, 4};
@@ -19245,7 +19432,7 @@ static void test_t264(void) {
 static void test_t265(void) {
     cur_name = "T265 utf8towchar/wchartoutf8";
     {
-        const char *s = "caf\xC3\xA9";   /* "cafe'" con e' accentata (U+00E9) */
+        const char *s = "caf\xC3\xA9";   /* "cafe'" with accented e (U+00E9) */
         PRIMALwchart w[16]; size_t len = 0, conv = 0;
         check_rc(PRIMAL_utf8towchar(16, &len, &conv, w, s), PRIMAL_RES_OK, "A utf8towchar");
         check(len == 4 && conv == 5, "A len=4 conv=5");
@@ -19261,10 +19448,10 @@ static void test_t265(void) {
     }
 }
 
-/* ---------------- T266: readdataautoformat rileva il contenuto ------------- */
+/* ---------------- T266: readdataautoformat detects the content ------------- */
 static void test_t266(void) {
     cur_name = "T266 readdataautoformat (rileva OPF dal contenuto)";
-    {   /* un OPF in un file .txt: il contenuto inizia con '[' */
+    {   /* an OPF in a .txt file: the content starts with '[' */
         FILE *f = fopen("/tmp/t266.txt", "w");
         if (f) { fputs(T256_LIN, f); fclose(f); }
         P p; pbegin(&p);
@@ -19274,7 +19461,7 @@ static void test_t266(void) {
         check(fabs(o - 250.0/3.0) < 1e-5, "A obj=250/3");
         pend(&p);
     }
-    {   /* un MPS senza estensione: fallback all'estensione */
+    {   /* an MPS without extension: fallback to the extension */
         FILE *f = fopen("/tmp/t266.mps", "w");
         if (f) { fputs("NAME t\nROWS\n N obj\n E c1\nCOLUMNS\n x0 obj 1\n x0 c1 1\nRHS\n RHS c1 1\nBOUNDS\n FR BND x0\nENDATA\n", f); fclose(f); }
         P p; pbegin(&p);
@@ -19283,7 +19470,8 @@ static void test_t266(void) {
     }
 }
 
-/* ---------------- T267: readdataformat rispetta il formato dichiarato ----- */
+/* ---------------- T267: readdataformat respects the declared format ----- */
+/* copies file src to dst byte for byte. */
 static void t267_cp(const char *src, const char *dst) {
     FILE *a = fopen(src, "rb"); if (!a) return;
     FILE *b = fopen(dst, "wb"); if (!b) { fclose(a); return; }
@@ -19292,10 +19480,11 @@ static void t267_cp(const char *src, const char *dst) {
     fclose(a); fclose(b);
 }
 
+/* T267: readdataformat honors the declared format/compression rather than the extension. */
 static void test_t267(void) {
     cur_name = "T267 readdataformat (formato dichiarato)";
-    /* modello min x0+x1 s.t. x0+x1 >= 3, ottimo 3, scritto nei due formati con
-     * estensione vera, poi ricopiato con estensione neutra .txt */
+    /* model min x0+x1 s.t. x0+x1 >= 3, optimum 3, written in the two formats with
+     * the real extension, then copied with a neutral .txt extension */
     {
         P p; pbegin(&p);
         PRIMAL_appendvars(p.task, 2);
@@ -19309,10 +19498,10 @@ static void test_t267(void) {
         check_rc(PRIMAL_writedata(p.task, "/tmp/t267.lp"), PRIMAL_RES_OK, "write lp");
         pend(&p);
     }
-    t267_cp("/tmp/t267.mps", "/tmp/t267c.txt");   /* MPS in un .txt */
-    t267_cp("/tmp/t267.lp",  "/tmp/t267a.txt");   /* LP  in un .txt */
+    t267_cp("/tmp/t267.mps", "/tmp/t267c.txt");   /* MPS in a .txt */
+    t267_cp("/tmp/t267.lp",  "/tmp/t267a.txt");   /* LP  in a .txt */
     { FILE *f = fopen("/tmp/t267b.txt", "w"); if (f) { fputs(T256_LIN, f); fclose(f); } }
-    /* A: MPS forzato */
+    /* A: MPS forced */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_MPS,
@@ -19322,7 +19511,7 @@ static void test_t267(void) {
         close_enough_tol(o, 3.0, 1e-7, "A obj=3");
         pend(&p);
     }
-    /* B: LP forzato su un .txt; l'estensione (MPS) fallirebbe -> discriminante */
+    /* B: LP forced on a .txt; the extension (MPS) would fail -> discriminator */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267a.txt", PRIMAL_DATA_FORMAT_LP,
@@ -19339,7 +19528,7 @@ static void test_t267(void) {
         check(rc != PRIMAL_RES_OK, "B' estensione .txt su un LP fallisce (MPS)");
         pend(&p);
     }
-    /* C: OPF forzato su un .txt */
+    /* C: OPF forced on a .txt */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267b.txt", PRIMAL_DATA_FORMAT_OP,
@@ -19349,7 +19538,7 @@ static void test_t267(void) {
         close_enough_tol(o, 250.0/3.0, 1e-5, "C obj=250/3");
         pend(&p);
     }
-    /* D: formati senza lettore */
+    /* D: formats without a reader */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_TASK,
@@ -19360,7 +19549,7 @@ static void test_t267(void) {
                                        PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D JSON rifiutato");
         pend(&p);
     }
-    /* E: compressione non linkata */
+    /* E: compression not linked */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_MPS,
@@ -19371,7 +19560,7 @@ static void test_t267(void) {
     }
 }
 
-/* ---------------- T268: memoria dell'env/task e global env ---------------- */
+/* ---------------- T268: env/task memory and global env ---------------- */
 static void test_t268(void) {
     cur_name = "T268 memoria dell'env/task e global env";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -19399,6 +19588,7 @@ static void test_t268(void) {
     PRIMAL_deleteenv(&env);
 }
 
+/* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
     test_t268();
     test_t267();

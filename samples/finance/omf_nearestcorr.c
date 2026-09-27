@@ -66,6 +66,7 @@ static const double HIGHAM[N][N] = {
     {0.5301, 0.8169, 1.0000, 0.6513},
     {0.1823, 0.1488, 0.6513, 1.0000}};
 
+/* Solve the nearest-correlation SDP and check it against Higham. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t task;
     const int nd = N * (N + 1) / 2;

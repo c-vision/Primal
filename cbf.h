@@ -17,21 +17,25 @@
  */
 
 /* cbf.h - Conic Benchmark Format (CBF v4) I/O
- * Sottoinsieme supportato:
- *   VER (1..4), OBJSENSE, VAR (F,L+,L-,L=,Q,QR,EXP,EXP*,@k:POW con alpha len 2),
+ * Supported subset:
+ *   VER (1..4), OBJSENSE, VAR (F,L+,L-,L=,Q,QR,EXP,EXP*,@k:POW with alpha len 2),
  *   INT, PSDVAR, PSDCON, CON, POWCONES,
  *   OBJACOORD, OBJFCOORD, OBJBCOORD, ACOORD, FCOORD, BCOORD, HCOORD, DCOORD.
- * CHANGE termina il file (hotstart-sequences non supportate).
- * Non supportati (errore): L-, ONENORM, INFNORM, SVECPSD, GMEAN*, GMEANABS*,
- *   POWH, POW*, @k:POW*, POWCONES con vettori alpha di lunghezza != 2.
- * Deviazione documentata: un vincolo LMI (PSDCON) viene ricostruito come
- * variabile bar + vincoli di uguaglianza elemento-per-elemento. */
+ * CHANGE terminates the file (hotstart sequences are not supported).
+ * Not supported (error): L-, ONENORM, INFNORM, SVECPSD, GMEAN*, GMEANABS*,
+ *   POWH, POW*, @k:POW*, POWCONES with alpha vectors of length != 2.
+ * Documented deviation: an LMI constraint (PSDCON) is rebuilt as a bar
+ * variable plus element-by-element equality constraints. */
 #ifndef CBF_H
 #define CBF_H
 #include <stdio.h>
 #include "primal.h"
 
+/* Write the task in CBF v4; RPOW cones make the writer answer ERR_ARG.
+ * Returns PRIMAL_RES_OK, ERR_NULL, ERR_ALLOC or ERR_ARG. */
 PRIMALrescodee cbf_write(PRIMALtask_t t, FILE *f);
+/* Read a CBF v4 file into an EMPTY task (numvar==0 && numcon==0).
+ * Returns PRIMAL_RES_OK, ERR_NULL, ERR_FILE, ERR_ARG or ERR_ALLOC. */
 PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f);
 
 #endif

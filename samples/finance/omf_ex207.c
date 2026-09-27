@@ -42,6 +42,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the relative robust portfolio SOCP and check the book optimum. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     const double L11 = 0.42, L21 = 0.231, L22 = 0.235678147;

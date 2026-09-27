@@ -89,6 +89,7 @@ static double solve_case(double cap, double wout[NA], double *sout, int *ok_out)
     return obj > 0 ? 1.0 / obj : -1.0;                  /* Sharpe = 1/s */
 }
 
+/* Run the two sector-cap cases and check the Sharpe values. */
 int main(void) {
     printf("sharpe_ratio_sectors (4 asset, 2 settori, Sigma=I)\n");
     int all = 1;

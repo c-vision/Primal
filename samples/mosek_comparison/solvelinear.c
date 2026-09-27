@@ -22,19 +22,20 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* solvelinear.c — porting dell'esempio "solvelinear.jl" della Julia API
- * MOSEK: risolvere un sistema lineare A x = b come problema di ottimizzazione
- * (min ||Ax - b|| su un LP: qui min t s.t. -t <= (Ax-b)_i <= t).
+/* solvelinear.c — port of the MOSEK Julia API "solvelinear.jl" example:
+ * solve a linear system A x = b as an optimization problem
+ * (min ||Ax - b|| via an LP: here min t s.t. -t <= (Ax-b)_i <= t).
  *
- * Sistema 3x3 (verificato a mano):
+ * 3x3 system (verified by hand):
  *   A = [2 1 -1; -3 -1 2; -2 1 2],  b = (8, -11, -3)
- * Soluzione: x = (2, 3, -1) (sostituzione diretta).
- * Il LP: min t con |Ax-b| <= t ha ottimo t=0 e x=(2,3,-1).
+ * Solution: x = (2, 3, -1) (direct substitution).
+ * The LP: min t with |Ax-b| <= t has optimum t=0 and x=(2,3,-1).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the linear system as an LP and check x=(2,3,-1), t=0. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -42,13 +43,13 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: x0, x1, x2, t */
+    /* variables: x0, x1, x2, t */
     PRIMAL_appendvars(task, 4);
     for (int j = 0; j < 3; j++) PRIMAL_putvarbound(task, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
     PRIMAL_putvarbound(task, 3, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putcj(task, 3, 1.0);    /* min t */
 
-    /* righe: (Ax)_i - t <= b_i  e  -(Ax)_i - t <= -b_i */
+    /* rows: (Ax)_i - t <= b_i  and  -(Ax)_i - t <= -b_i */
     PRIMAL_appendcons(task, 6);
     double A[3][3] = {{2, 1, -1}, {-3, -1, 2}, {-2, 1, 2}};
     double b[3] = {8, -11, -3};

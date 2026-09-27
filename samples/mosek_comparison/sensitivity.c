@@ -22,23 +22,24 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sensitivity.c — porting dell'esempio "sensitivity.jl" della Julia API
- * MOSEK: analisi post-ottima (cost sensitivity) su un piccolo LP.
+/* sensitivity.c — port of the MOSEK Julia API "sensitivity.jl" example:
+ * post-optimal analysis (cost sensitivity) on a small LP.
  *
- * Problema (base dell'esempio T65, verificato a mano):
+ * Problem (basis of test T65, verified by hand):
  *   min x0 + x1   s.t.  x0 + 2*x1 >= 4,  x0, x1 >= 0
- * Ottimo: x* = (0, 2), obj = 2. Cost sensitivity:
- *   - x0 (nonbasic al lower): resta a 0 finche' c0 >= 1/2
- *     (sotto 1/2 conviene spostare peso su x0) -> lcost = 0.5, ucost = inf
- *   - x1 (basic): la soluzione resta ottimale per c1 qualsiasi nel range
- *     degenere [1,1] (il clone non espone la base: range puntiforme)
- * Verifica esterna: re-solve con c0 = 0.4 (fuori range -> x0 > 0) e
- * c0 = 0.6 (dentro range -> x0 resta 0).
+ * Optimum: x* = (0, 2), obj = 2. Cost sensitivity:
+ *   - x0 (nonbasic at the lower bound): stays at 0 while c0 >= 1/2
+ *     (below 1/2 it pays to shift weight to x0) -> lcost = 0.5, ucost = inf
+ *   - x1 (basic): the solution stays optimal for any c1 in the degenerate
+ *     range [1,1] (the clone does not expose the basis: point range)
+ * External check: re-solve with c0 = 0.4 (out of range -> x0 > 0) and
+ * c0 = 0.6 (in range -> x0 stays 0).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Re-solve the LP with a given c0 and return the objective. */
 static double solve_with_c0(double c0, double *x0, double *x1) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -65,6 +66,7 @@ static double solve_with_c0(double c0, double *x0, double *x1) {
     return po;
 }
 
+/* Solve the base LP, report cost sensitivity and verify by re-solving. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -92,7 +94,7 @@ int main(void) {
     printf("c0 in [%.4f, %s]\n", lc0, uc0 == INFINITY ? "+inf" : "...");
     printf("c1 in [%.4f, %.4f] (basic: range degenere)\n", lc1, uc1);
 
-    /* verifica esterna */
+    /* external check */
     double xa, xb, ya, yb;
     double p_in = solve_with_c0(0.6, &xa, &ya);
     double p_out = solve_with_c0(0.4, &xb, &yb);
@@ -101,9 +103,9 @@ int main(void) {
 
     int ok = fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9 &&
              fabs(lc0 - 0.5) < 1e-9 && uc0 == INFINITY &&
-             fabs(xa) < 1e-9 &&            /* in range: x0 resta 0 */
+             fabs(xa) < 1e-9 &&            /* in range: x0 stays 0 */
              fabs(xb) > 1e-9 &&            /* out range: x0 > 0 */
-             fabs(p_out - (0.4 * 4.0)) < 1e-6;  /* tutto su x0: 1.6 */
+             fabs(p_out - (0.4 * 4.0)) < 1e-6;  /* all on x0: 1.6 */
     printf("%s (range c0 confermato da re-solve)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);

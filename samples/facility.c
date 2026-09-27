@@ -34,11 +34,13 @@
 #include "primal.h"
 
 static unsigned st = 55555u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
 }
 
+/* Build the facility location model (integral=1 for the MIP, 0 for the LP). */
 static void build(PRIMALtask_t t, int m, int n, int integral,
                   const double *f, const double *q, const double *d,
                   const double *c) {
@@ -75,6 +77,7 @@ static void build(PRIMALtask_t t, int m, int n, int integral,
     }
 }
 
+/* Build, solve and verify the facility location MILP with its LP bound. */
 int main(int argc, char **argv) {
     int m = argc > 1 ? atoi(argv[1]) : 15;
     int n = argc > 2 ? atoi(argv[2]) : 40;

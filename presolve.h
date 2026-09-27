@@ -63,6 +63,7 @@ void presolve_postsolve(const Presolve *p, const double *xred, const double *yre
 void presolve_postsolve_dir(const Presolve *p, const double *rred, const double *yred,
                             double *rfull, double *yfull);
 
+/* Release a Presolve object and its reduction log. NULL-safe. */
 void presolve_free(Presolve *p);
 
 #endif /* PRESOLVE_H */

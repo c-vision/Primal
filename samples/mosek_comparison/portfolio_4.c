@@ -22,23 +22,24 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* portfolio_4.c — porting dell'esempio "portfolio_4_transcost.jl" della
- * MOSEK Julia API: ottimizzazione di portafoglio con costi di transazione
- * — versione MIQP (MIP + obiettivo quadratico): budget di cardinalita'
- * limitata con variabili binarie oltre ai costi lineari di transazione.
+/* portfolio_4.c — port of the MOSEK Julia API "portfolio_4_transcost.jl"
+ * example: portfolio optimization with transaction costs
+ * — MIQP version (MIP + quadratic objective): cardinality-limited budget
+ * with binary variables plus linear transaction costs.
  *
  *   max  r'x - gamma*x'Sigma x - f' |x - x0|
- *   s.t. sum(x) = 1,  0 <= x_j <= y_j,  y binaria,  sum(y) <= k
+ *   s.t. sum(x) = 1,  0 <= x_j <= y_j,  y binary,  sum(y) <= k
  *
- * Dati (tutorial MOSEK, n=3): r, GT, gamma = 0.05, f = 0.01, x0 uniforme,
- * k = 3 (nessun limite effettivo con n=3, ma esercita le binarie).
- * |x - x0| lineare con variabili ausiliarie u_j (2 righe per j).
- * Verifica: bilancio, semi-logica delle binarie, obj <= portfolio_1.
+ * Data (MOSEK tutorial, n=3): r, GT, gamma = 0.05, f = 0.01, x0 uniform,
+ * k = 3 (no effective limit with n=3, but exercises the binaries).
+ * |x - x0| linear with auxiliary variables u_j (2 rows per j).
+ * Check: budget, binary logic, obj <= portfolio_1.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the transaction-cost MIQP and verify budget, binaries and bound. */
 int main(void) {
     const int n = 3;
     const int k = 3;
@@ -63,9 +64,9 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: x (0..2), u (3..5), y (6..8) */
+    /* variables: x (0..2), u (3..5), y (6..8) */
     PRIMAL_appendvars(task, 3 * n);
-    /* righe: bilancio, cardinalita', x_j <= y_j (n), |x_j-x0_j| <= u_j (2n) */
+    /* rows: budget, cardinality, x_j <= y_j (n), |x_j-x0_j| <= u_j (2n) */
     PRIMAL_appendcons(task, 2 + n + 2 * n);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
@@ -78,13 +79,13 @@ int main(void) {
         PRIMAL_putvartype(task, 2 * n + j, PRIMAL_VAR_TYPE_INT_BIN);
     }
 
-    {   /* bilancio: sum x = 1 */
+    {   /* budget: sum x = 1 */
         int sub[3] = {0, 1, 2};
         double v[3] = {1.0, 1.0, 1.0};
         PRIMAL_putarow(task, 0, 3, sub, v);
         PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 1.0, 1.0);
     }
-    {   /* cardinalita': sum y <= k */
+    {   /* cardinality: sum y <= k */
         int sub[3] = {6, 7, 8};
         double v[3] = {1.0, 1.0, 1.0};
         PRIMAL_putarow(task, 1, 3, sub, v);

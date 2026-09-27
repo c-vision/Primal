@@ -104,9 +104,9 @@ static int enter_col(const Tab *t, int bland) {
             if (red[j] < -RED_EPS) return j;
         return -1;
     }
-    /* Steepest-edge (gated GMB_SIMPLEX_STEEPEST): massimizza red^2 / gamma con
-     * gamma = 1 + ||colonna_j||^2 del tableau. Pivot piu' lunghi ma meno
-     * iterazioni; il default resta Dantzig (costo O(n) per iterazione). */
+    /* Steepest-edge (gated GMB_SIMPLEX_STEEPEST): maximizes red^2 / gamma with
+     * gamma = 1 + ||column_j||^2 of the tableau. Longer pivots but fewer
+     * iterations; the default stays Dantzig (O(n) cost per iteration). */
     if (getenv("GMB_SIMPLEX_STEEPEST")) {
         int best = -1; double bestscore = 0.0;
         for (int j = 0; j < n; j++) {
@@ -219,6 +219,8 @@ static int run_phase(Tab *t, int max_iter, int *ent_out) {
     return SIMP_MAXITER;
 }
 
+/* Two-phase primal simplex driver on the tableau (phase 1 / phase 2).
+ * Builds the initial tableau, extracts x, y and the Farkas rays. */
 int simplex_solve_std_tab(const double *A, int m, int n,
                           const double *b, const double *c,
                           int max_iter, double *x, double *y,
@@ -397,8 +399,8 @@ int simplex_dual_solve_std(const double *A, int m, int n,
     T = (double *)malloc((size_t)m * ncols * sizeof(double));
     red = (double *)malloc((size_t)n * sizeof(double));
     cB = (double *)malloc((size_t)m * sizeof(double));
-    /* NB: M e' la [B | I] di m righe per 2m colonne (il codice di gmbortools la
-     * allocava m*m -> heap-buffer-overflow, trovato da ASan nel porting). */
+    /* NB: M is the [B | I] of m rows by 2m columns (the gmbortools code
+     * allocated it m*m -> heap-buffer-overflow, found by ASan while porting). */
     M = (double *)malloc((size_t)m * 2 * m * sizeof(double));   /* [B | I] -> B^-1 */
     bas = (int *)malloc((size_t)m * sizeof(int));
     if (!T || !red || !cB || !M || !bas) { free(T); free(red); free(cB); free(M); free(bas); return 4; }
@@ -406,7 +408,7 @@ int simplex_dual_solve_std(const double *A, int m, int n,
         for (j = 0; j < m; j++) M[(size_t)i * 2 * m + j] = A[(size_t)i * n + basis[j]];
         for (j = 0; j < m; j++) M[(size_t)i * 2 * m + m + j] = (i == j) ? 1.0 : 0.0;
     }
-    {   /* Gauss-Jordan su [B | I] per ottenere B^-1 nella meta' destra */
+    {   /* Gauss-Jordan on [B | I] to get B^-1 in the right half */
         double *W = (double *)malloc((size_t)m * 2 * m * sizeof(double));
         if (!W) { free(T); free(red); free(cB); free(M); free(bas); return 4; }
         for (i = 0; i < m; i++) for (j = 0; j < 2 * m; j++) W[(size_t)i * 2 * m + j] = M[(size_t)i * 2 * m + j];
@@ -475,8 +477,8 @@ int simplex_dual_solve_std(const double *A, int m, int n,
     for (i = 0; i < n; i++) x[i] = 0.0;
     for (i = 0; i < m; i++) if (bas[i] >= 0 && bas[i] < n) x[bas[i]] = T[(size_t)i * ncols + n];
     if (basis_out) for (i = 0; i < m; i++) basis_out[i] = bas[i];
-    /* duali y = cB^T B^-1: risolve B^T y = cB con LU su B = A[:, bas] (il tableau
-     * non conserva B^-1 aggiornata, quindi si ricostruisce dalla base finale). */
+    /* duals y = cB^T B^-1: solves B^T y = cB with LU on B = A[:, bas] (the tableau
+     * does not keep an updated B^-1, so it is rebuilt from the final basis). */
     if (yout) {
         double *Bt = (double *)malloc((size_t)m * m * sizeof(double));
         double *rhs = (double *)malloc((size_t)m * sizeof(double));
@@ -541,7 +543,7 @@ int simplex_revised_solve_std(const double *A, int m, int n,
     if (!Binv || !xB || !y || !d || !cB || !bas) {
         free(Binv); free(xB); free(y); free(d); free(cB); free(bas); return 4;
     }
-    {   /* [B | I] -> B^-1 nella meta' destra */
+    {   /* [B | I] -> B^-1 in the right half */
         double *W = (double *)malloc((size_t)m * 2 * m * sizeof(double));
         if (!W) { free(Binv); free(xB); free(y); free(d); free(cB); free(bas); return 4; }
         for (i = 0; i < m; i++) {
@@ -602,7 +604,7 @@ int simplex_revised_solve_std(const double *A, int m, int n,
     }
     for (i = 0; i < n; i++) x[i] = 0.0;
     for (i = 0; i < m; i++) if (bas[i] >= 0 && bas[i] < n) x[bas[i]] = xB[i];
-    if (yout) for (j = 0; j < m; j++) yout[j] = y[j];   /* duali y = cB^T B^-1 */
+    if (yout) for (j = 0; j < m; j++) yout[j] = y[j];   /* duals y = cB^T B^-1 */
     free(Binv); free(xB); free(y); free(d); free(cB); free(bas);
     return rc;
 }

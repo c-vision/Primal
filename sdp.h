@@ -66,6 +66,6 @@ int sdp_ipm(int m, int n, const double *A, const double *b, const double *c,
             double *const *Zsoc, double *const *Ssoc,
             double *const *Zexp, double *const *Sexp, const double *xwarm,
             const double *ywarm,
-            int *fb_ok /* out: un punto near-optimal e' stato salvato come fallback */);
+            int *fb_ok /* out: 1 when a near-optimal point was saved as fallback */);
 
 #endif /* SDP_H */

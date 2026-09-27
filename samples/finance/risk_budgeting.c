@@ -34,6 +34,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the risk-budgeting model and check the (2/3,1/3) budgets. */
 int main(void) {
     static const double b[2] = {0.8, 0.2};
     PRIMALenv_t env;

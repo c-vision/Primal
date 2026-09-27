@@ -22,20 +22,21 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* mioinfeas1.c — porting dell'esempio "mioinfeas1.jl" della MOSEK Julia API
- * (docs.mosek.com/11.0/juliaapi): un MIP infeasible.
+/* mioinfeas1.c — port of the MOSEK Julia API "mioinfeas1.jl" example
+ * (docs.mosek.com/11.0/juliaapi): an infeasible MIP.
  *
- * min 0  s.t. x >= 5,  x <= 2,  x intero >= 0
+ * min 0  s.t. x >= 5,  x <= 2,  x integer >= 0
  *
- * Atteso (tabella 7.3 del reference, problemi interi): prosta = PRIM_INFEAS,
- * solsta = UNKNOWN. Il reference non pubblica mai un certificato di
- * infeasibilita' come solsta su un MIP: quel numero e' riservato a un vettore
- * di Farkas, che un branch-and-bound non produce. rc resta ERR_INFEASIBLE.
+ * Expected (reference table 7.3, integer problems): prosta = PRIM_INFEAS,
+ * solsta = UNKNOWN. The reference never publishes an infeasibility
+ * certificate as solsta on a MIP: that number is reserved for a Farkas
+ * vector, which a branch-and-bound does not produce. rc stays ERR_INFEASIBLE.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Build the infeasible MIP and check the infeasible verdict. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

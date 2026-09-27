@@ -35,6 +35,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the mean-CVaR LP and check the knee optimum w=(4/7,3/7). */
 int main(void) {
     static const double mu[2] = {0.2, 0.1};
     static const double R0[2] = {0.1, 0.3};

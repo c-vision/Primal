@@ -22,17 +22,18 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* simple.c — porting dell'esempio "simple.jl" della MOSEK Julia API:
- * il LP piu' semplice possibile con verifica dell'intera catena API.
+/* simple.c — port of the MOSEK Julia API "simple.jl" example:
+ * the simplest possible LP, checking the whole API chain.
  *
  *   max x0 + x1  s.t.  x0 + x1 = 1,  0 <= x0, x1 <= 1
- * Ottimo: qualsiasi punto sulla riga con obj=1 (soluzione degenere:
- * verifica del pobj, non del punto).
+ * Optimum: any point on the row with obj=1 (degenerate solution:
+ * check the pobj, not the point).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the one-row LP and check objective, strong duality and feasibility. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -66,7 +67,7 @@ int main(void) {
     int ok = sta == PRIMAL_SOL_STA_OPTIMAL &&
              fabs(po - 1.0) < 1e-9 &&
              fabs(dobj - 1.0) < 1e-6 &&          /* strong duality */
-             fabs(xx[0] + xx[1] - 1.0) < 1e-6 &&  /* fattibilita' */
+             fabs(xx[0] + xx[1] - 1.0) < 1e-6 &&  /* feasibility */
              fabs(xx[0] - (1.0 - xx[1])) < 1e-6;
     printf("%s (atteso obj=1, pobj=dobj, fattibile)\n", ok ? "OK" : "FAIL");
 

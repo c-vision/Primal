@@ -22,30 +22,31 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* portfolio_1.c — porting dell'esempio "portfolio_1_basic.jl" della
- * MOSEK Julia API (docs.mosek.com/11.0/juliaapi): ottimizzazione di
- * portafoglio di Markowitz, versione base.
+/* portfolio_1.c — port of the MOSEK Julia API "portfolio_1_basic.jl"
+ * example (docs.mosek.com/11.0/juliaapi): Markowitz portfolio
+ * optimization, basic version.
  *
  *   max   r'x - gamma * x' Sigma x
- *   s.t.  sum(x) = w0 + U'x + f|x - x0|   (bilancio, f=0 nella versione base)
- *         0 <= x <= 0.5? (budget di investimenti per asset)
+ *   s.t.  sum(x) = w0 + U'x + f|x - x0|   (budget, f=0 in the basic version)
+ *         0 <= x <= 0.5? (investment budget per asset)
  *
- * Dati (3 asset, dal tutorial MOSEK):
+ * Data (3 assets, from the MOSEK tutorial):
  *   r    = (0.10717, 0.07502, 0.11902)
  *   Sigma= [0.0277 0.0038 0.0021; 0.0038 0.0120 0.0013; 0.0021 0.0013 0.0086]
- *   gamma= 0.03? usato qui: gamma = 0.05
- *   budget: sum(x) = 1, 0 <= x <= 0.5? qui: 0 <= x <= 1
+ *   gamma= 0.03? used here: gamma = 0.05
+ *   budget: sum(x) = 1, 0 <= x <= 0.5? here: 0 <= x <= 1
  *
- * Verifica: pobj = dobj (certificato di ottimalita' del QP) e ammissibilita'.
+ * Check: pobj = dobj (QP optimality certificate) and feasibility.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the basic Markowitz QP and check feasibility and zero duality gap. */
 int main(void) {
     const int n = 3;
     const double r[3] = {0.10717, 0.07502, 0.11902};
-    /* Sigma = GT'GT con GT triangolare inferiore (factor model del tutorial) */
+    /* Sigma = GT'GT with GT lower triangular (the tutorial's factor model) */
     const double GT[9] = {0.1667, 0.0, 0.0,
                           0.0247, 0.1592, 0.0,
                           0.0197, 0.0158, 0.1327};
@@ -69,9 +70,9 @@ int main(void) {
     PRIMAL_appendcons(task, 1);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
     for (int j = 0; j < n; j++) PRIMAL_putcj(task, j, r[j]);
-    /* obj = r'x - gamma*x'Sx = 0.5 x'Qx con Q = -2*gamma*S.
-     * putqobj riceve la triangolare superiore; le voci fuori diagonale
-     * sono rispecchiate internamente -> si fornisce il coefficiente pieno. */
+    /* obj = r'x - gamma*x'Sx = 0.5 x'Qx with Q = -2*gamma*S.
+     * putqobj receives the upper triangle; off-diagonal entries
+     * are mirrored internally -> the full coefficient is supplied. */
     {
         int sub[6] = {0, 0, 0, 1, 1, 2};
         int subj[6] = {0, 1, 2, 1, 2, 2};
@@ -97,7 +98,7 @@ int main(void) {
     printf("x = (%.6f, %.6f, %.6f)\n", xx[0], xx[1], xx[2]);
     printf("pobj = %.6f, dobj = %.6f\n", po, dobj);
 
-    /* verifica: ammissibile + pobj coerente + no duality gap */
+    /* check: feasible + consistent pobj + no duality gap */
     int ok = fabs(xx[0] + xx[1] + xx[2] - 1.0) < 1e-6;
     for (int j = 0; j < n; j++) if (xx[j] < -1e-9) ok = 0;
     double q = 0.0;

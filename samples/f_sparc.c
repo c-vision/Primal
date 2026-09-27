@@ -45,6 +45,7 @@
 #define NOISE 1.0
 #define DEMAND 0.2
 
+/* Solve the 1x1 f-sparc model and check it against the t scan. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

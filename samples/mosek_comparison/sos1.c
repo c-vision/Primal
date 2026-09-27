@@ -22,21 +22,22 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* sos1.c — porting dell'esempio "sos1.jl" (C API docs.mosek.com):
+/* sos1.c — port of the "sos1.jl" example (C API docs.mosek.com):
  * SOS type-1 constraint.
  *
- * Problema (verificato a mano): min x0 + x1 + x2
- *   s.t. x0 + 2*x1 + 3*x2 >= 4,   SOS1 {x0, x1, x2} (pesi 1,2,3),
+ * Problem (verified by hand): min x0 + x1 + x2
+ *   s.t. x0 + 2*x1 + 3*x2 >= 4,   SOS1 {x0, x1, x2} (weights 1,2,3),
  *        0 <= x <= 1
- * SOS1: al piu' UNA variabile non nulla. La piu' "efficiente" per coprire
- * la riga e' x2 (3 unita' di copertura per unita' di costo): x2 = 2.5/3
- * = 0.8333, obj = 0.8333 (il continuo entro [0,1] domina).
- * Ottimo: x=(0,0,5/6), obj=5/6.
+ * SOS1: at most ONE nonzero variable. The most "efficient" one to cover
+ * the row is x2 (3 units of coverage per unit of cost): x2 = 2.5/3
+ * = 0.8333, obj = 0.8333 (the continuous one within [0,1] dominates).
+ * Optimum: x=(0,0,5/6), obj=5/6.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the SOS1 model and check the single-member optimum. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -62,8 +63,8 @@ int main(void) {
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj);
     printf("x = (%.4f, %.4f, %.4f), obj = %.4f\n", xx[0], xx[1], xx[2], obj);
 
-    /* verifica SOS1 (al piu' un non nullo) via enumerazione dei 3 membri:
-     * solo il membro k attivo con x_k = 2.5/coverage_k se <= 1 */
+    /* SOS1 check (at most one nonzero) by enumerating the 3 members:
+     * only member k active with x_k = 2.5/coverage_k if <= 1 */
     double best = INFINITY;
     double cov[3] = {1.0, 2.0, 3.0};
     for (int k = 0; k < 3; k++) {

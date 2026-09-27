@@ -32,6 +32,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the two-period turnover LP and check the value 0.9. */
 int main(void) {
     static const double mu[2] = {0.5, 0.1};
     static const double w0init[2] = {0.5, 0.5};

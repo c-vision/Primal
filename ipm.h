@@ -29,9 +29,11 @@ void ipm_set_deadline(double abs_deadline);
  * fired (so PRIMAL_optimize can report TRM_OBJECTIVE_RANGE). */
 void ipm_set_obj_cuts(double lower, double upper);
 int  ipm_obj_cut_hit(void);
-/* Numero di correttori dell'IPM (>=1; MSK_IPAR_INTPNT_MAX_NUM_COR). */
+/* Number of IPM correctors (>=1; MSK_IPAR_INTPNT_MAX_NUM_COR). */
 void ipm_set_max_cor(int ncor);
 
+/* Dense Mehrotra IPM on the standard form (Q = NULL for LP).
+ * Solves for primal x, dual y and multiplier z from an interior start. */
 int ipm_solve_std(const double *A, const double *Q, int m, int n,
                   const double *b, const double *c,
                   double tol_gap, double tol_pfeas, double tol_dfeas,

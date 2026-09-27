@@ -22,21 +22,22 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* mico1.c — porting dell'esempio "mico1.jl" della MOSEK Julia API
+/* mico1.c — port of the MOSEK Julia API "mico1.jl" example
  * (docs.mosek.com/11.0/juliaapi): mixed-integer conic optimization
- * (MIP + coni quadratrici).
+ * (MIP + quadratic cones).
  *
- * Problema (verificato a mano):
+ * Problem (verified by hand):
  *   max x0
  *   s.t. (t, x0, x1) in QUAD   (t >= ||(x0, x1)||),  t = 1
- *        x0 + x1 >= 0.5,  x0 intera >= 0, x1 >= 0
- * Il cono dà x0^2 + x1^2 <= 1; x0 intero -> x0 in {0, 1}. Con x0=1:
- * x1 = 0 e x0+x1 = 1 >= 0.5 ok -> obj = 1. Ottimo: x = (1, 1, 0), obj 1.
+ *        x0 + x1 >= 0.5,  x0 integer >= 0, x1 >= 0
+ * The cone gives x0^2 + x1^2 <= 1; x0 integer -> x0 in {0, 1}. With x0=1:
+ * x1 = 0 and x0+x1 = 1 >= 0.5 ok -> obj = 1. Optimum: x = (1, 1, 0), obj 1.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the mixed-integer conic problem and confirm by enumeration. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
@@ -44,7 +45,7 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: t, x0, x1 */
+    /* variables: t, x0, x1 */
     PRIMAL_appendvars(task, 3);
     PRIMAL_appendcons(task, 1);
     PRIMAL_putvarbound(task, 0, PRIMAL_BK_FX, 1.0, 1.0);       /* t = 1 */
@@ -54,11 +55,11 @@ int main(void) {
     PRIMAL_putcj(task, 1, 1.0);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
-    /* riga: x0 + x1 >= 0.5 */
+    /* row: x0 + x1 >= 0.5 */
     PRIMAL_putarow(task, 0, 2, (int[]){1, 2}, (double[]){1.0, 1.0});
     PRIMAL_putconbound(task, 0, PRIMAL_BK_LO, 0.5, INFINITY);
 
-    /* cono: (t, x0, x1) in QUAD */
+    /* cone: (t, x0, x1) in QUAD */
     PRIMAL_appendcone(task, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0, 1, 2});
 
     PRIMALrescodee rc = PRIMAL_optimize(task);
@@ -69,12 +70,12 @@ int main(void) {
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj);
     printf("x = (%.4f, %.4f), obj = %.4f\n", xx[1], xx[2], obj);
 
-    /* verifica per enumerazione: x0 intero in {0,1}, cono + riga */
+    /* check by enumeration: x0 integer in {0,1}, cone + row */
     double best = -1e30;
     for (int a = 0; a <= 1; a++) {
-        double xmax = sqrt(1.0 - (double)a * a);   /* cono: x1 <= sqrt(1-a^2) */
-        double need = 0.5 - a;                     /* riga: x1 >= 0.5-a */
-        if (need > xmax + 1e-12) continue;          /* x1 non puo' coprire la riga */
+        double xmax = sqrt(1.0 - (double)a * a);   /* cone: x1 <= sqrt(1-a^2) */
+        double need = 0.5 - a;                     /* row: x1 >= 0.5-a */
+        if (need > xmax + 1e-12) continue;          /* x1 cannot cover the row */
         double o = (double)a;
         if (o > best) best = o;
     }

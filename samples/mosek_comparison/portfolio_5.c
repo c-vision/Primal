@@ -22,22 +22,23 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* portfolio_5.c — porting dell'esempio "portfolio_5_card.jl" della Julia
- * MOSEK API: ottimizzazione di portafoglio con vincolo di CARDINALITA'
- * (al piu' k asset con peso non nullo) — MIP con variabili binarie.
+/* portfolio_5.c — port of the MOSEK Julia API "portfolio_5_card.jl"
+ * example: portfolio optimization with a CARDINALITY constraint
+ * (at most k assets with nonzero weight) — MIP with binary variables.
  *
  *   max  r'x - gamma*x'Sigma x
- *   s.t. sum(x) = 1,  0 <= x_j <= y_j,  y_j binaria,  sum(y) <= k
+ *   s.t. sum(x) = 1,  0 <= x_j <= y_j,  y_j binary,  sum(y) <= k
  *
- * Dati (tutorial MOSEK, n=3): r, GT, gamma = 0.05, k = 2.
- * Verifica: cardinalita' rispettata (al piu' 2 asset non nulli), bilancio,
- * e confronto con la versione senza cardinalita' (portfolio_1: obj ~
- * 0.119066): il vincolo k=2 riduce l'obiettivo.
+ * Data (MOSEK tutorial, n=3): r, GT, gamma = 0.05, k = 2.
+ * Check: cardinality respected (at most 2 nonzero assets), budget,
+ * and comparison with the version without cardinality (portfolio_1: obj ~
+ * 0.119066): the k=2 constraint reduces the objective.
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the cardinality-constrained portfolio MIP and verify the constraint. */
 int main(void) {
     const int n = 3;
     const int k = 2;
@@ -60,9 +61,9 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: x (3), y (3 binarie) */
+    /* variables: x (3), y (3 binaries) */
     PRIMAL_appendvars(task, 2 * n);
-    /* righe: bilancio, cardinalita' sum(y) <= k, x_j <= y_j (3) */
+    /* rows: budget, cardinality sum(y) <= k, x_j <= y_j (3) */
     PRIMAL_appendcons(task, 2 + n);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
@@ -73,13 +74,13 @@ int main(void) {
         PRIMAL_putvartype(task, n + j, PRIMAL_VAR_TYPE_INT_BIN);
     }
 
-    {   /* bilancio: sum x = 1 */
+    {   /* budget: sum x = 1 */
         int sub[3] = {0, 1, 2};
         double v[3] = {1.0, 1.0, 1.0};
         PRIMAL_putarow(task, 0, 3, sub, v);
         PRIMAL_putconbound(task, 0, PRIMAL_BK_FX, 1.0, 1.0);
     }
-    {   /* cardinalita': sum y <= k */
+    {   /* cardinality: sum y <= k */
         int sub[3] = {3, 4, 5};
         double v[3] = {1.0, 1.0, 1.0};
         PRIMAL_putarow(task, 1, 3, sub, v);
@@ -112,8 +113,8 @@ int main(void) {
     printf("y = (%.0f, %.0f, %.0f)\n", xx[3], xx[4], xx[5]);
     printf("obj = %.6f\n", obj);
 
-    /* verifica: bilancio, cardinalita' (n asset attivi <= 2),
-     * x_j <= y_j, y binarie, obj <= versione senza cardinalita' */
+    /* check: budget, cardinality (n active assets <= 2),
+     * x_j <= y_j, y binaries, obj <= version without cardinality */
     int nact = 0;
     for (int j = 0; j < n; j++) {
         if (xx[j] > 1e-6) nact++;

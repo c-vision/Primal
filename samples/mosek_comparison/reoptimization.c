@@ -22,18 +22,19 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* reoptimization.c — porting dell'esempio "reoptimization.jl" della Julia
- * MOSEK API: risolvere, modificare un bound, ri-ottimizzare.
+/* reoptimization.c — port of the MOSEK Julia API "reoptimization.jl"
+ * example: solve, change a bound, re-optimize.
  *
- * Sequenza (verificata a mano):
+ * Sequence (verified by hand):
  *   1. max x0 + x1 s.t. x0 + x1 <= 4, x >= 0            -> obj 4
- *   2. il bound della riga passa a 10                    -> obj 10
- *   3. la riga passa a 2                                 -> obj 2
+ *   2. the row bound becomes 10                          -> obj 10
+ *   3. the row becomes 2                                 -> obj 2
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve, change the row bound twice, and re-optimize each time. */
 int main(void) {
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);

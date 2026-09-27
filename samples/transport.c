@@ -34,11 +34,13 @@
 #include "primal.h"
 
 static unsigned st = 12345u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
 }
 
+/* Build, solve and verify the transportation LP. */
 int main(int argc, char **argv) {
     int M = argc > 1 ? atoi(argv[1]) : 60;
     int N = argc > 2 ? atoi(argv[2]) : 60;

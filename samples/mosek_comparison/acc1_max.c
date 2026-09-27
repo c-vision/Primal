@@ -49,6 +49,7 @@
 #include <math.h>
 #include "primal.h"
 
+/* Solve the ACC quadratic-cone max problem and check the hand value. */
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);

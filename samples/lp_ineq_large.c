@@ -41,11 +41,13 @@
 #include "primal.h"
 
 static unsigned st = 246813579u;
+/* Deterministic pseudo-random draw in [0,1] from the fixed seed. */
 static double rnd(void) {
     st = st * 1103515245u + 12345u;
     return (double)((st >> 16) & 0x7fff) / 32767.0;
 }
 
+/* Build, solve and verify the large inequality-form LP with planted optimum. */
 int main(int argc, char **argv) {
     int m = argc > 1 ? atoi(argv[1]) : 300;   /* rows    */
     int n = argc > 2 ? atoi(argv[2]) : 6000;  /* cols    */
@@ -94,7 +96,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < m; i++)
         b[i] = Axs[i] + (tight[i] ? 0.0 : (rnd() * 5.0 + 0.1));
 
-    /* c = nu* - A'mu*  (stazionarieta': c + A'mu* - nu* = 0) ;  obj* = c'x* */
+    /* c = nu* - A'mu*  (stationarity: c + A'mu* - nu* = 0) ;  obj* = c'x* */
     double *c = (double *)malloc((size_t)n * sizeof(double));
     for (int j = 0; j < n; j++) {
         double s = nu[j];

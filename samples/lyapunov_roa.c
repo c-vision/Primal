@@ -157,6 +157,7 @@ static void jacobi(int n, const double *A, double *ev) {
     for (int i=0;i<n;i++) ev[i]=a[i*n+i];
 }
 
+/* Test SOS feasibility of the Lyapunov certificate at level rho. */
 static int solve_feas(double rho, double *QS, double *QL) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 0, 0, &t);
@@ -185,6 +186,7 @@ static int solve_feas(double rho, double *QS, double *QL) {
     return ok;
 }
 
+/* Bisect the certified level and verify the SOS certificate there. */
 int main(void) {
     double QS[100], QL[36];
     /* bisection on the certified level */

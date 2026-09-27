@@ -22,29 +22,31 @@
  * affiliated with, or endorsed by, MOSEK.
  */
 
-/* portfolio_3.c — porting dell'esempio "portfolio_3_impact.jl" della
- * MOSEK Julia API: ottimizzazione di portafoglio con costi di transazione
- * (lineari) e vincoli di market impact — versione MIP: budget massimo
- * di asset distinti (cardinalita' gestita qui come vincolo intero di
- * selezione, senza coni: il portfolio_3 ufficiale usa vincoli assoluti
- * |x_j - x0_j| <= u_j con u_j semi-continui; qui la parte MIP e' la
- * semi-continuita' delle u_j: i costi si pagano solo se l'asset e' scambiato).
+/* portfolio_3.c — port of the MOSEK Julia API "portfolio_3_impact.jl"
+ * example: portfolio optimization with (linear) transaction costs
+ * and market-impact constraints — MIP version: maximum budget
+ * of distinct assets (cardinality handled here as an integer selection
+ * constraint, without cones: the official portfolio_3 uses absolute
+ * constraints |x_j - x0_j| <= u_j with semi-continuous u_j; here the MIP
+ * part is the semi-continuity of u_j: costs are paid only if the asset is
+ * traded).
  *
  *   max  r'x - gamma*x'Sx - f' u
  *   s.t. sum(x) = 1,  0 <= x <= 1
- *        u_j >= |x_j - x0_j|  (2 righe lineari per j)
- *        u_j semi-continua [0.0001, 1]: il costo f_j u_j si attiva solo se
- *        l'asset e' scambiato (u=0 oppure u >= 0.0001)
+ *        u_j >= |x_j - x0_j|  (2 linear rows per j)
+ *        u_j semi-continuous [0.0001, 1]: the cost f_j u_j is active only if
+ *        the asset is traded (u=0 or u >= 0.0001)
  *
- * Dati: r, GT, gamma dal tutorial MOSEK (portfolio_1), f = 0.01 uniforme,
- * x0 = portafoglio iniziale uniforme (1/3, 1/3, 1/3).
- * Verifica: ammissibilita' (bilancio, semi-continuita'), confronto con la
- * versione senza costi (portfolio_1: pobj_3 <= pobj_1).
+ * Data: r, GT, gamma from the MOSEK tutorial (portfolio_1), f = 0.01 uniform,
+ * x0 = uniform initial portfolio (1/3, 1/3, 1/3).
+ * Check: feasibility (budget, semi-continuity), comparison with the
+ * version without costs (portfolio_1: pobj_3 <= pobj_1).
  */
 #include <stdio.h>
 #include <math.h>
 #include "primal.h"
 
+/* Solve the market-impact MIQP and verify budget and semi-continuity. */
 int main(void) {
     const int n = 3;
     const double r[3] = {0.10717, 0.07502, 0.11902};
@@ -52,7 +54,7 @@ int main(void) {
                           0.0247, 0.1592, 0.0,
                           0.0197, 0.0158, 0.1327};
     const double gamma = 0.05;
-    const double f = 0.01;             /* costo lineare di transazione */
+    const double f = 0.01;             /* linear transaction cost */
     const double x0[3] = {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0};
 
     double S[9];
@@ -68,9 +70,9 @@ int main(void) {
     PRIMALtask_t task;
     PRIMAL_maketask(env, 0, 0, &task);
 
-    /* variabili: x (3), u (3) — totale 6 */
+    /* variables: x (3), u (3) — total 6 */
     PRIMAL_appendvars(task, 2 * n);
-    /* righe: bilancio (1), u_j >= x_j - x0_j, u_j >= x0_j - x_j (2n) */
+    /* rows: budget (1), u_j >= x_j - x0_j, u_j >= x0_j - x_j (2n) */
     PRIMAL_appendcons(task, 1 + 2 * n);
     PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MAXIMIZE);
 
@@ -78,12 +80,12 @@ int main(void) {
         PRIMAL_putcj(task, j, r[j]);
         PRIMAL_putcj(task, n + j, -f);
         PRIMAL_putvarbound(task, j, PRIMAL_BK_RA, 0.0, 1.0);
-        /* u_j semi-continua: 0 oppure [0.0001, 1] */
+        /* u_j semi-continuous: 0 or [0.0001, 1] */
         PRIMAL_putvarbound(task, n + j, PRIMAL_BK_RA, 0.0001, 1.0);
         PRIMAL_putvartype(task, n + j, PRIMAL_VAR_TYPE_SEMI_CONT);
     }
 
-    /* bilancio: sum x = 1 */
+    /* budget: sum x = 1 */
     {
         int sub[3] = {0, 1, 2};
         double v[3] = {1.0, 1.0, 1.0};
@@ -125,14 +127,14 @@ int main(void) {
     printf("u = (%.4f, %.4f, %.4f)\n", xx[3], xx[4], xx[5]);
     printf("obj = %.6f\n", obj);
 
-    /* verifica: bilancio, |x-x0|<=u, semi-continuita' u */
+    /* check: budget, |x-x0|<=u, semi-continuity of u */
     int ok = fabs(xx[0] + xx[1] + xx[2] - 1.0) < 1e-5;
     for (int j = 0; j < n; j++) {
         if (fabs(xx[j] - x0[j]) > xx[n + j] + 1e-6) ok = 0;
         if (xx[n + j] > 1e-6 && xx[n + j] < 0.0001 - 1e-9) ok = 0;
     }
-    /* senza costi il portafoglio dominate: pobj_portfolio1 ~ 0.119066
-     * (calcolato dal sample portfolio_1 con gli stessi dati) */
+    /* without costs the portfolio dominates: pobj_portfolio1 ~ 0.119066
+     * (computed by the portfolio_1 sample with the same data) */
     printf("%s (bilancio+semi-continuita' verificati, obj <= 0.1191: %s)\n",
            ok ? "OK" : "FAIL", obj <= 0.1191 ? "si" : "NO");
     if (obj > 0.1191) ok = 0;
