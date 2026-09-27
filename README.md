@@ -158,6 +158,11 @@ Open algorithmic work, largest first:
   mixed-integer cuts.
 - **Parameter coverage.** 31 declared, ~16 wired to behaviour.
 - **I/O.** No TASK or PTF, no compression, no quadratic LP bracket syntax.
+- **SDP cut-loop stall threshold.** The tangent-cut loop now stops when the
+  cone violation stops shrinking (8 rounds, 0.9x). Those two constants are
+  reasoned, not measured: an SDP that converges slowly on a hard face could be
+  cut short. Values are unchanged on the whole SDP corpus, but no test yet
+  exercises the threshold the wrong way.
 
 ## Approfondimenti
 
