@@ -31,6 +31,10 @@
  * Repeated coordinates on the same position accumulate (the format declares
  * that an error; this reader is tolerant for simplicity).
  */
+/* strdup and setenv/unsetenv are POSIX, not ISO C99. Under -std=c99 glibc hides
+ * them, so strdup would be implicitly declared as returning int and its result
+ * truncated to 32 bits. Requesting POSIX 2008 explicitly declares them. */
+#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>

@@ -784,6 +784,10 @@ PRIMALrescodee PRIMAL_utf8towchar(size_t outputlen, size_t *len, size_t *conv,
         output[out++] = (PRIMALwchart)cp;
         in += (size_t)n;
     }
+    /* NUL-terminate when there is room. PRIMAL_wchartoutf8 scans its input up
+     * to a NUL, so an output without a terminator is not a string it can read
+     * back: the round trip read whatever followed in the caller's buffer. */
+    if (out < outputlen) output[out] = 0;
     *len = out; *conv = in;
     return PRIMAL_RES_OK;
 }

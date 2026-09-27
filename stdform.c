@@ -341,7 +341,9 @@ a_fail:
     stdform_free(sf);
     return NULL;
 qfail:
-    free(lc3); free(uc3);
+    /* csr_* , lc3 and uc3 are already released above (line 313), before the Q
+     * block runs: every goto qfail is downstream of that free, so freeing them
+     * again here was a double free. tri_free(&tq) is done by each goto site. */
     stdform_free(sf);
     return NULL;
 }

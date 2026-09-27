@@ -192,8 +192,8 @@ PRIMALrescodee opt_routes(PRIMALtask_t t) {
     double *bt_lx = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
     double *bt_ux = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
     if (!bt_lx || !bt_ux) {
+        free(bt_lorow); free(bt_uprow); free(bt_locoef); free(bt_upcoef);
         free(bt_lx); free(bt_ux);
-        free(bt_lorow); free(bt_uprow); free(bt_locoef); free(bt_upcoef); free(bt_lx); free(bt_ux);
         free(ci); free(lx); free(ux); free(lc); free(uc);
         return PRIMAL_RES_ERR_ALLOC;
     }

@@ -30,11 +30,19 @@
  *   duality: dobj_min = -(sum Y_i b_i^act + sum Z_j xb_j^act) - 1/2 x'Qx
  *   strong duality: |pobj_min - dobj_min| small.
  */
+/* setenv/unsetenv are POSIX, not ISO C99: under -std=c99 glibc does not declare
+ * them, so calling them without a prototype truncates the int return. */
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
 #include <string.h>
+/* M_PI is a POSIX/BSD extension, not standard C: glibc hides it under strict
+ * ISO mode (__STRICT_ANSI__, i.e. -std=c99). Define a portable fallback. */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include "primal.h"
 #include "simplex.h"
 #include "mpsio.h"
@@ -1068,12 +1076,12 @@ static void test_t26(void) {
     PRIMALsolstae ss; PRIMALprostae ps;
     PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &ss);
     PRIMAL_getprosta(t, PRIMAL_SOL_ITR, &ps);
-    check(ss == PRIMAL_SOL_STA_UNKNOWN, "solsta unknown su MIP infeasibile");
+    check(ss == PRIMAL_SOL_STA_UNKNOWN, "solsta unknown on infeasible MIP");
     check(ps == PRIMAL_PRO_STA_PRIM_INFEAS && (int)ps == 4,
-          "prosta prim infeas = 4 (tabella 7.3)");
+          "prosta prim infeas = 4 (table 7.3)");
     {   double yy[4];
         check_rc(PRIMAL_getdualray(t, yy), PRIMAL_RES_ERR_ARG,
-                 "T26 nessun raggio senza certificato"); }
+                 "T26 no ray without a certificate"); }
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -1430,7 +1438,7 @@ static void test_t38(void) {
 /* T39: mixed SOC + PEXP cones in one task: (w,x) in QUAD with x=1 gives w=1,
  * (t,u,v) in PEXP with u=1, v=-1 gives t=e^-1; pobj = 1 + e^-1. */
 static void test_t39(void) {
-    cur_name = "T39 cono SOC + PEXP misti";
+    cur_name = "T39 mixed SOC + PEXP cones";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     /* min w + t s.t. (w,x) in QUAD: w >= |x|, x=1 -> w=1;
@@ -1538,7 +1546,7 @@ static void test_t45(void) {
         pend(&p);
         P q; pbegin(&q);
         check_rc(primalio_read(q.task, "/tmp/mc_t45a.cbf"), PRIMAL_RES_OK, "cbf_read");
-        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "optimize QUAD riletto");
+        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "optimize QUAD re-read");
         double po2;
         PRIMAL_getprimalobj(q.task, PRIMAL_SOL_ITR, &po2);
         close_enough_tol(po2, 1.0, 1e-6, "pobj QUAD roundtrip");
@@ -1561,7 +1569,7 @@ static void test_t45(void) {
         pend(&p);
         P q; pbegin(&q);
         check_rc(primalio_read(q.task, "/tmp/mc_t45b.cbf"), PRIMAL_RES_OK, "cbf_read");
-        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "optimize DEXP riletto");
+        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "optimize DEXP re-read");
         double po2;
         PRIMAL_getprimalobj(q.task, PRIMAL_SOL_ITR, &po2);
         close_enough_tol(po2, -2.718281828459045, 1e-6, "pobj DEXP roundtrip");
@@ -1571,15 +1579,15 @@ static void test_t45(void) {
          * previously it was silently dropped leaving an incomplete model.
          * Now it is a declared rejection that does not touch the task. */
         FILE *f = fopen("/tmp/mc_t45c.cbf", "w");
-        check(f != NULL, "apri t45c");
+        check(f != NULL, "open t45c");
         if (f) {
             fprintf(f, "VER\n4\nPOW*CONES\n1 2\n2\n0.3 0.7\nENDATA\n");
             fclose(f);
             P q; pbegin(&q);
             check_rc(primalio_read(q.task, "/tmp/mc_t45c.cbf"), PRIMAL_RES_ERR_ARG,
-                     "POW*CONES rifiutato, non scartato");
+                     "POW*CONES rejected, not dropped");
             int nv = -1; PRIMAL_getnumvar(q.task, &nv);
-            check(nv == 0, "il task resta vuoto");
+            check(nv == 0, "the task stays empty");
             pend(&q);
         }
     }
@@ -1617,7 +1625,7 @@ static void test_t46(void) {
     pend(&p);
     P q; pbegin(&q);
     check_rc(primalio_read(q.task, "/tmp/mc_t46.cbf"), PRIMAL_RES_OK, "cbf_read");
-    check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "optimize SDP riletto");
+    check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "optimize SDP re-read");
     double po2;
     PRIMAL_getprimalobj(q.task, PRIMAL_SOL_ITR, &po2);
     close_enough_tol(po2, -0.5, 1e-5, "pobj SDP roundtrip");
@@ -1627,7 +1635,7 @@ static void test_t46(void) {
 /* CBF v4 model of example C.2: shared by T47 (reading) and T81
  * (native exp/power path vs tangent-cut parity). */
 static const char T47_TXT[] =
-    "# variante esempio C.2 (format4)\n"
+    "# variant of example C.2 (format4)\n"
     "VER\n4\n"
     "OBJSENSE\nMAX\n"
     "VAR\n4 1\nF 4\n"
@@ -1644,9 +1652,9 @@ static const char T47_TXT[] =
  *   grad f = (1/s - 1, 2/s)  ||  (x0, x1)
  * (independent check: null cross product and x3 = ln s) */
 static void test_t47(void) {
-    cur_name = "T47 CBF lettura variante C.2";
+    cur_name = "T47 CBF reading variant C.2";
     FILE *f = fopen("/tmp/mc_t47.cbf", "w");
-    check(f != NULL, "apertura file T47");
+    check(f != NULL, "opening file T47");
     fputs(T47_TXT, f);
     fclose(f);
     P p; pbegin(&p);
@@ -1656,7 +1664,7 @@ static void test_t47(void) {
     /* the read task has 4 variables + 6 auxiliaries (one per conic row) */
     int nv = 0;
     PRIMAL_getnumvar(p.task, &nv);
-    check(nv == 10, "numvar (4 + 6 ausiliarie)");
+    check(nv == 10, "numvar (4 + 6 auxiliaries)");
     double po, xx[10];
     PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po);
     PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, xx);
@@ -1679,7 +1687,7 @@ static void test_t47(void) {
      * auxiliaries above, all green at every level) and here only that the radial
      * residual stays small -- not its exact digit. */
     double g0 = 1.0 / s - 1.0, g1 = 2.0 / s;
-    close_enough_tol(g0 * xx[1] - g1 * xx[0], 0.0, 2e-3, "KKT grad||radiale");
+    close_enough_tol(g0 * xx[1] - g1 * xx[0], 0.0, 2e-3, "KKT grad||radial");
     pend(&p);
 }
 
@@ -1761,7 +1769,7 @@ static void test_t43(void) {
 /* T44: approximate bar dual Z = C + sum y_i A^i (clone y = -SDP dual):
  * T42-like: Z = [[1,1],[1,1]] on T41-like: Z = [[1,.5],[.5,1]] -> PSD */
 static void test_t44(void) {
-    cur_name = "T44 SDP duale bar";
+    cur_name = "T44 SDP bar dual";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendcons(t, 3);
@@ -1822,7 +1830,7 @@ static void test_t48(void) {
     close_enough_tol(x[1], 1.0 / sqrt(2.0), 1e-5, "x1");
     close_enough_tol(po, sqrt(2.0), 1e-5, "pobj sqrt2");
     /* quadratic constraint active: x0^2+x1^2 = 1 */
-    close_enough_tol(x[0] * x[0] + x[1] * x[1], 1.0, 1e-5, "quad row attiva");
+    close_enough_tol(x[0] * x[0] + x[1] * x[1], 1.0, 1e-5, "quad row active");
     pend(&p);
 }
 
@@ -1849,7 +1857,7 @@ static void test_t49(void) {
     close_enough_tol(x[0], 0.5, 1e-5, "x0");
     close_enough_tol(po, 0.5, 1e-5, "pobj 0.5");
     close_enough_tol((x[0] - 1.0) * (x[0] - 1.0) + x[1] * x[1], 0.25, 1e-5,
-                     "quad row LO attiva");
+                     "quad row LO active");
     pend(&p);
 }
 
@@ -1858,7 +1866,7 @@ static void test_t49(void) {
  * minimizes 0.5*r^2 - r*cos(theta)... with c=(1,0): min 0.5*(x^2+y^2)+x
  * s.t. sqrt(x^2+y^2) <= 1 -> optimum x=-1, y=0, obj = 0.5 - 1 = -0.5. */
 static void test_t50(void) {
-    cur_name = "T50 QP obj + cono QUAD";
+    cur_name = "T50 QP obj + QUAD cone";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);
@@ -1906,7 +1914,7 @@ static void test_t51(void) {
     prog_calls = 0;
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize LP");
     if (getenv("GMB_DBG")) fprintf(stderr, "T51: calls=%d\n", prog_calls);
-    check(prog_calls >= 1, "progress callback chiamato");
+    check(prog_calls >= 1, "progress callback called");
     pend(&p);
     /* infoconn name longer than 63 chars: truncated, no error */
     P q; pbegin(&q);
@@ -1926,21 +1934,21 @@ static void test_t52(void) {
     PRIMAL_appendvars(t, 3);
     PRIMAL_appendcons(t, 2);
     int nz;
-    check_rc(PRIMAL_getnumqconknz(t, 0, &nz), PRIMAL_RES_OK, "numqconknz vuoto");
-    check(nz == 0, "nz=0 iniziale");
+    check_rc(PRIMAL_getnumqconknz(t, 0, &nz), PRIMAL_RES_OK, "numqconknz empty");
+    check(nz == 0, "nz=0 initially");
     PRIMAL_putqconk(t, 0, 3, (int[]){0, 1, 1}, (int[]){0, 0, 1}, (double[]){2.0, 4.0, 4.0});
     check_rc(PRIMAL_getnumqconknz(t, 0, &nz), PRIMAL_RES_OK, "numqconknz");
     check(nz == 3, "nz=3 (00,01,11)");
     double qij;
     PRIMAL_getqconkij(t, 0, 0, 0, &qij); close_enough(qij, 2.0, "q00");
     PRIMAL_getqconkij(t, 0, 0, 1, &qij); close_enough(qij, 4.0, "q01");
-    PRIMAL_getqconkij(t, 0, 1, 0, &qij); close_enough(qij, 4.0, "q10 simm");
+    PRIMAL_getqconkij(t, 0, 1, 0, &qij); close_enough(qij, 4.0, "q10 symm");
     PRIMAL_getqconkij(t, 0, 2, 2, &qij); close_enough(qij, 0.0, "q22=0");
     /* replace semantics */
     PRIMAL_putqconk(t, 0, 1, (int[]){2}, (int[]){2}, (double[]){6.0});
     PRIMAL_getnumqconknz(t, 0, &nz);
-    check(nz == 1, "nz=1 dopo replace");
-    PRIMAL_getqconkij(t, 0, 0, 0, &qij); close_enough(qij, 0.0, "q00 azzerato");
+    check(nz == 1, "nz=1 after replace");
+    PRIMAL_getqconkij(t, 0, 0, 0, &qij); close_enough(qij, 0.0, "q00 zeroed");
     PRIMAL_getqconkij(t, 0, 2, 2, &qij); close_enough(qij, 6.0, "q22=6");
     /* errors */
     check_rc(PRIMAL_putqconk(t, 5, 0, NULL, NULL, NULL), PRIMAL_RES_ERR_ARG, "row OOR");
@@ -2006,7 +2014,7 @@ static void test_t53(void) {
         PRIMAL_putarow(t2, 0, 2, (int[]){0, 1}, (double[]){1.0, 2.0});
         PRIMAL_putconbound(t2, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
         check_rc(PRIMAL_readbasis(t2, "/tmp/mc_t53.bas"), PRIMAL_RES_OK, "readbasis");
-        check_rc(PRIMAL_solvebasis(t2), PRIMAL_RES_OK, "solvebasis riletta");
+        check_rc(PRIMAL_solvebasis(t2), PRIMAL_RES_OK, "solvebasis re-read");
         double x2[2], po2;
         PRIMAL_getxx(t2, PRIMAL_SOL_BAS, x2);
         PRIMAL_getprimalobj(t2, PRIMAL_SOL_BAS, &po2);
@@ -2031,7 +2039,7 @@ static void test_t53(void) {
         PRIMALstakeye skc[1] = { PRIMAL_SK_UPR };
         PRIMAL_putskx(t, PRIMAL_SOL_BAS, skx);
         PRIMAL_putskc(t, PRIMAL_SOL_BAS, skc);
-        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_OK, "solvebasis non-ott -> optimize");
+        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_OK, "solvebasis non-opt -> optimize");
         double po;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_BAS, &po);
         close_enough(po, 6.0, "pobj=6 (x1=2, via optimize)");
@@ -2054,11 +2062,11 @@ static void test_t53(void) {
         PRIMALstakeye skc[2] = { PRIMAL_SK_UPR, PRIMAL_SK_BAS };
         PRIMAL_putskx(t, PRIMAL_SOL_BAS, skx);
         PRIMAL_putskc(t, PRIMAL_SOL_BAS, skc);
-        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_ERR_ARG, "base sbilanciata ERR_ARG");
+        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_ERR_ARG, "unbalanced basis ERR_ARG");
         /* without a basis: ERR_ARG */
         P q; pbegin(&q);
         PRIMAL_appendvars(q.task, 1);
-        check_rc(PRIMAL_solvebasis(q.task), PRIMAL_RES_ERR_ARG, "senza base ERR_ARG");
+        check_rc(PRIMAL_solvebasis(q.task), PRIMAL_RES_ERR_ARG, "without basis ERR_ARG");
         pend(&q);
         pend(&p);
     }
@@ -2084,7 +2092,7 @@ static void test_t54(void) {
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough(po, 0.5, "pobj 0.5");
-    check(x[0] < 1e-6 || x[1] < 1e-6, "un membro solo non nullo");
+    check(x[0] < 1e-6 || x[1] < 1e-6, "only one nonzero member");
     int ns;
     PRIMAL_getnumsos(t, &ns);
     check(ns == 1, "numsos=1");
@@ -2117,7 +2125,7 @@ static void test_t55(void) {
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough(po, 2.0, "pobj 2");
     /* SOS2 satisfied: x0 and x2 not both nonzero */
-    check(x[0] < 1e-6 || x[2] < 1e-6, "x0/x2 non adiacenti: uno solo");
+    check(x[0] < 1e-6 || x[2] < 1e-6, "x0/x2 not adjacent: only one");
     pend(&p);
 }
 
@@ -2146,10 +2154,10 @@ static void test_t56(void) {
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough(po, 3.0, "pobj 3");
-    close_enough(x[0], 3.0, "x0=3 (attivo)");
-    close_enough(x[1], 0.0, "x1=0 (disattivato)");
+    close_enough(x[0], 3.0, "x0=3 (active)");
+    close_enough(x[1], 0.0, "x1=0 (deactivated)");
     check((x[0] < 1e-6 || x[0] >= 2.0 - 1e-6) && (x[1] < 1e-6 || x[1] >= 1.0 - 1e-6),
-          "semi-cont rispettata");
+          "semi-cont respected");
     pend(&p);
 }
 
@@ -2220,7 +2228,7 @@ static void test_t59(void) {
         double po, x[2];
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
-        close_enough(po, -14.0, "pobj -14 (x=(0,7), initsol migliorata)");
+        close_enough(po, -14.0, "pobj -14 (x=(0,7), initsol improved)");
         close_enough(x[0], 0.0, "x0=0");
         close_enough(x[1], 7.0, "x1=7");
         pend(&p);
@@ -2238,10 +2246,10 @@ static void test_t59(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 7.0);
         double bad[2] = {50.0, 3.0};   /* NOT feasible (2*50+3 > 7) */
         PRIMAL_putxx(t, PRIMAL_SOL_ITR, bad);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize con initsol rifiutata");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize with rejected initsol");
         double po;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(po, -14.0, "pobj -14 comunque");
+        close_enough(po, -14.0, "pobj -14 anyway");
         pend(&p);
     }
 }
@@ -2271,7 +2279,7 @@ static void test_t60(void) {
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough(x[1], 1.0, "x1=1");
     close_enough(po, 1.0, "pobj=1");
-    check(fabs(x[1] - floor(x[1] + 0.5)) < 1e-6, "x1 intero");
+    check(fabs(x[1] - floor(x[1] + 0.5)) < 1e-6, "x1 integer");
     pend(&p);
 }
 
@@ -2339,7 +2347,7 @@ static void test_t62(void) {
     PRIMAL_getxx(t2, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t2, PRIMAL_SOL_ITR, &po);
     PRIMAL_getbarxj(t2, PRIMAL_SOL_ITR, 0, X);
-    close_enough_tol(x[0], -sqrt(0.1), 1e-4, "x0=-sqrt(0.1) (PSD attivo)");
+    close_enough_tol(x[0], -sqrt(0.1), 1e-4, "x0=-sqrt(0.1) (PSD active)");
     close_enough_tol(po, -sqrt(0.1), 1e-4, "pobj");
     { double dob; PRIMAL_getdualobj(t2, PRIMAL_SOL_ITR, &dob);
       close_enough_tol(dob, po, 1e-4, "strong duality pobj=dobj (exact SDP dual)"); }
@@ -2414,16 +2422,16 @@ static void test_t63(void) {
         int sym[4];
         double val[4];
         check_rc(PRIMAL_getbaraidxij(t, 0, 0, 4, &num, sym, val), PRIMAL_RES_OK, "getbaraidxij");
-        check(num == 1, "num termini (0,0)");
-        check(sym[0] == mE && fabs(val[0] - 2.0) < 1e-12, "termine (0,0) = mE,2");
+        check(num == 1, "num terms (0,0)");
+        check(sym[0] == mE && fabs(val[0] - 2.0) < 1e-12, "term (0,0) = mE,2");
         check_rc(PRIMAL_getbaraidxij(t, 1, 0, 4, &num, sym, val), PRIMAL_RES_OK, "getbaraidxij (1,0)");
-        check(num == 1 && sym[0] == mI && fabs(val[0] - 3.0) < 1e-12, "termine (1,0) = mI,3");
+        check(num == 1 && sym[0] == mI && fabs(val[0] - 3.0) < 1e-12, "term (1,0) = mI,3");
         check_rc(PRIMAL_getbaraidxij(t, 0, 1, 4, &num, sym, val), PRIMAL_RES_ERR_ARG,
-                 "getbaraidxij bar OOR rifiutato");
+                 "getbaraidxij bar OOR rejected");
         /* barC getter */
         PRIMAL_putbarcj(t, 0, 1, (int[]){mI}, (double[]){1.5});
         check_rc(PRIMAL_getbarcidxj(t, 0, 4, &num, sym, val), PRIMAL_RES_OK, "getbarcidxj");
-        check(num == 1 && sym[0] == mI && fabs(val[0] - 1.5) < 1e-12, "barC letto");
+        check(num == 1 && sym[0] == mI && fabs(val[0] - 1.5) < 1e-12, "barC read");
     /* errors */
         check_rc(PRIMAL_putbarablockij(t, 9, 0, 1, (int[]){mI}, (double[]){1.0}),
                  PRIMAL_RES_ERR_ARG, "row OOR");
@@ -2437,7 +2445,7 @@ static void test_t63(void) {
  * adaptive regularization of socp.c: min x0+x1 s.t. x0=x1, (t,x0,x1) QUAD,
  * t>=0: optimum x=(0,0), pobj=0. */
 static void test_t64(void) {
-    cur_name = "T64 KKT conico singolare";
+    cur_name = "T64 singular conic KKT";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);
@@ -2449,7 +2457,7 @@ static void test_t64(void) {
     PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, -1.0});
     PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 0.0, 0.0);
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){2, 0, 1});
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize (KKT regolarizzato)");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize (regularized KKT)");
     double x[3], po;
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
@@ -2486,8 +2494,8 @@ static void test_t65(void) {
     close_enough_tol(lc, 0.5, 1e-9, "lcost x0 = 1/2");
     check(uc == INFINITY, "ucost x0 = +inf");
     check_rc(PRIMAL_costsensitivity(t, 1, &lc, &uc), PRIMAL_RES_OK, "costsens x1");
-    close_enough(lc, 1.0, "lcost x1 (basic degenere)");
-    close_enough(uc, 1.0, "ucost x1 (basic degenere)");
+    close_enough(lc, 1.0, "lcost x1 (degenerate basic)");
+    close_enough(uc, 1.0, "ucost x1 (degenerate basic)");
     /* errors */
     check_rc(PRIMAL_costsensitivity(t, 5, &lc, &uc), PRIMAL_RES_ERR_ARG, "j OOR");
     double lr, ur;
@@ -2587,7 +2595,7 @@ static void test_t67(void) {
         PRIMALint64t al[3] = {0, 0, 0};
         double bb[3] = {7.0, 6.0, 1.0};
         check_rc(PRIMAL_putdjc(t, 0, 3, dl, 3, al, bb, 2, ts),
-                 PRIMAL_RES_OK, "putdjc 2-clausole");
+                 PRIMAL_RES_OK, "putdjc 2-clauses");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize DJC-2");
         double x[8];   /* DJC adds binaries (numvar > 1) */
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
@@ -2617,7 +2625,7 @@ static void test_t68(void) {
         }
         Kp[n] = w;
         SpChol *L = spchol_factor(n, Kp, Ki, Kx);
-        check(L != NULL, "spchol_factor produce un fattore");
+        check(L != NULL, "spchol_factor produces a factor");
         if (L) {
             double rhs[4] = {1,2,3,4}, orig[4] = {1,2,3,4};
             check(spchol_solve(L, rhs) == 0, "spchol_solve ok");
@@ -2628,7 +2636,7 @@ static void test_t68(void) {
                 double e = fabs(s - orig[i]);
                 if (e > maxerr) maxerr = e;
             }
-            check(maxerr < 1e-9, "residuo K*x == rhs (fattore L corretto)");
+            check(maxerr < 1e-9, "residual K*x == rhs (correct L factor)");
             spchol_free(L);
         }
     }
@@ -2719,13 +2727,13 @@ static void test_t69(void) {
         PRIMAL_gety(t, PRIMAL_SOL_ITR, y);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough(po, 14.0, "presolve A obj=14");
-        close_enough(x[0], 4.0,  "x0=4 (singleton fissata)");
+        close_enough(x[0], 4.0,  "x0=4 (singleton fixed)");
         close_enough(x[1], 10.0, "x1=10");
         close_enough(x[2], 0.0,  "x2=0");
-        close_enough(x[3], 0.0,  "x3=0 (colonna vuota)");
-        close_enough(y[0], -1.0, "y0=-1 (duale riga singleton recuperato)");
+        close_enough(x[3], 0.0,  "x3=0 (empty column)");
+        close_enough(y[0], -1.0, "y0=-1 (singleton row dual recovered)");
         close_enough(y[1], -1.0, "y1=-1");
-        close_enough(y[2], 0.0,  "y2=0 (riga vuota)");
+        close_enough(y[2], 0.0,  "y2=0 (empty row)");
         expect_kkt(t, 1.0);
 
         /* presolve OFF: same optimum (cross-validation) */
@@ -2758,7 +2766,7 @@ static void test_t69(void) {
         PRIMALrescodee rc = PRIMAL_optimize(t);
         PRIMALsolstae sta; PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
         check(rc == PRIMAL_RES_ERR_INFEASIBLE || sta == PRIMAL_SOL_STA_PRIM_INFEAS_CER,
-              "presolve B: infeasible rilevato");
+              "presolve B: infeasible detected");
         pend(&p);
     }
 
@@ -2776,7 +2784,7 @@ static void test_t69(void) {
         PRIMALrescodee rc = PRIMAL_optimize(t);
         PRIMALsolstae sta; PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
         check(rc == PRIMAL_RES_ERR_UNBOUNDED || sta == PRIMAL_SOL_STA_DUAL_INFEAS_CER,
-              "presolve C: unbounded rilevato");
+              "presolve C: unbounded detected");
         pend(&p);
     }
 }
@@ -2810,10 +2818,10 @@ static void test_t70(void) {
         double x[3], po;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(po, 10.0, "dup A obj=10 (colonna piu' economica)");
+        close_enough(po, 10.0, "dup A obj=10 (cheapest column)");
         close_enough(x[0], 10.0, "dup A x0=10");
-        close_enough(x[1], 0.0,  "dup A x1=0 (colonna dup rimossa)");
-        close_enough(x[2], 0.0,  "dup A x2=0 (colonna dup rimossa)");
+        close_enough(x[1], 0.0,  "dup A x1=0 (duplicate column removed)");
+        close_enough(x[2], 0.0,  "dup A x2=0 (duplicate column removed)");
         expect_kkt(t, 1.0);
 
         PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE, 0);
@@ -2839,7 +2847,7 @@ static void test_t70(void) {
         PRIMALrescodee rc = PRIMAL_optimize(t);
         PRIMALsolstae sta; PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
         check(rc == PRIMAL_RES_ERR_INFEASIBLE || sta == PRIMAL_SOL_STA_PRIM_INFEAS_CER,
-              "dup B: A uguale/b diverso -> infeasible (non fuse)");
+              "dup B: same A/different b -> infeasible (not merged)");
         pend(&p);
     }
 
@@ -2856,10 +2864,10 @@ static void test_t70(void) {
         int prc = lp_presolve(Aptr, Arow, Aval, b, c, 2, 3, 1e-9, 2, &pp);
         check(prc == 0 && pp != NULL, "C lp_presolve ok");
         if (pp) {
-            check(presolve_changed(pp) == 1, "C presolve changed (duplicate rilevate)");
+            check(presolve_changed(pp) == 1, "C presolve changed (duplicates detected)");
             const int *Arptr, *Arrow; const double *Arval, *br, *cr; int mr = -1, nr = -1;
             presolve_reduced(pp, &Arptr, &Arrow, &Arval, &br, &cr, &mr, &nr);
-            check(mr < 2 && nr < 3, "C dimensioni ridotte dalle duplicate");
+            check(mr < 2 && nr < 3, "C dimensions reduced by the duplicates");
             presolve_free(pp);
         }
     }
@@ -2894,7 +2902,7 @@ static void test_t71(void) {
         double po, do_;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &do_);
-        close_enough(po, do_, "QP-A strong duality pobj==dobj (duali sotto scaling)");
+        close_enough(po, do_, "QP-A strong duality pobj==dobj (duals under scaling)");
         expect_kkt(t, 1.0);
         pend(&p);
     }
@@ -3181,8 +3189,8 @@ static void test_t78(void) {
         check(expcone_dual_in(kinds[c], alph[c], s) == 1, "T78 s = -mu grad f(z) in K*");
         br = expcone_scaling(kinds[c], alph[c], z[c], s, 0.7, Th, Tin, rt, &sc);
         check(br >= 0, "T78 scaling ok");
-        check(br == 1, "T78 direzione appaiata: catena NT");
-        check(fabs(sc - mu) < 1e-12 * mu, "T78 scale = <z,s>/nu = mu al punto appaiato");
+        check(br == 1, "T78 paired direction: NT chain");
+        check(fabs(sc - mu) < 1e-12 * mu, "T78 scale = <z,s>/nu = mu at the paired point");
         double mrt = 0.0;
         for (int i = 0; i < 3; i++) { double e = fabs(rt[i] - (-s[i] - 0.7 * g[i]) / sc); if (e > mrt) mrt = e; }
         check(mrt < 1e-12, "T78 r~ = (-s - smu grad)/scale");
@@ -3195,44 +3203,44 @@ static void test_t78(void) {
         double mp = 0.0, sn = 1.0;
         for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) sn = fabs(Hz[i*3+j]) > sn ? fabs(Hz[i*3+j]) : sn;
         for (int i = 0; i < 9; i++) { double e = fabs(Tin[i] - Hz[i]); if (e > mp) mp = e; }
-        check(mp < 1e-8 * sn, "T78 Thin = grad^2 f(z) al punto appaiato");
+        check(mp < 1e-8 * sn, "T78 Thin = grad^2 f(z) at the paired point");
         {   /* smu enters ONLY in rt: the metric is a function of the current
              * point alone, so the affine predictor (smu = 0) shares the
              * corrector matrix without degenerating. */
             double T0[9], T9[9], Th2[9], rt0[3], rt9[3], sc2 = 0.0;
             double d1 = 0.0, d2 = 0.0, dr = 0.0;
             check(expcone_scaling(kinds[c], alph[c], z[c], s, 0.0, Th2, T0, rt0, &sc2) >= 0,
-                  "T78 scaling ok al predittore affine smu = 0");
+                  "T78 scaling ok at the affine predictor smu = 0");
             check(expcone_scaling(kinds[c], alph[c], z[c], s, 10.0 * mu, Th2, T9, rt9, &sc2) >= 0,
-                  "T78 scaling ok a smu > scale");
+                  "T78 scaling ok at smu > scale");
             for (int i = 0; i < 9; i++) {
                 double e = fabs(T0[i] - Tin[i]); if (e > d1) d1 = e;
                 e = fabs(T9[i] - Tin[i]);        if (e > d2) d2 = e;
             }
-            check(d1 < 1e-12 * sn, "T78 Thin indipendente da sigma (predittore affine)");
-            check(d2 < 1e-12 * sn, "T78 Thin indipendente da sigma (correttore forte)");
+            check(d1 < 1e-12 * sn, "T78 Thin independent of sigma (affine predictor)");
+            check(d2 < 1e-12 * sn, "T78 Thin independent of sigma (strong corrector)");
             for (int i = 0; i < 3; i++) {
                 double e = fabs(rt0[i] + s[i] / sc); if (e > dr) dr = e;
             }
-            check(dr < 1e-12, "T78 rt = -s/scale quando sigma = 0");
+            check(dr < 1e-12, "T78 rt = -s/scale when sigma = 0");
             dr = 0.0;
             for (int i = 0; i < 3; i++) {   /* rt moves with smu: it is the only part that depends on sigma */
                 double e = fabs(rt9[i] - rt[i] + (10.0 * mu - 0.7) * g[i] / sc);
                 if (e > dr) dr = e;
             }
-            check(dr < 1e-10, "T78 rt porta il peso di sigma, non Thin");
+            check(dr < 1e-10, "T78 rt carries the sigma weight, not Thin");
         }
         for (int q = 0; q < 2; q++) {   /* mu -> lambda*mu: the conic row must not move */
             double lam = q ? 1e-13 : 1e-6, sl[3], Th2[9], Tin2[9], rt2[3], sc2 = 0.0;
             double mx = 0.0, mrr = 0.0;
             for (int i = 0; i < 3; i++) sl[i] = lam * s[i];
             check(expcone_scaling(kinds[c], alph[c], z[c], sl, 0.7 * lam,
-                                  Th2, Tin2, rt2, &sc2) >= 0, "T78 scaling ok a mu ridotta");
-            check(fabs(sc2 - lam * mu) < 1e-12 * lam * mu, "T78 scale si ridimensiona con mu");
+                                  Th2, Tin2, rt2, &sc2) >= 0, "T78 scaling ok at reduced mu");
+            check(fabs(sc2 - lam * mu) < 1e-12 * lam * mu, "T78 scale rescales with mu");
             for (int i = 0; i < 9; i++) { double e = fabs(Tin2[i] - Tin[i]); if (e > mx) mx = e; }
             for (int i = 0; i < 3; i++) { double e = fabs(rt2[i] - rt[i]); if (e > mrr) mrr = e; }
-            check(mx < 1e-9 * sn, "T78 Thin indipendente da mu");
-            check(mrr < 1e-9, "T78 r~ indipendente da mu");
+            check(mx < 1e-9 * sn, "T78 Thin independent of mu");
+            check(mrr < 1e-9, "T78 r~ independent of mu");
         }
     }
     {   double bad[3][3] = { { 1.0, 0.2, 0.1 }, { 1.0, 1.0, 5.0 }, { 1.0, 1.0, 5.0 } };
@@ -3243,17 +3251,17 @@ static void test_t78(void) {
             /* an s outside int K* is not a broken iterate, it is the boundary of K* of an
              * active optimum: the row degrades to the barrier Hessian (which
              * exists as long as z is interior) instead of failing the block. */
-            check(st == 0, "T78 s fuori K* degrada la riga a grad^2 f(z)");
-            check(expcone_hess(kinds[c], alph[c], z[c], Hm) == 0, "T78 Hessiano in z disponibile");
+            check(st == 0, "T78 s outside K* degrades the row to grad^2 f(z)");
+            check(expcone_hess(kinds[c], alph[c], z[c], Hm) == 0, "T78 Hessian at z available");
             for (int i = 0; i < 9; i++) { double e = fabs(Tin[i] - Hm[i]); if (e > dmax) dmax = e; }
             check(dmax < 1e-9 * (1.0 + fabs(Hm[0]) + fabs(Hm[4]) + fabs(Hm[8])),
-                  "T78 riga degradata = grad^2 f(z)");
+                  "T78 degraded row = grad^2 f(z)");
             check(isfinite(rt[0]) && isfinite(rt[1]) && isfinite(rt[2]) && sc > 0.0,
-                  "T78 rt e scale validi anche degradati");
+                  "T78 rt and scale valid even when degraded");
             expcone_grad(kinds[c], alph[c], z[c], gb);
             for (int i = 0; i < 3; i++) zs[i] = -0.1 * gb[i];   /* paired dual, interior */
             check(expcone_scaling(kinds[c], alph[c], z[c], zs, 0.07, Th, Tin, rt, &sc) == 1,
-                  "T78 la catena NT resta attiva con s in int K*");
+                  "T78 the NT chain stays active with s in int K*");
         } }
 }
 
@@ -3286,15 +3294,15 @@ static void test_t79(void) {
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
-        close_enough_tol(x[0], want[c], 1e-4, "T79 t == valore atteso");
+        close_enough_tol(x[0], want[c], 1e-4, "T79 t == expected value");
         close_enough_tol(po, want[c], 1e-4, "T79 pobj");
         close_enough_tol(dob, po, 1e-4, "T79 strong duality");
         double sc = pow(x[0], al[c]) * pow(uu[c], 1.0 - al[c]);
         double slack = (ct[c] == PRIMAL_CT_PEXP) ? x[0] - uu[c] * exp(vv[c] / uu[c])
                      : (ct[c] == PRIMAL_CT_PPOW) ? sc - fabs(vv[c])
                      : sqrt(2.0) * sc - fabs(vv[c]);
-        check(slack > -1e-4, "T79 appartenenza al cono");
-        check(slack < 1e-3, "T79 vincolo conico attivo");
+        check(slack > -1e-4, "T79 cone membership");
+        check(slack < 1e-3, "T79 conic constraint active");
         pend(&p);
     }
 }
@@ -3310,7 +3318,7 @@ static void test_t79(void) {
  *  5. a vector violating the K* conditions is rejected by dual_in and by
  *     dual_point (these cones are not self-dual). */
 static void test_t80(void) {
-    cur_name = "T80 expcone cono duale + punto di scaling";
+    cur_name = "T80 expcone dual cone + scaling point";
     int kinds[3] = { EXPCONE_PEXP, EXPCONE_PPOW, EXPCONE_RPOW };
     double alph[3] = { 0.0, 0.3, 0.4 };
     int nu[3] = { 2, 3, 3 };
@@ -3330,43 +3338,43 @@ static void test_t80(void) {
         for (int pt = 0; pt < 2; pt++) {
             const double *z = zp[c][pt];
             double g[3], dotz = 0.0;
-            check(expcone_grad(kind, al, z, g) == 0, "T80 grad nel punto interno");
+            check(expcone_grad(kind, al, z, g) == 0, "T80 grad at the interior point");
             for (int i = 0; i < 3; i++) dotz += z[i] * g[i];
             close_enough_tol(dotz, -(double)nu[c], 1e-9, "T80 <z,grad f(z)> = -nu");
             for (int mi = 0; mi < 2; mi++) {
                 double mu = mus[mi], s[3], W[3], gw[3], paired = 0.0;
                 for (int i = 0; i < 3; i++) s[i] = -mu * g[i];
-                check(expcone_dual_in(kind, al, s) == 1, "T80 s appaiato in K*");
-                check(expcone_dual_point(kind, al, s, W) == 0, "T80 scaling point esiste");
-                check(expcone_barrier(kind, al, W, &paired) == 0, "T80 W interno a K");
+                check(expcone_dual_in(kind, al, s) == 1, "T80 paired s in K*");
+                check(expcone_dual_point(kind, al, s, W) == 0, "T80 scaling point exists");
+                check(expcone_barrier(kind, al, W, &paired) == 0, "T80 W interior to K");
                 check(expcone_grad(kind, al, W, gw) == 0, "T80 grad in W");
                 double mw = 0.0;
                 for (int i = 0; i < 3; i++) { double e = fabs(-gw[i] - s[i]); if (e > mw) mw = e; }
                 check(mw < 1e-8 * (1.0 + fabs(s[0]) + fabs(s[1]) + fabs(s[2])),
-                      "T80 involuzione: -grad f(W) = s");
+                      "T80 involution: -grad f(W) = s");
                 /* At the paired point W = z, so H_s = (grad^2 f(z))^{-1}: the
                  * NT chain reduces to grad^2 f(z) because the sandwich is
                  * the identity.  This is the raison d'etre of the chain, not a
                  * marginal case: it must stay exact at every mu. */
                 double m80[EXPCONE_EV_N];
-                check(expcone_nt_metrics(kind, al, z, s, m80) == 0, "T80 metriche al punto appaiato");
-                close_enough_tol(m80[EXPCONE_EV_REL], 1.0, 1e-8, "T80 sandwich = I al punto appaiato");
+                check(expcone_nt_metrics(kind, al, z, s, m80) == 0, "T80 metrics at the paired point");
+                close_enough_tol(m80[EXPCONE_EV_REL], 1.0, 1e-8, "T80 sandwich = I at the paired point");
                 close_enough_tol(m80[EXPCONE_EV_CONDS], m80[EXPCONE_EV_CONDZ], 1e-8,
-                                 "T80 H_s = (grad^2 f(z))^{-1} al punto appaiato");
+                                 "T80 H_s = (grad^2 f(z))^{-1} at the paired point");
                 close_enough_tol(m80[EXPCONE_EV_GAP], mu, 1e-8 * mu, "T80 gap = <z,s>/nu = mu");
                 double zs = 0.0, x2s = 0.0;
                 const double *x = zp[c][1 - pt];       /* another interior point of K */
                 for (int i = 0; i < 3; i++) { zs += z[i] * s[i]; x2s += x[i] * s[i]; }
                 close_enough_tol(zs, (double)nu[c] * mu, 1e-8, "T80 <z,s> = nu*mu");
-                check(x2s >= 0.0, "T80 polarita' x in K, s in K*");
+                check(x2s >= 0.0, "T80 polarity x in K, s in K*");
             }
         }
         double Th[9], Tin[9], rt[3], sc80 = 0.0;
-        check(expcone_dual_in(kind, al, bad[c]) == 0, "T80 vettore fuori da K* rifiutato");
+        check(expcone_dual_in(kind, al, bad[c]) == 0, "T80 vector outside K* rejected");
         double Wrej[3];
-        check(expcone_dual_point(kind, al, bad[c], Wrej) == -1, "T80 dual_point rifiuta s fuori K*");
+        check(expcone_dual_point(kind, al, bad[c], Wrej) == -1, "T80 dual_point rejects s outside K*");
         check(expcone_scaling(kind, al, zp[c][0], bad[c], 0.5, Th, Tin, rt, &sc80) == 0,
-              "T80 scaling degrada (non rifiuta) s fuori K*");
+              "T80 scaling degrades (does not reject) s outside K*");
     }
     /* The K* verdict is a property of the DIRECTION: a cone is invariant
      * under positive scaling, so the test must be too.  Measured on
@@ -3382,13 +3390,13 @@ static void test_t80(void) {
         for (int v = 0; v < 5; v++) for (int l = 0; l < 6; l++) {
             int r0 = expcone_dual_in(EXPCONE_PEXP, 0.0, vec[v]);
             double sv[3] = { lam[l] * vec[v][0], lam[l] * vec[v][1], lam[l] * vec[v][2] };
-            check(expcone_dual_in(EXPCONE_PEXP, 0.0, sv) == r0, "T80 PEXP dual_in invariante per scaling");
+            check(expcone_dual_in(EXPCONE_PEXP, 0.0, sv) == r0, "T80 PEXP dual_in invariant under scaling");
         }
         double pw[4][3] = { { 1.0, 1.0, 0.9 }, { 3.0, 0.25, 1.0 }, { 1.0, 1.0, 1.2 }, { 0.0, 1.0, 0.0 } };
         for (int v = 0; v < 4; v++) for (int l = 0; l < 6; l++) {
             int r0 = expcone_dual_in(EXPCONE_PPOW, 0.3, pw[v]);
             double sv[3] = { lam[l] * pw[v][0], lam[l] * pw[v][1], lam[l] * pw[v][2] };
-            check(expcone_dual_in(EXPCONE_PPOW, 0.3, sv) == r0, "T80 PPOW dual_in invariante per scaling");
+            check(expcone_dual_in(EXPCONE_PPOW, 0.3, sv) == r0, "T80 PPOW dual_in invariant under scaling");
         } }
 }
 
@@ -3448,7 +3456,7 @@ static void t81_oracle(int cuts, PRIMALconetypee ct, double al, double u, double
 /* T81: native exp/power path against tangent cuts on the T79 oracles, the DEXP
  * boundary case and the degenerate CBF T47; only the outcome is asserted. */
 static void test_t81(void) {
-    cur_name = "T81 percorso nativo exp/power";
+    cur_name = "T81 native exp/power path";
     PRIMALconetypee ct[4] = { PRIMAL_CT_PEXP, PRIMAL_CT_PEXP, PRIMAL_CT_PPOW, PRIMAL_CT_RPOW };
     double al[4]   = { 0.0, 0.0, 0.3, 0.4 };
     double uu[4]   = { 1.0, 2.0, 1.0, 1.0 };
@@ -3458,17 +3466,17 @@ static void test_t81(void) {
         double tn, pn, dn, tc, pc, dc; int natn, natc;
         t81_oracle(0, ct[c], al[c], uu[c], vv[c], &tn, &pn, &dn, &natn);
         t81_oracle(1, ct[c], al[c], uu[c], vv[c], &tc, &pc, &dc, &natc);
-        check(natn == 1, "T81 oracolo risolto dai blocchi nativi");
-        check(natc == 0, "T81 GMB_NO_EXP_IPM forzando i tagli");
-        close_enough_tol(tn, want[c], 1e-8, "T81 t nativo == oracolo");
-        close_enough_tol(pn, dn, 1e-6, "T81 dualita' forte nativa");
-        close_enough_tol(pn, pc, 1e-6, "T81 parita' nativo vs tagli");
+        check(natn == 1, "T81 oracle solved by the native blocks");
+        check(natc == 0, "T81 GMB_NO_EXP_IPM forcing the cuts");
+        close_enough_tol(tn, want[c], 1e-8, "T81 t native == oracle");
+        close_enough_tol(pn, dn, 1e-6, "T81 native strong duality");
+        close_enough_tol(pn, pc, 1e-6, "T81 native vs cuts parity");
         double sl = (ct[c] == PRIMAL_CT_PEXP) ? tn - uu[c] * exp(vv[c] / uu[c])
                   : (ct[c] == PRIMAL_CT_PPOW) ? pow(tn, al[c]) * pow(uu[c], 1.0 - al[c]) - fabs(vv[c])
                   : sqrt(2.0) * pow(tn, al[c]) * pow(uu[c], 1.0 - al[c]) - fabs(vv[c]);
-        close_enough_tol(tn, tc, 1e-6, "T81 parita' t nativo vs tagli");
-        close_enough_tol(dn, dc, 1e-5, "T81 parita' dobj");
-        check(sl > -1e-9 && sl < 1e-8, "T81 vincolo conico attivo sul nativo");
+        close_enough_tol(tn, tc, 1e-6, "T81 t parity native vs cuts");
+        close_enough_tol(dn, dc, 1e-5, "T81 dobj parity");
+        check(sl > -1e-9 && sl < 1e-8, "T81 conic constraint active on the native");
     }
     {   /* case T36 (DEXP, optimum on the boundary) handled by the native blocks */
         P p; pbegin(&p);
@@ -3487,16 +3495,16 @@ static void test_t81(void) {
         double x[3], po;
         PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
         PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
-        check(t81_native == 1, "T81 DEXP risolto dai blocchi nativi");
+        check(t81_native == 1, "T81 DEXP solved by the native blocks");
         /* The polish closes at mu = 4.75e-12: the variable error the gate
          * promises on an optimum on the cone boundary is O(sqrt(mu)) = 2.2e-6,
          * and the native path answers at 6.4e-6 (3x that limit, inside the 1e-5
          * of the gate).  The cuts do better here (1.7e-6): it is the only one of
          * the six reference cases where the fallback path is more accurate, and it is
          * the measured price of the undamped metric (bench/expcone_metric_grid.py). */
-        close_enough_tol(x[0], -1.0, 1e-5, "T81 DEXP a (nativo)");
-        close_enough_tol(x[2], 0.0, 1e-5, "T81 DEXP c (nativo)");
-        close_enough_tol(po, 1.0, 1e-6, "T81 DEXP pobj (nativo)");
+        close_enough_tol(x[0], -1.0, 1e-5, "T81 DEXP a (native)");
+        close_enough_tol(x[2], 0.0, 1e-5, "T81 DEXP c (native)");
+        close_enough_tol(po, 1.0, 1e-6, "T81 DEXP pobj (native)");
         pend(&p);
     }
     {   /* the CBF case of T47 (degenerate optimum, one PEXP block): here only
@@ -3508,7 +3516,7 @@ static void test_t81(void) {
          * measured (T82), not the state of the case */
         P p; pbegin(&p);
         FILE *f = fopen("/tmp/mc_t81.cbf", "w");
-        check(f != NULL, "apertura file T81");
+        check(f != NULL, "opening file T81");
         fputs(T47_TXT, f); fclose(f);
         check_rc(primalio_read(p.task, "/tmp/mc_t81.cbf"), PRIMAL_RES_OK, "T81 cbf_read");
         PRIMAL_setlogcb(p.task, t81_logcb, NULL);
@@ -3522,13 +3530,13 @@ static void test_t81(void) {
         PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, xx);
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po);
         PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dob);
-        check(t81_nv == 10, "T81 numvar degenere");
-        close_enough_tol(po, 4.8083697, 1e-6, "T81 pobj degenere (qualunque percorso)");
-        close_enough_tol(po, dob, 1e-6, "T81 dualita' forte degenere (qualunque percorso)");
+        check(t81_nv == 10, "T81 degenerate numvar");
+        close_enough_tol(po, 4.8083697, 1e-6, "T81 degenerate pobj (any path)");
+        close_enough_tol(po, dob, 1e-6, "T81 degenerate strong duality (any path)");
         /* v4 is the fixed member u=1 of the exp block: in the conic path it is a
          * bar variable and shares its feasibility residual
          * (~1e-9 at mu=1e-11), whereas with cuts it was an exact constant value */
-        close_enough_tol(xx[8], 1.0, 1e-7, "T81 ausiliaria del blocco conico");
+        close_enough_tol(xx[8], 1.0, 1e-7, "T81 auxiliary of the conic block");
         double s81 = xx[0] + 2.0 * xx[1];
         close_enough_tol(xx[3], log(s81), 1e-4, "T81 x3 = ln s");
         pend(&p);
@@ -3560,7 +3568,7 @@ static void t82_logcb(void *handle, const char *msg) {
 static void t82_t47(double tol, PRIMALrescodee *rc_out, int *native_out, double *po_out) {
     P p; pbegin(&p);
     FILE *f = fopen("/tmp/mc_t82.cbf", "w");
-    check(f != NULL, "apertura file T82");
+    check(f != NULL, "opening file T82");
     fputs(T47_TXT, f); fclose(f);
     check_rc(primalio_read(p.task, "/tmp/mc_t82.cbf"), PRIMAL_RES_OK, "T82 cbf_read");
     PRIMAL_setlogcb(p.task, t82_logcb, NULL);
@@ -3577,26 +3585,26 @@ static void t82_t47(double tol, PRIMALrescodee *rc_out, int *native_out, double 
     /* the parameter must read back: the gate judges the user's threshold */
     double back = 0.0;
     PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_CO_TOL_REL_GAP, &back);
-    check(back == tol, "T82 tol_rel_gap letto back");
+    check(back == tol, "T82 tol_rel_gap read back");
     pend(&p);
 }
 
 /* T82: the gate decides on the declared tolerances: at 1e-6 the native path
  * answers, at 1e-15 it is rejected and the normalized cuts deliver OPTIMAL. */
 static void test_t82(void) {
-    cur_name = "T82 gate sulle tolleranze dichiarate";
+    cur_name = "T82 gate on the declared tolerances";
     PRIMALrescodee rc; int nat; double po;
     t82_t47(1e-6, &rc, &nat, &po);
     check_rc(rc, PRIMAL_RES_OK, "T82 tol 1e-6 optimize");
-    check(nat == 1, "T82 con tol 1e-6 risponde il nativo");
-    close_enough_tol(po, 4.8083697, 1e-6, "T82 pobj con tol 1e-6");
+    check(nat == 1, "T82 with tol 1e-6 the native answers");
+    close_enough_tol(po, 4.8083697, 1e-6, "T82 pobj with tol 1e-6");
     t82_t47(1e-15, &rc, &nat, &po);
-    check(nat == 0, "T82 con tol 1e-15 il gate respinge il nativo");
+    check(nat == 0, "T82 with tol 1e-15 the gate rejects the native");
     /* with the normalized cuts the cut path reaches 1e-15 and the delivered point
      * measures inside the declared threshold (`[cones] rel_slack=2.1e-16`), so
      * OPTIMAL is genuine: the gate honored the tolerance, it did not fake it. */
-    check_rc(rc, PRIMAL_RES_OK, "T82 tol 1e-15 coi tagli normalizzati");
-    close_enough_tol(po, 4.8083697, 1e-9, "T82 pobj a 1e-15 dentro la soglia");
+    check_rc(rc, PRIMAL_RES_OK, "T82 tol 1e-15 with the normalized cuts");
+    close_enough_tol(po, 4.8083697, 1e-9, "T82 pobj at 1e-15 inside the threshold");
     {   /* oracle side: the native point is at 1e-13 but the declared threshold is
          * tighter than double -> the selection must change path */
         P p; pbegin(&p);
@@ -3615,12 +3623,12 @@ static void test_t82(void) {
         unsetenv("GMB_NO_EXP_IPM");
         t82_native = 0;
         PRIMALrescodee rc0 = PRIMAL_optimize(task);
-        check(t82_native == 0, "T82 oracolo a 1e-15 non e' il nativo");
+        check(t82_native == 0, "T82 oracle at 1e-15 is not the native");
         double xo[3];
         PRIMAL_getxx(task, PRIMAL_SOL_ITR, xo);
         /* with u and v fixed the tangent cut at (1,1) is t >= e: exact */
-        check_rc(rc0, PRIMAL_RES_OK, "T82 oracolo a 1e-15 coi tagli");
-        close_enough_tol(xo[0], exp(1.0), 1e-5, "T82 oracolo risolto dai tagli a 1e-15");
+        check_rc(rc0, PRIMAL_RES_OK, "T82 oracle at 1e-15 with the cuts");
+        close_enough_tol(xo[0], exp(1.0), 1e-5, "T82 oracle solved by the cuts at 1e-15");
         pend(&p);
     }
     unsetenv("GMB_NO_EXP_IPM");
@@ -3664,7 +3672,7 @@ static void t83_begin(PRIMALtask_t t) {
 /* T83: ranged scalar variables on the native conic/SDP path; the cap row is
  * active or decisive in all three cases (PEXP, QUAD+PEXP, PSD+ranged scalar). */
 static void test_t83(void) {
-    cur_name = "T83 variabili ranged nel percorso nativo";
+    cur_name = "T83 ranged variables in the native path";
     {   /* A: PEXP, optimum on the cap of u */
         for (int c = 0; c < 2; c++) {
             P p; pbegin(&p);
@@ -3684,11 +3692,11 @@ static void test_t83(void) {
             PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
             PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
             double wu = (c == 0) ? 1.5 : 2.0;
-            check(t83_native == 1, "T83 A ha risposto il percorso nativo");
-            close_enough_tol(x[1], wu, 1e-6, "T83 A u == il bordo che risolve");
+            check(t83_native == 1, "T83 A the native path answered");
+            close_enough_tol(x[1], wu, 1e-6, "T83 A u == the bound that solves it");
             close_enough_tol(x[0], wu * exp(2.0 / wu), 1e-6, "T83 A t == u*exp(v/u)");
             close_enough_tol(po, x[0], 1e-6, "T83 A pobj");
-            close_enough_tol(dob, po, 1e-6, "T83 A dualita' forte");
+            close_enough_tol(dob, po, 1e-6, "T83 A strong duality");
             pend(&p);
         }
     }
@@ -3716,11 +3724,11 @@ static void test_t83(void) {
             PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
             PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
             PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
-            check(t83_native == 1, "T83 B ha risposto il percorso nativo");
+            check(t83_native == 1, "T83 B the native path answered");
             close_enough_tol(x[1], (caps[c] < 1.0) ? caps[c] : 1.0, 1e-6,
-                             "T83 B u == min(cappuccio, cono)");
+                             "T83 B u == min(cap, cone)");
             close_enough_tol(po, -x[1], 1e-6, "T83 B pobj");
-            close_enough_tol(dob, po, 1e-6, "T83 B dualita' forte");
+            close_enough_tol(dob, po, 1e-6, "T83 B strong duality");
             pend(&p);
         }
     }
@@ -3746,12 +3754,12 @@ static void test_t83(void) {
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, X), PRIMAL_RES_OK, "T83 C getbarxj");
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
-        check(t83_native == 1, "T83 C ha risposto il percorso nativo");
-        close_enough_tol(x[0], 2.0, 1e-6, "T83 C x0 == il cappuccio");
+        check(t83_native == 1, "T83 C the native path answered");
+        close_enough_tol(x[0], 2.0, 1e-6, "T83 C x0 == the cap");
         close_enough_tol(X[0] + X[3], 4.0, 1e-6, "T83 C tr(X) = 4");
         check(X[0] * X[3] - X[1] * X[2] > -1e-8, "T83 C X PSD");
         close_enough_tol(po, -2.0, 1e-6, "T83 C pobj == -2");
-        close_enough_tol(dob, po, 1e-6, "T83 C dualita' forte col duale del cappuccio");
+        close_enough_tol(dob, po, 1e-6, "T83 C strong duality with the cap dual");
         pend(&p);
     }
 }
@@ -3798,51 +3806,51 @@ static void t84_rows(const int *ids, int n, int kind) {
         P p; pbegin(&p);
         double dflt = 0, lo = 0, hi = 0;
         check_rc(PRIMAL_getparaminfo(p.task, kind, ids[i], &dflt, &lo, &hi),
-                 PRIMAL_RES_OK, "T84 getparaminfo conosce ogni id dichiarato");
-        check(lo <= hi, "T84 range non rovesciato (lo <= hi)");
-        check(lo <= dflt && dflt <= hi, "T84 il default dichiarato sta nel suo range");
+                 PRIMAL_RES_OK, "T84 getparaminfo knows every declared id");
+        check(lo <= hi, "T84 range not inverted (lo <= hi)");
+        check(lo <= dflt && dflt <= hi, "T84 the declared default lies in its range");
         if (kind == PRIMAL_PARAM_KIND_INT) {
             int v = -12345;
             check_rc(PRIMAL_getintparam(p.task, ids[i], &v), PRIMAL_RES_OK,
-                     "T84 il getter int risponde sull'id int");
-            check((double)v == dflt, "T84 il task fresco porta il default della tabella");
+                     "T84 the int getter answers on the int id");
+            check((double)v == dflt, "T84 a fresh task carries the table default");
             check_rc(PRIMAL_putintparam(p.task, ids[i], (int)lo), PRIMAL_RES_OK,
-                     "T84 put accettato sul bordo basso");
+                     "T84 put accepted on the lower boundary");
             PRIMAL_getintparam(p.task, ids[i], &v);
-            check((double)v == lo, "T84 round-trip sul bordo basso");
+            check((double)v == lo, "T84 round-trip on the lower boundary");
             check_rc(PRIMAL_putintparam(p.task, ids[i], (int)lo - 1), PRIMAL_RES_ERR_ARG,
-                     "T84 put sotto il range respinto");
+                     "T84 put below the range rejected");
             PRIMAL_getintparam(p.task, ids[i], &v);
-            check((double)v == lo, "T84 un put respinto non tocca il valore");
+            check((double)v == lo, "T84 a rejected put does not touch the value");
             check_rc(PRIMAL_putintparam(p.task, ids[i], (int)hi), PRIMAL_RES_OK,
-                     "T84 put accettato sul bordo alto");
+                     "T84 put accepted on the upper boundary");
             PRIMAL_getintparam(p.task, ids[i], &v);
-            check((double)v == hi, "T84 round-trip sul bordo alto");
+            check((double)v == hi, "T84 round-trip on the upper boundary");
         } else {
             double v = -12345;
             check_rc(PRIMAL_getdouparam(p.task, ids[i], &v), PRIMAL_RES_OK,
-                     "T84 il getter double risponde sull'id double");
-            check(v == dflt, "T84 il task fresco porta il default della tabella");
+                     "T84 the double getter answers on the double id");
+            check(v == dflt, "T84 a fresh task carries the table default");
             check_rc(PRIMAL_putdouparam(p.task, ids[i], lo), PRIMAL_RES_OK,
-                     "T84 put accettato sul bordo basso");
+                     "T84 put accepted on the lower boundary");
             PRIMAL_getdouparam(p.task, ids[i], &v);
-            check(v == lo, "T84 round-trip sul bordo basso");
+            check(v == lo, "T84 round-trip on the lower boundary");
             /* A parameter unbounded below (lo == -DBL_MAX) has no finite
              * value below the range to try: the negative check is skipped. */
             if (lo > -DBL_MAX) {
                 check_rc(PRIMAL_putdouparam(p.task, ids[i], lo > 0.0 ? lo / 10.0 : -1.0),
-                         PRIMAL_RES_ERR_ARG, "T84 put sotto il range respinto");
+                         PRIMAL_RES_ERR_ARG, "T84 put below the range rejected");
                 PRIMAL_getdouparam(p.task, ids[i], &v);
-                check(v == lo, "T84 un put respinto non tocca il valore");
+                check(v == lo, "T84 a rejected put does not touch the value");
             }
             check_rc(PRIMAL_putdouparam(p.task, ids[i], hi * 2.0), PRIMAL_RES_ERR_ARG,
-                     "T84 put sopra il range respinto");
+                     "T84 put above the range rejected");
             PRIMAL_getdouparam(p.task, ids[i], &v);
-            check(v == lo, "T84 il range non si allarga da solo");
+            check(v == lo, "T84 the range does not widen by itself");
             check_rc(PRIMAL_putdouparam(p.task, ids[i], NAN), PRIMAL_RES_ERR_ARG,
-                     "T84 NaN respinto dalla validazione");
+                     "T84 NaN rejected by the validation");
             PRIMAL_getdouparam(p.task, ids[i], &v);
-            check(v == lo, "T84 il NaN non entra nello slot");
+            check(v == lo, "T84 NaN does not enter the slot");
         }
         pend(&p);
     }
@@ -3882,7 +3890,7 @@ static void t84_mip(double rel_gap, double abs_gap, double inther, double feas,
 /* T84: the declarative parameter table checked A) against itself, B) across
  * namespaces, C) by measuring that each wired parameter changes an answer. */
 static void test_t84(void) {
-    cur_name = "T84 tabella dichiarativa dei parametri";
+    cur_name = "T84 declarative parameter table";
     /* the MIP sub-tests here measure the node cap and the tolerances: CG cuts
      * would close the tree and make them vacuous. */
     setenv("GMB_NO_MIP_CUTS", "1", 1);
@@ -3893,28 +3901,28 @@ static void test_t84(void) {
         P p; pbegin(&p);
         int iv = -1; double dv = -1;
         check_rc(PRIMAL_getintparam(p.task, PRIMAL_IPAR_SIMPLEX_MAX_ITERATIONS, &iv),
-                 PRIMAL_RES_OK, "T84 id 10 e' dell'API int");
+                 PRIMAL_RES_OK, "T84 id 10 belongs to the int API");
         check_rc(PRIMAL_getdouparam(p.task, PRIMAL_IPAR_SIMPLEX_MAX_ITERATIONS, &dv),
-                 PRIMAL_RES_ERR_ARG, "T84 id 10 non esiste per l'API double");
+                 PRIMAL_RES_ERR_ARG, "T84 id 10 does not exist for the double API");
         check_rc(PRIMAL_getparaminfo(p.task, PRIMAL_PARAM_KIND_DOU,
                                      PRIMAL_IPAR_SIMPLEX_MAX_ITERATIONS, NULL, NULL, NULL),
-                 PRIMAL_RES_ERR_ARG, "T84 getparaminfo chiede il kind giusto");
+                 PRIMAL_RES_ERR_ARG, "T84 getparaminfo asks the right kind");
         check_rc(PRIMAL_getparaminfo(p.task, PRIMAL_PARAM_KIND_INT,
                                      PRIMAL_DPAR_MIP_TOL_INTHER, NULL, NULL, NULL),
-                 PRIMAL_RES_ERR_ARG, "T84 un id double non passa per l'API int");
+                 PRIMAL_RES_ERR_ARG, "T84 a double id does not pass through the int API");
         check_rc(PRIMAL_getparaminfo(p.task, PRIMAL_PARAM_KIND_INT, 99999,
                                      NULL, NULL, NULL),
-                 PRIMAL_RES_ERR_ARG, "T84 id sconosciuto respinto");
+                 PRIMAL_RES_ERR_ARG, "T84 unknown id rejected");
         check_rc(PRIMAL_putdouparam(p.task, PRIMAL_DPAR_MIP_TOL_INTHER, 0.0),
-                 PRIMAL_RES_ERR_ARG, "T84 soglia di integralita' positiva richiesta");
+                 PRIMAL_RES_ERR_ARG, "T84 positive integrality threshold required");
         /* the double alias of an int slot: one cell, two APIs, truncation */
         check_rc(PRIMAL_putdouparam(p.task, PRIMAL_DPAR_INTPNT_MAX_ITER, 77.9),
-                 PRIMAL_RES_OK, "T84 l'alias double si pu' impostare");
+                 PRIMAL_RES_OK, "T84 the double alias can be set");
         check_rc(PRIMAL_getintparam(p.task, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &iv),
-                 PRIMAL_RES_OK, "T84 l'alias scrive lo slot int");
-        check(iv == 77, "T84 l'alias tronca all'intero (77.9 -> 77)");
+                 PRIMAL_RES_OK, "T84 the alias writes the int slot");
+        check(iv == 77, "T84 the alias truncates to integer (77.9 -> 77)");
         PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_MAX_ITER, &dv);
-        check(dv == 77.0, "T84 le due API leggono la stessa cella");
+        check(dv == 77.0, "T84 the two APIs read the same cell");
         pend(&p);
     }
 
@@ -3931,14 +3939,14 @@ static void test_t84(void) {
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 2.0, INFINITY);
         check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 0),
-                 PRIMAL_RES_OK, "T84 B2 il cap 0 e' accettato");
+                 PRIMAL_RES_OK, "T84 B2 cap 0 is accepted");
         int iv = -1;
         PRIMAL_getintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &iv);
-        check(iv == 0, "T84 B2 e si legge back come 0");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T84 B2 e il modello chiude");
+        check(iv == 0, "T84 B2 and reads back as 0");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T84 B2 and the model closes");
         double po = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough_tol(po, 2.0, 1e-6, "T84 B2 ottimo 2");
+        close_enough_tol(po, 2.0, 1e-6, "T84 B2 optimum 2");
         pend(&p);
     }
 
@@ -3960,8 +3968,8 @@ static void test_t84(void) {
             PRIMAL_putintparam(t, PRIMAL_IPAR_SCALING, sc);
             int back = -1;
             PRIMAL_getintparam(t, PRIMAL_IPAR_SCALING, &back);
-            check(back == sc, "T84 scaling leggibile back");
-            check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T84 LP ottimizzato");
+            check(back == sc, "T84 scaling readable back");
+            check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T84 LP optimized");
             double x[2], po, dob;
             PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
             PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
@@ -3969,7 +3977,7 @@ static void test_t84(void) {
             close_enough_tol(x[0], 1.0, 1e-6, "T84 x = 1 (scaling on/off)");
             close_enough_tol(x[1], 1.0, 1e-6, "T84 y = 1 (scaling on/off)");
             close_enough_tol(po, -2.0, 1e-6, "T84 pobj = -2 (scaling on/off)");
-            close_enough_tol(dob, po, 1e-6, "T84 dualita' forte (scaling on/off)");
+            close_enough_tol(dob, po, 1e-6, "T84 strong duality (scaling on/off)");
             expect_kkt(t, 1.0);
             pend(&p);
         }
@@ -3991,18 +3999,18 @@ static void test_t84(void) {
                 if (a > lg) lg = a;
                 if (b > lg) lg = b;
             }
-            check(lg >= 1.0, "T84 il modello ha fattori di scala non identita'");
+            check(lg >= 1.0, "T84 the model has non-identity scale factors");
         }
     }
 
     {   /* C2. the node cap is a counter, not a floating threshold */
         PRIMALrescodee rc; double po, x;
         t84_mip(0.0, 1e-9, 1e-6, 0.0, 100000, 4.5, 0, &rc, &po, &x, NULL);
-        check_rc(rc, PRIMAL_RES_OK, "T84 MIP con il cap di default si risolve");
-        close_enough_tol(x, 4.0, 1e-9, "T84 MIP optimum intero x = 4");
+        check_rc(rc, PRIMAL_RES_OK, "T84 MIP with the default cap solves");
+        close_enough_tol(x, 4.0, 1e-9, "T84 MIP integer optimum x = 4");
         close_enough_tol(po, -4.0, 1e-9, "T84 MIP pobj = -4");
         t84_mip(0.0, 1e-9, 1e-6, 0.0, 1, 4.5, 0, &rc, &po, &x, NULL);
-        check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "T84 MIP_MAX_NODES=1 interrompe al root");
+        check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "T84 MIP_MAX_NODES=1 stops at the root");
     }
 
     {   /* C3. the pruning gap governs the branch&bound: with the incumbent
@@ -4011,16 +4019,16 @@ static void test_t84(void) {
          * seed; with the gap off the optimum is reached. */
         PRIMALrescodee rc; double po, x;
         t84_mip(1.0, 1e-9, 1e-6, 0.0, 100000, 4.5, 1, &rc, &po, &x, NULL);
-        check_rc(rc, PRIMAL_RES_OK, "T84 rel_gap=1 chiude");
-        close_enough_tol(x, 2.0, 1e-9, "T84 rel_gap=1 pota il root e consegna il seme");
-        close_enough_tol(po, -2.0, 1e-9, "T84 rel_gap=1 pobj = -2 (non l'optimum)");
+        check_rc(rc, PRIMAL_RES_OK, "T84 rel_gap=1 closes");
+        close_enough_tol(x, 2.0, 1e-9, "T84 rel_gap=1 prunes the root and delivers the seed");
+        close_enough_tol(po, -2.0, 1e-9, "T84 rel_gap=1 pobj = -2 (not the optimum)");
         t84_mip(0.0, 3.0, 1e-6, 0.0, 100000, 4.5, 1, &rc, &po, &x, NULL);
-        check_rc(rc, PRIMAL_RES_OK, "T84 abs_gap=3 chiude");
-        close_enough_tol(po, -2.0, 1e-9, "T84 abs_gap=3 pota il root come il relativo");
+        check_rc(rc, PRIMAL_RES_OK, "T84 abs_gap=3 closes");
+        close_enough_tol(po, -2.0, 1e-9, "T84 abs_gap=3 prunes the root like the relative one");
         t84_mip(0.0, 1.0, 1e-6, 0.0, 100000, 4.5, 1, &rc, &po, &x, NULL);
-        check_rc(rc, PRIMAL_RES_OK, "T84 abs_gap=1 chiude");
-        close_enough_tol(po, -4.0, 1e-9, "T84 abs_gap=1 non basta: -4.5 < -3");
-        close_enough_tol(x, 4.0, 1e-9, "T84 i due gap non sono lo stesso registro");
+        check_rc(rc, PRIMAL_RES_OK, "T84 abs_gap=1 closes");
+        close_enough_tol(po, -4.0, 1e-9, "T84 abs_gap=1 is not enough: -4.5 < -3");
+        close_enough_tol(x, 4.0, 1e-9, "T84 the two gaps are not the same register");
     }
 
     {   /* C4. the integrality threshold DECLARES a fractional vertex integer,
@@ -4030,17 +4038,17 @@ static void test_t84(void) {
          * with solsta INTEGER_OPTIMAL, i.e. an infeasible point declared optimal. */
         PRIMALrescodee rc; double po, x, pi;
         t84_mip(0.0, 1e-9, 0.6, 0.0, 100000, 4.5, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_OK, "T84 int_her=0.6 chiude");
-        close_enough_tol(x, 4.0, 1e-9, "T84 int_her=0.6 pubblica l'intero, non il vertice");
+        check_rc(rc, PRIMAL_RES_OK, "T84 int_her=0.6 closes");
+        close_enough_tol(x, 4.0, 1e-9, "T84 int_her=0.6 publishes the integer, not the vertex");
         close_enough_tol(po, -4.0, 1e-9, "T84 int_her=0.6 pobj = -4");
-        check(pi <= 1e-6, "T84 il punto pubblicato misura nella tolleranza di fattibilita'");
+        check(pi <= 1e-6, "T84 the published point measures within the feasibility tolerance");
         double back = 0.0;
         P p; pbegin(&p);
         PRIMAL_getdouparam(p.task, PRIMAL_DPAR_MIP_TOL_INTHER, &back);
-        check(back == 1e-5, "T84 la soglia di integralita' di default e' 1e-5"
+        check(back == 1e-5, "T84 the default integrality threshold is 1e-5"
                             " (MSK_DPAR_MIO_TOL_ABS_RELAX_INT)");
         PRIMAL_getdouparam(p.task, PRIMAL_DPAR_MIP_TOL_FEAS, &back);
-        check(back == 1e-6, "T84 la tolleranza di fattibilita' di default e' 1e-6"
+        check(back == 1e-6, "T84 the default feasibility tolerance is 1e-6"
                             " (MSK_DPAR_MIO_TOL_FEAS)");
         pend(&p);
     }
@@ -4058,18 +4066,18 @@ static void test_t84(void) {
          * violation below the declared tolerance. */
         PRIMALrescodee rc; double po, x, pi;
         t84_mip(0.0, 1e-9, 1e-5, 0.0, 1, 4.000004, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_OK, "T84 int_her=1e-5 pota la radice da sola");
-        close_enough_tol(x, 4.0, 1e-9, "T84 int_her=1e-5 arrotonda a 4");
+        check_rc(rc, PRIMAL_RES_OK, "T84 int_her=1e-5 prunes the root by itself");
+        close_enough_tol(x, 4.0, 1e-9, "T84 int_her=1e-5 rounds to 4");
         t84_mip(0.0, 1e-9, 1e-9, 0.0, 1, 4.000004, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "T84 int_her=1e-9 chiede un ramo");
+        check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "T84 int_her=1e-9 asks for a branch");
         t84_mip(0.0, 1e-9, 1e-3, 1e-6, 100000, 3.99996, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_OK, "T84 feas=1e-6 chiude");
-        close_enough_tol(x, 3.0, 1e-9, "T84 feas=1e-6 rifiuta il rounding fuori dal bordo");
+        check_rc(rc, PRIMAL_RES_OK, "T84 feas=1e-6 closes");
+        close_enough_tol(x, 3.0, 1e-9, "T84 feas=1e-6 rejects the rounding outside the boundary");
         close_enough_tol(po, -3.0, 1e-9, "T84 feas=1e-6 pobj = -3");
         check(pi <= 1e-6, "T84 feas=1e-6 infeas published <= 1e-6");
         t84_mip(0.0, 1e-9, 1e-3, 1e-3, 100000, 3.99996, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_OK, "T84 feas=1e-3 chiude");
-        close_enough_tol(x, 4.0, 1e-9, "T84 feas=1e-3 accetta lo stesso rounding");
+        check_rc(rc, PRIMAL_RES_OK, "T84 feas=1e-3 closes");
+        close_enough_tol(x, 4.0, 1e-9, "T84 feas=1e-3 accepts the same rounding");
         close_enough_tol(po, -4.0, 1e-9, "T84 feas=1e-3 pobj = -4");
         check(pi <= 1e-3, "T84 feas=1e-3 infeas published <= 1e-3");
     }
@@ -4180,7 +4188,7 @@ static double t85_maxabs(const double *v, int n) {
 
 /* T85: infeasibility certificates as vectors (the dual/primal ray must measure). */
 static void test_t85(void) {
-    cur_name = "T85 certificati di infeasibilita' come vettori";
+    cur_name = "T85 infeasibility certificates as vectors";
     double y[8], rho[8];
 
     {   /* A: x1 + x2 = -1 with x >= 0: the bound is negative, the multiplier
@@ -4193,11 +4201,11 @@ static void test_t85(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, -1.0, -1.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "T85 A rc=ERR_INFEASIBLE");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 A il raggio duale c'e'");
-        check(t85_measures_dual(t, y) == 1, "T85 A il raggio duale misura (b'y > 0, A'y <= 0)");
-        check(t85_maxabs(y, 1) > 1.0 - 1e-9, "T85 A raggio normalizzato a max |y| = 1");
-        check(y[0] < 0.0, "T85 A il segno e' forzato: y0 < 0 su un bound negativo");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T85 A nessun raggio primale");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 A the dual ray is there");
+        check(t85_measures_dual(t, y) == 1, "T85 A the dual ray measures (b'y > 0, A'y <= 0)");
+        check(t85_maxabs(y, 1) > 1.0 - 1e-9, "T85 A ray normalized to max |y| = 1");
+        check(y[0] < 0.0, "T85 A the sign is forced: y0 < 0 on a negative bound");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T85 A no primal ray");
         PRIMALsolstae sta; PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
         check(sta == PRIMAL_SOL_STA_PRIM_INFEAS_CER, "T85 A solsta = PRIM_INFEAS_CER");
         pend(&p);
@@ -4216,9 +4224,9 @@ static void test_t85(void) {
         PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 0.8, 0.8);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "T85 B rc=ERR_INFEASIBLE");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 B il raggio duale c'e'");
-        check(t85_measures_dual(t, y) == 1, "T85 B il raggio duale misura");
-        check(y[0] < 0.0, "T85 B la riga di somma entra col segno negativo");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 B the dual ray is there");
+        check(t85_measures_dual(t, y) == 1, "T85 B the dual ray measures");
+        check(y[0] < 0.0, "T85 B the sum row enters with the negative sign");
         pend(&p);
     }
     {   /* C: min -x1-x2  s.t.  x1 - x2 <= 1, x >= 0 -> unbounded. */
@@ -4230,10 +4238,10 @@ static void test_t85(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 1.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED, "T85 C rc=ERR_UNBOUNDED");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T85 C il raggio primale c'e'");
-        check(t85_measures_primal(t, rho) == 1, "T85 C il raggio primale misura");
-        check(t85_maxabs(rho, 2) > 1.0 - 1e-9, "T85 C raggio normalizzato");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "T85 C nessun raggio duale");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T85 C the primal ray is there");
+        check(t85_measures_primal(t, rho) == 1, "T85 C the primal ray measures");
+        check(t85_maxabs(rho, 2) > 1.0 - 1e-9, "T85 C normalized ray");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "T85 C no dual ray");
         PRIMALsolstae sta; PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
         check(sta == PRIMAL_SOL_STA_DUAL_INFEAS_CER, "T85 C solsta = DUAL_INFEAS_CER");
         pend(&p);
@@ -4246,9 +4254,9 @@ static void test_t85(void) {
         PRIMAL_putcj(t, 0, -1.0);
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED, "T85 D rc=ERR_UNBOUNDED");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T85 D il raggio primale c'e'");
-        check(t85_measures_primal(t, rho) == 1, "T85 D il raggio primale misura");
-        check(rho[0] > 0.0, "T85 D rho0 > 0 (min -x0 diverge verso +infinito)");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T85 D the primal ray is there");
+        check(t85_measures_primal(t, rho) == 1, "T85 D the primal ray measures");
+        check(rho[0] > 0.0, "T85 D rho0 > 0 (min -x0 diverges toward +infinity)");
         pend(&p);
     }
     {   /* E: maximize x0 with x0 >= 0: the objective sense does not change the
@@ -4260,8 +4268,8 @@ static void test_t85(void) {
         PRIMAL_putcj(t, 0, 1.0);
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED, "T85 E rc=ERR_UNBOUNDED");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T85 E il raggio primale c'e'");
-        check(t85_measures_primal(t, rho) == 1, "T85 E il raggio primale misura (max)");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T85 E the primal ray is there");
+        check(t85_measures_primal(t, rho) == 1, "T85 E the primal ray measures (max)");
         check(rho[0] > 0.0, "T85 E rho0 > 0");
         pend(&p);
     }
@@ -4280,10 +4288,10 @@ static void test_t85(void) {
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 2.0);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "T85 F rc=ERR_INFEASIBLE");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 F il raggio duale c'e'");
-        check(t85_measures_dual(t, y) == 1, "T85 F il raggio duale misura");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 F the dual ray is there");
+        check(t85_measures_dual(t, y) == 1, "T85 F the dual ray measures");
         check(fabs(y[0]) > 1.0 - 1e-6 && fabs(y[1]) > 1.0 - 1e-6,
-              "T85 F il certificato non ha bisogno della riga di cappuccio");
+              "T85 F the certificate does not need the cap row");
         pend(&p);
     }
     {   /* G: an optimal model has no certificates: the two getters answer
@@ -4296,8 +4304,8 @@ static void test_t85(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 3.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T85 G optimize OK");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "T85 G nessun raggio duale su un ottimo");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T85 G nessun raggio primale su un ottimo");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "T85 G no dual ray on an optimum");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T85 G no primal ray on an optimum");
         pend(&p);
     }
     {   /* H: the same infeasibility attacked by the interior point, which has no
@@ -4317,14 +4325,14 @@ static void test_t85(void) {
         PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 0.8, 0.8);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMALrescodee rc = PRIMAL_optimize(t);
-        check(rc != PRIMAL_RES_OK, "T85 H il punto interno non dichiara un ottimo");
+        check(rc != PRIMAL_RES_OK, "T85 H the interior point does not declare an optimum");
         PRIMALsolstae sta; PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sta);
         if (sta == PRIMAL_SOL_STA_PRIM_INFEAS_CER) {
-            check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 H CER -> c'e' il vettore");
-            check(t85_measures_dual(t, y) == 1, "T85 H il vettore che accompagna CER misura");
+            check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T85 H CER -> the vector is there");
+            check(t85_measures_dual(t, y) == 1, "T85 H the vector accompanying CER measures");
         } else {
             check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG,
-                     "T85 H senza vettore misurato non c'e' certificato");
+                     "T85 H without a measured vector there is no certificate");
         }
         pend(&p);
     }
@@ -4350,11 +4358,11 @@ static void test_t85(void) {
             PRIMAL_putconbound(t, 3, PRIMAL_BK_FX, 0.9, 0.9);
             for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
             check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE,
-                     "T85 I infeasibile dichiarato con e senza presolve");
+                     "T85 I infeasible declared with and without presolve");
             check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK,
-                     "T85 I il raggio c'e' con e senza presolve");
-            check(t85_measures_dual(t, y) == 1, "T85 I il raggio misura su entrambe le strade");
-            check(t85_maxabs(y, 4) > 1.0 - 1e-9, "T85 I raggio normalizzato");
+                     "T85 I the ray is there with and without presolve");
+            check(t85_measures_dual(t, y) == 1, "T85 I the ray measures on both paths");
+            check(t85_maxabs(y, 4) > 1.0 - 1e-9, "T85 I normalized ray");
             pend(&p);
         }
     }
@@ -4381,7 +4389,7 @@ static void test_t85(void) {
  * parameter reaches the conversion): the IPM does not converge, the caller goes
  * to the outer approximation. */
 static void test_t89(void) {
-    cur_name = "T89 via a tagli: sandwich e ammissibilita' duale";
+    cur_name = "T89 cut path: sandwich and dual feasibility";
     enum { NB = 2 };
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
@@ -4406,9 +4414,9 @@ static void test_t89(void) {
     PRIMAL_putbaraij(t, 2, 0, 1, &m01, (double[]){1.0});
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
     check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1),
-             PRIMAL_RES_OK, "T89 IPM limitato a un iterato");
+             PRIMAL_RES_OK, "T89 IPM limited to one iterate");
 
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T89 ha risposto la via a tagli");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T89 the cut path answered");
     double x[NB], po = 0.0, dbo = 0.0, Z[NB * NB], Ac[NB * NB], ev[NB], evec[NB * NB];
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T89 getxx");
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T89 pobj");
@@ -4421,8 +4429,8 @@ static void test_t89(void) {
      * coincide because the optimum of the relaxation is feasible for the cone.
      * The point is ~5e-5 from (1,1): the outer approximation stops on its
      * eigenvalue tolerance, not on the relative triple of the IPM. */
-    check(dbo <= po + 1e-9, "T89 dualita' debole sul sandwich");
-    close_enough_tol(dbo, 2.0, 1e-5, "T89 dobj coincide con il primale");
+    check(dbo <= po + 1e-9, "T89 weak duality on the sandwich");
+    close_enough_tol(dbo, 2.0, 1e-5, "T89 dobj coincides with the primal");
     /* And here is the check that `dobj = pobj` is not an assumption: the matrix
      * published by getbarsj must be dual feasible and complementary, because
      * it is what makes that number the value of a dual point. Measurement:
@@ -4431,14 +4439,14 @@ static void test_t89(void) {
     check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T89 getbarxj");
     for (int a = 0; a < NB * NB; a++) Ac[a] = Z[a];
     dmat_eig_jacobi(NB, Ac, ev, evec);
-    check(ev[0] >= -1e-9, "T89 barsj duale ammissibile (Z in S^2_+)");
+    check(ev[0] >= -1e-9, "T89 barsj dual feasible (Z in S^2_+)");
     for (int a = 0; a < NB * NB; a++) Ac[a] = B[a];
     dmat_eig_jacobi(NB, Ac, ev, evec);
-    check(ev[0] >= -1e-6, "T89 il punto pubblicato e' ammissibile per il cono");
+    check(ev[0] >= -1e-6, "T89 the published point is feasible for the cone");
     double comp = 0.0;
     for (int a = 0; a < NB; a++)
         for (int b = 0; b < NB; b++) comp += Z[a * NB + b] * B[a * NB + b];
-    check(fabs(comp) <= 1e-6, "T89 complementarita' <Z,B> = 0");
+    check(fabs(comp) <= 1e-6, "T89 complementarity <Z,B> = 0");
     pend(&p);
 }
 
@@ -4455,7 +4463,7 @@ static void test_t89(void) {
  * Model: B in S^20_+, <I,B> = 1, x0 = <E00,B>, min -x0. The optimum is the
  * frontal point B = diag(1,0,...,0), x0 = 1, obj = dobj = -1. */
 static void test_t88(void) {
-    cur_name = "T88 arresto dell'IPM conico sulla terna misurata";
+    cur_name = "T88 conic IPM stop on the measured triple";
     enum { D = 20 };
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
@@ -4478,27 +4486,27 @@ static void test_t88(void) {
     PRIMAL_putbaraij(t, 1, 0, 1, &mI, (double[]){1.0});
     PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
 
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T88 risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T88 solved");
     double x[1], po = 0.0, dobj = 0.0, B[D * D];
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T88 getxx");
     close_enough_tol(x[0], 1.0, 1e-4, "T88 x0 = 1");
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T88 pobj");
     check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dobj), PRIMAL_RES_OK, "T88 dobj");
-    close_enough_tol(po, -1.0, 1e-5, "T88 obiettivo");
+    close_enough_tol(po, -1.0, 1e-5, "T88 objective");
     /* here is the assertion that used to fail: the quality the solver declares
      * to have reached, read from the two published objectives */
     double relgap = fabs(po - dobj) / (1.0 + fabs(po) + fabs(dobj));
-    check(relgap <= 1e-8, "T88 il gap pubblicato sta nella tolleranza dichiarata");
+    check(relgap <= 1e-8, "T88 the published gap lies in the declared tolerance");
     if (!(relgap <= 1e-8)) printf("  T88 rel_gap=%.3g\n", relgap);
     check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T88 getbarxj");
     close_enough_tol(B[0], 1.0, 1e-4, "T88 B00 = 1");
-    close_enough_tol(B[(D + 1) * 1], 0.0, 1e-4, "T88 B11 = 0 (la barra e' rank-one)");
+    close_enough_tol(B[(D + 1) * 1], 0.0, 1e-4, "T88 B11 = 0 (the bar is rank-one)");
     int minors_ok = 1;
     for (int a = 0; a < D && minors_ok; a++) if (B[a * D + a] < -1e-5) minors_ok = 0;
-    check(minors_ok, "T88 barra PSD: diagonale non negativa");
+    check(minors_ok, "T88 PSD bar: non-negative diagonal");
     double tr = 0.0;
     for (int a = 0; a < D; a++) tr += B[a * D + a];
-    check(fabs(tr - 1.0) < 1e-4, "T88 <I,B> = 1 rispettato");
+    check(fabs(tr - 1.0) < 1e-4, "T88 <I,B> = 1 respected");
     pend(&p);
 }
 
@@ -4517,7 +4525,7 @@ static void test_t88(void) {
  * look at `has_sol` (unlike its twin `getdualobj`), so on a model
  * never solved it answered `OK` with `0`; now it answers `ERR_ARG` like `getxx`. */
 static void test_t87(void) {
-    cur_name = "T87 dominio non convesso nell'encoder QCQP";
+    cur_name = "T87 non-convex domain in the QCQP encoder";
 
     /* A) min -(x0^2+x1^2)  s.t.  x0^2+x1^2 <= 3,  0 <= x <= 2.
      * NSD objective in MIN: wrong side. The convex row gives nent > 0,
@@ -4531,13 +4539,13 @@ static void test_t87(void) {
         PRIMAL_putqobj(t, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){-2.0, -2.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 3.0);
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_ARG, "T87 A obiettivo non convesso rifiutato");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_ARG, "T87 A non-convex objective rejected");
         double x[2];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_ERR_ARG,
-                 "T87 A nessun punto pubblicato");
+                 "T87 A no point published");
         double po;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_ERR_ARG,
-                 "T87 A nessun obiettivo pubblicato");
+                 "T87 A no objective published");
         pend(&p);
     }
 
@@ -4553,13 +4561,13 @@ static void test_t87(void) {
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -1.0);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 0.5);
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, -2.0});
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_ARG, "T87 B riga UP indefinita rifiutata");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_ARG, "T87 B indefinite UP row rejected");
         double x[2];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_ERR_ARG,
-                 "T87 B nessun punto pubblicato");
+                 "T87 B no point published");
         double po;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_ERR_ARG,
-                 "T87 B nessun obiettivo pubblicato");
+                 "T87 B no objective published");
         pend(&p);
     }
 
@@ -4575,13 +4583,13 @@ static void test_t87(void) {
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -1.0);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 0.5);
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, -2e-11});
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T87 C risolto (soglia relativa)");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T87 C solved (relative threshold)");
         double x[2], po = 0.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T87 C getxx");
         close_enough_tol(x[0], 1.0 / sqrt(2.0), 1e-4, "T87 C x0");
         close_enough_tol(x[1], 2.0, 1e-4, "T87 C x1");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T87 C pobj");
-        close_enough_tol(po, -(2.0 + 1.0 / sqrt(2.0)), 1e-5, "T87 C obiettivo");
+        close_enough_tol(po, -(2.0 + 1.0 / sqrt(2.0)), 1e-5, "T87 C objective");
         pend(&p);
     }
 
@@ -4598,13 +4606,13 @@ static void test_t87(void) {
         PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 1.0);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 3.0, INFINITY);
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_ARG, "T87 D riga LO con Q PSD rifiutata");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_ARG, "T87 D LO row with PSD Q rejected");
         double x[2];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_ERR_ARG,
-                 "T87 D nessun punto pubblicato");
+                 "T87 D no point published");
         double po;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_ERR_ARG,
-                 "T87 D nessun obiettivo pubblicato");
+                 "T87 D no objective published");
         pend(&p);
     }
 
@@ -4622,13 +4630,13 @@ static void test_t87(void) {
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -1.0);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 0.5);
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2e6, -2e-4});
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T87 E risolto (curvatura relativa piattevole)");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T87 E solved (relatively flat curvature)");
         double x[2], po = 0.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T87 E getxx");
         close_enough_tol(x[0], sqrt(0.5 + 4e-4) / 1e3, 1e-5, "T87 E x0");
         close_enough_tol(x[1], 2.0, 1e-4, "T87 E x1");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T87 E pobj");
-        close_enough_tol(po, -(2.0 + sqrt(0.5 + 4e-4) / 1e3), 1e-5, "T87 E obiettivo");
+        close_enough_tol(po, -(2.0 + sqrt(0.5 + 4e-4) / 1e3), 1e-5, "T87 E objective");
         pend(&p);
     }
 }
@@ -4639,7 +4647,7 @@ static void test_t87(void) {
  * outcome is measured — the RQUAD encoder carries the bars with it, so the model
  * solved is still the user's model. */
 static void test_t86(void) {
-    cur_name = "T86 barre + obiettivo/vincolo quadratico";
+    cur_name = "T86 bars + quadratic objective/constraint";
 
     /* A) min -x0-x1  s.t.  x0^2+x1^2 <= 2,  <E00,B> = 1,  B in S^2_+.
      * Hand optimum: x* = (1,1), obj = -2 (the ball is active), B00 = 1 and
@@ -4661,17 +4669,17 @@ static void test_t86(void) {
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
         PRIMAL_putbaraij(t, 1, 0, 1, &m00, (double[]){1.0});
         PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T86 A risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T86 A solved");
         double x[2], po = 0.0, B[4];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T86 A getxx");
         close_enough_tol(x[0], 1.0, 1e-4, "T86 A x0");
         close_enough_tol(x[1], 1.0, 1e-4, "T86 A x1");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T86 A pobj");
-        close_enough_tol(po, -2.0, 1e-5, "T86 A obiettivo");
+        close_enough_tol(po, -2.0, 1e-5, "T86 A objective");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T86 A getbarxj");
         close_enough_tol(B[0], 1.0, 1e-5, "T86 A <E00,B> = 1");
-        check(B[3] >= -1e-5, "T86 A barra PSD: B11 >= 0");
-        check(B[0] * B[3] - B[1] * B[1] >= -1e-5, "T86 A barra PSD: det >= 0");
+        check(B[3] >= -1e-5, "T86 A PSD bar: B11 >= 0");
+        check(B[0] * B[3] - B[1] * B[1] >= -1e-5, "T86 A PSD bar: det >= 0");
         pend(&p);
     }
 
@@ -4692,16 +4700,16 @@ static void test_t86(void) {
         PRIMAL_putqobj(t, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
         PRIMAL_putbaraij(t, 0, 0, 1, &m00, (double[]){1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T86 B risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T86 B solved");
         double x[2], po = 0.0, B[4];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T86 B getxx");
         close_enough_tol(x[0], 0.5, 1e-4, "T86 B x0");
         close_enough_tol(x[1], 0.5, 1e-4, "T86 B x1");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T86 B pobj");
-        close_enough_tol(po, -0.5, 1e-5, "T86 B obiettivo");
+        close_enough_tol(po, -0.5, 1e-5, "T86 B objective");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T86 B getbarxj");
         close_enough_tol(B[0], 1.0, 1e-5, "T86 B <E00,B> = 1");
-        check(B[3] >= -1e-5, "T86 B barra PSD: B11 >= 0");
+        check(B[3] >= -1e-5, "T86 B PSD bar: B11 >= 0");
         pend(&p);
     }
 
@@ -4725,17 +4733,17 @@ static void test_t86(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 3.0);
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
         PRIMAL_putbaraij(t, 0, 0, 1, &m00, (double[]){1.0});
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T86 C risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T86 C solved");
         double x[2], po = 0.0, B[4];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T86 C getxx");
         close_enough_tol(x[0], sqrt(1.5), 1e-4, "T86 C x0");
         close_enough_tol(x[1], sqrt(1.5), 1e-4, "T86 C x1");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T86 C pobj");
-        close_enough_tol(po, -sqrt(6.0), 1e-5, "T86 C obiettivo");
+        close_enough_tol(po, -sqrt(6.0), 1e-5, "T86 C objective");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T86 C getbarxj");
-        close_enough_tol(B[0], 0.0, 1e-5, "T86 C B00 = 0 (la barra non ruba raggio)");
-        check(B[3] >= -1e-5, "T86 C barra PSD: B11 >= 0");
-        check(B[0] * B[3] - B[1] * B[1] >= -1e-5, "T86 C barra PSD: det >= 0");
+        close_enough_tol(B[0], 0.0, 1e-5, "T86 C B00 = 0 (the bar does not steal radius)");
+        check(B[3] >= -1e-5, "T86 C PSD bar: B11 >= 0");
+        check(B[0] * B[3] - B[1] * B[1] >= -1e-5, "T86 C PSD bar: det >= 0");
         pend(&p);
     }
 }
@@ -4801,7 +4809,7 @@ static void t90_case(int cutmode, int cse) {
      * merit (measured: [frozen] at it=27, merit=2.56e-5) and the cut path answers
      * even without GMB_NO_EXP_IPM. What is asserted is the outcome. */
     if (cse == 0)
-        check(cutmode ? t90_native == 0 : t90_native == 1, "ha risposto il percorso atteso");
+        check(cutmode ? t90_native == 0 : t90_native == 1, "the expected path answered");
     double x[3], po;
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
@@ -4820,19 +4828,19 @@ static void t90_case(int cutmode, int cse) {
     if (fabs(x[2]) > sc) sc = fabs(x[2]);
     double slack = (x[0] < 0.0 || x[1] < 0.0) ? -HUGE_VAL
                  : pow(x[0], al) * pow(x[1], 1.0 - al) - fabs(x[2]);
-    check(slack / (1.0 + sc) >= -tol, "il punto pubblicato e' dentro PPOW");
+    check(slack / (1.0 + sc) >= -tol, "the published point is inside PPOW");
     pend(&p);
 }
 
 /* T90: run both cut/native paths over the two cases and assert the cone
  * membership of the published point in the units of the cone. */
 static void test_t90(void) {
-    cur_name = "T90 tagli: ammissibilita' di cono misurata nelle sue unita'";
+    cur_name = "T90 cuts: cone feasibility measured in its units";
     char lbl[64];
     for (int cutmode = 1; cutmode >= 0; cutmode--)
         for (int cse = 0; cse < 2; cse++) {
             snprintf(lbl, sizeof lbl, "T90 %c %s", 'A' + cse,
-                     cutmode ? "via a tagli" : "via nativa");
+                     cutmode ? "cut path" : "native path");
             cur_name = lbl;
             t90_case(cutmode, cse);
         }
@@ -4878,18 +4886,18 @@ static void t91_case(double lob) {
     close_enough_tol(x[0], 0.8, 1e-5, "t = 0.8");
     close_enough_tol(x[1], 0.2, 1e-5, "u = 0.2");
     close_enough_tol(po, -0.8, 1e-5, "obj = -0.8");
-    check(x[1] >= lob - 1e-9, "il bordo dichiarato dall'utente e' rispettato");
+    check(x[1] >= lob - 1e-9, "the user-declared bound is respected");
     /* Public measurement, independent of the path: violated rows and bounds, from the
      * problem data as a user would see them. */
     check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "getprimalinfeas");
-    check(pinf >= 0.0 && pinf <= 1e-8, "pinf <= tolleranza dichiarata");
+    check(pinf >= 0.0 && pinf <= 1e-8, "pinf <= declared tolerance");
     /* The cone, in its units and with the domain faces. */
     double sc = fabs(x[0]) > fabs(x[1]) ? fabs(x[0]) : fabs(x[1]);
     if (fabs(x[2]) > sc) sc = fabs(x[2]);
     double slack = (x[0] < 0.0 || x[1] < 0.0) ? -HUGE_VAL
                  : sqrt(x[0] * x[1]) - fabs(x[2]);
-    check(slack / (1.0 + sc) >= -1e-8, "il punto pubblicato e' dentro PPOW");
-    check(fabs(po - dob) <= 1e-8 * (1.0 + fabs(po) + fabs(dob)), "gap relativo");
+    check(slack / (1.0 + sc) >= -1e-8, "the published point is inside PPOW");
+    check(fabs(po - dob) <= 1e-8 * (1.0 + fabs(po) + fabs(dob)), "relative gap");
     pend(&p);
 }
 
@@ -4934,9 +4942,9 @@ static void t92_check(PRIMALtask_t t, const char *lbl, double want) {
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, msg);
     snprintf(msg, sizeof msg, "%s: getdualobj", lbl);
     check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dbo), PRIMAL_RES_OK, msg);
-    snprintf(msg, sizeof msg, "%s: primale = %g, la costante conta'", lbl, want);
+    snprintf(msg, sizeof msg, "%s: primal = %g, the constant counts", lbl, want);
     close_enough_tol(po, want, 1e-5, msg);
-    snprintf(msg, sizeof msg, "%s: dobj = pobj (la costante arriva anche al duale)", lbl);
+    snprintf(msg, sizeof msg, "%s: dobj = pobj (the constant reaches the dual too)", lbl);
     check(fabs(dbo - po) <= 1e-5 * (1.0 + fabs(po)), msg);
 }
 
@@ -4984,7 +4992,7 @@ static void test_t92(void) {
         PRIMAL_putvarbound(t, 2, PRIMAL_BK_FR, 0.0, 0.0);
         check_rc(PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0.0, 3, (int[]){0,1,2}),
                  PRIMAL_RES_OK, "C appendcone RQUAD");
-        cur_name = "T92 C conico RQUAD denso";
+        cur_name = "T92 C dense RQUAD conic";
         t92_check(t, "C RQUAD u=1, x2<=2, cfix 5", 3.0);
         pend(&p);
     }
@@ -5010,7 +5018,7 @@ static void test_t92(void) {
         PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 0.0, 0.0);
         PRIMAL_putbaraij(t, 2, 0, 1, &m01, (double[]){1.0});
         PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
-        cur_name = "T92 D barra SDP";
+        cur_name = "T92 D SDP bar";
         t92_check(t, "D min x0+x1 su PSD 2x2, cfix -1.5", 0.5);
         pend(&p);
     }
@@ -5031,7 +5039,7 @@ static void test_t92(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 1.0);
         check_rc(PRIMAL_appendcone(t, PRIMAL_CT_PPOW, 0.5, 3, (int[]){0,1,2}),
                  PRIMAL_RES_OK, "E appendcone PPOW(1/2)");
-        cur_name = "T92 E cono PPOW";
+        cur_name = "T92 E PPOW cone";
         t92_check(t, "E max t su PPOW(1/2), cfix 2", 1.2);
         pend(&p);
     }
@@ -5272,7 +5280,7 @@ static int t98_cer_has_vector(PRIMALtask_t t, double *y, double *rho) {
 
 /* T98: a *_CER status names a vector; no certificate without one. */
 static void test_t98(void) {
-    cur_name = "T98 nessun certificato senza il vettore che lo nomina";
+    cur_name = "T98 no certificate without the vector that names it";
     double y[8], rho[8], x[8];
 
     {   /* A. the cut path on a primal infeasible model: x0+x1 <= -1 lies
@@ -5288,11 +5296,11 @@ static void test_t98(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0, "T98 A solsta = UNKNOWN (5 era un certificato inventato)");
-        check(pro == 4, "T98 A prosta = PRIM_INFEAS: il verdetto si legge qui");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "T98 A nessun raggio duale");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T98 A nessun raggio primale");
-        check(t98_cer_has_vector(t, y, rho) == 1, "T98 A l'invariante CER => vettore");
+        check(sta == 0, "T98 A solsta = UNKNOWN (5 was an invented certificate)");
+        check(pro == 4, "T98 A prosta = PRIM_INFEAS: the verdict is read here");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "T98 A no dual ray");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T98 A no primal ray");
+        check(t98_cer_has_vector(t, y, rho) == 1, "T98 A the invariant CER => vector");
         pend(&p);
     }
     {   /* B. the cut path on an unbounded model: a free variable with
@@ -5309,10 +5317,10 @@ static void test_t98(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0, "T98 B solsta = UNKNOWN (6 era un certificato inventato)");
+        check(sta == 0, "T98 B solsta = UNKNOWN (6 was an invented certificate)");
         check(pro == 5, "T98 B prosta = DUAL_INFEAS");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T98 B nessun raggio primale");
-        check(t98_cer_has_vector(t, y, rho) == 1, "T98 B l'invariante CER => vettore");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T98 B no primal ray");
+        check(t98_cer_has_vector(t, y, rho) == 1, "T98 B the invariant CER => vector");
         pend(&p);
     }
     {   /* C. MIP with the relaxation unbounded: min -x0, x0 integer non-negative.
@@ -5329,10 +5337,10 @@ static void test_t98(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0, "T98 C solsta = UNKNOWN, come il ramo infeasibile gemello");
+        check(sta == 0, "T98 C solsta = UNKNOWN, like the twin infeasible branch");
         check(pro == 5, "T98 C prosta = DUAL_INFEAS");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T98 C nessun raggio primale");
-        check(t98_cer_has_vector(t, y, rho) == 1, "T98 C l'invariante CER => vettore");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_ERR_ARG, "T98 C no primal ray");
+        check(t98_cer_has_vector(t, y, rho) == 1, "T98 C the invariant CER => vector");
         pend(&p);
     }
     {   /* D. a basis that does not measure on a feasible model: max x0+x1 with
@@ -5354,18 +5362,18 @@ static void test_t98(void) {
         PRIMAL_putskc(t, PRIMAL_SOL_BAS, skc);
         PRIMALrescodee rc = PRIMAL_solvebasis(t);
         check_rc(rc, PRIMAL_RES_OK,
-                 "T98 D una base non ammissibile non e' un teorema sul modello");
+                 "T98 D an infeasible basis is not a theorem about the model");
         int sta = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
-        check(sta == 1, "T98 D solsta = OPTIMAL (5 era un certificato inventato)");
+        check(sta == 1, "T98 D solsta = OPTIMAL (5 was an invented certificate)");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK,
-                 "T98 D getxx risponde (prima memcpyava da un puntatore NULL)");
+                 "T98 D getxx answers (it used to memcpy from a NULL pointer)");
         check(fabs(x[0] - 0.0) <= 1e-9 && fabs(x[1] - 1.0) <= 1e-9,
-              "T98 D il punto e' l'ottimo del modello, (0,1)");
+              "T98 D the point is the model optimum, (0,1)");
         double po = 0.0;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T98 D pobj");
         close_enough_tol(po, 1.0, 1e-9, "T98 D obj = 1");
-        check(t98_cer_has_vector(t, y, rho) == 1, "T98 D l'invariante CER => vettore");
+        check(t98_cer_has_vector(t, y, rho) == 1, "T98 D the invariant CER => vector");
         pend(&p);
     }
     {   /* E. positive control: the true certificate still comes out, with its
@@ -5381,11 +5389,11 @@ static void test_t98(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 5, "T98 E qui solsta = PRIM_INFEAS_CER E' legittimo");
-        check(pro == 4, "T98 E prosta = PRIM_INFEAS, la tabella 7.2");
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T98 E il raggio duale c'e'");
-        check(t85_measures_dual(t, y) == +1, "T98 E e' il raggio a misurare, non il numero");
-        check(t98_cer_has_vector(t, y, rho) == 1, "T98 E l'invariante CER => vettore");
+        check(sta == 5, "T98 E here solsta = PRIM_INFEAS_CER is legitimate");
+        check(pro == 4, "T98 E prosta = PRIM_INFEAS, table 7.2");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T98 E the dual ray is there");
+        check(t85_measures_dual(t, y) == +1, "T98 E it is the ray that measures, not the number");
+        check(t98_cer_has_vector(t, y, rho) == 1, "T98 E the invariant CER => vector");
         pend(&p);
     }
 }
@@ -5452,7 +5460,7 @@ static int t99_point_answers(PRIMALtask_t t) {
 
 /* T99: a verdict without a point publishes no point. */
 static void test_t99(void) {
-    cur_name = "T99 un verdetto senza punto non pubblica un punto";
+    cur_name = "T99 a verdict without a point publishes no point";
     double y[8], rho[8], x[8];
 
     {   /* A. infeasible LP WITH the certificate: the ray comes out, the point does not.
@@ -5468,11 +5476,11 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 5 && pro == 4, "T99 A i due verdetti si leggono ancora (5 + 4)");
+        check(sta == 5 && pro == 4, "T99 A the two verdicts are still readable (5 + 4)");
         check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK,
-                 "T99 A il raggio che il certificato nomina c'e'");
-        check(t85_measures_dual(t, y) == +1, "T99 A e' il raggio a misurare");
-        check(t99_no_point(t) == 1, "T99 A nessun getter del punto risponde");
+                 "T99 A the ray the certificate names is there");
+        check(t85_measures_dual(t, y) == +1, "T99 A it is the ray that measures");
+        check(t99_no_point(t) == 1, "T99 A no point getter answers");
         pend(&p);
     }
     {   /* B. unbounded LP with the published primal ray: min -x0, x0 >= 0,
@@ -5486,9 +5494,9 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 6 && pro == 5, "T99 B solsta = 6 e prosta = 5, pubblicati senza has_sol");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T99 B il raggio primale c'e'");
-        check(t99_no_point(t) == 1, "T99 B nessun getter del punto risponde");
+        check(sta == 6 && pro == 5, "T99 B solsta = 6 and prosta = 5, published without has_sol");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "T99 B the primal ray is there");
+        check(t99_no_point(t) == 1, "T99 B no point getter answers");
         pend(&p);
     }
     {   /* C. the cut path (T98 A): verdict in prosta, no ray, no
@@ -5503,8 +5511,8 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0 && pro == 4, "T99 C verdetto in prosta, come T98 A");
-        check(t99_no_point(t) == 1, "T99 C nessun getter del punto risponde");
+        check(sta == 0 && pro == 4, "T99 C verdict in prosta, like T98 A");
+        check(t99_no_point(t) == 1, "T99 C no point getter answers");
         pend(&p);
     }
     {   /* D. infeasible MIP: x <= 0.5 and x >= 1 with x integer. Before: getxx OK with
@@ -5523,8 +5531,8 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0 && pro == 4, "T99 D la coppia della tabella 7.3");
-        check(t99_no_point(t) == 1, "T99 D nessun getter del punto risponde");
+        check(sta == 0 && pro == 4, "T99 D the pair of table 7.3");
+        check(t99_no_point(t) == 1, "T99 D no point getter answers");
         pend(&p);
     }
     {   /* E. MIP with the relaxation unbounded (T98 C). */
@@ -5538,8 +5546,8 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0 && pro == 5, "T99 E la coppia della tabella 7.3");
-        check(t99_no_point(t) == 1, "T99 E nessun getter del punto risponde");
+        check(sta == 0 && pro == 5, "T99 E the pair of table 7.3");
+        check(t99_no_point(t) == 1, "T99 E no point getter answers");
         pend(&p);
     }
     {   /* F. node cap WITHOUT an incumbent: 3x0+5x1 <= 8 with x integer
@@ -5560,8 +5568,8 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0 && pro == 0, "T99 F nessun verdetto, nessun punto");
-        check(t99_no_point(t) == 1, "T99 F nessun getter del punto risponde");
+        check(sta == 0 && pro == 0, "T99 F no verdict, no point");
+        check(t99_no_point(t) == 1, "T99 F no point getter answers");
         pend(&p);
     }
     {   /* G. control: an optimal LP keeps answering on everything. */
@@ -5573,11 +5581,11 @@ static void test_t99(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T99 G rc = OK");
-        check(t99_point_answers(t) == 1, "T99 G il punto pubblicato si legge");
+        check(t99_point_answers(t) == 1, "T99 G the published point is readable");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T99 G getxx");
         double pinf = 1.0;
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "T99 G pinf");
-        check(pinf <= 1e-9, "T99 G e il punto misura ammissibile, non e' un rifiuto");
+        check(pinf <= 1e-9, "T99 G and the point measures feasible, it is not a rejection");
         pend(&p);
     }
     {   /* H. control: the node cap WITH an incumbent really has a point, and
@@ -5597,10 +5605,10 @@ static void test_t99(void) {
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 2 && pro == 2, "T99 H l'incumbente e' un punto: 2 + 2");
-        check(t99_point_answers(t) == 1, "T99 H i getter del punto rispondono");
-        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T99 H getxx risponde");
-        check(fabs(x[0] - 2.0) <= 1e-9, "T99 H e il punto e' l'incumbente");
+        check(sta == 2 && pro == 2, "T99 H the incumbent is a point: 2 + 2");
+        check(t99_point_answers(t) == 1, "T99 H the point getters answer");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T99 H getxx answers");
+        check(fabs(x[0] - 2.0) <= 1e-9, "T99 H and the point is the incumbent");
         pend(&p);
         unsetenv("GMB_NO_MIP_CUTS");
     }
@@ -5810,7 +5818,7 @@ static int t100_no_value(PRIMALtask_t t, PRIMALrescodee rc) {
  * verdict. */
 static void t100_case(char letter, int cse, int cuts) {
     char lbl[64];
-    snprintf(lbl, sizeof lbl, "T100 %c %s", letter, cuts ? "via a tagli" : "via nativa");
+    snprintf(lbl, sizeof lbl, "T100 %c %s", letter, cuts ? "cut path" : "native path");
     cur_name = lbl;
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
@@ -5821,13 +5829,13 @@ static void t100_case(char letter, int cse, int cuts) {
     case 0: {                                          /* unbounded in the bar */
         t100_barcone(t, -1.0, 1.0);
         rc = PRIMAL_optimize(t);
-        check(t100_no_value(t, rc) == 1, "rc=1003, prosta=5, solsta=0, nulla pubblicato");
+        check(t100_no_value(t, rc) == 1, "rc=1003, prosta=5, solsta=0, nothing published");
         break;
     }
     case 1: {                                          /* unbounded, bar only */
         t100_barebar(t);
         rc = PRIMAL_optimize(t);
-        check(t100_no_value(t, rc) == 1, "vale anche senza una scalare da incappucciare");
+        check(t100_no_value(t, rc) == 1, "it also holds without a scalar to cap");
         break;
     }
     case 2: {                                          /* bounded: AM-GM, 2 */
@@ -5835,38 +5843,38 @@ static void t100_case(char letter, int cse, int cuts) {
         double Z[4], Bm[4], Zc[4], ev[2], evec[4];
         t100_barcone(t, 1.0, 1.0);
         rc = PRIMAL_optimize(t);
-        check_rc(rc, PRIMAL_RES_OK, "il modello limitato risponde ancora");
+        check_rc(rc, PRIMAL_RES_OK, "the bounded model still answers");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
         close_enough_tol(po, 2.0, 1e-5, "pobj = 2");
         close_enough_tol(dob, 2.0, 1e-5, "dobj = 2");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "pinf");
-        check(pinf >= 0.0 && pinf <= 1e-6, "il punto consegnato misura ammissibile");
+        check(pinf >= 0.0 && pinf <= 1e-6, "the delivered point measures feasible");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, Bm), PRIMAL_RES_OK, "getbarxj");
         check(fabs(Bm[0] - x[0]) <= 1e-4 && fabs(Bm[3] - x[1]) <= 1e-4,
-              "la barra pubblicata e' [[x0,1],[1,x1]]");
+              "the published bar is [[x0,1],[1,x1]]");
         /* The guard on the negative control: before Sj was [[-1,0],[0,-1]], which
          * is not in S^2_+; here the published dual must lie inside it. */
         check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, Z), PRIMAL_RES_OK, "getbarsj");
         for (int a = 0; a < 4; a++) Zc[a] = Z[a];
         dmat_eig_jacobi(2, Zc, ev, evec);
-        check(ev[0] >= -1e-6, "il duale pubblicato e' nel cono duale");
+        check(ev[0] >= -1e-6, "the published dual is in the dual cone");
         check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf), PRIMAL_RES_OK, "dinf");
-        check(dinf >= -ev[0] - 1e-9, "getdualinfeas vede Z, come in T97");
+        check(dinf >= -ev[0] - 1e-9, "getdualinfeas sees Z, as in T97");
         break;
     }
     case 3: {                       /* large entries, but NOT on the cap: 2r */
         double po = 0.0, dob = 0.0, pinf = -1.0;
         t100_barcone(t, 1.0, 1000.0);
         rc = PRIMAL_optimize(t);
-        check_rc(rc, PRIMAL_RES_OK, "1e3 non e' 1e6: la guardia non deve accendersi");
+        check_rc(rc, PRIMAL_RES_OK, "1e3 is not 1e6: the guard must not fire");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
         close_enough_tol(po, 2000.0, 1e-3, "pobj = 2000 = 2r");
         close_enough_tol(dob, 2000.0, 1e-3, "dobj = 2000");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "pinf");
-        check(pinf >= 0.0 && pinf <= 1e-6, "e il punto sta dentro il cono");
+        check(pinf >= 0.0 && pinf <= 1e-6, "and the point lies inside the cone");
         break;
     }
     default: {         /* lower extreme not reached: cap, not ray */
@@ -5876,13 +5884,13 @@ static void t100_case(char letter, int cse, int cuts) {
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
         PRIMAL_putcj(t, 1, 0.0);           /* max -x0: extreme 0, never reached */
         rc = PRIMAL_optimize(t);
-        check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "nessuna direzione misura: nessun verdetto");
+        check_rc(rc, PRIMAL_RES_TRM_MAX_ITER, "no direction measures: no verdict");
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0 && pro == 0, "e non e' nemmeno un DUAL_INFEAS");
-        check(t99_no_point(t) == 1, "nessun getter del punto risponde");
+        check(sta == 0 && pro == 0, "and it is not even a DUAL_INFEAS");
+        check(t99_no_point(t) == 1, "no point getter answers");
         check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, v), PRIMAL_RES_ERR_ARG,
-                 "nessuna barra pubblicata");
+                 "no bar published");
         break;
     }
     }
@@ -6025,7 +6033,7 @@ static void test_t109(void) {
      *    so the published number says whether that table was read — and
      *    read at the NEW length. */
     {
-        cur_name = "T109 A il warm start cresce col modello e conserva";
+        cur_name = "T109 A the warm start grows with the model and preserves";
         setenv("GMB_NO_MIP_CUTS", "1", 1);
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -6036,31 +6044,31 @@ static void test_t109(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 9.0);
         PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
         check_rc(PRIMAL_putxx(t, PRIMAL_SOL_ITR, (double[]){2.0}), PRIMAL_RES_OK,
-                 "putxx a 1 variabile: alloca LA TABELLA a questa lunghezza");
+                 "putxx at 1 variable: allocates THE TABLE at this length");
         PRIMAL_appendvars(t, 2);              /* warm_x must reach 3 */
         for (int j = 1; j < 3; j++) {         /* no cost, no row */
             PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
             PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT);
         }
         PRIMAL_putintparam(t, PRIMAL_IPAR_MIP_MAX_NODES, 1);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_TRM_MAX_ITER, "albero al cap nodi");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_TRM_MAX_ITER, "tree at the node cap");
         double x[3] = {-1, -1, -1}, po = 0.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK,
-                 "getxx alla lunghezza nuova");
+                 "getxx at the new length");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check(fabs(x[0] - 2.0) <= 1e-9 && fabs(x[1]) <= 1e-9 && fabs(x[2]) <= 1e-9,
-              "x0=2 e' sopravvissuto al realloc e la coda cresce a 0");
-        close_enough_tol(po, -2.0, 1e-9, "l'incumbente pubblicato e' quel punto");
+              "x0=2 survived the realloc and the tail grows to 0");
+        close_enough_tol(po, -2.0, 1e-9, "the published incumbent is that point");
         /* and the second half: write 3 doubles where the block was 1 long. */
         check_rc(PRIMAL_putxx(t, PRIMAL_SOL_ITR, (double[]){1.0, 7.0, 9.0}),
-                 PRIMAL_RES_OK, "putxx alla lunghezza nuova non e' fuori dal blocco");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_TRM_MAX_ITER, "di nuovo al cap nodi");
+                 PRIMAL_RES_OK, "putxx at the new length does not go outside the block");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_TRM_MAX_ITER, "again at the node cap");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check(fabs(x[0] - 1.0) <= 1e-9 && fabs(x[1] - 7.0) <= 1e-9 &&
-              fabs(x[2] - 9.0) <= 1e-9, "tutte e tre le entrate sono quelle scritte");
+              fabs(x[2] - 9.0) <= 1e-9, "all three entries are those written");
         close_enough_tol(po, -1.0, 1e-9,
-                         "e vale -1, non il -2 del solve precedente");
+                         "and it is -1, not the -2 of the previous solve");
         pend(&p);
         unsetenv("GMB_NO_MIP_CUTS");
     }
@@ -6069,7 +6077,7 @@ static void test_t109(void) {
      *    bytes from a 16-byte block (the point buffer is `opt_prepare`'s, not
      *    `appendvars`'s) and answered NUMBERS of the earlier model. */
     {
-        cur_name = "T109 B crescere il modello ritira la risposta";
+        cur_name = "T109 B growing the model withdraws the answer";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6078,35 +6086,35 @@ static void test_t109(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T109 B rc = OK");
-        check(t99_point_answers(t) == 1, "T109 B la risposta C'ERA");
+        check(t99_point_answers(t) == 1, "T109 B the answer WAS there");
         double po_old = 0.0;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po_old), PRIMAL_RES_OK,
-                 "e pubblica un numero");
-        close_enough_tol(po_old, 2.0, 1e-9, "che e' 2");
+                 "and publishes a number");
+        close_enough_tol(po_old, 2.0, 1e-9, "which is 2");
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         for (int j = 2; j < 4; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
-        cur_name = "T109 B cresce il modello";
-        check(t99_no_point(t) == 1, "nessun getter del punto risponde");
+        cur_name = "T109 B the model grows";
+        check(t99_no_point(t) == 1, "no point getter answers");
         int sta = -1, pro = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 0 && pro == 0, "e nessun verdetto viene affermato");
+        check(sta == 0 && pro == 0, "and no verdict is asserted");
         double y[8];
-        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "il raggio duale rifiuta");
-        check_rc(PRIMAL_getprimalray(t, y), PRIMAL_RES_ERR_ARG, "e il primale pure");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "il modello cresciuto si risolve");
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_ERR_ARG, "the dual ray refuses");
+        check_rc(PRIMAL_getprimalray(t, y), PRIMAL_RES_ERR_ARG, "and the primal too");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "the grown model is solved");
         check(t99_point_answers(t) == 1,
-              "e la nuova risposta si legge, alla nuova lunghezza");
-        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "getxx a 4");
+              "and the new answer is read, at the new length");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "getxx at 4");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po_old), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(po_old, 2.0, 1e-9, "lo stesso valore, per la stessa ragione");
+        close_enough_tol(po_old, 2.0, 1e-9, "the same value, for the same reason");
         pend(&p);
     }
     /* C. the basis: grows and preserves, and the tail is UNDEF — which solvebasis
      *    refuses already today. A status vector that says "basic" for a variable that
      *    was not there would be an invented basis. */
     {
-        cur_name = "T109 C la base cresce e la coda dice UNDEF";
+        cur_name = "T109 C the basis grows and the tail says UNDEF";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6120,7 +6128,7 @@ static void test_t109(void) {
         PRIMALstakeye skc1[1] = { PRIMAL_SK_UPR };
         check_rc(PRIMAL_putskx(t, PRIMAL_SOL_BAS, skx2), PRIMAL_RES_OK, "putskx");
         check_rc(PRIMAL_putskc(t, PRIMAL_SOL_BAS, skc1), PRIMAL_RES_OK, "putskc");
-        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_OK, "solvebasis sulla base data");
+        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_OK, "solvebasis on the given basis");
         double x[2] = {-1, -1}, po = 0.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_BAS, x), PRIMAL_RES_OK, "getxx BAS");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_BAS, &po), PRIMAL_RES_OK, "pobj BAS");
@@ -6129,24 +6137,24 @@ static void test_t109(void) {
         PRIMAL_appendvars(t, 1);
         PRIMALstakeye sk[3] = { PRIMAL_SK_BAS, PRIMAL_SK_BAS, PRIMAL_SK_BAS };
         check_rc(PRIMAL_getskx(t, PRIMAL_SOL_BAS, sk), PRIMAL_RES_OK,
-                 "getskx alla lunghezza nuova (prima: leggeva fuori dal blocco)");
+                 "getskx at the new length (before: it read outside the block)");
         check(sk[0] == PRIMAL_SK_BAS && sk[1] == PRIMAL_SK_LOW,
-              "i due status dati sono sopravvissuti");
-        check(sk[2] == PRIMAL_SK_UNDEF, "il terzo non c'e': UNDEF, non BASIC");
+              "the two given statuses survived");
+        check(sk[2] == PRIMAL_SK_UNDEF, "the third is not there: UNDEF, not BASIC");
         check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_ERR_ARG,
-                 "e solvebasis rifiuta una base che non copre il modello");
-        check(t99_no_point(t) == 1, "il rifiuto non pubblica il punto del solve sopra");
+                 "and solvebasis refuses a basis that does not cover the model");
+        check(t99_no_point(t) == 1, "the refusal does not publish the point of the solve above");
         PRIMAL_putvarbound(t, 2, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMALstakeye sk3[3] = { PRIMAL_SK_BAS, PRIMAL_SK_LOW, PRIMAL_SK_LOW };
         check_rc(PRIMAL_putskx(t, PRIMAL_SOL_BAS, sk3), PRIMAL_RES_OK,
-                 "putskx completo a 3");
-        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_OK, "e la base quadrata risolve");
+                 "putskx complete at 3");
+        check_rc(PRIMAL_solvebasis(t), PRIMAL_RES_OK, "and the square basis solves");
         double x3[3] = {-1, -1, -1};
-        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_BAS, x3), PRIMAL_RES_OK, "getxx a 3");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_BAS, x3), PRIMAL_RES_OK, "getxx at 3");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_BAS, &po), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(x3[0], 4.0, 1e-9, "x0=4 ancora");
-        close_enough_tol(x3[2], 0.0, 1e-9, "x2 e' al suo lower, come dichiarato");
-        close_enough_tol(po, 4.0, 1e-9, "e l'obiettivo non e' cambiato");
+        close_enough_tol(x3[0], 4.0, 1e-9, "x0=4 still");
+        close_enough_tol(x3[2], 0.0, 1e-9, "x2 is at its lower, as declared");
+        close_enough_tol(po, 4.0, 1e-9, "and the objective has not changed");
         pend(&p);
     }
     /* D. the quadratic store: `qcon` is numvar x numvar DENSE, so growing
@@ -6161,7 +6169,7 @@ static void test_t109(void) {
      *    of the QCQP encoder — eigenvalues paired with the wrong eigenvectors —
      *    and it is fixed and asserted in `T110`.) */
     {
-        cur_name = "T109 D la Q cresce di stride e resta quella scritta";
+        cur_name = "T109 D the Q grows in stride and remains the one written";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6176,122 +6184,122 @@ static void test_t109(void) {
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -1.0);
         int want = -1;
         check_rc(PRIMAL_getnumqconknz(t, 0, &want), PRIMAL_RES_OK, "getnumqconknz");
-        check(want == 3, "tre entrate del triangolo superiore");
+        check(want == 3, "three entries of the upper triangle");
         int qi[8], qj[8]; double qv[8];
         for (int e = 0; e < 8; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         int numret = -1;
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 8, &numret), PRIMAL_RES_OK, "getqconk");
-        check(numret == 3, "lette tre");
+        check(numret == 3, "read three");
         double x[4] = {0, 0, 0, 0}, po = 0.0, po1 = 0.0, x1a = 0.0;
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "il modello a 2 variabili si risolve");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "the model with 2 variables is solved");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         po1 = po; x1a = x[0];
         close_enough_tol(po, -2.0, 1e-4,
-                         "-2 a mano: x0=x1=1 e' la frontiera di 0.5*x'Qx <= 6");
+                         "-2 by hand: x0=x1=1 is the frontier of 0.5*x'Qx <= 6");
         PRIMAL_appendvars(t, 2);
         for (int j = 2; j < 4; j++)     /* cost 0: present, not involved */
             PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 2.0);
         cur_name = "T109 D appendvars(2)";
         want = -1;
         check_rc(PRIMAL_getnumqconknz(t, 0, &want), PRIMAL_RES_OK,
-                 "lo stesso contatore sulla forma cresciuta");
-        check(want == 3, "e lo STESSO numero: la tabella non si e' mossa, si e' allargata");
+                 "the same counter on the grown form");
+        check(want == 3, "and the SAME number: the table has not moved, it has widened");
         for (int e = 0; e < 8; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         numret = -1;
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 8, &numret), PRIMAL_RES_OK,
-                 "getqconk sulla forma cresciuta (prima: leggeva 4x4 da un blocco 2x2)");
-        check(numret == 3, "tre entrate ancora");
+                 "getqconk on the grown form (before: it read 4x4 from a 2x2 block)");
+        check(numret == 3, "three entries still");
         int same = (numret == 3);
         for (int e = 0; e < 3 && e < numret; e++)
             if (qi[e] != (e == 0 ? 0 : e == 1 ? 0 : 1) ||
                 qj[e] != (e == 0 ? 0 : e == 1 ? 1 : 1) ||
                 qv[e] != (e == 0 ? 4.0 : e == 1 ? 2.0 : 4.0)) same = 0;
-        check(same, "e sono gli STESSI (i,j,valore) di prima della crescita");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolto il modello a 4 variabili");
-        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx a 4");
+        check(same, "and they are the SAME (i,j,value) as before the growth");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "the model with 4 variables is solved");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx at 4");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check(fabs(po - po1) <= 1e-6,
-              "lo STESSO numero: lo stesso vincolo scritto prima, su un modello piu' grande");
-        close_enough_tol(po, -2.0, 1e-4, "-2 ancora, non solo uguale a se stesso");
+              "the SAME number: the same constraint written before, on a larger model");
+        close_enough_tol(po, -2.0, 1e-4, "-2 still, not just equal to itself");
         check(fabs(x[0] - x1a) <= 1e-4 && fabs(x[1] - x1a) <= 1e-4,
-              "e lo stesso punto, perche' le due variabili nuove non hanno costo");
+              "and the same point, because the two new variables have no cost");
         /* and the half that no comparison between two solves can give: writing on a
          * column THAT DID NOT EXIST when the block was allocated. `putqconk`
          * has REPLACE-ROW semantics (T107: `had` + `memset`, like `putarow`), so
          * the row comes out with a SINGLE entry and the three old terms are gone. */
         check_rc(PRIMAL_putqconk(t, 0, 1, (int[]){2}, (int[]){2}, (double[]){2.0}),
-                 PRIMAL_RES_OK, "putqconk su (2,2), fuori dal vecchio blocco");
+                 PRIMAL_RES_OK, "putqconk on (2,2), outside the old block");
         want = -1;
-        check_rc(PRIMAL_getnumqconknz(t, 0, &want), PRIMAL_RES_OK, "contatore dopo");
-        check(want == 1, "una entrata sola: replace-row, non accumula");
+        check_rc(PRIMAL_getnumqconknz(t, 0, &want), PRIMAL_RES_OK, "counter after");
+        check(want == 1, "a single entry: replace-row, does not accumulate");
         for (int e = 0; e < 8; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         numret = -1;
-        check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 8, &numret), PRIMAL_RES_OK, "lettura");
+        check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 8, &numret), PRIMAL_RES_OK, "read");
         check(numret == 1 && qi[0] == 2 && qj[0] == 2 && qv[0] == 2.0,
-              "ed e' solo la nuova: la colonna cresciuta si puo' scrivere");
+              "and it is only the new one: the grown column can be written");
         double d00 = 9.0, d22 = 0.0;
         check_rc(PRIMAL_getqconkij(t, 0, 0, 0, &d00), PRIMAL_RES_OK, "getqconkij(0,0,0)");
         check_rc(PRIMAL_getqconkij(t, 0, 2, 2, &d22), PRIMAL_RES_OK, "getqconkij(0,2,2)");
-        check(d00 == 0.0 && d22 == 2.0, "lo scalare dice la stessa sostituzione");
+        check(d00 == 0.0 && d22 == 2.0, "the scalar says the same substitution");
         PRIMAL_putcj(t, 2, -1.0); PRIMAL_putcj(t, 3, -1.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "nuovo solve con x2 nella sola Q");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "new solve with x2 in Q alone");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         /* Now the quadratic row has a SINGLE term, (2,2)=2, against the same
          * bound 6: it asks x2^2 <= 6, i.e. x2 <= 2.45 — above the linear bound 2
          * that all four variables have. The optimum is thus entirely
          * determined by the bounds: -8, and the quadratic row binds nothing. */
-        close_enough_tol(po, -8.0, 1e-4, "-(2+2+2+2): la Q non lega piu' niente");
+        close_enough_tol(po, -8.0, 1e-4, "-(2+2+2+2): the Q binds nothing anymore");
         check(po < po1 - 1e-6,
-              "e la risposta si MUOVE quando si muove il deposito (min: scende)");
+              "and the answer MOVES when the store moves (min: it goes down)");
         for (int j = 0; j < 4; j++)
-            close_enough_tol(x[j], 2.0, 1e-4, "tutte e quattro sul proprio bordo");
+            close_enough_tol(x[j], 2.0, 1e-4, "all four at their own bound");
         double pinf = 1.0;
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "getprimalinfeas");
-        check(pinf <= 1e-6, "e il punto misura nel modello cresciuto");
+        check(pinf <= 1e-6, "and the point measures in the grown model");
         pend(&p);
     }
     /* E. the array of row-pointers: one entry per constraint. Row 0 written at
      *    numcon=1, appendcons(2) and then write on the NEW row — which is
      *    exactly index 2 of an array of length 1. */
     {
-        cur_name = "T109 E scrivere su una riga aggiunta dopo";
+        cur_name = "T109 E writing on a row added later";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         check_rc(PRIMAL_putqconk(t, 0, 1, (int[]){0}, (int[]){0}, (double[]){2.0}),
-                 PRIMAL_RES_OK, "la riga 0 alloca l'array a numcon=1");
+                 PRIMAL_RES_OK, "row 0 allocates the array at numcon=1");
         PRIMAL_appendcons(t, 2);
         check_rc(PRIMAL_putqconk(t, 2, 1, (int[]){0}, (int[]){0}, (double[]){3.0}),
-                 PRIMAL_RES_OK, "la riga 2 non c'era quando l'array e' nato");
+                 PRIMAL_RES_OK, "row 2 was not there when the array was born");
         int n0 = -1, n1 = -1, n2 = -1;
-        check_rc(PRIMAL_getnumqconknz(t, 0, &n0), PRIMAL_RES_OK, "riga 0");
-        check_rc(PRIMAL_getnumqconknz(t, 1, &n1), PRIMAL_RES_OK, "riga vuota");
-        check_rc(PRIMAL_getnumqconknz(t, 2, &n2), PRIMAL_RES_OK, "riga 2");
-        check(n0 == 1 && n1 == 0 && n2 == 1, "due righe con un termine, una senza");
+        check_rc(PRIMAL_getnumqconknz(t, 0, &n0), PRIMAL_RES_OK, "row 0");
+        check_rc(PRIMAL_getnumqconknz(t, 1, &n1), PRIMAL_RES_OK, "empty row");
+        check_rc(PRIMAL_getnumqconknz(t, 2, &n2), PRIMAL_RES_OK, "row 2");
+        check(n0 == 1 && n1 == 0 && n2 == 1, "two rows with one term, one without");
         double d0 = 0.0, d2 = 0.0;
         check_rc(PRIMAL_getqconkij(t, 0, 0, 0, &d0), PRIMAL_RES_OK, "getqconkij(0,0,0)");
         check_rc(PRIMAL_getqconkij(t, 2, 0, 0, &d2), PRIMAL_RES_OK, "getqconkij(2,0,0)");
-        check(d0 == 2.0 && d2 == 3.0, "e i due valori non si sono calpestati");
+        check(d0 == 2.0 && d2 == 3.0, "and the two values did not step on each other");
         PRIMAL_appendvars(t, 1);   /* now it is the reshape of TWO blocks */
-        cur_name = "T109 E e la crescita delle colonne";
+        cur_name = "T109 E and the growth of the columns";
         int qi[4], qj[4]; double qv[4]; int numret = -1;
-        check_rc(PRIMAL_getnumqconknz(t, 0, &n0), PRIMAL_RES_OK, "riga 0 dopo");
-        check_rc(PRIMAL_getnumqconknz(t, 2, &n2), PRIMAL_RES_OK, "riga 2 dopo");
-        check(n0 == 1 && n2 == 1, "un termine ciascuno, ancora");
+        check_rc(PRIMAL_getnumqconknz(t, 0, &n0), PRIMAL_RES_OK, "row 0 after");
+        check_rc(PRIMAL_getnumqconknz(t, 2, &n2), PRIMAL_RES_OK, "row 2 after");
+        check(n0 == 1 && n2 == 1, "one term each, still");
         for (int e = 0; e < 4; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         check_rc(PRIMAL_getqconk(t, 2, qi, qj, qv, 4, &numret), PRIMAL_RES_OK,
-                 "lettura della riga aggiunta per seconda");
+                 "read of the row added second");
         check(numret == 1 && qi[0] == 0 && qj[0] == 0 && qv[0] == 3.0,
-              "e' ancora la sua: 3.0, non il 2.0 dell'altra");
+              "it is still its own: 3.0, not the 2.0 of the other");
         pend(&p);                /* in here: free one entry per constraint */
     }
     /* F. control against its own excess: appendvars(t,0) adds nothing
      *    and must not erase anything. */
     {
-        cur_name = "T109 F una crescita di zero non ritira la risposta";
+        cur_name = "T109 F a growth of zero does not withdraw the answer";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6300,17 +6308,17 @@ static void test_t109(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T109 F rc = OK");
-        check(t99_point_answers(t) == 1, "T109 F il punto c'e'");
+        check(t99_point_answers(t) == 1, "T109 F the point is there");
         double po_before = 0.0, po_after = 0.0;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po_before), PRIMAL_RES_OK,
-                 "e ha un numero");
+                 "and it has a number");
         check_rc(PRIMAL_appendvars(t, 0), PRIMAL_RES_OK, "appendvars(0)");
         check_rc(PRIMAL_appendcons(t, 0), PRIMAL_RES_OK, "appendcons(0)");
         check_rc(PRIMAL_appendbarvars(t, 0, NULL), PRIMAL_RES_OK, "appendbarvars(0,NULL)");
-        check(t99_point_answers(t) == 1, "nessun getter del punto si e' spento");
+        check(t99_point_answers(t) == 1, "no point getter has turned off");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po_after), PRIMAL_RES_OK,
-                 "e lo stesso numero si legge ancora");
-        check(po_before == po_after, "identico, non riconvocato");
+                 "and the same number is read again");
+        check(po_before == po_after, "identical, not re-invoked");
         pend(&p);
     }
 }
@@ -6341,7 +6349,7 @@ static void test_t109(void) {
 static void test_t110(void) {
     /* A. the ball with the cross term, answer by hand */
     {
-        cur_name = "T110 A riga quadratica con termine incrociato";
+        cur_name = "T110 A quadratic row with a cross term";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6356,21 +6364,21 @@ static void test_t110(void) {
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         close_enough_tol(x[0], 1.0, 1e-4, "x0 = 1");
         close_enough_tol(x[1], 1.0, 1e-4, "x1 = 1");
-        close_enough_tol(po, -2.0, 1e-4, "-2: 6a^2 = 6 -> a = 1, a mano");
+        close_enough_tol(po, -2.0, 1e-4, "-2: 6a^2 = 6 -> a = 1, by hand");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "getprimalinfeas");
-        check(pinf <= 1e-6, "e il punto pubblicato misura NEL suo stesso bordo");
+        check(pinf <= 1e-6, "and the published point measures IN its own bound");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dof), PRIMAL_RES_OK, "dobj");
-        check(fabs(po - dof) <= 1e-6 * (1.0 + fabs(po)), "dualita' forte");
+        check(fabs(po - dof) <= 1e-6 * (1.0 + fabs(po)), "strong duality");
         /* the number of the old pairing, which must NOT come out */
         check(fabs(po + 2.0 * sqrt(3.0)) > 1e-3,
-              "-3.4641 (l'altra forma) non e' pubblicato");
+              "-3.4641 (the other form) is not published");
         pend(&p);
     }
     /* B. the same model in MAXIMIZE: the sense factor has nothing to do with
      *    the pairing, and here it is measured that the two do not get confused. */
     {
-        cur_name = "T110 B lo stesso modello in maximize";
+        cur_name = "T110 B the same model in maximize";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6384,11 +6392,11 @@ static void test_t110(void) {
         double x[2] = {0, 0}, po = 0.0, pinf = 1.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(po, 2.0, 1e-4, "+2: la stessa frontiera, senso invertito");
+        close_enough_tol(po, 2.0, 1e-4, "+2: the same frontier, reversed sense");
         check(fabs(x[0] - 1.0) <= 1e-4 && fabs(x[1] - 1.0) <= 1e-4, "x = (1,1)");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "getprimalinfeas");
-        check(pinf <= 1e-6, "ammissibile anche in maximize");
+        check(pinf <= 1e-6, "feasible also in maximize");
         pend(&p);
     }
     /* C. DIFFERENT diagonals: here the old pairing did not merely shift the
@@ -6399,7 +6407,7 @@ static void test_t110(void) {
      *    on the frontier: the gradient (x0+x1, x0+4x1) is parallel to (1,1) only
      *    for x1 = 0 -> x0 = 3, pobj = -3. */
     {
-        cur_name = "T110 C diagonali dispari: l'altra forma era indefinita";
+        cur_name = "T110 C odd diagonals: the other form was indefinite";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6409,16 +6417,16 @@ static void test_t110(void) {
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -1.0);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK,
-                 "rc = OK: il modello e' convesso, l'encoder non deve rifiutarlo");
+                 "rc = OK: the model is convex, the encoder must not refuse it");
         double x[2] = {0, 0}, po = 0.0, pinf = 1.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(po, -3.0, 1e-4, "-3: x* = (3,0), a mano");
+        close_enough_tol(po, -3.0, 1e-4, "-3: x* = (3,0), by hand");
         close_enough_tol(x[0], 3.0, 1e-3, "x0 = 3");
         close_enough_tol(x[1], 0.0, 1e-3, "x1 = 0");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "getprimalinfeas");
-        check(pinf <= 1e-6, "e il punto sta nel bordo che il modello dichiara");
+        check(pinf <= 1e-6, "and the point is in the bound the model declares");
         pend(&p);
     }
     /* D. the quadratic OBJECTIVE with the cross term: the same store,
@@ -6429,7 +6437,7 @@ static void test_t110(void) {
      *    value 1/8. With the old pairing the form was indefinite and
      *    the encoder answered ERR_ARG. */
     {
-        cur_name = "T110 D obiettivo quadratico con termine incrociato";
+        cur_name = "T110 D quadratic objective with a cross term";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 0);
@@ -6438,11 +6446,11 @@ static void test_t110(void) {
         PRIMAL_putcj(t, 1, 1.0);
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "rc = OK, non un rifiuto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "rc = OK, not a refusal");
         double x[2] = {0, 0}, po = 0.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(po, 0.125, 1e-4, "1/8 a mano");
+        close_enough_tol(po, 0.125, 1e-4, "1/8 by hand");
         close_enough_tol(x[0], 0.0, 1e-3, "x0 = 0");
         close_enough_tol(x[1], 0.25, 1e-3, "x1 = 1/4");
         pend(&p);
@@ -6452,7 +6460,7 @@ static void test_t110(void) {
      *    half the assertion would only say "I changed the rows", not "I changed the
      *    rows I HAD TO". */
     {
-        cur_name = "T110 E una Q diagonale non si muove";
+        cur_name = "T110 E a diagonal Q does not move";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -6465,7 +6473,7 @@ static void test_t110(void) {
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         close_enough_tol(po, -2.0 * sqrt(2.0), 1e-4, "-2*sqrt(2): x0=x1=sqrt(2)");
-        close_enough_tol(x[0], sqrt(2.0), 1e-3, "e il punto e' quello");
+        close_enough_tol(x[0], sqrt(2.0), 1e-3, "and the point is that one");
         pend(&p);
     }
 }
@@ -6550,16 +6558,16 @@ static void t111_expect(PRIMALtask_t t, int kind, double *po_out) {
              "getprimalinfeas");
     double w = kind == 0 ? 0.2 : 1.0 / 3.0;
     double want = kind == 0 ? -0.2 : -1.0 / 3.0;
-    close_enough_tol(po, want, 1e-4, kind == 0 ? "-1/5 a mano" : "-1/3 a mano");
-    close_enough_tol(x[0], w, 1e-3, "w0 e' l'ottimo derivato a mano");
-    close_enough_tol(x[1], w, 1e-3, "e w1 pure (il modello e' simmetrico)");
-    close_enough_tol(x[2], w, 1e-3, "p0 = w0 attraverso la riga FX");
-    if (kind == 0) close_enough_tol(x[4], w * w, 1e-3, "t0 = p0^2: il cono e' attivo");
-    else           close_enough_tol(x[4], w, 1e-3, "t0 = |p0|: il cono e' attivo");
-    check(pinf <= 1e-6, "e il punto misura nel modello");
+    close_enough_tol(po, want, 1e-4, kind == 0 ? "-1/5 by hand" : "-1/3 by hand");
+    close_enough_tol(x[0], w, 1e-3, "w0 is the optimum derived by hand");
+    close_enough_tol(x[1], w, 1e-3, "and w1 too (the model is symmetric)");
+    close_enough_tol(x[2], w, 1e-3, "p0 = w0 through the FX row");
+    if (kind == 0) close_enough_tol(x[4], w * w, 1e-3, "t0 = p0^2: the cone is active");
+    else           close_enough_tol(x[4], w, 1e-3, "t0 = |p0|: the cone is active");
+    check(pinf <= 1e-6, "and the point measures in the model");
     /* cone membership, measured in the user's form */
     check(x[4] >= x[2] * x[2] - 1e-6 && x[5] >= x[3] * x[3] - 1e-6,
-          "t >= p^2 sta in K per come l'ha scritto chi chiama");
+          "t >= p^2 is in K as the caller wrote it");
     *po_out = po;
 }
 
@@ -6577,7 +6585,7 @@ static void test_t111(void) {
      * line proves that the encoder offered the bar-free shadow to the path that exists
      * for its cones. The value does not change (case D). */
     {
-        cur_name = "T111 A PPOW + QP con incrocio: risponde il nativo";
+        cur_name = "T111 A PPOW + QP with cross: the native one answers";
         P p; pbegin(&p);
         unsetenv("GMB_NO_EXP_IPM");
         t111_model(p.task, 0);
@@ -6587,20 +6595,20 @@ static void test_t111(void) {
         double po = 0.0;
         t111_expect(p.task, 0, &po);
         check(t111_native == 1,
-              "il nativo ha RISPOSTO: l'encoder lo offre allo shadow senza barre");
+              "the native one HAS ANSWERED: the encoder offers it to the bar-free shadow");
         pend(&p);
     }
     /* B. the same answer when the native path is off: the witness
      *    names who answered, so here it must stay silent — and the delivered point
      *    does not depend on the path, which is the T81/T91 policy. */
     {
-        cur_name = "T111 B GMB_NO_EXP_IPM: stesso punto, nessun tentativo nativo";
+        cur_name = "T111 B GMB_NO_EXP_IPM: same point, no native attempt";
         P p; pbegin(&p);
         setenv("GMB_NO_EXP_IPM", "1", 1);
         t111_model(p.task, 0);
         double po = 0.0;
         t111_expect(p.task, 0, &po);
-        check(t111_native == 0, "e con l'interruttore il nativo non e' provato");
+        check(t111_native == 0, "and with the switch the native one is not tried");
         unsetenv("GMB_NO_EXP_IPM");
         pend(&p);
     }
@@ -6608,14 +6616,14 @@ static void test_t111(void) {
      *    The new ladder mirrors the dispatcher, it does not widen the native path to models
      *    that used to answer via socp.c — which is what keeps the corpus fixed. */
     {
-        cur_name = "T111 C SOC senza barre: il nativo non viene allargato";
+        cur_name = "T111 C SOC without bars: the native one is not widened";
         P p; pbegin(&p);
         unsetenv("GMB_NO_EXP_IPM");
         t111_model(p.task, 1);
         double po = 0.0;
         t111_expect(p.task, 1, &po);
         check(t111_native == 0,
-              "un cono QUAD/RQUAD non e' un motivo per chiamare il nativo");
+              "a QUAD/RQUAD cone is not a reason to call the native one");
         pend(&p);
     }
     /* D. the same model at the DEFAULT declaration: the value is identical.
@@ -6628,18 +6636,18 @@ static void test_t111(void) {
      *    widening the tolerance (A) and the second attempt are two distinct
      *    routes to the same answer, and neither moves the point. */
     {
-        cur_name = "T111 D dichiarazione di default: stesso valore, altra strada";
+        cur_name = "T111 D default declaration: same value, another path";
         P p; pbegin(&p);
         unsetenv("GMB_NO_EXP_IPM");
         t111_model(p.task, 0);
         double po = 0.0;
         t111_expect(p.task, 0, &po);
         check(t111_native == 1,
-              "a 1e-8 il secondo tentativo secante fa rispondere il nativo");
+              "at 1e-8 the second secant attempt makes the native one answer");
         pend(&p);
     }
     {
-        cur_name = "T111 D' GMB_NO_EXP_RETRY: stesso valore, risponde il ladder";
+        cur_name = "T111 D' GMB_NO_EXP_RETRY: same value, the ladder answers";
         P p; pbegin(&p);
         unsetenv("GMB_NO_EXP_IPM");
         setenv("GMB_NO_EXP_RETRY", "1", 1);
@@ -6647,7 +6655,7 @@ static void test_t111(void) {
         double po = 0.0;
         t111_expect(p.task, 0, &po);
         check(t111_native == 0,
-              "senza secondo tentativo il gate consegna ai tagli: il nativo tace");
+              "without the second attempt the gate hands off to cuts: the native one stays silent");
         unsetenv("GMB_NO_EXP_RETRY");
         pend(&p);
     }
@@ -6696,7 +6704,7 @@ static void test_t111(void) {
 /* Writes a text fixture to a path for the T112 reader tests. */
 static void t112_write(const char *path, const char *text) {
     FILE *f = fopen(path, "w");
-    if (!f) { check(0, "scrittura del fixture"); return; }
+    if (!f) { check(0, "fixture write"); return; }
     fputs(text, f);
     fclose(f);
 }
@@ -6708,7 +6716,7 @@ static void test_t112(void) {
      *    alpha + beta >= 2 (mix), 0 <= alpha, 0 <= beta <= 4: all on alpha, because
      *    it costs less — alpha=2, beta=0, pobj=6 (hand-derived). */
     {
-        cur_name = "T112 A MPS: i nomi letti sono nel task, e il modello risponde 6";
+        cur_name = "T112 A MPS: the names read are in the task, and the model answers 6";
         t112_write("/tmp/mc_t112a.mps",
             "NAME r34prob\n"
             "OBJNAME\n"
@@ -6731,56 +6739,56 @@ static void test_t112(void) {
         check_rc(PRIMAL_readdata(t, "/tmp/mc_t112a.mps"), PRIMAL_RES_OK, "A readdata");
         int nv = 0, nc = 0;
         PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
-        check(nv == 2 && nc == 3, "A il modello e' 2 variabili e 3 righe, come il file");
+        check(nv == 2 && nc == 3, "A the model is 2 variables and 3 rows, like the file");
 
         const char *vn[2] = { NULL, NULL }, *cn[3] = { NULL, NULL, NULL };
         check_rc(PRIMAL_getallvarname(t, vn), PRIMAL_RES_OK, "A getallvarname");
         check_rc(PRIMAL_getallconname(t, cn), PRIMAL_RES_OK, "A getallconname");
         check(vn[0] && strcmp(vn[0], "alpha") == 0 &&
-              vn[1] && strcmp(vn[1], "beta") == 0, "A le variabili si chiamano alpha, beta");
+              vn[1] && strcmp(vn[1], "beta") == 0, "A the variables are called alpha, beta");
         check(cn[0] && strcmp(cn[0], "objf") == 0 &&
               cn[1] && strcmp(cn[1], "cap") == 0 &&
-              cn[2] && strcmp(cn[2], "mix") == 0, "A le righe objf, cap, mix");
+              cn[2] && strcmp(cn[2], "mix") == 0, "A the rows objf, cap, mix");
 
         /* pointer identity, not just content: "borrowed" and "copied" share
          * the same strcmp yet are two different contracts (T103) — and here is the first time
          * a READER-POPULATED table is read through both accessors */
         const char *single = NULL;
         check_rc(PRIMAL_getvarnameidx(t, 0, &single), PRIMAL_RES_OK, "A getvarnameidx");
-        check(single == vn[0], "A le due letture danno LO STESSO oggetto, non due copie");
+        check(single == vn[0], "A the two reads give THE SAME object, not two copies");
 
         int j = -1, i = -1;
         check_rc(PRIMAL_getvarname(t, "beta", &j), PRIMAL_RES_OK, "A getvarname(beta)");
-        check(j == 1, "A beta e' la variabile 1");
+        check(j == 1, "A beta is variable 1");
         check_rc(PRIMAL_getconname(t, "mix", &i), PRIMAL_RES_OK, "A getconname(mix)");
-        check(i == 2, "A mix e' il vincolo 2");
+        check(i == 2, "A mix is constraint 2");
         check(PRIMAL_getvarname(t, "nothere", &j) == PRIMAL_RES_ERR_ARG,
-              "A un nome che il file non contiene resta un rifiuto");
+              "A a name the file does not contain stays a refusal");
 
         /* the N-row name is one thing, the objective name another */
         const char *on = NULL;
         check_rc(PRIMAL_getobjname(t, &on), PRIMAL_RES_OK, "A getobjname");
-        check(on && strcmp(on, "myobj") == 0, "A OBJNAME finisce su objname");
+        check(on && strcmp(on, "myobj") == 0, "A OBJNAME ends up in objname");
         check(strcmp(cn[0], "objf") == 0,
-              "A e la riga N tiene il suo nome nel tavolo dei vincoli");
+              "A and the N row keeps its name in the constraint table");
 
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A optimize");
         double x[2] = { 0, 0 }, po = 0.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "A getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "A pobj");
-        close_enough(po, 6.0, "A pobj = 6 (tutto su alpha, che costa 3 contro 5)");
+        close_enough(po, 6.0, "A pobj = 6 (all on alpha, which costs 3 versus 5)");
         close_enough(x[0], 2.0, "A alpha = 2");
         close_enough(x[1], 0.0, "A beta = 0");
         double pinf = 1.0;
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "A pinf");
-        check(pinf <= 1e-6, "A il punto consegna un modello ammissibile");
+        check(pinf <= 1e-6, "A the point delivers a feasible model");
         expect_kkt(t, 1.0);
 
         /* a solve moves no name (T103), and here that also holds for a table
          * written by a reader: the solution has no opinion on labels */
         const char *vn2[2] = { NULL, NULL };
-        check_rc(PRIMAL_getallvarname(t, vn2), PRIMAL_RES_OK, "A lettura dopo il solve");
-        check(vn2[0] == vn[0] && vn2[1] == vn[1], "A il solve non ha mosso i nomi");
+        check_rc(PRIMAL_getallvarname(t, vn2), PRIMAL_RES_OK, "A read after the solve");
+        check(vn2[0] == vn[0] && vn2[1] == vn[1], "A the solve has not moved the names");
         pend(&p);
     }
 
@@ -6792,7 +6800,7 @@ static void test_t112(void) {
      *    and not under discussion here.
      *    Same model as A: the answer does not depend on who labeled it. */
     {
-        cur_name = "T112 B LP: l'etichetta del vincolo e' il suo nome";
+        cur_name = "T112 B LP: the constraint label is its name";
         t112_write("/tmp/mc_t112b.lp",
             "Minimize\n"
             " objfun: 3 alpha + 5 beta\n"
@@ -6808,27 +6816,27 @@ static void test_t112(void) {
         check_rc(PRIMAL_readdata(t, "/tmp/mc_t112b.lp"), PRIMAL_RES_OK, "B readdata");
         int nv = 0, nc = 0;
         PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
-        check(nv == 2 && nc == 2, "B due variabili e due vincoli, come il file");
+        check(nv == 2 && nc == 2, "B two variables and two constraints, like the file");
         const char *cn[2] = { NULL, NULL };
         check_rc(PRIMAL_getallconname(t, cn), PRIMAL_RES_OK, "B getallconname");
-        check(cn[0] && cn[0][0] == '\0', "B il vincolo senza etichetta legge la stringa vuota");
-        check(cn[1] && strcmp(cn[1], "mix") == 0, "B quello etichettato ha il suo nome");
+        check(cn[0] && cn[0][0] == '\0', "B the unlabeled constraint reads the empty string");
+        check(cn[1] && strcmp(cn[1], "mix") == 0, "B the labeled one has its name");
         int i = -1;
-        check_rc(PRIMAL_getconname(t, "mix", &i), PRIMAL_RES_OK, "B lookup per nome");
-        check(i == 1, "B mix e' il vincolo 1");
+        check_rc(PRIMAL_getconname(t, "mix", &i), PRIMAL_RES_OK, "B lookup by name");
+        check(i == 1, "B mix is constraint 1");
         check(PRIMAL_getconname(t, "", &i) == PRIMAL_RES_ERR_ARG && i == 1,
-              "B lo slot senza etichetta non e' reperibile con il nome vuoto");
+              "B the unlabeled slot is not reachable with the empty name");
         const char *on = NULL;
         check_rc(PRIMAL_getobjname(t, &on), PRIMAL_RES_OK, "B getobjname");
-        check(on && strcmp(on, "objfun") == 0, "B l'etichetta dell'obiettivo e' objfun");
+        check(on && strcmp(on, "objfun") == 0, "B the objective label is objfun");
         const char *vn[2] = { NULL, NULL };
         check_rc(PRIMAL_getallvarname(t, vn), PRIMAL_RES_OK, "B getallvarname");
         check(vn[0] && strcmp(vn[0], "alpha") == 0 &&
-              vn[1] && strcmp(vn[1], "beta") == 0, "B anche le variabili, nominate dalle espressioni");
+              vn[1] && strcmp(vn[1], "beta") == 0, "B the variables too, named by the expressions");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "B optimize");
         double po = 0.0;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "B pobj");
-        close_enough(po, 6.0, "B lo stesso modello risponde lo stesso valore");
+        close_enough(po, 6.0, "B the same model answers the same value");
         expect_kkt(t, 1.0);
         pend(&p);
     }
@@ -6837,7 +6845,7 @@ static void test_t112(void) {
      *    On HEAD this same file answered `rc=0 numcon=3` (measured by linking
      *    HEAD's `mpsio.o`): the third constraint was unreachable by construction. */
     {
-        cur_name = "T112 C due righe con un nome: il file e' rifiutato, il task intatto";
+        cur_name = "T112 C two rows with one name: the file is refused, the task intact";
         t112_write("/tmp/mc_t112c.mps",
             "NAME r34dup\n"
             "ROWS\n"
@@ -6851,25 +6859,25 @@ static void test_t112(void) {
             "ENDATA\n");
         P p; pbegin(&p);
         check_rc(PRIMAL_readdata(p.task, "/tmp/mc_t112c.mps"), PRIMAL_RES_ERR_FILE,
-                 "C MPS con righe omonime");
+                 "C MPS with same-named rows");
         int nv = -1, nc = -1;
         PRIMAL_getnumvar(p.task, &nv); PRIMAL_getnumcon(p.task, &nc);
-        check(nv == 0 && nc == 0, "C il rifiuto non ha costruito niente");
+        check(nv == 0 && nc == 0, "C the refusal built nothing");
         /* the T103 poison, here to the opposite effect: a table of a task with no
          * variables has nothing to write, and "nothing" is proved with an address
          * that no successful read has touched — `rc` alone does not distinguish it */
         char marker; const char *poison = &marker;
         const char *vn[1] = { poison };
-        check_rc(PRIMAL_getallvarname(p.task, vn), PRIMAL_RES_OK, "C lettura su un task vuoto");
-        check(vn[0] == poison, "C e la tabella dei nomi non ha niente da leggere");
+        check_rc(PRIMAL_getallvarname(p.task, vn), PRIMAL_RES_OK, "C read on an empty task");
+        check(vn[0] == poison, "C and the name table has nothing to read");
         int idx = -1;
         check(PRIMAL_getvarname(p.task, "alpha", &idx) == PRIMAL_RES_ERR_ARG && idx == -1,
-              "C e il nome del file rifiutato non e' nel task");
+              "C and the name of the refused file is not in the task");
         pend(&p);
     }
     /* D. the LP half of the same refusal: two identical labels. */
     {
-        cur_name = "T112 D LP con due vincoli omonimi: rifiutato";
+        cur_name = "T112 D LP with two same-named constraints: refused";
         t112_write("/tmp/mc_t112d.lp",
             "Minimize\n"
             " objf: 3 alpha + 5 beta\n"
@@ -6879,10 +6887,10 @@ static void test_t112(void) {
             "End\n");
         P p; pbegin(&p);
         check_rc(PRIMAL_readdata(p.task, "/tmp/mc_t112d.lp"), PRIMAL_RES_ERR_FILE,
-                 "D LP con etichette duplicate");
+                 "D LP with duplicate labels");
         int nv = -1, nc = -1;
         PRIMAL_getnumvar(p.task, &nv); PRIMAL_getnumcon(p.task, &nc);
-        check(nv == 0 && nc == 0, "D il task e' rimasto vuoto");
+        check(nv == 0 && nc == 0, "D the task stayed empty");
         pend(&p);
     }
 
@@ -6890,7 +6898,7 @@ static void test_t112(void) {
      *    name coexist (it is the T105/T106 measurement carried to the readers — the file
      *    names enter the same two tables). */
     {
-        cur_name = "T112 E un nome confonde due tabelle, non una";
+        cur_name = "T112 E one name confuses two tables, not one";
         t112_write("/tmp/mc_t112e.mps",
             "NAME r34same\n"
             "ROWS\n"
@@ -6903,14 +6911,14 @@ static void test_t112(void) {
             "ENDATA\n");
         P p; pbegin(&p);
         check_rc(PRIMAL_readdata(p.task, "/tmp/mc_t112e.mps"), PRIMAL_RES_OK,
-                 "E lo stesso nome su una variabile e un vincolo e' accettato");
+                 "E the same name on a variable and a constraint is accepted");
         int j = -1, i = -1;
-        check_rc(PRIMAL_getvarname(p.task, "alpha", &j), PRIMAL_RES_OK, "E lookup variabile");
-        check_rc(PRIMAL_getconname(p.task, "alpha", &i), PRIMAL_RES_OK, "E lookup vincolo");
-        check(j == 0 && i == 0, "E e le due ricerche rispondono ciascuna il proprio indice");
+        check_rc(PRIMAL_getvarname(p.task, "alpha", &j), PRIMAL_RES_OK, "E variable lookup");
+        check_rc(PRIMAL_getconname(p.task, "alpha", &i), PRIMAL_RES_OK, "E constraint lookup");
+        check(j == 0 && i == 0, "E and the two searches answer each its own index");
         int nv = 0, nc = 0;
         PRIMAL_getnumvar(p.task, &nv); PRIMAL_getnumcon(p.task, &nc);
-        check(nv == 1 && nc == 2, "E il modello non ha assorbito un nome nell'altro");
+        check(nv == 1 && nc == 2, "E the model has not absorbed one name into the other");
         pend(&p);
     }
 
@@ -6918,7 +6926,7 @@ static void test_t112(void) {
      *    ("pick a non-numeric token and name it") would turn them into variables.
      *    min one s.t. 3 <= one <= 5 (RHS 5, RANGES 2 on an L), one <= 4: one = 3. */
     {
-        cur_name = "T112 F rhs/rng/bnd restano nomi di set, non di variabili";
+        cur_name = "T112 F rhs/rng/bnd stay set names, not variable names";
         t112_write("/tmp/mc_t112f.mps",
             "NAME t112f\n"
             "ROWS\n"
@@ -6937,22 +6945,22 @@ static void test_t112(void) {
         check_rc(PRIMAL_readdata(p.task, "/tmp/mc_t112f.mps"), PRIMAL_RES_OK, "F readdata");
         int nv = 0, nc = 0;
         PRIMAL_getnumvar(p.task, &nv); PRIMAL_getnumcon(p.task, &nc);
-        check(nv == 1 && nc == 2, "F una variabile e due righe: nessun set name e' diventato colonna");
+        check(nv == 1 && nc == 2, "F one variable and two rows: no set name became a column");
         int k = 0;
         const char *junk[4] = { "myrhs", "myrng", "mybnd", "t112f" };
         for (k = 0; k < 4; k++) {
             int idx = -1;
             check(PRIMAL_getvarname(p.task, junk[k], &idx) == PRIMAL_RES_ERR_ARG &&
                   PRIMAL_getconname(p.task, junk[k], &idx) == PRIMAL_RES_ERR_ARG,
-                  "F ne' il problema ne' i tre set name sono reperibili");
+                  "F neither the problem nor the three set names are reachable");
         }
         PRIMALboundkeye bk; double bl = 0, bu = 0;
-        check_rc(PRIMAL_getconbound(p.task, 1, &bk, &bl, &bu), PRIMAL_RES_OK, "F bound di riga");
-        check(bk == PRIMAL_BK_RA && bl == 3.0 && bu == 5.0, "F RANGES ha ancora la sua riga");
+        check_rc(PRIMAL_getconbound(p.task, 1, &bk, &bl, &bu), PRIMAL_RES_OK, "F row bound");
+        check(bk == PRIMAL_BK_RA && bl == 3.0 && bu == 5.0, "F RANGES still has its row");
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "F optimize");
         double po = 0.0;
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "F pobj");
-        close_enough(po, 3.0, "F one = 3, il bordo che RANGES ha messo sotto");
+        close_enough(po, 3.0, "F one = 3, the bound RANGES put below it");
         expect_kkt(p.task, 1.0);
         pend(&p);
     }
@@ -6964,7 +6972,7 @@ static void test_t112(void) {
      *    fallback for empty or spaced names), so the labels
      *    survive the round-trip — previously they were lost. */
     {
-        cur_name = "T112 G il round-trip conserva numcon e nomi";
+        cur_name = "T112 G the round-trip preserves numcon and names";
         P p; pbegin(&p);
         check_rc(PRIMAL_readdata(p.task, "/tmp/mc_t112a.mps"), PRIMAL_RES_OK, "G read");
         int nc0 = 0;
@@ -6974,30 +6982,30 @@ static void test_t112(void) {
         check_rc(PRIMAL_readdata(q.task, "/tmp/mc_t112g.mps"), PRIMAL_RES_OK, "G re-read");
         int nc1 = 0, nv1 = 0;
         PRIMAL_getnumcon(q.task, &nc1); PRIMAL_getnumvar(q.task, &nv1);
-        check(nv1 == 2, "G le variabili sono ancora due");
-        check(nc1 == nc0, "G e i vincoli sono tanti quanti il file ne aveva");
+        check(nv1 == 2, "G the variables are still two");
+        check(nc1 == nc0, "G and the constraints are as many as the file had");
         const char *vn[2] = { NULL, NULL };
-        check_rc(PRIMAL_getallvarname(q.task, vn), PRIMAL_RES_OK, "G nomi dopo il round-trip");
+        check_rc(PRIMAL_getallvarname(q.task, vn), PRIMAL_RES_OK, "G names after the round-trip");
         check(vn[0] && strcmp(vn[0], "alpha") == 0,
-              "G il writer nomina la colonna come il task: 'alpha' sopravvive");
+              "G the writer names the column as the task does: 'alpha' survives");
         const char *cn0 = NULL;
-        check_rc(PRIMAL_getconnameidx(q.task, 0, &cn0), PRIMAL_RES_OK, "G nome riga 0");
-        check(cn0 && strcmp(cn0, "objf") == 0, "G la riga `N` tiene il nome `objf`");
+        check_rc(PRIMAL_getconnameidx(q.task, 0, &cn0), PRIMAL_RES_OK, "G name of row 0");
+        check(cn0 && strcmp(cn0, "objf") == 0, "G the `N` row keeps the name `objf`");
         const char *cn1 = NULL;
-        check_rc(PRIMAL_getconnameidx(q.task, 1, &cn1), PRIMAL_RES_OK, "G nome riga 1");
-        check(cn1 && strcmp(cn1, "cap") == 0, "G la riga 'cap' sopravvive al round-trip");
+        check_rc(PRIMAL_getconnameidx(q.task, 1, &cn1), PRIMAL_RES_OK, "G name of row 1");
+        check(cn1 && strcmp(cn1, "cap") == 0, "G the row 'cap' survives the round-trip");
         const char *onm = NULL;
-        check_rc(PRIMAL_getobjname(q.task, &onm), PRIMAL_RES_OK, "G nome obiettivo");
-        check(onm && strcmp(onm, "myobj") == 0, "G l'obiettivo tiene OBJNAME 'myobj'");
+        check_rc(PRIMAL_getobjname(q.task, &onm), PRIMAL_RES_OK, "G objective name");
+        check(onm && strcmp(onm, "myobj") == 0, "G the objective keeps OBJNAME 'myobj'");
         PRIMALboundkeye bk; double bl, bu;
         PRIMAL_getconbound(q.task, 1, &bk, &bl, &bu);
-        check(bk == PRIMAL_BK_UP && bu == 6.0, "G la riga cap e' tornata al suo posto");
+        check(bk == PRIMAL_BK_UP && bu == 6.0, "G the cap row is back in its place");
         PRIMAL_getconbound(q.task, 2, &bk, &bl, &bu);
-        check(bk == PRIMAL_BK_LO && bl == 2.0, "G la riga mix e' tornata al suo posto");
+        check(bk == PRIMAL_BK_LO && bl == 2.0, "G the mix row is back in its place");
         double po = 0.0;
-        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "G optimize sul riletto");
+        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "G optimize on the re-read model");
         check_rc(PRIMAL_getprimalobj(q.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "G pobj");
-        close_enough(po, 6.0, "G il modello riletto risponde ancora 6");
+        close_enough(po, 6.0, "G the re-read model still answers 6");
         pend(&p); pend(&q);
     }
 }
@@ -7024,7 +7032,7 @@ static void test_t112(void) {
 static void test_t113(void) {
     /* A. per-index, the invariant with the aggregate, and the getter reading the model */
     {
-        cur_name = "T113 A violazioni per indice e l'aggregato";
+        cur_name = "T113 A per-index violations and the aggregate";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7040,43 +7048,43 @@ static void test_t113(void) {
         close_enough(x[0], 3.0, "A x0=3"); close_enough(x[1], 0.0, "A x1=0");
         int i0[1] = {0};
         check_rc(PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, i0, pc), PRIMAL_RES_OK, "A getpviolcon");
-        close_enough(pc[0], 0.0, "A riga attiva ma soddisfatta: viol 0");
+        close_enough(pc[0], 0.0, "A active row but satisfied: viol 0");
         check_rc(PRIMAL_getpviolvar(t, PRIMAL_SOL_ITR, 2, s2, pv), PRIMAL_RES_OK, "A getpviolvar");
-        close_enough(pv[0], 0.0, "A x0 dentro i bound");
-        close_enough(pv[1], 0.0, "A x1 dentro i bound");
+        close_enough(pv[0], 0.0, "A x0 within the bounds");
+        close_enough(pv[1], 0.0, "A x1 within the bounds");
         PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);
-        close_enough(pinf, 0.0, "A aggregato 0");
+        close_enough(pinf, 0.0, "A aggregate 0");
         /* perturb the model after the solve: the row asks 5 (activity 3 -> 2),
          * x1 asks 4 (value 0 -> 4) */
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 5.0, 0.0);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_RA, 4.0, 10.0);
         PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, i0, pc);
-        close_enough(pc[0], 2.0, "A riga: 5-3=2");
+        close_enough(pc[0], 2.0, "A row: 5-3=2");
         PRIMAL_getpviolvar(t, PRIMAL_SOL_ITR, 2, s2, pv);
-        close_enough(pv[0], 0.0, "A x0=3 ancora dentro");
-        close_enough(pv[1], 4.0, "A x1=0 sotto il nuovo lower 4");
+        close_enough(pv[0], 0.0, "A x0=3 still inside");
+        close_enough(pv[1], 4.0, "A x1=0 below the new lower 4");
         PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);
-        close_enough(pinf, 4.0, "A l'aggregato e' il massimo dei per-indice");
+        close_enough(pinf, 4.0, "A the aggregate is the maximum of the per-index ones");
         double w = pc[0] > pv[0] ? pc[0] : pv[0];
         if (pv[1] > w) w = pv[1];
-        close_enough(w, pinf, "A max(per-riga,per-var) == getprimalinfeas");
+        close_enough(w, pinf, "A max(per-row,per-var) == getprimalinfeas");
         double pobj, dobj, ipc, ipv, ipb, ipk, iit, dvc, dvv, dvb, dvk;
         check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                         &dobj, &dvc, &dvv, &dvb, &dvk), PRIMAL_RES_OK, "A getsolutioninfo");
         close_enough(pobj, 3.0, "A pobj=3");
         close_enough(dobj, 3.0, "A dobj=3");
-        close_enough(ipc, 2.0, "A info.pviolcon = max per-riga");
+        close_enough(ipc, 2.0, "A info.pviolcon = max per-row");
         close_enough(ipv, 4.0, "A info.pviolvar = max per-var");
-        close_enough(ipb, 0.0, "A nessuna barra");
-        close_enough(ipk, 0.0, "A nessun cono");
-        close_enough(iit, 0.0, "A nessun intero");
+        close_enough(ipb, 0.0, "A no bars");
+        close_enough(ipk, 0.0, "A no cones");
+        close_enough(iit, 0.0, "A no integers");
         check(dvc >= 0.0 && dvv >= 0.0 && dvb >= 0.0 && dvk >= 0.0,
-              "A le violazioni duali non sono negative");
+              "A the dual violations are not negative");
         pend(&p);
     }
     /* B. a refusal writes nothing, and the shape edge cases */
     {
-        cur_name = "T113 B un rifiuto non scrive nulla";
+        cur_name = "T113 B a refusal writes nothing";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7087,42 +7095,42 @@ static void test_t113(void) {
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, 0.0);
         int bad[2] = {0, 99}; double sent[2] = {-777.0, -777.0};
         check_rc(PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 2, bad, sent), PRIMAL_RES_ERR_ARG,
-                 "B indice fuori dominio");
-        check(sent[0] == -777.0 && sent[1] == -777.0, "B il rifiuto non ha scritto");
+                 "B index out of domain");
+        check(sent[0] == -777.0 && sent[1] == -777.0, "B the refusal did not write");
         check_rc(PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 0, NULL, sent), PRIMAL_RES_ERR_ARG,
-                 "B nessuna soluzione");
+                 "B no solution");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "B optimize");
         check_rc(PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, NULL, sent), PRIMAL_RES_ERR_ARG,
-                 "B sub null con num>0");
+                 "B sub null with num>0");
         sent[0] = -777.0;
         check_rc(PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 0, NULL, sent), PRIMAL_RES_OK, "B num=0");
-        check(sent[0] == -777.0, "B num=0 non scrive");
+        check(sent[0] == -777.0, "B num=0 does not write");
         check_rc(PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, (int[]){0}, NULL),
                  PRIMAL_RES_ERR_NULL, "B viol null");
         check_rc(PRIMAL_getpviolvar(t, (PRIMALsolt)9, 1, (int[]){0}, sent), PRIMAL_RES_ERR_ARG,
-                 "B which invalido");
+                 "B which invalid");
         check_rc(PRIMAL_getpviolvar(t, PRIMAL_SOL_ITR, -1, (int[]){0}, sent), PRIMAL_RES_ERR_ARG,
-                 "B num negativo");
+                 "B negative num");
         check_rc(PRIMAL_getpviolbarvar(t, PRIMAL_SOL_ITR, 1, (int[]){0}, sent),
-                 PRIMAL_RES_ERR_ARG, "B nessuna barra");
+                 PRIMAL_RES_ERR_ARG, "B no bars");
         check_rc(PRIMAL_getpviolcones(t, PRIMAL_SOL_ITR, 1, (int[]){0}, sent),
-                 PRIMAL_RES_ERR_ARG, "B nessun cono");
+                 PRIMAL_RES_ERR_ARG, "B no cones");
         check_rc(PRIMAL_getdviolcon(t, PRIMAL_SOL_ITR, 1, (int[]){99}, sent),
-                 PRIMAL_RES_ERR_ARG, "B dviolcon indice fuori dominio");
+                 PRIMAL_RES_ERR_ARG, "B dviolcon index out of domain");
         check_rc(PRIMAL_getdviolvar(t, PRIMAL_SOL_ITR, 1, (int[]){0}, NULL),
                  PRIMAL_RES_ERR_NULL, "B dviolvar viol null");
         check_rc(PRIMAL_getdviolbarvar(t, PRIMAL_SOL_ITR, 1, (int[]){0}, sent),
-                 PRIMAL_RES_ERR_ARG, "B dviolbarvar senza barre");
+                 PRIMAL_RES_ERR_ARG, "B dviolbarvar without bars");
         check_rc(PRIMAL_getdviolcones(t, PRIMAL_SOL_ITR, 1, (int[]){0}, sent),
-                 PRIMAL_RES_ERR_ARG, "B dviolcones senza coni");
-        check(sent[0] == -777.0, "B i rifiuti duali non hanno scritto");
+                 PRIMAL_RES_ERR_ARG, "B dviolcones without cones");
+        check(sent[0] == -777.0, "B the dual refusals did not write");
         pend(&p);
     }
     /* C. pviolitg: the integer distance of an INTEGER variable; on a
      *    continuous point it is 0 by construction, and `putvartype` after the solve makes it
      *    measurable on the same point (x=0.5 -> 0.5). */
     {
-        cur_name = "T113 C integralita'";
+        cur_name = "T113 C integrality";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 1);
@@ -7137,17 +7145,17 @@ static void test_t113(void) {
         double pobj, dobj, ipc, ipv, ipb, ipk, iit, dvc, dvv, dvb, dvk;
         PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                &dobj, &dvc, &dvv, &dvb, &dvk);
-        close_enough(iit, 0.0, "C continuo: integralita' 0");
+        close_enough(iit, 0.0, "C continuous: integrality 0");
         PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
         PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                &dobj, &dvc, &dvv, &dvb, &dvk);
-        close_enough(iit, 0.5, "C intero su x=0.5: violazione 0.5");
+        close_enough(iit, 0.5, "C integer on x=0.5: violation 0.5");
         pend(&p);
     }
     /* D. cone: the optimum point is inside the cone, so pviolcones=0, and an
      *    out-of-domain index refuses without writing. */
     {
-        cur_name = "T113 D coni";
+        cur_name = "T113 D cones";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
@@ -7163,24 +7171,24 @@ static void test_t113(void) {
         close_enough(x[2], 0.0, "D x2=0");
         int c0[1] = {0}; double pk[1] = {42.0};
         check_rc(PRIMAL_getpviolcones(t, PRIMAL_SOL_ITR, 1, c0, pk), PRIMAL_RES_OK, "D getpviolcones");
-        close_enough(pk[0], 0.0, "D il punto ottimo e' nel cono");
+        close_enough(pk[0], 0.0, "D the optimum point is in the cone");
         double pobj, dobj, ipc, ipv, ipb, ipk, iit, dvc, dvv, dvb, dvk;
         PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                &dobj, &dvc, &dvv, &dvb, &dvk);
         close_enough(pobj, 1.0, "D pobj=1");
         close_enough(ipk, 0.0, "D info.pviolcone 0");
-        check(dvk < 1e-6, "D info.dviolcone piccolo");
+        check(dvk < 1e-6, "D info.dviolcone small");
         int bad[1] = {5}; double sent[1] = {-777.0};
         check_rc(PRIMAL_getpviolcones(t, PRIMAL_SOL_ITR, 1, bad, sent), PRIMAL_RES_ERR_ARG,
-                 "D indice cono fuori dominio");
-        check(sent[0] == -777.0, "D rifiuto cono non scrive");
+                 "D cone index out of domain");
+        check(sent[0] == -777.0, "D cone refusal does not write");
         pend(&p);
     }
     /* E. bars: X is PSD at the optimum, so pviolbarvar=0 and dviolbarvar (the
      *    negative part of the S spectrum) is small. T40 model: min <I,X> with
      *    <E00-E11,X> = 1, X>=0 -> 1 at X=diag(1,0). */
     {
-        cur_name = "T113 E barre";
+        cur_name = "T113 E bars";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendcons(t, 1);
@@ -7196,18 +7204,18 @@ static void test_t113(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "E optimize");
         int b0[1] = {0}; double pb[1] = {42.0};
         check_rc(PRIMAL_getpviolbarvar(t, PRIMAL_SOL_ITR, 1, b0, pb), PRIMAL_RES_OK, "E getpviolbarvar");
-        close_enough(pb[0], 0.0, "E X e' PSD");
+        close_enough(pb[0], 0.0, "E X is PSD");
         double pobj, dobj, ipc, ipv, ipb, ipk, iit, dvc, dvv, dvb, dvk;
         PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                &dobj, &dvc, &dvv, &dvb, &dvk);
         close_enough(pobj, 1.0, "E pobj=1");
         close_enough(ipb, 0.0, "E info.pviolbarvar 0");
-        check(dvb < 1e-6, "E info.dviolbarvar piccolo");
+        check(dvb < 1e-6, "E info.dviolbarvar small");
         pend(&p);
     }
     /* F. MAX sense: the row violation is |activity - bound| also when maximizing */
     {
-        cur_name = "T113 F senso MAX";
+        cur_name = "T113 F MAX sense";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7223,10 +7231,10 @@ static void test_t113(void) {
         close_enough(x[1], 3.0, "F x1=3");
         int i0[1] = {0}; double pc[1] = {42.0};
         PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, i0, pc);
-        close_enough(pc[0], 0.0, "F attivita' 3 = upper 3");
+        close_enough(pc[0], 0.0, "F activity 3 = upper 3");
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 2.0);
         PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, i0, pc);
-        close_enough(pc[0], 1.0, "F attivita' 3 contro upper 2: viol 1");
+        close_enough(pc[0], 1.0, "F activity 3 against upper 2: viol 1");
         double pobj, dobj, ipc, ipv, ipb, ipk, iit, dvc, dvv, dvb, dvk;
         PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                &dobj, &dvc, &dvv, &dvb, &dvk);
@@ -7240,7 +7248,7 @@ static void test_t113(void) {
      *    A one (min x0+2x1, row x0+x1 >= 3): y0 = -1, and switching the row from LO to
      *    UP leaves the -1 multiplier on a boundless side -> violation 1. */
     {
-        cur_name = "T113 G violazioni duali per indice";
+        cur_name = "T113 G per-index dual violations";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7253,23 +7261,23 @@ static void test_t113(void) {
         int i0[1] = {0}, j1[1] = {1};
         double dc[1] = {42.0}, dv[1] = {42.0};
         check_rc(PRIMAL_getdviolcon(t, PRIMAL_SOL_ITR, 1, i0, dc), PRIMAL_RES_OK, "G getdviolcon");
-        close_enough(dc[0], 0.0, "G il moltiplicatore sta su un lato con bound");
+        close_enough(dc[0], 0.0, "G the multiplier sits on a side with a bound");
         check_rc(PRIMAL_getdviolvar(t, PRIMAL_SOL_ITR, 1, j1, dv), PRIMAL_RES_OK, "G getdviolvar");
-        close_enough(dv[0], 0.0, "G costo ridotto di x1 coerente col bound");
+        close_enough(dv[0], 0.0, "G reduced cost of x1 consistent with the bound");
         /* the side y0 sits on no longer has a bound: the rho fires */
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 3.0);
         PRIMAL_getdviolcon(t, PRIMAL_SOL_ITR, 1, i0, dc);
-        close_enough(dc[0], 1.0, "G riga UP-only: il moltiplicatore -1 e' su un lato senza bound");
+        close_enough(dc[0], 1.0, "G UP-only row: the multiplier -1 is on a boundless side");
         /* free x1: a nonzero reduced cost is now a dual violation */
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 3.0, 0.0);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_FR, 0.0, 0.0);
         PRIMAL_getdviolvar(t, PRIMAL_SOL_ITR, 1, j1, dv);
-        close_enough(dv[0], 1.0, "G x1 libera con costo ridotto -1: violazione 1");
+        close_enough(dv[0], 1.0, "G x1 free with reduced cost -1: violation 1");
         double pobj, dobj, ipc, ipv, ipb, ipk, iit, iddc, iddv, iddb, iddk;
         PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &pobj, &ipc, &ipv, &ipb, &ipk, &iit,
                                &dobj, &iddc, &iddv, &iddb, &iddk);
-        close_enough(iddv, 1.0, "G info.dviolvar = max per-variabile");
-        close_enough(iddc, 0.0, "G info.dviolcon 0 (la riga ha di nuovo il bound)");
+        close_enough(iddv, 1.0, "G info.dviolvar = max per-variable");
+        close_enough(iddc, 0.0, "G info.dviolcon 0 (the row has its bound again)");
         pend(&p);
     }
 }
@@ -7285,7 +7293,7 @@ static void test_t114(void) {
     enum { N = 8, SENT = -777 };
     /* A. variables: slice vs per-index, and a rewrite touching only the range */
     {
-        cur_name = "T114 A fette dei bound delle variabili";
+        cur_name = "T114 A slices of variable bounds";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 4);
@@ -7295,14 +7303,14 @@ static void test_t114(void) {
         PRIMAL_putvarbound(t, 3, PRIMAL_BK_FX, 4.0, 4.0);
         PRIMALboundkeye bk[N]; double bl[N], bu[N];
         check_rc(PRIMAL_getvarboundslice(t, 1, 3, bk, bl, bu), PRIMAL_RES_OK, "A get slice [1,3)");
-        check(bk[0] == PRIMAL_BK_RA && bk[1] == PRIMAL_BK_UP, "A le chiavi della fetta");
+        check(bk[0] == PRIMAL_BK_RA && bk[1] == PRIMAL_BK_UP, "A the keys of the slice");
         close_enough(bl[0], 2.0, "A bl[0]=2"); close_enough(bu[0], 5.0, "A bu[0]=5");
-        check(bl[1] == -INFINITY && bu[1] == 7.0, "A il lato non usato della UP");
+        check(bl[1] == -INFINITY && bu[1] == 7.0, "A the unused side of the UP");
         /* the slice agrees with the per-index getter, entry by entry */
         for (int j = 1; j < 3; j++) {
             PRIMALboundkeye b1; double l1, u1;
             PRIMAL_getvarbound(t, j, &b1, &l1, &u1);
-            check(b1 == bk[j-1] && l1 == bl[j-1] && u1 == bu[j-1], "A fetta == per-indice");
+            check(b1 == bk[j-1] && l1 == bl[j-1] && u1 == bu[j-1], "A slice == per-index");
         }
         /* rewriting [1,3): FR and FX leave 0 and 3 alone */
         PRIMALboundkeye nb[2] = { PRIMAL_BK_FR, PRIMAL_BK_FX };
@@ -7310,18 +7318,18 @@ static void test_t114(void) {
         check_rc(PRIMAL_putvarboundslice(t, 1, 3, nb, nl, nu), PRIMAL_RES_OK, "A put slice");
         PRIMALboundkeye b; double l, u;
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_LO && l == 1.0, "A la variabile 0 non e' stata toccata");
+        check(b == PRIMAL_BK_LO && l == 1.0, "A variable 0 has not been touched");
         PRIMAL_getvarbound(t, 1, &b, &l, &u);
-        check(b == PRIMAL_BK_FR && l == -INFINITY && u == INFINITY, "A la variabile 1 e' libera");
+        check(b == PRIMAL_BK_FR && l == -INFINITY && u == INFINITY, "A variable 1 is free");
         PRIMAL_getvarbound(t, 2, &b, &l, &u);
-        check(b == PRIMAL_BK_FX && l == 3.0 && u == 3.0, "A la variabile 2 e' fissa a 3");
+        check(b == PRIMAL_BK_FX && l == 3.0 && u == 3.0, "A variable 2 is fixed at 3");
         PRIMAL_getvarbound(t, 3, &b, &l, &u);
-        check(b == PRIMAL_BK_FX && l == 4.0, "A la variabile 3 non e' stata toccata");
+        check(b == PRIMAL_BK_FX && l == 4.0, "A variable 3 has not been touched");
         pend(&p);
     }
     /* B. constraints */
     {
-        cur_name = "T114 B fette dei bound dei vincoli";
+        cur_name = "T114 B slices of constraint bounds";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendcons(t, 3);
@@ -7331,23 +7339,23 @@ static void test_t114(void) {
         PRIMALboundkeye bk[N]; double bl[N], bu[N];
         check_rc(PRIMAL_getconboundslice(t, 0, 3, bk, bl, bu), PRIMAL_RES_OK, "B get slice [0,3)");
         check(bk[0] == PRIMAL_BK_LO && bk[1] == PRIMAL_BK_RA && bk[2] == PRIMAL_BK_UP,
-              "B le tre chiavi");
+              "B the three keys");
         close_enough(bl[1], 1.0, "B bl[1]=1"); close_enough(bu[1], 4.0, "B bu[1]=4");
         PRIMALboundkeye nb[1] = { PRIMAL_BK_FX };
         double nl[1] = { 6.0 }, nu[1] = { 6.0 };
         check_rc(PRIMAL_putconboundslice(t, 1, 2, nb, nl, nu), PRIMAL_RES_OK, "B put slice [1,2)");
         PRIMALboundkeye b; double l, u;
         PRIMAL_getconbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_LO && l == 2.0, "B il vincolo 0 non e' stato toccato");
+        check(b == PRIMAL_BK_LO && l == 2.0, "B constraint 0 has not been touched");
         PRIMAL_getconbound(t, 1, &b, &l, &u);
-        check(b == PRIMAL_BK_FX && l == 6.0 && u == 6.0, "B il vincolo 1 e' fisso a 6");
+        check(b == PRIMAL_BK_FX && l == 6.0 && u == 6.0, "B constraint 1 is fixed at 6");
         PRIMAL_getconbound(t, 2, &b, &l, &u);
-        check(b == PRIMAL_BK_UP && u == 9.0, "B il vincolo 2 non e' stato toccato");
+        check(b == PRIMAL_BK_UP && u == 9.0, "B constraint 2 has not been touched");
         pend(&p);
     }
     /* C. refusals: the read writes nothing, the write applies nothing */
     {
-        cur_name = "T114 C un rifiuto non scrive e non applica";
+        cur_name = "T114 C a refusal does not write and does not apply";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -7359,29 +7367,29 @@ static void test_t114(void) {
         check_rc(PRIMAL_getvarboundslice(t, -1, 2, bk, bl, bu), PRIMAL_RES_ERR_ARG, "C first<0");
         check_rc(PRIMAL_getvarboundslice(t, 0, 4, bk, bl, bu), PRIMAL_RES_ERR_ARG, "C last>numvar");
         check_rc(PRIMAL_getvarboundslice(t, 2, 1, bk, bl, bu), PRIMAL_RES_ERR_ARG, "C last<first");
-        check((int)bk[0] == SENT && bl[0] == SENT && bu[0] == SENT, "C la lettura rifiutata non ha scritto");
+        check((int)bk[0] == SENT && bl[0] == SENT && bu[0] == SENT, "C the refused read did not write");
         check_rc(PRIMAL_getvarboundslice(t, 0, 1, NULL, bl, bu), PRIMAL_RES_ERR_NULL, "C bk null");
         check_rc(PRIMAL_getvarboundslice(t, 0, 1, bk, NULL, bu), PRIMAL_RES_ERR_NULL, "C bl null");
         /* write: one bad entry (invalid key, then RA with bl>bu) stops EVERYTHING */
         PRIMALboundkeye badk[2] = { PRIMAL_BK_FX, (PRIMALboundkeye)99 };
         double badl[2] = { 5.0, 0.0 }, badu[2] = { 5.0, 0.0 };
-        check_rc(PRIMAL_putvarboundslice(t, 0, 2, badk, badl, badu), PRIMAL_RES_ERR_ARG, "C chiave invalida");
+        check_rc(PRIMAL_putvarboundslice(t, 0, 2, badk, badl, badu), PRIMAL_RES_ERR_ARG, "C invalid key");
         PRIMALboundkeye b; double l, u;
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_LO && l == 1.0, "C la variabile 0 non e' stata toccata dal rifiuto");
+        check(b == PRIMAL_BK_LO && l == 1.0, "C variable 0 has not been touched by the refusal");
         PRIMALboundkeye rak[2] = { PRIMAL_BK_RA, PRIMAL_BK_RA };
         double ral[2] = { 1.0, 4.0 }, rau[2] = { 2.0, 1.0 };   /* the second has bl>bu */
-        check_rc(PRIMAL_putvarboundslice(t, 0, 2, rak, ral, rau), PRIMAL_RES_ERR_ARG, "C RA con bl>bu");
+        check_rc(PRIMAL_putvarboundslice(t, 0, 2, rak, ral, rau), PRIMAL_RES_ERR_ARG, "C RA with bl>bu");
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_LO && l == 1.0, "C nemmeno la prima entrata e' stata applicata");
+        check(b == PRIMAL_BK_LO && l == 1.0, "C not even the first entry has been applied");
         /* empty slice: OK, touches nothing */
-        check_rc(PRIMAL_putvarboundslice(t, 2, 2, rak, ral, rau), PRIMAL_RES_OK, "C fetta vuota in scrittura");
-        check_rc(PRIMAL_getvarboundslice(t, 2, 2, bk, bl, bu), PRIMAL_RES_OK, "C fetta vuota in lettura");
+        check_rc(PRIMAL_putvarboundslice(t, 2, 2, rak, ral, rau), PRIMAL_RES_OK, "C empty slice in write");
+        check_rc(PRIMAL_getvarboundslice(t, 2, 2, bk, bl, bu), PRIMAL_RES_OK, "C empty slice in read");
         pend(&p);
     }
     /* D. a model solved with slice-set bounds */
     {
-        cur_name = "T114 D il modello risolve coi bound dalle fette";
+        cur_name = "T114 D the model solves with the bounds from the slices";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7389,14 +7397,14 @@ static void test_t114(void) {
         PRIMAL_putarow(t, 0, 2, (int[]){0,1}, (double[]){1.0,1.0});
         PRIMALboundkeye cb[1] = { PRIMAL_BK_LO };
         double cl[1] = { 1.0 }, cu[1] = { 0.0 };
-        check_rc(PRIMAL_putconboundslice(t, 0, 1, cb, cl, cu), PRIMAL_RES_OK, "D put con slice");
+        check_rc(PRIMAL_putconboundslice(t, 0, 1, cb, cl, cu), PRIMAL_RES_OK, "D put with slice");
         PRIMALboundkeye vb[2] = { PRIMAL_BK_LO, PRIMAL_BK_LO };
         double vl[2] = { 0.0, 0.0 }, vu[2] = { 0.0, 0.0 };
         check_rc(PRIMAL_putvarboundslice(t, 0, 2, vb, vl, vu), PRIMAL_RES_OK, "D put var slice");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "D optimize");
         double po = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(po, 1.0, "D min x0+x1 con x0+x1>=1 e' 1");
+        close_enough(po, 1.0, "D min x0+x1 with x0+x1>=1 is 1");
         pend(&p);
     }
 }
@@ -7415,7 +7423,7 @@ static void test_t115(void) {
     enum { N = 8, SENT = -777 };
     /* A. slices agree with the whole vector, on a solved LP */
     {
-        cur_name = "T115 A fette dei vettori di soluzione";
+        cur_name = "T115 A slices of the solution vectors";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7434,33 +7442,33 @@ static void test_t115(void) {
         PRIMAL_getsux(t, PRIMAL_SOL_ITR, suxf);
         double b2[2], b1[1];
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 0, 2, b2), PRIMAL_RES_OK, "A xx [0,2)");
-        check(b2[0] == xf[0] && b2[1] == xf[1], "A xx fetta == intero");
+        check(b2[0] == xf[0] && b2[1] == xf[1], "A xx slice == whole");
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 1, 2, b2), PRIMAL_RES_OK, "A xx [1,2)");
-        check(b2[0] == xf[1], "A xx sottovettore");
+        check(b2[0] == xf[1], "A xx subvector");
         check_rc(PRIMAL_getyslice(t, PRIMAL_SOL_ITR, 0, 1, b1), PRIMAL_RES_OK, "A y [0,1)");
-        check(b1[0] == yf[0], "A y fetta == intero");
+        check(b1[0] == yf[0], "A y slice == whole");
         check_rc(PRIMAL_getslcslice(t, PRIMAL_SOL_ITR, 0, 1, b1), PRIMAL_RES_OK, "A slc");
-        check(b1[0] == slcf[0], "A slc fetta == intero");
+        check(b1[0] == slcf[0], "A slc slice == whole");
         check_rc(PRIMAL_getsucslice(t, PRIMAL_SOL_ITR, 0, 1, b1), PRIMAL_RES_OK, "A suc");
-        check(b1[0] == sucf[0], "A suc fetta == intero");
+        check(b1[0] == sucf[0], "A suc slice == whole");
         check_rc(PRIMAL_getslxslice(t, PRIMAL_SOL_ITR, 0, 2, b2), PRIMAL_RES_OK, "A slx");
-        check(b2[0] == slxf[0] && b2[1] == slxf[1], "A slx fetta == intero");
+        check(b2[0] == slxf[0] && b2[1] == slxf[1], "A slx slice == whole");
         check_rc(PRIMAL_getsuxslice(t, PRIMAL_SOL_ITR, 0, 2, b2), PRIMAL_RES_OK, "A sux");
-        check(b2[0] == suxf[0] && b2[1] == suxf[1], "A sux fetta == intero");
+        check(b2[0] == suxf[0] && b2[1] == suxf[1], "A sux slice == whole");
         double xc[1], xcs[1];
         check_rc(PRIMAL_getxc(t, PRIMAL_SOL_ITR, xc), PRIMAL_RES_OK, "A getxc");
-        close_enough(xc[0], 3.0, "A xc = attivita' della riga x0+x1 = 3");
+        close_enough(xc[0], 3.0, "A xc = activity of the row x0+x1 = 3");
         check_rc(PRIMAL_getxcslice(t, PRIMAL_SOL_ITR, 0, 1, xcs), PRIMAL_RES_OK, "A getxcslice");
-        close_enough(xcs[0], 3.0, "A la fetta di xc");
+        close_enough(xcs[0], 3.0, "A the slice of xc");
         /* empty slice: OK, writes nothing */
         b2[0] = SENT;
-        check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 2, 2, b2), PRIMAL_RES_OK, "A fetta vuota");
-        check(b2[0] == SENT, "A fetta vuota non scrive");
+        check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 2, 2, b2), PRIMAL_RES_OK, "A empty slice");
+        check(b2[0] == SENT, "A empty slice does not write");
         pend(&p);
     }
     /* B. reduced cost: 0 for the basic one, 1 for x1 at lower (c - A'y = 1) */
     {
-        cur_name = "T115 B costi ridotti";
+        cur_name = "T115 B reduced costs";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7474,18 +7482,18 @@ static void test_t115(void) {
         check_rc(PRIMAL_getreducedcosts(t, PRIMAL_SOL_ITR, 0, 2, rc), PRIMAL_RES_OK, "B getreducedcosts");
         PRIMAL_getslx(t, PRIMAL_SOL_ITR, slx);
         PRIMAL_getsux(t, PRIMAL_SOL_ITR, sux);
-        close_enough(rc[0], -(slx[0] + sux[0]), "B rc == -(slx+sux) sulla basic");
-        close_enough(rc[1], -(slx[1] + sux[1]), "B rc == -(slx+sux) al lower");
-        close_enough(rc[0], 0.0, "B la variabile basic ha costo ridotto 0");
-        close_enough(rc[1], 1.0, "B x1 al lower: c - A'y = 2 - 1 = 1");
+        close_enough(rc[0], -(slx[0] + sux[0]), "B rc == -(slx+sux) on the basic");
+        close_enough(rc[1], -(slx[1] + sux[1]), "B rc == -(slx+sux) at the lower");
+        close_enough(rc[0], 0.0, "B the basic variable has reduced cost 0");
+        close_enough(rc[1], 1.0, "B x1 at the lower: c - A'y = 2 - 1 = 1");
         double one[1];
         check_rc(PRIMAL_getreducedcosts(t, PRIMAL_SOL_ITR, 1, 2, one), PRIMAL_RES_OK, "B rc [1,2)");
-        close_enough(one[0], 1.0, "B la fetta del costo ridotto");
+        close_enough(one[0], 1.0, "B the slice of the reduced cost");
         pend(&p);
     }
     /* C. the status-key slices follow putskx/putskc */
     {
-        cur_name = "T115 C fette delle status key";
+        cur_name = "T115 C slices of the status keys";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
@@ -7495,14 +7503,14 @@ static void test_t115(void) {
         check_rc(PRIMAL_putskc(t, PRIMAL_SOL_ITR, kc), PRIMAL_RES_OK, "C putskc");
         PRIMALstakeye sk2[3], skc[2];
         check_rc(PRIMAL_getskxslice(t, PRIMAL_SOL_ITR, 1, 3, sk2), PRIMAL_RES_OK, "C getskxslice [1,3)");
-        check(sk2[0] == PRIMAL_SK_LOW && sk2[1] == PRIMAL_SK_UPR, "C la fetta di skx");
+        check(sk2[0] == PRIMAL_SK_LOW && sk2[1] == PRIMAL_SK_UPR, "C the slice of skx");
         check_rc(PRIMAL_getskcslice(t, PRIMAL_SOL_ITR, 0, 2, skc), PRIMAL_RES_OK, "C getskcslice [0,2)");
-        check(skc[0] == PRIMAL_SK_BAS && skc[1] == PRIMAL_SK_SUPBAS, "C la fetta di skc");
+        check(skc[0] == PRIMAL_SK_BAS && skc[1] == PRIMAL_SK_SUPBAS, "C the slice of skc");
         pend(&p);
     }
     /* D. refusals: they write nothing, and before the solve they answer ERR_ARG */
     {
-        cur_name = "T115 D rifiuti delle fette";
+        cur_name = "T115 D refusals of the slices";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7512,18 +7520,18 @@ static void test_t115(void) {
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, 0.0);
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, 0.0);
         double b[N]; for (int k = 0; k < N; k++) b[k] = SENT;
-        check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 0, 2, b), PRIMAL_RES_ERR_ARG, "D nessuna soluzione");
-        check(b[0] == SENT, "D nessuna soluzione non scrive");
+        check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 0, 2, b), PRIMAL_RES_ERR_ARG, "D no solution");
+        check(b[0] == SENT, "D no solution does not write");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "D optimize");
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, -1, 1, b), PRIMAL_RES_ERR_ARG, "D first<0");
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 0, 3, b), PRIMAL_RES_ERR_ARG, "D last>numvar");
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 2, 1, b), PRIMAL_RES_ERR_ARG, "D last<first");
-        check(b[0] == SENT, "D la lettura rifiutata non scrive");
+        check(b[0] == SENT, "D the refused read does not write");
         check_rc(PRIMAL_getxxslice(t, PRIMAL_SOL_ITR, 0, 2, NULL), PRIMAL_RES_ERR_NULL, "D null");
-        check_rc(PRIMAL_getreducedcosts(t, (PRIMALsolt)9, 0, 2, b), PRIMAL_RES_ERR_ARG, "D which invalido");
+        check_rc(PRIMAL_getreducedcosts(t, (PRIMALsolt)9, 0, 2, b), PRIMAL_RES_ERR_ARG, "D which invalid");
         b[0] = SENT;
         check_rc(PRIMAL_getxcslice(t, PRIMAL_SOL_ITR, 0, 2, b), PRIMAL_RES_ERR_ARG, "D xc last>numcon");
-        check(b[0] == SENT, "D xc rifiutata non scrive");
+        check(b[0] == SENT, "D refused xc does not write");
         check_rc(PRIMAL_getxc(t, PRIMAL_SOL_ITR, NULL), PRIMAL_RES_ERR_NULL, "D getxc null");
         pend(&p);
     }
@@ -7545,22 +7553,22 @@ static void test_t116(void) {
         PRIMAL_appendbarvars(t, 2, dims);
         int d = 0;
         check_rc(PRIMAL_getdimbarvarj(t, 0, &d), PRIMAL_RES_OK, "A dim 0");
-        check(d == 2, "A la barra 0 e' 2x2");
+        check(d == 2, "A bar 0 is 2x2");
         check_rc(PRIMAL_getdimbarvarj(t, 1, &d), PRIMAL_RES_OK, "A dim 1");
-        check(d == 3, "A la barra 1 e' 3x3");
+        check(d == 3, "A bar 1 is 3x3");
         PRIMALint64t len = 0;
         check_rc(PRIMAL_getlenbarvarj(t, 0, &len), PRIMAL_RES_OK, "A len 0");
-        check(len == 3, "A triangolo inferiore di 2x2 = 3");
+        check(len == 3, "A lower triangle of 2x2 = 3");
         check_rc(PRIMAL_getlenbarvarj(t, 1, &len), PRIMAL_RES_OK, "A len 1");
-        check(len == 6, "A triangolo inferiore di 3x3 = 6");
-        check_rc(PRIMAL_getdimbarvarj(t, 2, &d), PRIMAL_RES_ERR_ARG, "A indice fuori dominio");
-        check_rc(PRIMAL_getlenbarvarj(t, -1, &len), PRIMAL_RES_ERR_ARG, "A indice negativo");
+        check(len == 6, "A lower triangle of 3x3 = 6");
+        check_rc(PRIMAL_getdimbarvarj(t, 2, &d), PRIMAL_RES_ERR_ARG, "A index out of domain");
+        check_rc(PRIMAL_getlenbarvarj(t, -1, &len), PRIMAL_RES_ERR_ARG, "A negative index");
         check_rc(PRIMAL_getdimbarvarj(t, 0, NULL), PRIMAL_RES_ERR_NULL, "A null");
         pend(&p);
     }
     /* B. counters: var/con are the current number, cones/bars the capacity (>=4) */
     {
-        cur_name = "T116 B contatori max";
+        cur_name = "T116 B max counters";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
@@ -7568,18 +7576,18 @@ static void test_t116(void) {
         PRIMAL_appendbarvars(t, 1, (int[]){2});
         int n = -1;
         check_rc(PRIMAL_getmaxnumvar(t, &n), PRIMAL_RES_OK, "B maxnumvar");
-        check(n == 3, "B var correnti");
+        check(n == 3, "B current vars");
         check_rc(PRIMAL_getmaxnumcon(t, &n), PRIMAL_RES_OK, "B maxnumcon");
-        check(n == 2, "B con correnti");
+        check(n == 2, "B current cons");
         int nc = 0; PRIMAL_getnumcone(t, &nc);
         check_rc(PRIMAL_getmaxnumcone(t, &n), PRIMAL_RES_OK, "B maxnumcone");
-        check(nc == 1 && n == 4 && n > nc, "B la capacita' dei coni (4) e' maggiore del numero (1)");
+        check(nc == 1 && n == 4 && n > nc, "B the cone capacity (4) is greater than the number (1)");
         int nb = 0; PRIMAL_getnumbarvar(t, &nb);
         check_rc(PRIMAL_getmaxnumbarvar(t, &n), PRIMAL_RES_OK, "B maxnumbarvar");
-        check(nb == 1 && n == 4 && n > nb, "B la capacita' delle barre (4) e' maggiore del numero (1)");
+        check(nb == 1 && n == 4 && n > nb, "B the bar capacity (4) is greater than the number (1)");
         PRIMAL_appendvars(t, 5);
         PRIMAL_getmaxnumvar(t, &n);
-        check(n == 8, "B piu' variabili -> il contatore cresce");
+        check(n == 8, "B more variables -> the counter grows");
         check_rc(PRIMAL_getmaxnumvar(t, NULL), PRIMAL_RES_ERR_NULL, "B null");
         pend(&p);
     }
@@ -7592,7 +7600,7 @@ static void test_t116(void) {
  * `getnumbarablocktriplets`/`getnumbarcblocktriplets` give the exact number of
  * those entries. T40 model: A = A00 + (-1)*B11, C = I. */
 static void test_t117(void) {
-    cur_name = "T117 triplette di blocco di A-bar e C-bar";
+    cur_name = "T117 block triplets of A-bar and C-bar";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendcons(t, 1);
@@ -7605,18 +7613,18 @@ static void test_t117(void) {
     PRIMAL_putbaraij(t, 0, 0, 2, (int[]){mA,mB}, (double[]){1.0,1.0});
     PRIMALint64t na = -1, ncc = -1;
     check_rc(PRIMAL_getnumbarablocktriplets(t, &na), PRIMAL_RES_OK, "A count A-bar");
-    check(na == 2, "A A-bar ha 2 entrate (A00, -B11)");
+    check(na == 2, "A A-bar has 2 entries (A00, -B11)");
     check_rc(PRIMAL_getnumbarcblocktriplets(t, &ncc), PRIMAL_RES_OK, "A count C-bar");
-    check(ncc == 2, "A C-bar ha 2 entrate (I00, I11)");
+    check(ncc == 2, "A C-bar has 2 entries (I00, I11)");
     /* read A: (i,j,k,l,val) */
     int i4[4], j4[4], k4[4], l4[4]; double va[4];
     PRIMALint64t num = -1;
     check_rc(PRIMAL_getbarablocktriplet(t, 4, &num, i4, j4, k4, l4, va), PRIMAL_RES_OK, "A get A-bar");
     check(num == 2, "A num = 2");
-    check(i4[0] == 0 && j4[0] == 0 && k4[0] == 0 && l4[0] == 0, "A la prima entrata e' (0,0,0,0)");
+    check(i4[0] == 0 && j4[0] == 0 && k4[0] == 0 && l4[0] == 0, "A the first entry is (0,0,0,0)");
     close_enough(va[0], 1.0, "A val 1");
-    check(i4[1] == 0 && j4[1] == 0 && k4[1] == 1 && l4[1] == 1, "A la seconda e' (0,0,1,1)");
-    close_enough(va[1], -1.0, "A val -1 (il -B11)");
+    check(i4[1] == 0 && j4[1] == 0 && k4[1] == 1 && l4[1] == 1, "A the second is (0,0,1,1)");
+    close_enough(va[1], -1.0, "A val -1 (the -B11)");
     /* read C: (j,k,l,val) */
     int jc[4], kc[4], lc[4]; double vc[4];
     check_rc(PRIMAL_getbarcblocktriplet(t, 4, &num, jc, kc, lc, vc), PRIMAL_RES_OK, "A get C-bar");
@@ -7627,14 +7635,14 @@ static void test_t117(void) {
     /* count only: NULL buffer, maxnum 0 */
     num = -1;
     check_rc(PRIMAL_getbarablocktriplet(t, 0, &num, NULL, NULL, NULL, NULL, NULL),
-             PRIMAL_RES_OK, "A solo conteggio");
-    check(num == 2, "A il conteggio senza buffer");
+             PRIMAL_RES_OK, "A count only");
+    check(num == 2, "A the count without a buffer");
     /* insufficient capacity with a buffer: refusal, nothing written */
     int senti[4]; double sentv[4];
     for (int q = 0; q < 4; q++) { senti[q] = -999; sentv[q] = -777.0; }
     check_rc(PRIMAL_getbarablocktriplet(t, 1, &num, senti, senti, senti, senti, sentv),
-             PRIMAL_RES_ERR_ARG, "A capienza 1 su 2 richieste");
-    check(senti[0] == -999 && sentv[0] == -777.0, "A il rifiuto non ha scritto");
+             PRIMAL_RES_ERR_ARG, "A capacity 1 for 2 requested");
+    check(senti[0] == -999 && sentv[0] == -777.0, "A the refusal did not write");
     check_rc(PRIMAL_getnumbarablocktriplets(NULL, &num), PRIMAL_RES_ERR_NULL, "A null task");
     check_rc(PRIMAL_getbarablocktriplet(t, 4, NULL, i4, j4, k4, l4, va),
              PRIMAL_RES_ERR_NULL, "A num null");
@@ -7659,7 +7667,7 @@ static void test_t118(void) {
         close_enough(c[0], 1.0, "A c0"); close_enough(c[1], 2.0, "A c1"); close_enough(c[2], 3.0, "A c2");
         double cs[3];
         check_rc(PRIMAL_getcslice(t, 1, 3, cs), PRIMAL_RES_OK, "A getcslice [1,3)");
-        close_enough(cs[0], 2.0, "A fetta c1"); close_enough(cs[1], 3.0, "A fetta c2");
+        close_enough(cs[0], 2.0, "A slice c1"); close_enough(cs[1], 3.0, "A slice c2");
         check_rc(PRIMAL_getcslice(t, 0, 4, cs), PRIMAL_RES_ERR_ARG, "A last>numvar");
         check_rc(PRIMAL_getc(t, NULL), PRIMAL_RES_ERR_NULL, "A getc null");
         pend(&p);
@@ -7675,17 +7683,17 @@ static void test_t118(void) {
         check_rc(PRIMAL_putclist(t, 2, sub, val), PRIMAL_RES_OK, "B putclist");
         double cj;
         PRIMAL_getcj(t, 0, &cj); close_enough(cj, 5.0, "B c0=5");
-        PRIMAL_getcj(t, 1, &cj); close_enough(cj, 2.0, "B c1 intatto");
+        PRIMAL_getcj(t, 1, &cj); close_enough(cj, 2.0, "B c1 intact");
         PRIMAL_getcj(t, 2, &cj); close_enough(cj, 7.0, "B c2=7");
         int bad[2] = {0, 99}; double bv[2] = {9.0, 9.0};
-        check_rc(PRIMAL_putclist(t, 2, bad, bv), PRIMAL_RES_ERR_ARG, "B indice fuori dominio");
-        PRIMAL_getcj(t, 0, &cj); close_enough(cj, 5.0, "B il rifiuto non ha scritto c0");
+        check_rc(PRIMAL_putclist(t, 2, bad, bv), PRIMAL_RES_ERR_ARG, "B index out of domain");
+        PRIMAL_getcj(t, 0, &cj); close_enough(cj, 5.0, "B the refusal did not write c0");
         check_rc(PRIMAL_putclist(t, 1, (int[]){0}, NULL), PRIMAL_RES_ERR_ARG, "B val null");
         double nc[2] = {9.0, 8.0};
         check_rc(PRIMAL_putcslice(t, 0, 2, nc), PRIMAL_RES_OK, "B putcslice [0,2)");
         PRIMAL_getcj(t, 0, &cj); close_enough(cj, 9.0, "B c0=9");
         PRIMAL_getcj(t, 1, &cj); close_enough(cj, 8.0, "B c1=8");
-        PRIMAL_getcj(t, 2, &cj); close_enough(cj, 7.0, "B c2 intatto");
+        PRIMAL_getcj(t, 2, &cj); close_enough(cj, 7.0, "B c2 intact");
         check_rc(PRIMAL_putcslice(t, 0, 2, NULL), PRIMAL_RES_ERR_NULL, "B putcslice null");
         pend(&p);
     }
@@ -7699,23 +7707,23 @@ static void test_t118(void) {
         check_rc(PRIMAL_putqobjij(t, 1, 1, 4.0), PRIMAL_RES_OK, "C q11=4");
         check_rc(PRIMAL_putqobjij(t, 1, 0, 2.0), PRIMAL_RES_OK, "C q10=2");
         double q;
-        PRIMAL_getqobjij(t, 0, 1, &q); close_enough(q, 2.0, "C q01 letto 2");
-        PRIMAL_getqobjij(t, 1, 0, &q); close_enough(q, 2.0, "C q10 letto 2");
+        PRIMAL_getqobjij(t, 0, 1, &q); close_enough(q, 2.0, "C q01 read 2");
+        PRIMAL_getqobjij(t, 1, 0, &q); close_enough(q, 2.0, "C q10 read 2");
         int nq = -1;
         PRIMAL_getnumqobjnz(t, &nq);
-        check(nq == 3, "C tre entry memorizzate");
-        check_rc(PRIMAL_putqobjij(t, 1, 0, -1.0), PRIMAL_RES_OK, "C rimpiazza q10=-1");
-        PRIMAL_getqobjij(t, 0, 1, &q); close_enough(q, -1.0, "C la coppia e' rimpiazzata");
-        PRIMAL_getnumqobjnz(t, &nq); check(nq == 3, "C nessuna entry aggiunta");
-        check_rc(PRIMAL_putqobjij(t, 0, 1, 0.0), PRIMAL_RES_ERR_ARG, "C upper rifiutato");
-        check_rc(PRIMAL_putqobjij(t, 1, 0, 0.0), PRIMAL_RES_OK, "C rimuove a 0");
-        PRIMAL_getqobjij(t, 0, 1, &q); close_enough(q, 0.0, "C q01 rimosso");
-        PRIMAL_getnumqobjnz(t, &nq); check(nq == 2, "C ora due entry");
+        check(nq == 3, "C three entries stored");
+        check_rc(PRIMAL_putqobjij(t, 1, 0, -1.0), PRIMAL_RES_OK, "C replaces q10=-1");
+        PRIMAL_getqobjij(t, 0, 1, &q); close_enough(q, -1.0, "C the pair is replaced");
+        PRIMAL_getnumqobjnz(t, &nq); check(nq == 3, "C no entry added");
+        check_rc(PRIMAL_putqobjij(t, 0, 1, 0.0), PRIMAL_RES_ERR_ARG, "C upper refused");
+        check_rc(PRIMAL_putqobjij(t, 1, 0, 0.0), PRIMAL_RES_OK, "C removes at 0");
+        PRIMAL_getqobjij(t, 0, 1, &q); close_enough(q, 0.0, "C q01 removed");
+        PRIMAL_getnumqobjnz(t, &nq); check(nq == 2, "C now two entries");
         pend(&p);
     }
     /* D. end-to-end: Q=[[4,2],[2,4]], c=(-2,-2) -> x*=(1/3,1/3), pobj=-2/3 */
     {
-        cur_name = "T118 D QP costruito con putqobjij";
+        cur_name = "T118 D QP built with putqobjij";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7748,7 +7756,7 @@ static void test_t119(void) {
     enum { SENT = -777 };
     /* A. counters and triplets on a known A */
     {
-        cur_name = "T119 A getatrip e contatori";
+        cur_name = "T119 A getatrip and counters";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
@@ -7760,16 +7768,16 @@ static void test_t119(void) {
         check(numanz == 4, "A numanz=4");
         int nz = -1;
         check_rc(PRIMAL_getacolnumnz(t, 0, &nz), PRIMAL_RES_OK, "A col0");
-        check(nz == 1, "A col0 ha 1");
-        PRIMAL_getacolnumnz(t, 1, &nz); check(nz == 2, "A col1 ha 2");
-        PRIMAL_getacolnumnz(t, 2, &nz); check(nz == 1, "A col2 ha 1");
+        check(nz == 1, "A col0 has 1");
+        PRIMAL_getacolnumnz(t, 1, &nz); check(nz == 2, "A col1 has 2");
+        PRIMAL_getacolnumnz(t, 2, &nz); check(nz == 1, "A col2 has 1");
         check_rc(PRIMAL_getarownumnz(t, 0, &nz), PRIMAL_RES_OK, "A row0");
-        check(nz == 2, "A row0 ha 2");
-        PRIMAL_getarownumnz(t, 1, &nz); check(nz == 2, "A row1 ha 2");
+        check(nz == 2, "A row0 has 2");
+        PRIMAL_getarownumnz(t, 1, &nz); check(nz == 2, "A row1 has 2");
         check_rc(PRIMAL_getacolslicenumnz(t, 1, 3, &nz), PRIMAL_RES_OK, "A colslice [1,3)");
-        check(nz == 3, "A col [1,3) ha 3");
+        check(nz == 3, "A col [1,3) has 3");
         check_rc(PRIMAL_getarowslicenumnz(t, 1, 2, &nz), PRIMAL_RES_OK, "A rowslice [1,2)");
-        check(nz == 2, "A row [1,2) ha 2");
+        check(nz == 2, "A row [1,2) has 2");
         /* triplets: 4 entries, and the sum of the counts matches numanz */
         int ti[8], tj[8]; double tv[8];
         check_rc(PRIMAL_getatrip(t, 4, ti, tj, tv), PRIMAL_RES_OK, "A getatrip");
@@ -7781,11 +7789,11 @@ static void test_t119(void) {
             if (ti[k] == 1 && tj[k] == 1 && tv[k] == 3.0) hit++;
             if (ti[k] == 1 && tj[k] == 2 && tv[k] == 4.0) hit++;
         }
-        check(hit == 4, "A le quattro triplette sono tutte presenti");
+        check(hit == 4, "A the four triplets are all present");
         /* insufficient capacity: refusal without writing */
         for (int k = 0; k < 8; k++) { ti[k] = -999; tj[k] = -999; tv[k] = SENT; }
-        check_rc(PRIMAL_getatrip(t, 3, ti, tj, tv), PRIMAL_RES_ERR_ARG, "A capienza 3 su 4");
-        check(ti[0] == -999 && tv[0] == SENT, "A il rifiuto non ha scritto");
+        check_rc(PRIMAL_getatrip(t, 3, ti, tj, tv), PRIMAL_RES_ERR_ARG, "A capacity 3 for 4");
+        check(ti[0] == -999 && tv[0] == SENT, "A the refusal did not write");
         check_rc(PRIMAL_getatrip(t, 4, NULL, tj, tv), PRIMAL_RES_ERR_NULL, "A subi null");
         pend(&p);
     }
@@ -7798,21 +7806,21 @@ static void test_t119(void) {
         PRIMAL_putacol(t, 0, 2, (int[]){0,0}, (double[]){1.0,2.0});   /* duplicated pair */
         double a = 0.0;
         PRIMAL_getaij(t, 0, 0, &a);
-        close_enough(a, 3.0, "B la coppia duplicata somma a 3");
+        close_enough(a, 3.0, "B the duplicated pair sums to 3");
         int numanz = -1; PRIMAL_getnumanz(t, &numanz);
-        check(numanz == 2, "B due entrate memorizzate per (0,0)");
+        check(numanz == 2, "B two entries stored for (0,0)");
         check_rc(PRIMAL_putaij(t, 0, 0, 9.0), PRIMAL_RES_OK, "B putaij 9");
         PRIMAL_getaij(t, 0, 0, &a);
-        close_enough(a, 9.0, "B getaij legge 9 (duplicato collassato)");
+        close_enough(a, 9.0, "B getaij reads 9 (duplicate collapsed)");
         PRIMAL_getnumanz(t, &numanz);
-        check(numanz == 1, "B ora una sola entrata");
-        check_rc(PRIMAL_putaij(t, 0, 0, 0.0), PRIMAL_RES_OK, "B putaij 0 rimuove");
+        check(numanz == 1, "B now a single entry");
+        check_rc(PRIMAL_putaij(t, 0, 0, 0.0), PRIMAL_RES_OK, "B putaij 0 removes");
         PRIMAL_getaij(t, 0, 0, &a);
-        close_enough(a, 0.0, "B la coppia e' rimossa");
+        close_enough(a, 0.0, "B the pair is removed");
         PRIMAL_getnumanz(t, &numanz);
-        check(numanz == 0, "B nessuna entrata");
-        check_rc(PRIMAL_putaij(t, 5, 0, 1.0), PRIMAL_RES_ERR_ARG, "B riga fuori dominio");
-        check_rc(PRIMAL_putaij(t, 0, 5, 1.0), PRIMAL_RES_ERR_ARG, "B colonna fuori dominio");
+        check(numanz == 0, "B no entry");
+        check_rc(PRIMAL_putaij(t, 5, 0, 1.0), PRIMAL_RES_ERR_ARG, "B row out of domain");
+        check_rc(PRIMAL_putaij(t, 0, 5, 1.0), PRIMAL_RES_ERR_ARG, "B column out of domain");
         pend(&p);
     }
 }
@@ -7835,16 +7843,16 @@ static void test_t120(void) {
         PRIMALvariabletypee got[3];
         check_rc(PRIMAL_getvartypelist(t, 3, sub, got), PRIMAL_RES_OK, "A getvartypelist");
         check(got[0] == PRIMAL_VAR_TYPE_CONT && got[1] == PRIMAL_VAR_TYPE_INT &&
-              got[2] == PRIMAL_VAR_TYPE_SEMI_CONT, "A i tre tipi");
+              got[2] == PRIMAL_VAR_TYPE_SEMI_CONT, "A the three types");
         PRIMALvariabletypee one;
         PRIMAL_getvartype(t, 1, &one);
-        check(one == PRIMAL_VAR_TYPE_INT, "A per-indice concorda col getter");
+        check(one == PRIMAL_VAR_TYPE_INT, "A per-index agrees with the getter");
         int sub2[2] = {0, 1};
         PRIMALvariabletypee vt2[2] = { PRIMAL_VAR_TYPE_SEMI_INT, (PRIMALvariabletypee)99 };
-        check_rc(PRIMAL_putvartypelist(t, 2, sub2, vt2), PRIMAL_RES_ERR_ARG, "A tipo invalido");
+        check_rc(PRIMAL_putvartypelist(t, 2, sub2, vt2), PRIMAL_RES_ERR_ARG, "A invalid type");
         PRIMAL_getvartype(t, 0, &one);
-        check(one == PRIMAL_VAR_TYPE_CONT, "A la lista rifiutata non ha toccato la 0");
-        check_rc(PRIMAL_getvartypelist(t, 1, (int[]){99}, got), PRIMAL_RES_ERR_ARG, "A indice fuori dominio");
+        check(one == PRIMAL_VAR_TYPE_CONT, "A the refused list has not touched 0");
+        check_rc(PRIMAL_getvartypelist(t, 1, (int[]){99}, got), PRIMAL_RES_ERR_ARG, "A index out of domain");
         pend(&p);
     }
     /* B. putvarboundlist/putconboundlist */
@@ -7859,24 +7867,24 @@ static void test_t120(void) {
         check_rc(PRIMAL_putvarboundlist(t, 2, sv, bv, lv, uv), PRIMAL_RES_OK, "B putvarboundlist");
         PRIMALboundkeye b; double l, u;
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_RA && l == 1.0 && u == 5.0, "B variabile 0 ranged");
+        check(b == PRIMAL_BK_RA && l == 1.0 && u == 5.0, "B variable 0 ranged");
         PRIMAL_getvarbound(t, 1, &b, &l, &u);
-        check(b == PRIMAL_BK_FR, "B variabile 1 intatta");
+        check(b == PRIMAL_BK_FR, "B variable 1 intact");
         PRIMAL_getvarbound(t, 2, &b, &l, &u);
-        check(b == PRIMAL_BK_UP && u == 7.0, "B variabile 2 up");
+        check(b == PRIMAL_BK_UP && u == 7.0, "B variable 2 up");
         int sv2[2] = {0, 99}; PRIMALboundkeye bv2[2] = { PRIMAL_BK_FX, PRIMAL_BK_FX };
         double lv2[2] = { 9.0, 9.0 }, uv2[2] = { 9.0, 9.0 };
-        check_rc(PRIMAL_putvarboundlist(t, 2, sv2, bv2, lv2, uv2), PRIMAL_RES_ERR_ARG, "B indice fuori dominio");
+        check_rc(PRIMAL_putvarboundlist(t, 2, sv2, bv2, lv2, uv2), PRIMAL_RES_ERR_ARG, "B index out of domain");
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_RA && l == 1.0, "B la 0 non e' stata toccata");
+        check(b == PRIMAL_BK_RA && l == 1.0, "B 0 has not been touched");
         int sc[2] = {0, 1};
         PRIMALboundkeye bc[2] = { PRIMAL_BK_LO, PRIMAL_BK_FX };
         double lc[2] = { 2.0, 3.0 }, uc[2] = { 0.0, 3.0 };
         check_rc(PRIMAL_putconboundlist(t, 2, sc, bc, lc, uc), PRIMAL_RES_OK, "B putconboundlist");
         PRIMAL_getconbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_LO && l == 2.0, "B vincolo 0 lo");
+        check(b == PRIMAL_BK_LO && l == 2.0, "B constraint 0 lo");
         PRIMAL_getconbound(t, 1, &b, &l, &u);
-        check(b == PRIMAL_BK_FX && l == 3.0 && u == 3.0, "B vincolo 1 fx");
+        check(b == PRIMAL_BK_FX && l == 3.0 && u == 3.0, "B constraint 1 fx");
         pend(&p);
     }
     /* C. constant-bound slices */
@@ -7888,22 +7896,22 @@ static void test_t120(void) {
         check_rc(PRIMAL_putvarboundsliceconst(t, 1, 3, PRIMAL_BK_FX, 4.0, 4.0), PRIMAL_RES_OK, "C var sliceconst");
         PRIMALboundkeye b; double l, u;
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
-        check(b == PRIMAL_BK_FR, "C la variabile 0 e' intatta");
+        check(b == PRIMAL_BK_FR, "C the variable 0 is intact");
         PRIMAL_getvarbound(t, 1, &b, &l, &u);
-        check(b == PRIMAL_BK_FX && l == 4.0, "C la 1 fissata");
+        check(b == PRIMAL_BK_FX && l == 4.0, "C 1 fixed");
         PRIMAL_getvarbound(t, 2, &b, &l, &u);
-        check(b == PRIMAL_BK_FX && l == 4.0, "C la 2 fissata");
+        check(b == PRIMAL_BK_FX && l == 4.0, "C 2 fixed");
         PRIMAL_getvarbound(t, 3, &b, &l, &u);
-        check(b == PRIMAL_BK_FR, "C la 3 e' intatta");
+        check(b == PRIMAL_BK_FR, "C 3 is intact");
         check_rc(PRIMAL_putconboundsliceconst(t, 0, 3, PRIMAL_BK_LO, 1.0, 0.0), PRIMAL_RES_OK, "C con sliceconst");
         for (int i = 0; i < 3; i++) {
             PRIMAL_getconbound(t, i, &b, &l, &u);
-            check(b == PRIMAL_BK_LO && l == 1.0, "C vincolo lo 1");
+            check(b == PRIMAL_BK_LO && l == 1.0, "C constraint lo 1");
         }
         check_rc(PRIMAL_putvarboundsliceconst(t, 0, 5, PRIMAL_BK_FR, 0.0, 0.0),
                  PRIMAL_RES_ERR_ARG, "C last>numvar");
         check_rc(PRIMAL_putvarboundsliceconst(t, 0, 2, PRIMAL_BK_RA, 5.0, 4.0),
-                 PRIMAL_RES_ERR_ARG, "C RA con bl>bu");
+                 PRIMAL_RES_ERR_ARG, "C RA with bl>bu");
         pend(&p);
     }
 }
@@ -7917,32 +7925,32 @@ static void test_t121(void) {
     enum { SENT = -777 };
     /* A. task name */
     {
-        cur_name = "T121 A nome del task";
+        cur_name = "T121 A task name";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int len = -1;
-        check_rc(PRIMAL_gettasknamelen(t, &len), PRIMAL_RES_OK, "A lunghezza iniziale");
-        check(len == 0, "A senza nome la lunghezza e' 0");
+        check_rc(PRIMAL_gettasknamelen(t, &len), PRIMAL_RES_OK, "A initial length");
+        check(len == 0, "A without a name the length is 0");
         check_rc(PRIMAL_puttaskname(t, "myprob"), PRIMAL_RES_OK, "A puttaskname");
         PRIMAL_gettasknamelen(t, &len);
-        check(len == 6, "A lunghezza 6");
+        check(len == 6, "A length 6");
         char buf[32];
         check_rc(PRIMAL_gettaskname(t, 7, buf), PRIMAL_RES_OK, "A gettaskname 7");
-        check(strcmp(buf, "myprob") == 0, "A il nome copiato");
+        check(strcmp(buf, "myprob") == 0, "A the name copied");
         for (int k = 0; k < 32; k++) buf[k] = (char)SENT;
-        check_rc(PRIMAL_gettaskname(t, 6, buf), PRIMAL_RES_ERR_ARG, "A 6 byte non regge lo zero");
-        check((int)(unsigned char)buf[0] == (SENT & 0xff), "A il rifiuto non ha scritto");
+        check_rc(PRIMAL_gettaskname(t, 6, buf), PRIMAL_RES_ERR_ARG, "A 6 bytes cannot hold the zero");
+        check((int)(unsigned char)buf[0] == (SENT & 0xff), "A the refusal did not write");
         check_rc(PRIMAL_gettaskname(t, 0, buf), PRIMAL_RES_ERR_ARG, "A size 0");
         check_rc(PRIMAL_gettaskname(t, 7, NULL), PRIMAL_RES_ERR_NULL, "A buffer null");
-        check_rc(PRIMAL_puttaskname(t, NULL), PRIMAL_RES_ERR_ARG, "A nome null");
-        check_rc(PRIMAL_puttaskname(t, ""), PRIMAL_RES_OK, "A nome vuoto");
+        check_rc(PRIMAL_puttaskname(t, NULL), PRIMAL_RES_ERR_ARG, "A null name");
+        check_rc(PRIMAL_puttaskname(t, ""), PRIMAL_RES_OK, "A empty name");
         PRIMAL_gettasknamelen(t, &len);
-        check(len == 0, "A il nome vuoto ha lunghezza 0");
+        check(len == 0, "A the empty name has length 0");
         pend(&p);
     }
     /* B. per-object lengths and the maximum */
     {
-        cur_name = "T121 B lunghezze dei nomi";
+        cur_name = "T121 B name lengths";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -7954,16 +7962,16 @@ static void test_t121(void) {
         PRIMAL_putconename(t, 0, "qc");     /* 2 */
         int len = -1;
         check_rc(PRIMAL_getvarnamelen(t, 0, &len), PRIMAL_RES_OK, "B varnamelen 0");
-        check(len == 5, "B alpha ha 5");
+        check(len == 5, "B alpha has 5");
         check_rc(PRIMAL_getvarnamelen(t, 1, &len), PRIMAL_RES_OK, "B varnamelen 1");
-        check(len == 0, "B la variabile senza nome ha 0");
+        check(len == 0, "B the nameless variable has 0");
         check_rc(PRIMAL_getconnamelen(t, 0, &len), PRIMAL_RES_OK, "B connamelen");
-        check(len == 3, "B cap ha 3");
+        check(len == 3, "B cap has 3");
         check_rc(PRIMAL_getobjnamelen(t, &len), PRIMAL_RES_OK, "B objnamelen");
-        check(len == 4, "B cost ha 4");
+        check(len == 4, "B cost has 4");
         check_rc(PRIMAL_getmaxnamelen(t, &len), PRIMAL_RES_OK, "B maxnamelen");
-        check(len == 5, "B il massimo e' alpha (5)");
-        check_rc(PRIMAL_getvarnamelen(t, 9, &len), PRIMAL_RES_ERR_ARG, "B indice fuori dominio");
+        check(len == 5, "B the maximum is alpha (5)");
+        check_rc(PRIMAL_getvarnamelen(t, 9, &len), PRIMAL_RES_ERR_ARG, "B index out of domain");
         check_rc(PRIMAL_getmaxnamelen(t, NULL), PRIMAL_RES_ERR_NULL, "B null");
         pend(&p);
     }
@@ -7981,14 +7989,14 @@ static void test_t122(void) {
         P p; pbegin(&p);
         int ma = -1, mi = -1, rev = -1;
         check_rc(PRIMAL_getversion(&ma, &mi, &rev), PRIMAL_RES_OK, "A getversion");
-        check(ma == 0 && mi == 1 && rev == 0, "A la versione di questo solver");
+        check(ma == 0 && mi == 1 && rev == 0, "A the version of this solver");
         check_rc(PRIMAL_getversion(NULL, &mi, &rev), PRIMAL_RES_ERR_NULL, "A null");
         check(PRIMAL_isinfinity(INFINITY) == 1, "A +inf");
         check(PRIMAL_isinfinity(-INFINITY) == 1, "A -inf");
-        check(PRIMAL_isinfinity(1.0) == 0, "A 1.0 non e' infinito");
-        check(PRIMAL_isinfinity(0.0) == 0, "A 0 non e' infinito");
+        check(PRIMAL_isinfinity(1.0) == 0, "A 1.0 is not infinity");
+        check(PRIMAL_isinfinity(0.0) == 0, "A 0 is not infinity");
         int cls = -1;
-        check_rc(PRIMAL_getresponseclass(PRIMAL_RES_OK, &cls), PRIMAL_RES_OK, "A classe OK");
+        check_rc(PRIMAL_getresponseclass(PRIMAL_RES_OK, &cls), PRIMAL_RES_OK, "A OK class");
         check(cls == 0, "A OK = 0");
         PRIMAL_getresponseclass(PRIMAL_RES_TRM_MAX_ITER, &cls);
         check(cls == 2, "A TRM = 2");
@@ -7997,7 +8005,7 @@ static void test_t122(void) {
         PRIMAL_getresponseclass(PRIMAL_RES_ERR_FILE, &cls);
         check(cls == 3, "A ERR_FILE = 3");
         PRIMAL_getresponseclass((PRIMALrescodee)999, &cls);
-        check(cls == 4, "A codice ignoto = UNK 4");
+        check(cls == 4, "A unknown code = UNK 4");
         check_rc(PRIMAL_getresponseclass(PRIMAL_RES_OK, NULL), PRIMAL_RES_ERR_NULL, "A null");
         pend(&p);
     }
@@ -8012,39 +8020,39 @@ static void test_t122(void) {
         check_rc(PRIMAL_putqcon(t, 3, k2, i2, j2, v2), PRIMAL_RES_OK, "B putqcon");
         double q = 0.0;
         PRIMAL_getqconkij(t, 0, 0, 0, &q); close_enough(q, 2.0, "B q00=2");
-        PRIMAL_getqconkij(t, 0, 0, 1, &q); close_enough(q, 1.0, "B q01=1 (simmetrizzata)");
+        PRIMAL_getqconkij(t, 0, 0, 1, &q); close_enough(q, 1.0, "B q01=1 (symmetrized)");
         PRIMAL_getqconkij(t, 0, 1, 1, &q); close_enough(q, 2.0, "B q11=2");
         PRIMAL_getqconkij(t, 0, 1, 0, &q); close_enough(q, 1.0, "B q10=1");
         int nq = -1;
         PRIMAL_getnumqconknz(t, 0, &nq);
-        check(nq == 3, "B triangolo superiore: 3 termini");
+        check(nq == 3, "B upper triangle: 3 terms");
         /* replaces everything: row 1 only, a single term */
         int k1[1] = {1}, i1[1] = {0}, j1[1] = {0};
         double v1[1] = {5.0};
         check_rc(PRIMAL_putqcon(t, 1, k1, i1, j1, v1), PRIMAL_RES_OK, "B putqcon replace");
         PRIMAL_getnumqconknz(t, 0, &nq);
-        check(nq == 0, "B la riga 0 e' stata azzerata");
+        check(nq == 0, "B row 0 has been zeroed");
         PRIMAL_getnumqconknz(t, 1, &nq);
-        check(nq == 1, "B la riga 1 ha un termine");
-        PRIMAL_getqconkij(t, 1, 0, 0, &q); close_enough(q, 5.0, "B q00 riga1 = 5");
+        check(nq == 1, "B row 1 has one term");
+        PRIMAL_getqconkij(t, 1, 0, 0, &q); close_enough(q, 5.0, "B q00 row1 = 5");
         /* duplicates in the same call accumulate */
         int kd[2] = {0,0}, id[2] = {0,0}, jd[2] = {0,0};
         double vd[2] = {1.0, 2.0};
-        check_rc(PRIMAL_putqcon(t, 2, kd, id, jd, vd), PRIMAL_RES_OK, "B putqcon duplicati");
+        check_rc(PRIMAL_putqcon(t, 2, kd, id, jd, vd), PRIMAL_RES_OK, "B putqcon duplicates");
         PRIMAL_getqconkij(t, 0, 0, 0, &q); close_enough(q, 3.0, "B q00 = 1+2");
         /* an empty list zeroes everything */
-        check_rc(PRIMAL_putqcon(t, 0, NULL, NULL, NULL, NULL), PRIMAL_RES_OK, "B lista vuota");
-        PRIMAL_getnumqconknz(t, 0, &nq); check(nq == 0, "B riga 0 vuota");
-        PRIMAL_getnumqconknz(t, 1, &nq); check(nq == 0, "B riga 1 vuota");
+        check_rc(PRIMAL_putqcon(t, 0, NULL, NULL, NULL, NULL), PRIMAL_RES_OK, "B empty list");
+        PRIMAL_getnumqconknz(t, 0, &nq); check(nq == 0, "B row 0 empty");
+        PRIMAL_getnumqconknz(t, 1, &nq); check(nq == 0, "B row 1 empty");
         /* refusals: upper triangle, out-of-domain row, NaN, and no write */
         int kb[1] = {0}, ib[1] = {0}, jb[1] = {1}; double vb[1] = {1.0};
-        check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B upper rifiutato");
+        check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B upper refused");
         kb[0] = 5;
-        check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B riga fuori dominio");
+        check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B row out of domain");
         kb[0] = 0; jb[0] = 0; vb[0] = 0.0/0.0;
-        check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B NaN rifiutato");
+        check_rc(PRIMAL_putqcon(t, 1, kb, ib, jb, vb), PRIMAL_RES_ERR_ARG, "B NaN refused");
         PRIMAL_getnumqconknz(t, 0, &nq);
-        check(nq == 0, "B i rifiuti non hanno scritto");
+        check(nq == 0, "B the refusals did not write");
         pend(&p);
     }
 }
@@ -8058,7 +8066,7 @@ static void test_t122(void) {
 static void test_t123(void) {
     /* A. min x, deactivation is optimal */
     {
-        cur_name = "T123 A min x semi-continuo = 0";
+        cur_name = "T123 A min x semi-continuous = 0";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -8069,13 +8077,13 @@ static void test_t123(void) {
         double x = 42, po = 0;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(x, 0.0, "A x=0 (disattivato)");
+        close_enough(x, 0.0, "A x=0 (deactivated)");
         close_enough(po, 0.0, "A pobj=0");
         pend(&p);
     }
     /* B. max x, the active side */
     {
-        cur_name = "T123 B max x semi-continuo = 5";
+        cur_name = "T123 B max x semi-continuous = 5";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -8086,12 +8094,12 @@ static void test_t123(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "B optimize");
         double x = 0;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x);
-        close_enough(x, 5.0, "B x=5 (attivo)");
+        close_enough(x, 5.0, "B x=5 (active)");
         pend(&p);
     }
     /* C. the deactivation is excluded by a constraint: min x = 2 */
     {
-        cur_name = "T123 C disattivazione esclusa -> 2";
+        cur_name = "T123 C deactivation excluded -> 2";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -8104,12 +8112,12 @@ static void test_t123(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "C optimize");
         double x = 0;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x);
-        close_enough(x, 2.0, "C x=2 (attivo, 0 escluso)");
+        close_enough(x, 2.0, "C x=2 (active, 0 excluded)");
         pend(&p);
     }
     /* D. semi-integer with no constraints: deactivation beats the active minimum */
     {
-        cur_name = "T123 D min x semi-intero = 0";
+        cur_name = "T123 D min x semi-integer = 0";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -8144,7 +8152,7 @@ static void test_resp(PRIMALtask_t tk, void *h, PRIMALrescodee res) {
 
 /* T124: general callback and response callback. */
 static void test_t124(void) {
-    cur_name = "T124 callback generale e di risposta";
+    cur_name = "T124 general and response callback";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 1);
@@ -8155,8 +8163,8 @@ static void test_t124(void) {
     check_rc(PRIMAL_putcallbackfunc(t, test_cb, &mark), PRIMAL_RES_OK, "A putcallbackfunc");
     PRIMALcallbackcb got = NULL; void *gh = NULL;
     check_rc(PRIMAL_getcallbackfunc(t, &got, &gh), PRIMAL_RES_OK, "A getcallbackfunc");
-    check(got == test_cb, "A la stessa funzione");
-    check(gh == &mark, "A lo stesso handle");
+    check(got == test_cb, "A the same function");
+    check(gh == &mark, "A the same handle");
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A optimize");
     check(g_cbn >= 2 && g_cb[0] == PRIMAL_CALLBACK_BEGIN_OPTIMIZER &&
           g_cb[g_cbn-1] == PRIMAL_CALLBACK_END_OPTIMIZER, "A BEGIN/END optimizer");
@@ -8180,11 +8188,11 @@ static void test_t124(void) {
     PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
     PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, 0.0, 0.0);   /* x<=0 vs x>=1 */
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "A infeasible");
-    check(g_respn >= 1 && g_resp_rc == (int)PRIMAL_RES_ERR_INFEASIBLE, "A response invocato col codice");
+    check(g_respn >= 1 && g_resp_rc == (int)PRIMAL_RES_ERR_INFEASIBLE, "A response invoked with the code");
     /* clearing the callback */
     check_rc(PRIMAL_putcallbackfunc(t, NULL, NULL), PRIMAL_RES_OK, "A clear callback");
     PRIMAL_getcallbackfunc(t, &got, &gh);
-    check(got == NULL, "A il callback e' azzerato");
+    check(got == NULL, "A the callback is cleared");
     pend(&p);
 }
 
@@ -8197,7 +8205,7 @@ static void test_t124(void) {
 static void test_t125(void) {
     /* A. solved LP: every field against the single getter */
     {
-        cur_name = "T125 A getsolution == getter singoli";
+        cur_name = "T125 A getsolution == single getters";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -8217,7 +8225,7 @@ static void test_t125(void) {
         PRIMALprostae ps2; PRIMALsolstae ss2;
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, &ps2);
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &ss2);
-        check(ps == ps2 && ss == ss2, "A sta/solsta concordano");
+        check(ps == ps2 && ss == ss2, "A sta/solsta agree");
         double gx[2], gy[1], gslc[1], gsuc[1], gslx[2], gsux[2];
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, gx);
         PRIMAL_gety(t, PRIMAL_SOL_ITR, gy);
@@ -8229,18 +8237,18 @@ static void test_t125(void) {
         check(y[0]==gy[0], "A y");
         check(slc[0]==gslc[0] && suc[0]==gsuc[0], "A slc/suc");
         check(slx[0]==gslx[0] && slx[1]==gslx[1] && sux[0]==gsux[0] && sux[1]==gsux[1], "A slx/sux");
-        close_enough(xc[0], 3.0, "A xc = attivita' 3");
-        check(snx[0]==0.0 && snx[1]==0.0, "A snx = 0 (deviazione)");
-        check(skn[0] == skn_marker, "A senza coni getsolution non scrive skn");
+        close_enough(xc[0], 3.0, "A xc = activity 3");
+        check(snx[0]==0.0 && snx[1]==0.0, "A snx = 0 (deviation)");
+        check(skn[0] == skn_marker, "A without cones getsolution does not write skn");
         /* all NULL: OK */
         check_rc(PRIMAL_getsolution(t, PRIMAL_SOL_ITR, NULL, NULL, NULL, NULL, NULL,
                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-                 PRIMAL_RES_OK, "A tutti NULL");
+                 PRIMAL_RES_OK, "A all NULL");
         pend(&p);
     }
     /* B. no solution: the point buffers refuse, the states are read */
     {
-        cur_name = "T125 B nessuna soluzione";
+        cur_name = "T125 B no solution";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1);
@@ -8248,16 +8256,16 @@ static void test_t125(void) {
         double xx[1]; PRIMALsolstae ss = PRIMAL_SOL_STA_INTEGER_OPTIMAL;
         check_rc(PRIMAL_getsolution(t, PRIMAL_SOL_ITR, NULL, &ss, NULL, NULL, NULL,
                                     NULL, xx, NULL, NULL, NULL, NULL, NULL, NULL),
-                 PRIMAL_RES_ERR_ARG, "B il punto rifiuta");
+                 PRIMAL_RES_ERR_ARG, "B the point refuses");
         check(ss == PRIMAL_SOL_STA_UNKNOWN, "B solsta UNKNOWN");
         check_rc(PRIMAL_getsolution(t, PRIMAL_SOL_ITR, NULL, &ss, NULL, NULL, NULL,
                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-                 PRIMAL_RES_OK, "B solo stati: OK");
+                 PRIMAL_RES_OK, "B states only: OK");
         pend(&p);
     }
     /* C. cone: skn (UNDEF) and snx (0) */
     {
-        cur_name = "T125 C cono: skn/snx";
+        cur_name = "T125 C cone: skn/snx";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
@@ -8269,9 +8277,9 @@ static void test_t125(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "C optimize");
         PRIMALstakeye skn[1]; double snx[3];
         check_rc(PRIMAL_getskn(t, PRIMAL_SOL_ITR, skn), PRIMAL_RES_OK, "C getskn");
-        check(skn[0] == PRIMAL_SK_UNDEF, "C skn UNDEF (nessuna base per un cono)");
+        check(skn[0] == PRIMAL_SK_UNDEF, "C skn UNDEF (no basis for a cone)");
         check_rc(PRIMAL_getsnx(t, PRIMAL_SOL_ITR, snx), PRIMAL_RES_OK, "C getsnx");
-        check(snx[0]==0 && snx[1]==0 && snx[2]==0, "C snx 0 (duale nel blocco)");
+        check(snx[0]==0 && snx[1]==0 && snx[2]==0, "C snx 0 (dual in the block)");
         pend(&p);
     }
 }
@@ -8295,10 +8303,10 @@ static void test_t126(void) {
         PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 2.0, "A a11");
         PRIMAL_getaij(t, 0, 2, &a); close_enough(a, 3.0, "A a02");
         int numanz = -1; PRIMAL_getnumanz(t, &numanz);
-        check(numanz == 3, "A tre entrate");
+        check(numanz == 3, "A three entries");
         check_rc(PRIMAL_putaijlist(t, 2, (int[]){0,9}, (int[]){0,0}, (double[]){5.0,5.0}),
-                 PRIMAL_RES_ERR_ARG, "A indice fuori dominio");
-        PRIMAL_getaij(t, 0, 0, &a); close_enough(a, 1.0, "A il rifiuto non ha scritto");
+                 PRIMAL_RES_ERR_ARG, "A index out of domain");
+        PRIMAL_getaij(t, 0, 0, &a); close_enough(a, 1.0, "A the refusal did not write");
         pend(&p);
     }
     /* B. chgvarbound/chgconbound */
@@ -8309,20 +8317,20 @@ static void test_t126(void) {
         PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 1);
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 2.0, 5.0);
         PRIMALboundkeye b; double l, u;
-        check_rc(PRIMAL_chgvarbound(t, 0, 1, 1, 3.0), PRIMAL_RES_OK, "B cambia il lower a 3");
+        check_rc(PRIMAL_chgvarbound(t, 0, 1, 1, 3.0), PRIMAL_RES_OK, "B change the lower to 3");
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_RA && l == 3.0 && u == 5.0, "B [3,5]");
-        check_rc(PRIMAL_chgvarbound(t, 0, 0, 0, 0.0), PRIMAL_RES_OK, "B upper a +inf");
+        check_rc(PRIMAL_chgvarbound(t, 0, 0, 0, 0.0), PRIMAL_RES_OK, "B upper to +inf");
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_LO && l == 3.0, "B [3,inf) -> LO");
         check_rc(PRIMAL_chgvarbound(t, 0, 0, 1, 3.0), PRIMAL_RES_OK, "B upper = 3 = lower");
         PRIMAL_getvarbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_FX && l == 3.0 && u == 3.0, "B [3,3] -> FX");
         PRIMAL_putconbound(t, 0, PRIMAL_BK_RA, 1.0, 4.0);
-        check_rc(PRIMAL_chgconbound(t, 0, 1, 1, 2.0), PRIMAL_RES_OK, "B con lower a 2");
+        check_rc(PRIMAL_chgconbound(t, 0, 1, 1, 2.0), PRIMAL_RES_OK, "B con lower to 2");
         PRIMAL_getconbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_RA && l == 2.0 && u == 4.0, "B con [2,4]");
-        check_rc(PRIMAL_chgconbound(t, 0, 1, 0, 0.0), PRIMAL_RES_OK, "B con lower a -inf");
+        check_rc(PRIMAL_chgconbound(t, 0, 1, 0, 0.0), PRIMAL_RES_OK, "B con lower to -inf");
         PRIMAL_getconbound(t, 0, &b, &l, &u);
         check(b == PRIMAL_BK_UP && u == 4.0, "B con (-inf,4] -> UP");
         pend(&p);
@@ -8339,23 +8347,23 @@ static void test_t126(void) {
         PRIMALint64t idx[2];
         check_rc(PRIMAL_appendsparsesymmatlist(t, 2, dims, nz, si, sj, sv, idx),
                  PRIMAL_RES_OK, "C append list");
-        check(idx[0] == 0 && idx[1] == 1, "C gli id");
+        check(idx[0] == 0 && idx[1] == 1, "C the ids");
         int gi[3], gj[3]; double gv[3];
         check_rc(PRIMAL_getsparsesymmat(t, 0, 3, gi, gj, gv), PRIMAL_RES_OK, "C get m0");
         check(gi[0]==0 && gj[0]==0 && gv[0]==1.0 && gi[1]==1 && gj[1]==1 && gv[1]==2.0,
               "C m0 = diag(1,2)");
         check_rc(PRIMAL_getsparsesymmat(t, 1, 3, gi, gj, gv), PRIMAL_RES_OK, "C get m1");
         check(gi[0]==0 && gj[0]==1 && gv[0]==3.0, "C m1 = (0,1,3)");
-        check_rc(PRIMAL_getsparsesymmat(t, 1, 0, gi, gj, gv), PRIMAL_RES_ERR_ARG, "C maxlen corto");
-        check_rc(PRIMAL_getsparsesymmat(t, 9, 3, gi, gj, gv), PRIMAL_RES_ERR_ARG, "C idx fuori");
+        check_rc(PRIMAL_getsparsesymmat(t, 1, 0, gi, gj, gv), PRIMAL_RES_ERR_ARG, "C maxlen too short");
+        check_rc(PRIMAL_getsparsesymmat(t, 9, 3, gi, gj, gv), PRIMAL_RES_ERR_ARG, "C idx out");
         int nsym = -1; PRIMAL_getnumsymmat(t, &nsym);
-        check(nsym == 2, "C due matrici");
+        check(nsym == 2, "C two matrices");
         /* a list with one bad index: no append */
         int bi[3] = {0,1,0}, bj[3] = {0,1,5};
         check_rc(PRIMAL_appendsparsesymmatlist(t, 2, dims, nz, bi, bj, sv, idx),
-                 PRIMAL_RES_ERR_ARG, "C lista rifiutata");
+                 PRIMAL_RES_ERR_ARG, "C list refused");
         PRIMAL_getnumsymmat(t, &nsym);
-        check(nsym == 2, "C il rifiuto non ha appeso");
+        check(nsym == 2, "C the refusal did not append");
         pend(&p);
     }
     /* D. getprobtype */
@@ -8392,7 +8400,7 @@ static void test_t126(void) {
         PRIMAL_putqconk(p5.task, 0, 1, (int[]){0}, (int[]){0}, (double[]){1.0});
         PRIMAL_appendcone(p5.task, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0,1,2});
         PRIMAL_getprobtype(p5.task, &pt);
-        check(pt == PRIMAL_PROBTYPE_MIXED, "D MIXED (QC+cono)");
+        check(pt == PRIMAL_PROBTYPE_MIXED, "D MIXED (QC+cone)");
         pend(&p5);
     }
 }
@@ -8404,7 +8412,7 @@ static void test_t126(void) {
 static void test_t127(void) {
     /* A. reset */
     {
-        cur_name = "T127 A reset dei parametri";
+        cur_name = "T127 A reset of the parameters";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int iv = 0; double dv = 0.0;
@@ -8412,30 +8420,30 @@ static void test_t127(void) {
         check(iv == 400, "A default 400");
         check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 100), PRIMAL_RES_OK, "A set 100");
         PRIMAL_getintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &iv);
-        check(iv == 100, "A ora 100");
+        check(iv == 100, "A now 100");
         check_rc(PRIMAL_resetintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS), PRIMAL_RES_OK, "A resetintparam");
         PRIMAL_getintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &iv);
-        check(iv == 400, "A di nuovo 400");
+        check(iv == 400, "A again 400");
         PRIMAL_getdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv);
         check(dv == 1e-8, "A tol default 1e-8");
         PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, 1e-3);
         check_rc(PRIMAL_resetdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS), PRIMAL_RES_OK, "A resetdouparam");
         PRIMAL_getdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv);
-        check(dv == 1e-8, "A tol di nuovo 1e-8");
+        check(dv == 1e-8, "A tol again 1e-8");
         /* resetparameters: two parameters moved, both return */
         PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 7);
         PRIMAL_putdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, 1e-2);
         check_rc(PRIMAL_resetparameters(t), PRIMAL_RES_OK, "A resetparameters");
         PRIMAL_getintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &iv);
         PRIMAL_getdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv);
-        check(iv == 400 && dv == 1e-8, "A tutti ai default");
-        check_rc(PRIMAL_resetintparam(t, 99999), PRIMAL_RES_ERR_ARG, "A id ignoto");
-        check_rc(PRIMAL_resetdouparam(t, 99999), PRIMAL_RES_ERR_ARG, "A id ignoto dou");
+        check(iv == 400 && dv == 1e-8, "A all at the defaults");
+        check_rc(PRIMAL_resetintparam(t, 99999), PRIMAL_RES_ERR_ARG, "A unknown id");
+        check_rc(PRIMAL_resetdouparam(t, 99999), PRIMAL_RES_ERR_ARG, "A unknown dou id");
         pend(&p);
     }
     /* B. 64-bit counters */
     {
-        cur_name = "T127 B contatori a 64 bit";
+        cur_name = "T127 B 64-bit counters";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
@@ -8453,7 +8461,7 @@ static void test_t127(void) {
         check(i32 == 2 && i64 == 2, "B getnumqobjnz64");
         PRIMAL_getnumqconknz(t, 0, &i32); PRIMAL_getnumqconknz64(t, 0, &i64);
         check(i32 == 1 && i64 == 1, "B getnumqconknz64");
-        check_rc(PRIMAL_getnumqconknz64(t, 5, &i64), PRIMAL_RES_ERR_ARG, "B indice fuori");
+        check_rc(PRIMAL_getnumqconknz64(t, 5, &i64), PRIMAL_RES_ERR_ARG, "B index out");
         check_rc(PRIMAL_getnumanz64(t, NULL), PRIMAL_RES_ERR_NULL, "B null");
         pend(&p);
     }
@@ -8472,19 +8480,19 @@ static void test_t128(void) {
         check_rc(PRIMAL_appendconeseq(t, PRIMAL_CT_QUAD, 0.0, 3, 0), PRIMAL_RES_OK, "A seq");
         int nc = 0, nm = 0;
         PRIMAL_getnumcone(t, &nc);
-        check(nc == 1, "A un cono");
+        check(nc == 1, "A one cone");
         PRIMAL_getnumconemem(t, 0, &nm);
-        check(nm == 3, "A 3 membri");
+        check(nm == 3, "A 3 members");
         PRIMALconetypee ct[2] = { PRIMAL_CT_QUAD, PRIMAL_CT_RQUAD };
         double cp[2] = { 0.0, 0.0 };
         int nmm[2] = { 3, 3 }, jj[2] = { 0, 2 };
         check_rc(PRIMAL_appendconesseq(t, 2, ct, cp, nmm, jj), PRIMAL_RES_OK, "A seqs");
         PRIMAL_getnumcone(t, &nc);
-        check(nc == 3, "A tre coni in totale");
+        check(nc == 3, "A three cones in total");
         PRIMAL_getnumconemem(t, 2, &nm);
-        check(nm == 3, "A il terzo cono ha 3 membri");
+        check(nm == 3, "A the third cone has 3 members");
         check_rc(PRIMAL_appendconeseq(t, PRIMAL_CT_QUAD, 0.0, 3, 3),
-                 PRIMAL_RES_ERR_ARG, "A membri oltre numvar");
+                 PRIMAL_RES_ERR_ARG, "A members beyond numvar");
         pend(&p);
     }
     /* B. putarowlist/putacollist */
@@ -8503,9 +8511,9 @@ static void test_t128(void) {
                  (int[]){1,0,1}, (double[]){5.0,6.0,7.0}), PRIMAL_RES_OK, "B putacollist");
         PRIMAL_getaij(t, 1, 0, &a); close_enough(a, 5.0, "B a10");
         PRIMAL_getaij(t, 0, 1, &a); close_enough(a, 6.0, "B a01");
-        PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 7.0, "B a11 aggiornato");
+        PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 7.0, "B a11 updated");
         check_rc(PRIMAL_putarowlist(t, 1, (int[]){5}, (int[]){0}, (int[]){0},
-                 (int[]){0}, (double[]){0.0}), PRIMAL_RES_ERR_ARG, "B riga fuori dominio");
+                 (int[]){0}, (double[]){0.0}), PRIMAL_RES_ERR_ARG, "B row out of domain");
         pend(&p);
     }
     /* C. putarowslice/putacolslice */
@@ -8534,7 +8542,7 @@ static void test_t128(void) {
  * `sktostr`/`rescodetostr`. The TEXT is this solver's own (a declared deviation:
  * the exact reference form has not been read). */
 static void test_t129(void) {
-    cur_name = "T129 nomi simbolici degli enum";
+    cur_name = "T129 symbolic names of the enums";
     P p; pbegin(&p);
     char s[64];
     check_rc(PRIMAL_prostatostr(p.task, PRIMAL_PRO_STA_PRIM_AND_DUAL_FEAS, s), PRIMAL_RES_OK, "A prosta");
@@ -8572,16 +8580,16 @@ static void test_t130(void) {
     {
         cur_name = "T130 A version/build/codedesc";
         P p; pbegin(&p);
-        check_rc(PRIMAL_checkversion(p.env, 0, 1, 0), PRIMAL_RES_OK, "A versione giusta");
-        check_rc(PRIMAL_checkversion(p.env, 2, 0, 0), PRIMAL_RES_ERR_ARG, "A versione sbagliata");
+        check_rc(PRIMAL_checkversion(p.env, 0, 1, 0), PRIMAL_RES_OK, "A correct version");
+        check_rc(PRIMAL_checkversion(p.env, 2, 0, 0), PRIMAL_RES_ERR_ARG, "A wrong version");
         char bs[64], bd[64];
         check_rc(PRIMAL_getbuildinfo(bs, bd), PRIMAL_RES_OK, "A getbuildinfo");
         check(strcmp(bs, "PrimalSolver") == 0, "A buildstate");
-        check(strlen(bd) > 0, "A builddate non vuota");
+        check(strlen(bd) > 0, "A builddate not empty");
         char sym[64], desc[64];
         check_rc(PRIMAL_getcodedesc(PRIMAL_RES_ERR_ARG, sym, desc), PRIMAL_RES_OK, "A getcodedesc");
         check(strcmp(sym, "PRIMAL_RES_ERR_ARG") == 0, "A symname");
-        check(strcmp(desc, "ERR_ARG") == 0, "A descrizione");
+        check(strcmp(desc, "ERR_ARG") == 0, "A description");
         check_rc(PRIMAL_getcodedesc(PRIMAL_RES_OK, NULL, NULL), PRIMAL_RES_OK, "A codedesc null ok");
         pend(&p);
     }
@@ -8599,9 +8607,9 @@ static void test_t130(void) {
         PRIMALrescodee lrc = PRIMAL_RES_OK; int len = -1; char msg[64];
         check_rc(PRIMAL_getlasterror(t, &lrc, 64, &len, msg), PRIMAL_RES_OK, "B getlasterror");
         check(lrc == PRIMAL_RES_ERR_INFEASIBLE && (int)lrc == 1002, "B lastrescode");
-        check(strcmp(msg, "ERR_INFEASIBLE") == 0 && len == 14, "B messaggio e lunghezza");
+        check(strcmp(msg, "ERR_INFEASIBLE") == 0 && len == 14, "B message and length");
         char tiny[2];
-        check_rc(PRIMAL_getlasterror(t, &lrc, 2, &len, tiny), PRIMAL_RES_ERR_ARG, "B buffer corto");
+        check_rc(PRIMAL_getlasterror(t, &lrc, 2, &len, tiny), PRIMAL_RES_ERR_ARG, "B buffer too short");
         check_rc(PRIMAL_getlasterror(t, &lrc, 64, NULL, msg), PRIMAL_RES_ERR_NULL, "B len null");
         pend(&p);
     }
@@ -8615,9 +8623,9 @@ static void test_t130(void) {
         check(tol == 0.0, "C default 0");
         check_rc(PRIMAL_putatruncatetol(t, 1e-9), PRIMAL_RES_OK, "C put 1e-9");
         PRIMAL_getatruncatetol(t, &tol);
-        check(tol == 1e-9, "C memorizzata");
-        check_rc(PRIMAL_putatruncatetol(t, -1.0), PRIMAL_RES_ERR_ARG, "C negativo rifiutato");
-        check_rc(PRIMAL_putatruncatetol(t, 0.0/0.0), PRIMAL_RES_ERR_ARG, "C NaN rifiutato");
+        check(tol == 1e-9, "C stored");
+        check_rc(PRIMAL_putatruncatetol(t, -1.0), PRIMAL_RES_ERR_ARG, "C negative refused");
+        check_rc(PRIMAL_putatruncatetol(t, 0.0/0.0), PRIMAL_RES_ERR_ARG, "C NaN refused");
         check_rc(PRIMAL_getatruncatetol(t, NULL), PRIMAL_RES_ERR_NULL, "C null");
         pend(&p);
     }
@@ -8641,16 +8649,16 @@ static void test_t131(void) {
         check_rc(PRIMAL_removecones(t, 1, (int[]){1}), PRIMAL_RES_OK, "A remove cone 1");
         int nc = -1;
         PRIMAL_getnumcone(t, &nc);
-        check(nc == 2, "A due coni");
+        check(nc == 2, "A two cones");
         int mem[3];
         PRIMAL_getcone(t, 1, NULL, &nc, mem);
-        check(mem[0] == 2 && mem[1] == 3 && mem[2] == 4, "A il secondo cono e' quello che era il terzo");
+        check(mem[0] == 2 && mem[1] == 3 && mem[2] == 4, "A the second cone is the one that was the third");
         const char *nm[2] = { NULL, NULL };
         PRIMAL_getallconename(t, nm);
         check(nm[0] && strcmp(nm[0], "c0") == 0 && nm[1] && strcmp(nm[1], "c2") == 0,
-              "A i nomi compattati");
-        check_rc(PRIMAL_removecones(t, 1, (int[]){5}), PRIMAL_RES_ERR_ARG, "A indice fuori");
-        check_rc(PRIMAL_removecones(t, 2, (int[]){0,0}), PRIMAL_RES_ERR_ARG, "A duplicato");
+              "A the compacted names");
+        check_rc(PRIMAL_removecones(t, 1, (int[]){5}), PRIMAL_RES_ERR_ARG, "A index out");
+        check_rc(PRIMAL_removecones(t, 2, (int[]){0,0}), PRIMAL_RES_ERR_ARG, "A duplicate");
         pend(&p);
     }
     /* B. removebarvars: removal + remapping of the terms */
@@ -8670,19 +8678,19 @@ static void test_t131(void) {
         check_rc(PRIMAL_removebarvars(t, 1, (int[]){1}), PRIMAL_RES_OK, "B remove bar 1");
         int nb = -1, d = -1;
         PRIMAL_getnumbarvar(t, &nb);
-        check(nb == 2, "B due barre");
+        check(nb == 2, "B two bars");
         PRIMAL_getdimbarvarj(t, 0, &d);
-        check(d == 2, "B la prima e' 2x2");
+        check(d == 2, "B the first is 2x2");
         PRIMAL_getdimbarvarj(t, 1, &d);
-        check(d == 4, "B la seconda e' 4x4 (era la terza)");
+        check(d == 4, "B the second is 4x4 (it was the third)");
         int nbc = -1;
         PRIMAL_getnumbarcterm(t, &nbc);
-        check(nbc == 2, "B due termini C");
+        check(nbc == 2, "B two C terms");
         /* the C term of the new bar 1 is the one that belonged to old bar 2 (sym m2) */
         int sym = -1; double coef = 0.0;
         PRIMAL_getbarcidxj(t, 1, 1, &nb, &sym, &coef);
-        check(sym == m2, "B il termine C rimappato");
-        check_rc(PRIMAL_removebarvars(t, 1, (int[]){9}), PRIMAL_RES_ERR_ARG, "B indice fuori");
+        check(sym == m2, "B the remapped C term");
+        check_rc(PRIMAL_removebarvars(t, 1, (int[]){9}), PRIMAL_RES_ERR_ARG, "B index out");
         pend(&p);
     }
 }
@@ -8712,15 +8720,15 @@ static void t132_readfile(const char *path, char *out, int cap) {
 static void test_t132(void) {
     /* A. env stream by function, inherited, + echo */
     {
-        cur_name = "T132 A stream env per funzione";
+        cur_name = "T132 A env stream by function";
         P p; pbegin(&p);
         g_sbn = 0; g_sb[0] = 0;
         check_rc(PRIMAL_linkfunctoenvstream(p.env, PRIMAL_STREAM_LOG, NULL, test_stream_cb),
                  PRIMAL_RES_OK, "A linkfunctoenvstream");
         PRIMALtask_t t2 = NULL;
-        check_rc(PRIMAL_maketask(p.env, 0, 0, &t2), PRIMAL_RES_OK, "A maketask eredita");
+        check_rc(PRIMAL_maketask(p.env, 0, 0, &t2), PRIMAL_RES_OK, "A maketask inherits");
         check_rc(PRIMAL_echotask(t2, PRIMAL_STREAM_LOG, "hello %d\n", 7), PRIMAL_RES_OK, "A echotask");
-        check(strcmp(g_sb, "hello 7\n") == 0, "A il task scrive sullo stream di env");
+        check(strcmp(g_sb, "hello 7\n") == 0, "A the task writes on the env stream");
         PRIMAL_echoenv(p.env, PRIMAL_STREAM_LOG, "env\n");
         check(strcmp(g_sb, "hello 7\nenv\n") == 0, "A echoenv");
         PRIMAL_echointro(p.env, 0);
@@ -8731,25 +8739,25 @@ static void test_t132(void) {
     }
     /* B. task file stream, and unlink */
     {
-        cur_name = "T132 B stream su file del task";
+        cur_name = "T132 B stream to the task file";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         check_rc(PRIMAL_linkfiletotaskstream(t, PRIMAL_STREAM_LOG, "/tmp/mc_t132b.txt", 0),
                  PRIMAL_RES_OK, "B linkfiletotaskstream");
         PRIMAL_echotask(t, PRIMAL_STREAM_LOG, "file %d\n", 3);
-        check_rc(PRIMAL_unlinkfuncfromtaskstream(t, PRIMAL_STREAM_LOG), PRIMAL_RES_OK, "B unlink (chiude)");
+        check_rc(PRIMAL_unlinkfuncfromtaskstream(t, PRIMAL_STREAM_LOG), PRIMAL_RES_OK, "B unlink (closes)");
         char buf[128];
         t132_readfile("/tmp/mc_t132b.txt", buf, sizeof buf);
-        check(strcmp(buf, "file 3\n") == 0, "B contenuto del file");
+        check(strcmp(buf, "file 3\n") == 0, "B file content");
         /* after the unlink echotask no longer writes */
-        PRIMAL_echotask(t, PRIMAL_STREAM_LOG, "dopo");
+        PRIMAL_echotask(t, PRIMAL_STREAM_LOG, "after");
         t132_readfile("/tmp/mc_t132b.txt", buf, sizeof buf);
-        check(strcmp(buf, "file 3\n") == 0, "B dopo l'unlink non scrive");
+        check(strcmp(buf, "file 3\n") == 0, "B after the unlink it does not write");
         pend(&p);
     }
     /* C. env file stream, inherited */
     {
-        cur_name = "T132 C stream su file dell'env";
+        cur_name = "T132 C stream to the env file";
         P p; pbegin(&p);
         check_rc(PRIMAL_linkfiletoenvstream(p.env, PRIMAL_STREAM_LOG, "/tmp/mc_t132c.txt", 0),
                  PRIMAL_RES_OK, "C linkfiletoenvstream");
@@ -8760,10 +8768,10 @@ static void test_t132(void) {
         check_rc(PRIMAL_unlinkfuncfromenvstream(p.env, PRIMAL_STREAM_LOG), PRIMAL_RES_OK, "C unlink");
         char buf[128];
         t132_readfile("/tmp/mc_t132c.txt", buf, sizeof buf);
-        check(strcmp(buf, "via env\n") == 0, "C contenuto");
+        check(strcmp(buf, "via env\n") == 0, "C content");
         /* refusals */
         check_rc(PRIMAL_linkfunctotaskstream(p.task, (PRIMALstreamtypee)9, NULL, test_stream_cb),
-                 PRIMAL_RES_ERR_ARG, "C stream type invalido");
+                 PRIMAL_RES_ERR_ARG, "C invalid stream type");
         check_rc(PRIMAL_echotask(NULL, PRIMAL_STREAM_LOG, "x"), PRIMAL_RES_ERR_NULL, "C task null");
         pend(&p);
     }
@@ -8793,25 +8801,25 @@ static void test_t133(void) {
     /* A-bar: 3 blocks, idx = i*2+j */
     PRIMALint64t num = -1, idx[4];
     check_rc(PRIMAL_getbarasparsity(t, 4, &num, idx), PRIMAL_RES_OK, "A getbarasparsity");
-    check(num == 3, "A tre blocchi");
-    check(idx[0] == 0 && idx[1] == 1 && idx[2] == 2, "A gli idx row-major");
+    check(num == 3, "A three blocks");
+    check(idx[0] == 0 && idx[1] == 1 && idx[2] == 2, "A the row-major idx");
     PRIMALint64t nt = -1;
     check_rc(PRIMAL_getbaraidxinfo(t, 0, &nt), PRIMAL_RES_OK, "A idxinfo 0");
-    check(nt == 1, "A (0,0) ha 1 termine");
+    check(nt == 1, "A (0,0) has 1 term");
     int gi, gj; PRIMALint64t sub[4]; double w[4];
     check_rc(PRIMAL_getbaraidx(t, 2, 4, &gi, &gj, &nt, sub, w), PRIMAL_RES_OK, "A idx 2");
-    check(gi == 1 && gj == 0 && nt == 1 && sub[0] == sC && w[0] == 3.0, "A (1,0) decodificato");
-    check_rc(PRIMAL_getbaraidxinfo(t, 99, &nt), PRIMAL_RES_ERR_ARG, "A idx fuori");
+    check(gi == 1 && gj == 0 && nt == 1 && sub[0] == sC && w[0] == 3.0, "A (1,0) decoded");
+    check_rc(PRIMAL_getbaraidxinfo(t, 99, &nt), PRIMAL_RES_ERR_ARG, "A idx out");
     /* C-bar: 2 bars */
     PRIMALint64t idxc[4];
     check_rc(PRIMAL_getbarcsparsity(t, 4, &num, idxc), PRIMAL_RES_OK, "A getbarcsparsity");
-    check(num == 2 && idxc[0] == 0 && idxc[1] == 1, "A due barre C");
+    check(num == 2 && idxc[0] == 0 && idxc[1] == 1, "A two C bars");
     check_rc(PRIMAL_getbarcidxinfo(t, 1, &nt), PRIMAL_RES_OK, "A cidxinfo 1");
-    check(nt == 2, "A barra 1 ha 2 termini C");
+    check(nt == 2, "A bar 1 has 2 C terms");
     check_rc(PRIMAL_getbarcidx(t, 1, 4, &gj, &nt, sub, w), PRIMAL_RES_OK, "A cidx 1");
-    check(gj == 1 && nt == 2 && sub[0] == sE && sub[1] == sF, "A i due termini C");
+    check(gj == 1 && nt == 2 && sub[0] == sE && sub[1] == sF, "A the two C terms");
     /* short capacity: refusal */
-    check_rc(PRIMAL_getbarcidx(t, 1, 1, &gj, &nt, sub, w), PRIMAL_RES_ERR_ARG, "A capienza corta");
+    check_rc(PRIMAL_getbarcidx(t, 1, 1, &gj, &nt, sub, w), PRIMAL_RES_ERR_ARG, "A capacity too short");
     pend(&p);
 }
 
@@ -8835,7 +8843,7 @@ static void test_t134(void) {
                                   bkc, blc, buc, bkx, blx, bux), PRIMAL_RES_OK, "A inputdata");
         int nv = 0, nc = 0;
         PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
-        check(nv == 2 && nc == 1, "A dimensioni");
+        check(nv == 2 && nc == 1, "A dimensions");
         double a;
         PRIMAL_getaij(t, 0, 0, &a); close_enough(a, 1.0, "A a00");
         PRIMAL_getaij(t, 0, 1, &a); close_enough(a, 1.0, "A a01");
@@ -8845,10 +8853,10 @@ static void test_t134(void) {
         close_enough(po, 3.0, "A pobj=3");
         /* inputdata on a non-empty task: refusal */
         check_rc(PRIMAL_inputdata(t, 1, 2, 1, 2, c, 0.0, aptrb, aptre, asub, aval,
-                                  bkc, blc, buc, bkx, blx, bux), PRIMAL_RES_ERR_ARG, "A task non vuoto");
+                                  bkc, blc, buc, bkx, blx, bux), PRIMAL_RES_ERR_ARG, "A task not empty");
         PRIMALint64t mi = 0, mm = 0;
         check_rc(PRIMAL_getmemusagetask(t, &mi, &mm), PRIMAL_RES_OK, "A getmemusagetask");
-        check(mi > 0 && mi == mm, "A memoria stimata");
+        check(mi > 0 && mi == mm, "A estimated memory");
         pend(&p);
     }
     /* B. removecons: compacts A, qcon, barA and the names */
@@ -8867,25 +8875,25 @@ static void test_t134(void) {
         check_rc(PRIMAL_removecons(t, 1, (int[]){1}), PRIMAL_RES_OK, "B removecon 1");
         int nc = -1;
         PRIMAL_getnumcon(t, &nc);
-        check(nc == 2, "B due righe");
+        check(nc == 2, "B two rows");
         double a;
         PRIMAL_getaij(t, 0, 0, &a); close_enough(a, 1.0, "B a00");
-        PRIMAL_getaij(t, 1, 2, &a); close_enough(a, 3.0, "B la riga 2 e' ora la 1");
-        PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 0.0, "B la vecchia riga 1 e' sparita");
+        PRIMAL_getaij(t, 1, 2, &a); close_enough(a, 3.0, "B row 2 is now row 1");
+        PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 0.0, "B the old row 1 has disappeared");
         const char *nm[2] = { NULL, NULL };
         PRIMAL_getallconname(t, nm);
         check(nm[0] && strcmp(nm[0], "c0") == 0 && nm[1] && strcmp(nm[1], "c2") == 0,
-              "B i nomi compattati");
+              "B the compacted names");
         int nq = -1;
         PRIMAL_getnumqconknz(t, 1, &nq);
-        check(nq == 1, "B il qcon della riga 2 e' ora sulla 1");
+        check(nq == 1, "B the qcon of row 2 is now on row 1");
         int nba = -1;
         PRIMAL_getnumbaraterm(t, &nba);
-        check(nba == 1, "B un termine bar A");
+        check(nba == 1, "B a bar A term");
         int con = -1, jbar = -1, ms = -1; double coef = 0.0;
         PRIMAL_getbaraitem(t, 0, &con, &jbar, &ms, &coef);
-        check(con == 1 && jbar == 0 && ms == sym, "B il termine bar A e' rimappato");
-        check_rc(PRIMAL_removecons(t, 1, (int[]){5}), PRIMAL_RES_ERR_ARG, "B indice fuori");
+        check(con == 1 && jbar == 0 && ms == sym, "B the bar A term is remapped");
+        check_rc(PRIMAL_removecons(t, 1, (int[]){5}), PRIMAL_RES_ERR_ARG, "B index out");
         pend(&p);
     }
     /* C. inputdata64 */
@@ -8929,31 +8937,31 @@ static void test_t135(void) {
     check_rc(PRIMAL_removevars(t, 1, (int[]){1}), PRIMAL_RES_OK, "removevar 1");
     int nv = -1;
     PRIMAL_getnumvar(t, &nv);
-    check(nv == 2, "due variabili");
+    check(nv == 2, "two variables");
     double cj = 0.0;
     PRIMAL_getcj(t, 0, &cj); close_enough(cj, 1.0, "c0=1");
-    PRIMAL_getcj(t, 1, &cj); close_enough(cj, 3.0, "c1=3 (era la 2)");
+    PRIMAL_getcj(t, 1, &cj); close_enough(cj, 3.0, "c1=3 (was 2)");
     double a;
     PRIMAL_getaij(t, 0, 0, &a); close_enough(a, 1.0, "a00");
-    PRIMAL_getaij(t, 0, 1, &a); close_enough(a, 3.0, "a01 (era a02)");
-    PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 0.0, "la vecchia colonna 1 e' sparita");
+    PRIMAL_getaij(t, 0, 1, &a); close_enough(a, 3.0, "a01 (was a02)");
+    PRIMAL_getaij(t, 1, 1, &a); close_enough(a, 0.0, "the old column 1 has disappeared");
     const char *vn[2] = { NULL, NULL };
     PRIMAL_getallvarname(t, vn);
-    check(vn[0] && strcmp(vn[0], "v0") == 0 && vn[1] && strcmp(vn[1], "v2") == 0, "nomi compattati");
+    check(vn[0] && strcmp(vn[0], "v0") == 0 && vn[1] && strcmp(vn[1], "v2") == 0, "compacted names");
     int nq = -1;
     PRIMAL_getnumqobjnz(t, &nq);
-    check(nq == 2, "due termini qobj");
+    check(nq == 2, "two qobj terms");
     double q = 0.0;
-    PRIMAL_getqobjij(t, 1, 1, &q); close_enough(q, 5.0, "q11=5 (era q22)");
-    PRIMAL_getqobjij(t, 1, 0, &q); close_enough(q, 0.0, "il termine (1,0) e' sparito");
+    PRIMAL_getqobjij(t, 1, 1, &q); close_enough(q, 5.0, "q11=5 (was q22)");
+    PRIMAL_getqobjij(t, 1, 0, &q); close_enough(q, 0.0, "the term (1,0) has disappeared");
     PRIMAL_getqconkij(t, 0, 0, 0, &q); close_enough(q, 1.0, "qcon 00");
-    PRIMAL_getqconkij(t, 0, 1, 1, &q); close_enough(q, 2.0, "qcon 11 (era 22)");
+    PRIMAL_getqconkij(t, 0, 1, 1, &q); close_enough(q, 2.0, "qcon 11 (was 22)");
     int nm = -1, mem[3];
     PRIMAL_getnumcone(t, &nm);
-    check(nm == 1, "un cono");
+    check(nm == 1, "one cone");
     PRIMAL_getcone(t, 0, NULL, &nm, mem);
-    check(nm == 2 && mem[0] == 0 && mem[1] == 1, "membri rimappati {0,1}");
-    check_rc(PRIMAL_removevars(t, 1, (int[]){5}), PRIMAL_RES_ERR_ARG, "indice fuori");
+    check(nm == 2 && mem[0] == 0 && mem[1] == 1, "members remapped {0,1}");
+    check_rc(PRIMAL_removevars(t, 1, (int[]){5}), PRIMAL_RES_ERR_ARG, "index out");
     pend(&p);
 }
 
@@ -8969,22 +8977,22 @@ static void test_t136(void) {
     check(ct == PRIMAL_CT_QUAD, "A QUAD = 0");
     PRIMAL_strtoconetype(t, "RPOW", &ct);
     check(ct == PRIMAL_CT_RPOW, "A RPOW");
-    check_rc(PRIMAL_strtoconetype(t, "??", &ct), PRIMAL_RES_ERR_ARG, "A ignoto");
+    check_rc(PRIMAL_strtoconetype(t, "??", &ct), PRIMAL_RES_ERR_ARG, "A unknown");
     check_rc(PRIMAL_strtoconetype(t, NULL, &ct), PRIMAL_RES_ERR_NULL, "A null");
     PRIMALstakeye sk;
     check_rc(PRIMAL_strtosk(t, "BAS", &sk), PRIMAL_RES_OK, "A BAS");
     check(sk == PRIMAL_SK_BAS, "A BAS = 1");
     PRIMAL_strtosk(t, "LOW", &sk);
     check(sk == PRIMAL_SK_LOW, "A LOW");
-    check_rc(PRIMAL_strtosk(t, "XX", &sk), PRIMAL_RES_ERR_ARG, "A sk ignoto");
+    check_rc(PRIMAL_strtosk(t, "XX", &sk), PRIMAL_RES_ERR_ARG, "A unknown sk");
     int n = -1;
     check_rc(PRIMAL_getnumparam(t, 1, &n), PRIMAL_RES_OK, "A dou");
-    check(n == 20, "A venti parametri double");
+    check(n == 20, "A twenty double parameters");
     PRIMAL_getnumparam(t, 2, &n);
-    check(n == 11, "A undici parametri int");
+    check(n == 11, "A eleven int parameters");
     PRIMAL_getnumparam(t, 3, &n);
-    check(n == 0, "A nessun parametro string");
-    check_rc(PRIMAL_getnumparam(t, 0, &n), PRIMAL_RES_ERR_ARG, "A tipo invalido");
+    check(n == 0, "A no string parameter");
+    check_rc(PRIMAL_getnumparam(t, 0, &n), PRIMAL_RES_ERR_ARG, "A invalid type");
     check_rc(PRIMAL_getnumparam(t, 1, NULL), PRIMAL_RES_ERR_NULL, "A null");
     pend(&p);
 }
@@ -8993,47 +9001,47 @@ static void test_t136(void) {
  * `appendafes`/`getnumafe` and the storage of F (sparse by row) and g:
  * `putafefentry`/`putafefrow`/`putafeg` and the getters. */
 static void test_t137(void) {
-    cur_name = "T137 AFE: F e g";
+    cur_name = "T137 AFE: F and g";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);
     check_rc(PRIMAL_appendafes(t, 2), PRIMAL_RES_OK, "appendafes 2");
     PRIMALint64t na = -1;
     PRIMAL_getnumafe(t, &na);
-    check(na == 2, "due AFE");
+    check(na == 2, "two AFE");
     check_rc(PRIMAL_putafefentry(t, 0, 1, 3.0), PRIMAL_RES_OK, "fentry (0,1)=3");
     PRIMAL_putafefentry(t, 0, 2, 4.0);
     check_rc(PRIMAL_putafeg(t, 0, 5.0), PRIMAL_RES_OK, "afeg 5");
     int nz = -1;
     PRIMAL_getafefrownumnz(t, 0, &nz);
-    check(nz == 2, "riga 0 con 2 termini");
+    check(nz == 2, "row 0 with 2 terms");
     int vi[3]; double vv[3];
     check_rc(PRIMAL_getafefrow(t, 0, &nz, vi, vv), PRIMAL_RES_OK, "getafefrow");
-    check(nz == 2 && vi[0] == 1 && vi[1] == 2 && vv[0] == 3.0 && vv[1] == 4.0, "la riga 0");
+    check(nz == 2 && vi[0] == 1 && vi[1] == 2 && vv[0] == 3.0 && vv[1] == 4.0, "row 0");
     double g = 0.0;
     PRIMAL_getafeg(t, 0, &g); close_enough(g, 5.0, "g0=5");
     /* replace one entry */
     PRIMAL_putafefentry(t, 0, 1, 7.0);
     PRIMAL_getafefrow(t, 0, &nz, vi, vv);
     { int found = 0; for (int e = 0; e < nz; e++) if (vi[e] == 1 && vv[e] == 7.0) found = 1;
-      check(nz == 2 && found, "la entrata (0,1) e' 7"); }
+      check(nz == 2 && found, "the entry (0,1) is 7"); }
     /* at 0 it removes */
     PRIMAL_putafefentry(t, 0, 1, 0.0);
     PRIMAL_getafefrownumnz(t, 0, &nz);
-    check(nz == 1 && vi[0] == 2, "rimossa (0,1)");
+    check(nz == 1 && vi[0] == 2, "removed (0,1)");
     /* putafefrow replaces the row */
     check_rc(PRIMAL_putafefrow(t, 1, 3, (int[]){0,1,2}, (double[]){1.0,2.0,3.0}), PRIMAL_RES_OK, "frow");
     PRIMAL_getafefrownumnz(t, 1, &nz);
-    check(nz == 3, "riga 1 con 3 termini");
+    check(nz == 3, "row 1 with 3 terms");
     PRIMAL_getafefrow(t, 1, &nz, vi, vv);
-    check(vi[0]==0 && vi[1]==1 && vi[2]==2 && vv[2]==3.0, "la riga 1");
+    check(vi[0]==0 && vi[1]==1 && vi[2]==2 && vv[2]==3.0, "row 1");
     /* refusals */
-    check_rc(PRIMAL_putafefentry(t, 9, 0, 1.0), PRIMAL_RES_ERR_ARG, "afeidx fuori");
-    check_rc(PRIMAL_putafefentry(t, 0, 9, 1.0), PRIMAL_RES_ERR_ARG, "varidx fuori");
+    check_rc(PRIMAL_putafefentry(t, 9, 0, 1.0), PRIMAL_RES_ERR_ARG, "afeidx out");
+    check_rc(PRIMAL_putafefentry(t, 0, 9, 1.0), PRIMAL_RES_ERR_ARG, "varidx out");
     check_rc(PRIMAL_putafefentry(t, 0, 0, 0.0/0.0), PRIMAL_RES_ERR_ARG, "NaN");
-    check_rc(PRIMAL_getafeg(t, 9, &g), PRIMAL_RES_ERR_ARG, "getafeg fuori");
-    check_rc(PRIMAL_putafefrow(t, 0, 1, (int[]){9}, (double[]){1.0}), PRIMAL_RES_ERR_ARG, "frow fuori");
-    check_rc(PRIMAL_appendafes(t, -1), PRIMAL_RES_ERR_ARG, "num negativo");
+    check_rc(PRIMAL_getafeg(t, 9, &g), PRIMAL_RES_ERR_ARG, "getafeg out");
+    check_rc(PRIMAL_putafefrow(t, 0, 1, (int[]){9}, (double[]){1.0}), PRIMAL_RES_ERR_ARG, "frow out");
+    check_rc(PRIMAL_appendafes(t, -1), PRIMAL_RES_ERR_ARG, "negative num");
     pend(&p);
 }
 
@@ -9041,7 +9049,7 @@ static void test_t137(void) {
  * `append*domain` and `getnumdomain`/`getdomaintype`/`getdomainn`. The types are
  * those of MSKdomaintypee. */
 static void test_t138(void) {
-    cur_name = "T138 domini conici";
+    cur_name = "T138 conic domains";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMALint64t idx[11];
@@ -9058,9 +9066,9 @@ static void test_t138(void) {
     check_rc(PRIMAL_appendsvecpsdconedomain(t, 3, &idx[10]), PRIMAL_RES_OK, "svecpsd");
     PRIMALint64t nd = -1;
     PRIMAL_getnumdomain(t, &nd);
-    check(nd == 11, "undici domini");
+    check(nd == 11, "eleven domains");
     PRIMALdomaintypee ty; PRIMALint64t n = -1;
-    check_rc(PRIMAL_getdomaintype(t, idx[0], &ty), PRIMAL_RES_OK, "tipo r");
+    check_rc(PRIMAL_getdomaintype(t, idx[0], &ty), PRIMAL_RES_OK, "type r");
     check(ty == PRIMAL_DOMAIN_R, "R = 0");
     PRIMAL_getdomainn(t, idx[0], &n); check(n == 3, "R n=3");
     PRIMAL_getdomaintype(t, idx[4], &ty); check(ty == PRIMAL_DOMAIN_QUADRATIC_CONE, "QUADRATIC");
@@ -9069,10 +9077,10 @@ static void test_t138(void) {
     PRIMAL_getdomaintype(t, idx[8], &ty); check(ty == PRIMAL_DOMAIN_PRIMAL_POWER_CONE, "PPOW");
     PRIMAL_getdomaintype(t, idx[10], &ty); check(ty == PRIMAL_DOMAIN_SVEC_PSD_CONE, "SVEC_PSD");
     PRIMAL_getdomainn(t, idx[10], &n); check(n == 6, "SVEC_PSD dim 3 -> n=6");
-    check_rc(PRIMAL_getdomaintype(t, 99, &ty), PRIMAL_RES_ERR_ARG, "idx fuori");
-    check_rc(PRIMAL_getdomainn(t, 99, &n), PRIMAL_RES_ERR_ARG, "idx fuori n");
+    check_rc(PRIMAL_getdomaintype(t, 99, &ty), PRIMAL_RES_ERR_ARG, "idx out");
+    check_rc(PRIMAL_getdomainn(t, 99, &n), PRIMAL_RES_ERR_ARG, "idx out n");
     check_rc(PRIMAL_appendsvecpsdconedomain(t, 0, &idx[0]), PRIMAL_RES_ERR_ARG, "dim 0");
-    check_rc(PRIMAL_appendrdomain(t, -1, &idx[0]), PRIMAL_RES_ERR_ARG, "n negativo");
+    check_rc(PRIMAL_appendrdomain(t, -1, &idx[0]), PRIMAL_RES_ERR_ARG, "negative n");
     pend(&p);
 }
 
@@ -9081,7 +9089,7 @@ static void test_t138(void) {
  * linear domains (RPLUS) encoded by rows and the refusals (domain size different
  * from the number of AFE, domidx/afeidx out of domain, NULL list). */
 static void test_t139(void) {
-    cur_name = "T139 ACC riferimento";
+    cur_name = "T139 ACC reference";
     {
         /* min x0 + x1  s.t.  (x0 + x1 - 2) in RPLUS, x >= 0  => 2 */
         P p; pbegin(&p);
@@ -9108,7 +9116,7 @@ static void test_t139(void) {
         PRIMAL_getaccn(t, 0, &dn); check(dn == 1, "accn 1");
         PRIMAL_getaccdomain(t, 0, &dn); check(dn == dom, "accdomain");
         PRIMAL_getaccafeidxlist(t, 0, got); check(got[0] == 0, "afeidxlist 0");
-        PRIMAL_getaccb(t, 0, gb); check(gb[0] == 2.0, "accb 2 (il segno del riferimento)");
+        PRIMAL_getaccb(t, 0, gb); check(gb[0] == 2.0, "accb 2 (the reference sign)");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize rplus");
         double po; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough(po, 2.0, "pobj 2");
@@ -9134,14 +9142,14 @@ static void test_t139(void) {
         PRIMAL_getaccafeidxlist(t, 0, got);
         check(got[0] == 0 && got[1] == 1, "afeidxlist 0,1");
         PRIMAL_getaccn(t, 0, &got[0]); check(got[0] == 2, "accn 2");
-        check_rc(PRIMAL_appendacc(t, 99, 2, afeidx, b), PRIMAL_RES_ERR_ARG, "domidx fuori");
+        check_rc(PRIMAL_appendacc(t, 99, 2, afeidx, b), PRIMAL_RES_ERR_ARG, "domidx out");
         check_rc(PRIMAL_appendacc(t, dom, 3, afeidx, b), PRIMAL_RES_ERR_ARG, "dim mismatch");
         PRIMALint64t bad[2] = {0, 99};
-        check_rc(PRIMAL_appendacc(t, dom, 2, bad, b), PRIMAL_RES_ERR_ARG, "afeidx fuori");
-        check_rc(PRIMAL_appendacc(t, dom, 2, NULL, b), PRIMAL_RES_ERR_ARG, "lista NULL");
+        check_rc(PRIMAL_appendacc(t, dom, 2, bad, b), PRIMAL_RES_ERR_ARG, "afeidx out");
+        check_rc(PRIMAL_appendacc(t, dom, 2, NULL, b), PRIMAL_RES_ERR_ARG, "NULL list");
         check_rc(PRIMAL_getnumacc(t, NULL), PRIMAL_RES_ERR_NULL, "getnumacc NULL");
         PRIMALint64t q;
-        check_rc(PRIMAL_getaccn(t, 5, &q), PRIMAL_RES_ERR_ARG, "accn fuori");
+        check_rc(PRIMAL_getaccn(t, 5, &q), PRIMAL_RES_ERR_ARG, "accn out");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize quad");
         double po; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough(po, -3.0, "pobj -3");
@@ -9172,7 +9180,7 @@ static void test_t139(void) {
  * The sign convention of b is discriminating: if b were ADDED, case A would
  * ask for x1 >= -2 and x1 <= -5 (infeasible) and case C would not change. */
 static void test_t140(void) {
-    cur_name = "T140 DJC riferimento";
+    cur_name = "T140 DJC reference";
     {   /* A. four linear domains, metadata and hand-derived solution */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -9193,7 +9201,7 @@ static void test_t140(void) {
         check_rc(PRIMAL_appenddjcs(t, 1), PRIMAL_RES_OK, "appenddjcs");
         PRIMALint64t nd = -1;
         check_rc(PRIMAL_getnumdjc(t, &nd), PRIMAL_RES_OK, "getnumdjc");
-        check(nd == 1, "un DJC");
+        check(nd == 1, "one DJC");
         PRIMALint64t dl[4] = {dR, dZ, dP, dM};
         PRIMALint64t al[4] = {0, 1, 2, 3};
         double bb[4] = {0.0, 0.0, 2.0, 5.0};
@@ -9205,19 +9213,19 @@ static void test_t140(void) {
         PRIMAL_getdjcnumterm(t, 0, &q); check(q == 1, "numterm 1");
         PRIMALint64t gd[4] = {-1, -1, -1, -1};
         check_rc(PRIMAL_getdjcdomainidxlist(t, 0, gd), PRIMAL_RES_OK, "domainidxlist");
-        check(gd[0] == dR && gd[1] == dZ && gd[2] == dP && gd[3] == dM, "i quattro domini in ordine");
+        check(gd[0] == dR && gd[1] == dZ && gd[2] == dP && gd[3] == dM, "the four domains in order");
         PRIMALint64t ga[4] = {-1, -1, -1, -1};
         check_rc(PRIMAL_getdjcafeidxlist(t, 0, ga), PRIMAL_RES_OK, "afeidxlist");
-        check(ga[0] == 0 && ga[1] == 1 && ga[2] == 2 && ga[3] == 3, "le quattro AFE in ordine");
+        check(ga[0] == 0 && ga[1] == 1 && ga[2] == 2 && ga[3] == 3, "the four AFE in order");
         double gb[4] = {9, 9, 9, 9};
         check_rc(PRIMAL_getdjcb(t, 0, gb), PRIMAL_RES_OK, "getdjcb");
-        check(gb[0] == 0.0 && gb[1] == 0.0 && gb[2] == 2.0 && gb[3] == 5.0, "i quattro b come scritti");
+        check(gb[0] == 0.0 && gb[1] == 0.0 && gb[2] == 2.0 && gb[3] == 5.0, "the four b as written");
         PRIMALint64t gs[1] = {-1};
         check_rc(PRIMAL_getdjctermsizelist(t, 0, gs), PRIMAL_RES_OK, "termsizelist");
         check(gs[0] == 4, "termsize 4");
-        PRIMAL_getdjcnumdomaintot(t, &q); check(q == 4, "tot domini");
+        PRIMAL_getdjcnumdomaintot(t, &q); check(q == 4, "tot domains");
         PRIMAL_getdjcnumafetot(t, &q); check(q == 4, "tot afe");
-        PRIMAL_getdjcnumtermtot(t, &q); check(q == 1, "tot termini");
+        PRIMAL_getdjcnumtermtot(t, &q); check(q == 1, "tot terms");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize A");
         double po = 0.0, xx[4] = {0};
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
@@ -9258,9 +9266,9 @@ static void test_t140(void) {
         double dv[1] = {-1.0};
         check_rc(PRIMAL_getpvioldjc(t, PRIMAL_SOL_ITR, 1, dl0, dv), PRIMAL_RES_OK,
                  "B getpvioldjc");
-        check(dv[0] <= 1e-6, "B la disgiunzione e' soddisfatta al punto pubblicato");
+        check(dv[0] <= 1e-6, "B the disjunction is satisfied at the published point");
         check_rc(PRIMAL_getpvioldjc(t, PRIMAL_SOL_ITR, 1, (PRIMALint64t[]){9}, dv),
-                 PRIMAL_RES_ERR_ARG, "B djcidx fuori");
+                 PRIMAL_RES_ERR_ARG, "B djcidx out");
         pend(&p);
     }
     {   /* C. b = NULL is the null vector; RZERO forces x0 = 0 */
@@ -9278,7 +9286,7 @@ static void test_t140(void) {
         check_rc(PRIMAL_putdjc(t, 0, 1, dl, 1, al, NULL, 1, ts), PRIMAL_RES_OK, "putdjc b=NULL");
         double gb[1] = {9};
         check_rc(PRIMAL_getdjcb(t, 0, gb), PRIMAL_RES_OK, "getdjcb C");
-        check(gb[0] == 0.0, "C b NULL letto come zero");
+        check(gb[0] == 0.0, "C b NULL read as zero");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize C");
         double po = 9.0, xx[2] = {9, 9};
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
@@ -9309,7 +9317,7 @@ static void test_t140(void) {
         check_rc(PRIMAL_putdjcslice(t, 0, 2, 2, dl, 2, al, bb, 2, ts, termsindjc),
                  PRIMAL_RES_OK, "putdjcslice");
         PRIMALint64t nd = -1;
-        PRIMAL_getnumdjc(t, &nd); check(nd == 2, "D due DJC");
+        PRIMAL_getnumdjc(t, &nd); check(nd == 2, "D two DJC");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize D");
         double po = 0.0, xx[4] = {0};
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
@@ -9322,16 +9330,16 @@ static void test_t140(void) {
         PRIMAL_getdjcnumdomaintot(t, &tdom);
         PRIMAL_getdjcnumafetot(t, &tafe);
         PRIMAL_getdjcnumtermtot(t, &tterm);
-        check(tdom == 2 && tafe == 2 && tterm == 2, "D2 i tre totali");
+        check(tdom == 2 && tafe == 2 && tterm == 2, "D2 the three totals");
         PRIMALint64t gd[4] = {-1, -1, -1, -1}, ga[4] = {-1, -1, -1, -1};
         double gb[4] = {9, 9, 9, 9};
         PRIMALint64t gt[4] = {-1, -1, -1, -1}, gn[4] = {-1, -1, -1, -1};
         check_rc(PRIMAL_getdjcs(t, gd, ga, gb, gt, gn), PRIMAL_RES_OK, "D2 getdjcs");
         check(gn[0] == 1 && gn[1] == 1, "D2 numterms per DJC");
-        check(gd[0] == dM && gd[1] == dM, "D2 domini concatenati");
-        check(ga[0] == 0 && ga[1] == 1, "D2 afe concatenate");
-        check(gb[0] == 5.0 && gb[1] == 4.0, "D2 b concatenati");
-        check(gt[0] == 1 && gt[1] == 1, "D2 termsize concatenate");
+        check(gd[0] == dM && gd[1] == dM, "D2 concatenated domains");
+        check(ga[0] == 0 && ga[1] == 1, "D2 concatenated afe");
+        check(gb[0] == 5.0 && gb[1] == 4.0, "D2 concatenated b");
+        check(gt[0] == 1 && gt[1] == 1, "D2 concatenated termsize");
         pend(&p);
     }
     {   /* E. names */
@@ -9341,19 +9349,19 @@ static void test_t140(void) {
         PRIMAL_appenddjcs(t, 2);
         check_rc(PRIMAL_putdjcname(t, 0, "djc0"), PRIMAL_RES_OK, "putdjcname");
         check_rc(PRIMAL_putvarname(t, 0, "djc0"), PRIMAL_RES_OK,
-                 "lo stesso nome su una variabile: namespace separato");
+                 "the same name on a variable: separate namespace");
         int len = -1;
         check_rc(PRIMAL_getdjcnamelen(t, 0, &len), PRIMAL_RES_OK, "getdjcnamelen");
-        check(len == 4, "lunghezza 4");
+        check(len == 4, "length 4");
         char buf[8] = "XXXXXXX";
         check_rc(PRIMAL_getdjcname(t, 0, 8, buf), PRIMAL_RES_OK, "getdjcname");
-        check(strcmp(buf, "djc0") == 0, "il nome letto");
-        check_rc(PRIMAL_getdjcname(t, 0, 3, buf), PRIMAL_RES_ERR_ARG, "buffer piccolo rifiutato");
-        check(buf[0] == 'd', "e il rifiuto non scrive");
-        check_rc(PRIMAL_putdjcname(t, 1, "djc0"), PRIMAL_RES_ERR_ARG, "duplicato rifiutato");
-        check_rc(PRIMAL_putdjcname(t, 0, ""), PRIMAL_RES_OK, "'' toglie il nome");
-        PRIMAL_getdjcnamelen(t, 0, &len); check(len == 0, "lunghezza 0");
-        check_rc(PRIMAL_putdjcname(t, 5, "x"), PRIMAL_RES_ERR_ARG, "indice fuori");
+        check(strcmp(buf, "djc0") == 0, "the name read");
+        check_rc(PRIMAL_getdjcname(t, 0, 3, buf), PRIMAL_RES_ERR_ARG, "small buffer refused");
+        check(buf[0] == 'd', "and the refusal does not write");
+        check_rc(PRIMAL_putdjcname(t, 1, "djc0"), PRIMAL_RES_ERR_ARG, "duplicate refused");
+        check_rc(PRIMAL_putdjcname(t, 0, ""), PRIMAL_RES_OK, "'' removes the name");
+        PRIMAL_getdjcnamelen(t, 0, &len); check(len == 0, "length 0");
+        check_rc(PRIMAL_putdjcname(t, 5, "x"), PRIMAL_RES_ERR_ARG, "index out");
         pend(&p);
     }
     {   /* F. refusals */
@@ -9368,38 +9376,38 @@ static void test_t140(void) {
         PRIMAL_appendrminusdomain(t, 1, &dM);
         PRIMAL_appendquadraticconedomain(t, 1, &dQ);
         check_rc(PRIMAL_appenddjcs(t, 1), PRIMAL_RES_OK, "appenddjcs F");
-        check_rc(PRIMAL_appenddjcs(t, -1), PRIMAL_RES_ERR_ARG, "appenddjcs negativo");
-        check_rc(PRIMAL_appenddjcs(t, 0), PRIMAL_RES_OK, "appenddjcs 0 e' un no-op");
+        check_rc(PRIMAL_appenddjcs(t, -1), PRIMAL_RES_ERR_ARG, "appenddjcs negative");
+        check_rc(PRIMAL_appenddjcs(t, 0), PRIMAL_RES_OK, "appenddjcs 0 is a no-op");
         PRIMALint64t ts1[1] = {1}, ts2[1] = {2}, dl1[1] = {dM}, dlq[1] = {dQ}, al1[1] = {0};
         double bb1[1] = {1.0};
         check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, al1, bb1, 0, ts1), PRIMAL_RES_ERR_ARG, "numterms 0");
         check_rc(PRIMAL_putdjc(t, 0, 1, dlq, 1, al1, bb1, 1, ts1), PRIMAL_RES_ERR_ARG,
-                 "dominio conico rifiutato (deviazione)");
+                 "conic domain refused (deviation)");
         check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, al1, bb1, 1, ts2), PRIMAL_RES_ERR_ARG,
-                 "somma termsize != numdomidx");
+                 "sum termsize != numdomidx");
         check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 2, al1, bb1, 1, ts1), PRIMAL_RES_ERR_ARG,
-                 "somma dimensioni != numafeidx");
+                 "sum dimensions != numafeidx");
         PRIMALint64t bad[1] = {9};
         check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, bad, bb1, 1, ts1), PRIMAL_RES_ERR_ARG,
-                 "afeidx fuori");
+                 "afeidx out");
         double nanb[1] = {0.0 / 0.0};
         check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, al1, nanb, 1, ts1), PRIMAL_RES_ERR_ARG, "b NaN");
         check_rc(PRIMAL_putdjc(t, 0, 1, NULL, 1, al1, bb1, 1, ts1), PRIMAL_RES_ERR_NULL,
                  "domidxlist NULL");
         check_rc(PRIMAL_putdjc(t, 5, 1, dl1, 1, al1, bb1, 1, ts1), PRIMAL_RES_ERR_ARG,
-                 "djcidx fuori");
-        check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, al1, bb1, 1, ts1), PRIMAL_RES_OK, "putdjc valido");
+                 "djcidx out");
+        check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, al1, bb1, 1, ts1), PRIMAL_RES_OK, "valid putdjc");
         check_rc(PRIMAL_putdjc(t, 0, 1, dl1, 1, al1, bb1, 1, ts1), PRIMAL_RES_ERR_ARG,
-                 "uno slot gia' scritto non si riscrive");
+                 "an already written slot is not rewritten");
         PRIMALint64t q = -1;
-        check_rc(PRIMAL_getdjcnumdomain(t, 5, &q), PRIMAL_RES_ERR_ARG, "getter fuori");
+        check_rc(PRIMAL_getdjcnumdomain(t, 5, &q), PRIMAL_RES_ERR_ARG, "getter out");
         check_rc(PRIMAL_getnumdjc(t, NULL), PRIMAL_RES_ERR_NULL, "getnumdjc NULL");
-        check_rc(PRIMAL_appenddjcs(t, 1), PRIMAL_RES_OK, "secondo slot");
+        check_rc(PRIMAL_appenddjcs(t, 1), PRIMAL_RES_OK, "second slot");
         PRIMALint64t ti[1] = {2};
         check_rc(PRIMAL_putdjcslice(t, 1, 2, 1, dl1, 1, al1, bb1, 1, ts1, ti),
-                 PRIMAL_RES_ERR_ARG, "slice: somma termsindjc != numterms");
+                 PRIMAL_RES_ERR_ARG, "slice: sum termsindjc != numterms");
         check_rc(PRIMAL_putdjcslice(t, 0, 3, 1, dl1, 1, al1, bb1, 1, ts1, ti),
-                 PRIMAL_RES_ERR_ARG, "slice fuori intervallo");
+                 PRIMAL_RES_ERR_ARG, "slice out of range");
         pend(&p);
     }
 }
@@ -9442,7 +9450,7 @@ static void test_t141(void) {
     double po = 0.0, x[16] = {0};
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
-    close_enough_tol(po, 0.8, 1e-6, "valore ottimo 0.01*80 = 0.8");
+    close_enough_tol(po, 0.8, 1e-6, "optimal value 0.01*80 = 0.8");
     double sx = 0.0, viol = 0.0;
     for (int i = 0; i < 3; i++) {
         sx += x[i];
@@ -9450,11 +9458,11 @@ static void test_t141(void) {
         double zi = x[3 + i], need = fabs(x[i] - X0[i]);
         if (need - zi > viol) viol = need - zi;              /* z_i >= |x_i - x0_i| */
     }
-    check(viol <= 1e-6, "il punto sta nella faccia: x_i >= x0_i e z_i >= |x_i-x0_i|");
-    check(fabs(sx) <= 1e-6, "e'x = 0 sulla faccia ottima");
+    check(viol <= 1e-6, "the point is in the face: x_i >= x0_i and z_i >= |x_i-x0_i|");
+    check(fabs(sx) <= 1e-6, "e'x = 0 on the optimal face");
     double pinf = 1.0;
     PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);
-    check(pinf <= 1e-6, "ammissibilita' misurata");
+    check(pinf <= 1e-6, "measured feasibility");
     pend(&p);
 }
 
@@ -9467,7 +9475,7 @@ static void test_t141(void) {
  *    gives 16. It is the form of p_i|x_i-x_i^0|^{3/2} and ^{4/3} of §3.6. */
 static void test_t142(void) {
     {   /* A. leverage on free variables */
-        cur_name = "T142 A ||w||_1 <= 2 con w libera";
+        cur_name = "T142 A ||w||_1 <= 2 with free w";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 6);   /* 0..2 w, 3..5 z */
@@ -9542,7 +9550,7 @@ static void test_t142(void) {
  * y0^2+y1^2 <= 1 and y0+y1 = kappa >= 0: optimum y = (1,0), kappa = 1, value 2,
  * and the reconstructed portfolio is w = y/kappa = (1,0). */
 static void test_t143(void) {
-    cur_name = "T143 rapporto di Sharpe via Charnes-Cooper";
+    cur_name = "T143 Sharpe ratio via Charnes-Cooper";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);   /* y0, y1, kappa */
@@ -9560,13 +9568,13 @@ static void test_t143(void) {
     double po = 0.0, x[4] = {0};
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
-    close_enough_tol(po, 2.0, 1e-6, "Sharpe massimo 2");
-    check(x[2] > 1e-9, "kappa > 0 (il portafoglio si ricostruisce)");
+    close_enough_tol(po, 2.0, 1e-6, "maximum Sharpe 2");
+    check(x[2] > 1e-9, "kappa > 0 (the portfolio is reconstructed)");
     double w0 = x[0] / x[2], w1 = x[1] / x[2];
     close_enough_tol(w0, 1.0, 1e-5, "w0 = y0/kappa = 1");
     close_enough_tol(w1, 0.0, 1e-5, "w1 = y1/kappa = 0");
     double q = w0 * w0 + w1 * w1;
-    close_enough_tol(sqrt(q), 1.0, 1e-5, "||w||_2 = 1 e Sharpe = mu'w = 2");
+    close_enough_tol(sqrt(q), 1.0, 1e-5, "||w||_2 = 1 and Sharpe = mu'w = 2");
     pend(&p);
 }
 
@@ -9576,7 +9584,7 @@ static void test_t143(void) {
  * `getafefrownumnz`). No new rule: loops over the scalar getters/putters, a
  * slice of `g` and the enumeration of the F store as triplets. */
 static void test_t144(void) {
-    cur_name = "T144 AFE in blocco";
+    cur_name = "T144 bulk AFE";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);
@@ -9588,29 +9596,29 @@ static void test_t144(void) {
     /* getafefnumnz is the same question as getafefrownumnz */
     int nz = -1;
     check_rc(PRIMAL_getafefnumnz(t, 0, &nz), PRIMAL_RES_OK, "getafefnumnz");
-    check(nz == 2, "row0 ha due termini");
+    check(nz == 2, "row0 has two terms");
     /* getafeftrip: all entries in order (row, column, value) */
     int tot = 0;
     for (int i = 0; i < 3; i++) { PRIMAL_getafefnumnz(t, i, &nz); tot += nz; }
-    check(tot == 5, "cinque termini in tutto");
+    check(tot == 5, "five terms in total");
     PRIMALint64t ta[8]; int tv[8]; double tval[8];
     check_rc(PRIMAL_getafeftrip(t, ta, tv, tval), PRIMAL_RES_OK, "getafeftrip");
     check(ta[0] == 0 && tv[0] == 0 && tval[0] == 1.0 &&
           ta[1] == 0 && tv[1] == 1 && tval[1] == 2.0 &&
           ta[2] == 1 && tv[2] == 1 && tval[2] == 3.0 &&
-          ta[4] == 2 && tv[4] == 0 && tval[4] == 5.0, "le triplette di F");
+          ta[4] == 2 && tv[4] == 0 && tval[4] == 5.0, "the triplets of F");
     /* g: list and slice */
     PRIMALint64t gi[3] = {0, 1, 2};
     double gv[3] = {7.0, 8.0, 9.0};
     check_rc(PRIMAL_putafeglist(t, 3, gi, gv), PRIMAL_RES_OK, "putafeglist");
     double gg[4] = {0, 0, 0, 0};
     check_rc(PRIMAL_getafegslice(t, 0, 3, gg), PRIMAL_RES_OK, "getafegslice");
-    check(gg[0] == 7.0 && gg[1] == 8.0 && gg[2] == 9.0, "g come lista");
+    check(gg[0] == 7.0 && gg[1] == 8.0 && gg[2] == 9.0, "g as a list");
     double gs[2] = {10.0, 11.0};
     check_rc(PRIMAL_putafegslice(t, 1, 3, gs), PRIMAL_RES_OK, "putafegslice");
     double g1 = 0.0;
     PRIMAL_getafeg(t, 1, &g1);
-    check(g1 == 10.0, "la fetta di g scrive le posizioni giuste");
+    check(g1 == 10.0, "the slice of g writes the right positions");
     /* putafefentrylist replaces row 1 */
     PRIMALint64t ai[2] = {1, 1};
     int vi[2] = {0, 2};
@@ -9618,22 +9626,22 @@ static void test_t144(void) {
     check_rc(PRIMAL_putafefentrylist(t, 2, ai, vi, vv), PRIMAL_RES_OK, "putafefentrylist");
     PRIMAL_getafefrownumnz(t, 1, &nz);
     /* replaces (1,2)=4 with 7 and adds (1,0)=6: the row still has (1,1)=3 */
-    check(nz == 3, "la lista rimpiazza le entrate, non svuota la riga");
+    check(nz == 3, "the list replaces the entries, it does not empty the row");
     /* emptyafefrow */
     check_rc(PRIMAL_emptyafefrow(t, 1), PRIMAL_RES_OK, "emptyafefrow");
     PRIMAL_getafefrownumnz(t, 1, &nz);
-    check(nz == 0, "la riga 1 e' vuota");
+    check(nz == 0, "row 1 is empty");
     /* emptyafefcol zeroes column 0 in every row */
     check_rc(PRIMAL_emptyafefcol(t, 0), PRIMAL_RES_OK, "emptyafefcol");
     PRIMAL_getafefrownumnz(t, 0, &nz);
-    check(nz == 1, "la riga 0 perde la colonna 0");
+    check(nz == 1, "row 0 loses column 0");
     PRIMAL_getafefrownumnz(t, 2, &nz);
-    check(nz == 0, "la riga 2 aveva solo la colonna 0");
+    check(nz == 0, "row 2 had only column 0");
     /* refusals */
-    check_rc(PRIMAL_emptyafefrow(t, 9), PRIMAL_RES_ERR_ARG, "riga fuori");
-    check_rc(PRIMAL_emptyafefcol(t, 9), PRIMAL_RES_ERR_ARG, "colonna fuori");
-    check_rc(PRIMAL_putafegslice(t, 2, 1, gs), PRIMAL_RES_ERR_ARG, "fetta invertita");
-    check_rc(PRIMAL_putafegslice(t, 0, 9, gs), PRIMAL_RES_ERR_ARG, "fetta fuori");
+    check_rc(PRIMAL_emptyafefrow(t, 9), PRIMAL_RES_ERR_ARG, "row out");
+    check_rc(PRIMAL_emptyafefcol(t, 9), PRIMAL_RES_ERR_ARG, "column out");
+    check_rc(PRIMAL_putafegslice(t, 2, 1, gs), PRIMAL_RES_ERR_ARG, "inverted slice");
+    check_rc(PRIMAL_putafegslice(t, 0, 9, gs), PRIMAL_RES_ERR_ARG, "slice out");
     pend(&p);
 }
 
@@ -9643,7 +9651,7 @@ static void test_t144(void) {
  * (`putaccname`/`getaccname`/`getaccnamelen`). No new rule: a loop over the
  * scalar getters/putters and the same `name_put`/`name_find`. */
 static void test_t145(void) {
-    cur_name = "T145 ACC in blocco e nomi";
+    cur_name = "T145 bulk ACC and names";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3);
@@ -9659,42 +9667,42 @@ static void test_t145(void) {
     double bb[3] = {1.0, 0.0, 0.0};
     check_rc(PRIMAL_appendaccs(t, 2, doms, 3, afes, bb), PRIMAL_RES_OK, "appendaccs");
     PRIMALint64t na = -1, ntot = -1;
-    PRIMAL_getnumacc(t, &na); check(na == 2, "due ACC");
+    PRIMAL_getnumacc(t, &na); check(na == 2, "two ACC");
     check_rc(PRIMAL_getaccntot(t, &ntot), PRIMAL_RES_OK, "getaccntot");
-    check(ntot == 3, "dimensione totale 3");
+    check(ntot == 3, "total size 3");
     PRIMALint64t gd[2] = {-1, -1}, ga[3] = {-1, -1, -1};
     double gb[3] = {9, 9, 9};
     check_rc(PRIMAL_getaccs(t, gd, ga, gb), PRIMAL_RES_OK, "getaccs");
-    check(gd[0] == dP && gd[1] == dQ, "domini concatenati");
-    check(ga[0] == 0 && ga[1] == 1 && ga[2] == 2, "afe concatenate");
-    check(gb[0] == 1.0 && gb[1] == 0.0 && gb[2] == 0.0, "b concatenati");
+    check(gd[0] == dP && gd[1] == dQ, "concatenated domains");
+    check(ga[0] == 0 && ga[1] == 1 && ga[2] == 2, "concatenated afe");
+    check(gb[0] == 1.0 && gb[1] == 0.0 && gb[2] == 0.0, "concatenated b");
     /* putaccb rewrites the vector of an existing ACC */
     double nb[1] = {4.0};
     check_rc(PRIMAL_putaccb(t, 0, 1, nb), PRIMAL_RES_OK, "putaccb");
     double rb[1] = {0};
     PRIMAL_getaccb(t, 0, rb);
-    check(rb[0] == 4.0, "il nuovo b");
-    check_rc(PRIMAL_putaccb(t, 0, 2, nb), PRIMAL_RES_ERR_ARG, "lunghezza sbagliata");
+    check(rb[0] == 4.0, "the new b");
+    check_rc(PRIMAL_putaccb(t, 0, 2, nb), PRIMAL_RES_ERR_ARG, "wrong length");
     /* names: the sixth table, the same rule as the others */
     check_rc(PRIMAL_putaccname(t, 0, "acc0"), PRIMAL_RES_OK, "putaccname");
     int len = -1;
     check_rc(PRIMAL_getaccnamelen(t, 0, &len), PRIMAL_RES_OK, "getaccnamelen");
-    check(len == 4, "lunghezza 4");
+    check(len == 4, "length 4");
     char buf[8] = "XXXXXXX";
     check_rc(PRIMAL_getaccname(t, 0, 8, buf), PRIMAL_RES_OK, "getaccname");
-    check(strcmp(buf, "acc0") == 0, "il nome letto");
-    check_rc(PRIMAL_getaccname(t, 0, 3, buf), PRIMAL_RES_ERR_ARG, "buffer piccolo rifiutato");
-    check(buf[0] == 'a', "e non scrive");
-    check_rc(PRIMAL_putaccname(t, 1, "acc0"), PRIMAL_RES_ERR_ARG, "duplicato rifiutato");
-    check_rc(PRIMAL_putaccname(t, 0, ""), PRIMAL_RES_OK, "'' toglie il nome");
+    check(strcmp(buf, "acc0") == 0, "the name read");
+    check_rc(PRIMAL_getaccname(t, 0, 3, buf), PRIMAL_RES_ERR_ARG, "small buffer refused");
+    check(buf[0] == 'a', "and it does not write");
+    check_rc(PRIMAL_putaccname(t, 1, "acc0"), PRIMAL_RES_ERR_ARG, "duplicate refused");
+    check_rc(PRIMAL_putaccname(t, 0, ""), PRIMAL_RES_OK, "'' removes the name");
     PRIMAL_getaccnamelen(t, 0, &len);
-    check(len == 0, "lunghezza 0 dopo la rimozione");
-    check_rc(PRIMAL_putaccname(t, 5, "x"), PRIMAL_RES_ERR_ARG, "indice fuori");
+    check(len == 0, "length 0 after removal");
+    check_rc(PRIMAL_putaccname(t, 5, "x"), PRIMAL_RES_ERR_ARG, "index out");
     /* refusals of appendaccs */
     check_rc(PRIMAL_appendaccs(t, 2, doms, 2, afes, bb), PRIMAL_RES_ERR_ARG,
-             "somma dimensioni != numafeidx");
+             "sum dimensions != numafeidx");
     check_rc(PRIMAL_appendaccs(t, 1, (PRIMALint64t[]){99}, 1, afes, bb), PRIMAL_RES_ERR_ARG,
-             "dominio fuori");
+             "domain out");
     pend(&p);
 }
 
@@ -9709,7 +9717,7 @@ static void test_t145(void) {
 static void test_t146(void) {
     /* A. bar names, counters, capacity hints */
     {
-        cur_name = "T146 A nomi bar e contatori";
+        cur_name = "T146 A bar names and counters";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int dim = 2;
@@ -9717,26 +9725,26 @@ static void test_t146(void) {
         check_rc(PRIMAL_putbarvarname(t, 0, "X0"), PRIMAL_RES_OK, "putbarvarname");
         char buf[8] = "XXXX";
         check_rc(PRIMAL_getbarvarname(t, 0, 8, buf), PRIMAL_RES_OK, "getbarvarname");
-        check(strcmp(buf, "X0") == 0, "il nome bar letto");
+        check(strcmp(buf, "X0") == 0, "the bar name read");
         int len = -1;
         check_rc(PRIMAL_getbarvarnamelen(t, 0, &len), PRIMAL_RES_OK, "getbarvarnamelen");
-        check(len == 2, "lunghezza 2");
+        check(len == 2, "length 2");
         int asgn = -1, idx = -1;
         check_rc(PRIMAL_getbarvarnameindex(t, "X0", &asgn, &idx), PRIMAL_RES_OK, "getbarvarnameindex");
-        check(idx == 0 && asgn == 0, "indice e assegnazione");
-        check_rc(PRIMAL_getbarvarname(t, 0, 2, buf), PRIMAL_RES_ERR_ARG, "buffer piccolo");
+        check(idx == 0 && asgn == 0, "index and assignment");
+        check_rc(PRIMAL_getbarvarname(t, 0, 2, buf), PRIMAL_RES_ERR_ARG, "small buffer");
         PRIMALint64t nz = -1;
         check_rc(PRIMAL_getnumbaranz(t, &nz), PRIMAL_RES_OK, "getnumbaranz");
-        check(nz == 0, "nessun termine barA");
+        check(nz == 0, "no barA term");
         check_rc(PRIMAL_getnumbarcnz(t, &nz), PRIMAL_RES_OK, "getnumbarcnz");
-        check(nz == 0, "nessun termine barC");
+        check(nz == 0, "no barC term");
         check_rc(PRIMAL_putmaxnumbarvar(t, 8), PRIMAL_RES_OK, "putmaxnumbarvar");
-        check_rc(PRIMAL_putmaxnumbarvar(t, -1), PRIMAL_RES_ERR_ARG, "negativo rifiutato");
+        check_rc(PRIMAL_putmaxnumbarvar(t, -1), PRIMAL_RES_ERR_ARG, "negative refused");
         pend(&p);
     }
     /* B. domains: names, geometric mean, power info */
     {
-        cur_name = "T146 B domini";
+        cur_name = "T146 B domains";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMALint64t dg, dgw, dp;
@@ -9744,25 +9752,25 @@ static void test_t146(void) {
         check_rc(PRIMAL_appenddualgeomeanconedomain(t, 3, &dgw), PRIMAL_RES_OK, "geo dual");
         PRIMALdomaintypee ty;
         PRIMAL_getdomaintype(t, dg, &ty);
-        check(ty == PRIMAL_DOMAIN_PRIMAL_GEO_MEAN_CONE, "tipo geo primal");
+        check(ty == PRIMAL_DOMAIN_PRIMAL_GEO_MEAN_CONE, "type geo primal");
         PRIMAL_getdomaintype(t, dgw, &ty);
-        check(ty == PRIMAL_DOMAIN_DUAL_GEO_MEAN_CONE, "tipo geo dual");
+        check(ty == PRIMAL_DOMAIN_DUAL_GEO_MEAN_CONE, "type geo dual");
         check_rc(PRIMAL_putdomainname(t, dg, "gm"), PRIMAL_RES_OK, "putdomainname");
         char buf[8] = "XXXX";
         check_rc(PRIMAL_getdomainname(t, dg, 8, buf), PRIMAL_RES_OK, "getdomainname");
-        check(strcmp(buf, "gm") == 0, "il nome del dominio");
+        check(strcmp(buf, "gm") == 0, "the domain name");
         int len = -1;
         PRIMAL_getdomainnamelen(t, dg, &len);
-        check(len == 2, "lunghezza nome dominio");
+        check(len == 2, "domain name length");
         check_rc(PRIMAL_appendprimalpowerconedomain(t, 3, 0.3, &dp), PRIMAL_RES_OK, "ppow dom");
         double alpha = 0.0;
         check_rc(PRIMAL_getpowerdomainalpha(t, dp, &alpha), PRIMAL_RES_OK, "getpowerdomainalpha");
-        close_enough(alpha, 0.3, "alpha del dominio");
+        close_enough(alpha, 0.3, "alpha of the domain");
         PRIMALint64t n = -1, nleft = -1;
         check_rc(PRIMAL_getpowerdomaininfo(t, dp, &n, &nleft), PRIMAL_RES_OK, "getpowerdomaininfo");
         check(n == 3 && nleft == 2, "n=3, nleft=2");
         check_rc(PRIMAL_getpowerdomainalpha(t, dg, &alpha), PRIMAL_RES_ERR_ARG,
-                 "alpha su un dominio non di potenza");
+                 "alpha on a non-power domain");
         check_rc(PRIMAL_putmaxnumdomain(t, 16), PRIMAL_RES_OK, "putmaxnumdomain");
         /* sequences of power domains */
         PRIMALint64t ns[2] = {3, 3}, nl[2] = {2, 2};
@@ -9771,18 +9779,18 @@ static void test_t146(void) {
         check_rc(PRIMAL_appendprimalpowerconedomainseq(t, 2, ns, nl, al, didx),
                  PRIMAL_RES_OK, "ppow seq");
         PRIMAL_getdomaintype(t, didx[0], &ty);
-        check(ty == PRIMAL_DOMAIN_PRIMAL_POWER_CONE, "tipo ppow seq");
+        check(ty == PRIMAL_DOMAIN_PRIMAL_POWER_CONE, "type ppow seq");
         PRIMAL_getpowerdomainalpha(t, didx[1], &alpha);
-        close_enough(alpha, 0.7, "alpha del secondo dominio");
+        close_enough(alpha, 0.7, "alpha of the second domain");
         check_rc(PRIMAL_appenddualpowerconedomainseq(t, 1, ns, nl, al, didx),
                  PRIMAL_RES_OK, "dpow seq");
         PRIMAL_getdomaintype(t, didx[0], &ty);
-        check(ty == PRIMAL_DOMAIN_DUAL_POWER_CONE, "tipo dpow seq");
+        check(ty == PRIMAL_DOMAIN_DUAL_POWER_CONE, "type dpow seq");
         pend(&p);
     }
     /* C. contiguous ACCs, activity, capacity */
     {
-        cur_name = "T146 C ACC contigui e attivita'";
+        cur_name = "T146 C contiguous ACCs and activity";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -9803,8 +9811,8 @@ static void test_t146(void) {
         double bq[2] = {0.0, 0.0};
         check_rc(PRIMAL_appendaccsseq(t, 1, doms, 2, 1, bq), PRIMAL_RES_OK, "appendaccsseq");
         PRIMALint64t na = -1, ntot = -1;
-        PRIMAL_getnumacc(t, &na); check(na == 2, "due ACC");
-        PRIMAL_getaccntot(t, &ntot); check(ntot == 3, "dimensione totale 3");
+        PRIMAL_getnumacc(t, &na); check(na == 2, "two ACC");
+        PRIMAL_getaccntot(t, &ntot); check(ntot == 3, "total size 3");
         check_rc(PRIMAL_putmaxnumacc(t, 4), PRIMAL_RES_OK, "putmaxnumacc");
         check_rc(PRIMAL_putmaxnumafe(t, 4), PRIMAL_RES_OK, "putmaxnumafe");
         check_rc(PRIMAL_putmaxnumdjc(t, 4), PRIMAL_RES_OK, "putmaxnumdjc");
@@ -9816,15 +9824,15 @@ static void test_t146(void) {
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, xx);
         double act[3] = {9, 9, 9};
         check_rc(PRIMAL_evaluateaccs(t, PRIMAL_SOL_ITR, act), PRIMAL_RES_OK, "evaluateaccs");
-        close_enough_tol(act[0], xx[0] - 3.0, 1e-6, "attivita' ACC0 = x0-3");
-        close_enough_tol(act[1], xx[0], 1e-6, "attivita' ACC1a = x0");
-        close_enough_tol(act[2], xx[1], 1e-6, "attivita' ACC1b = x1");
-        check(act[0] >= -1e-6, "ACC0 soddisfatto");
-        check(act[1] >= fabs(act[2]) - 1e-6, "ACC1 dentro il cono");
+        close_enough_tol(act[0], xx[0] - 3.0, 1e-6, "activity ACC0 = x0-3");
+        close_enough_tol(act[1], xx[0], 1e-6, "activity ACC1a = x0");
+        close_enough_tol(act[2], xx[1], 1e-6, "activity ACC1b = x1");
+        check(act[0] >= -1e-6, "ACC0 satisfied");
+        check(act[1] >= fabs(act[2]) - 1e-6, "ACC1 inside the cone");
         double a0[1] = {9};
         check_rc(PRIMAL_evaluateacc(t, PRIMAL_SOL_ITR, 0, a0), PRIMAL_RES_OK, "evaluateacc");
-        close_enough_tol(a0[0], act[0], 1e-9, "evaluateacc coerente con evaluateaccs");
-        check_rc(PRIMAL_evaluateacc(t, PRIMAL_SOL_ITR, 9, a0), PRIMAL_RES_ERR_ARG, "accidx fuori");
+        close_enough_tol(a0[0], act[0], 1e-9, "evaluateacc consistent with evaluateaccs");
+        check_rc(PRIMAL_evaluateacc(t, PRIMAL_SOL_ITR, 9, a0), PRIMAL_RES_ERR_ARG, "accidx out");
         /* the duals of the ACCs: the multipliers of the rows they produced */
         double dy0[1] = {9}, dy1[2] = {9, 9};
         check_rc(PRIMAL_getaccdoty(t, PRIMAL_SOL_ITR, 0, dy0), PRIMAL_RES_OK, "getaccdoty 0");
@@ -9832,32 +9840,32 @@ static void test_t146(void) {
         double yy[4] = {0, 0, 0, 0};
         PRIMAL_gety(t, PRIMAL_SOL_ITR, yy);
         check(dy0[0] == yy[0] && dy1[0] == yy[1] && dy1[1] == yy[2],
-              "doty sono i moltiplicatori di riga");
-        check(dy1[0] >= fabs(dy1[1]) - 1e-8, "il blocco duale sta in QUAD*");
+              "doty are the row multipliers");
+        check(dy1[0] >= fabs(dy1[1]) - 1e-8, "the dual block is in QUAD*");
         double dys[3] = {0, 0, 0};
         check_rc(PRIMAL_getaccdotys(t, PRIMAL_SOL_ITR, dys), PRIMAL_RES_OK, "getaccdotys");
-        check(dys[0] == dy0[0] && dys[1] == dy1[0] && dys[2] == dy1[1], "concatenati");
+        check(dys[0] == dy0[0] && dys[1] == dy1[0] && dys[2] == dy1[1], "concatenated");
         /* dual violation of the ACCs: doty in K* */
         PRIMALint64t dalist[2] = {0, 1};
         double dv[2] = {9, 9};
         check_rc(PRIMAL_getdviolacc(t, PRIMAL_SOL_ITR, 2, dalist, dv), PRIMAL_RES_OK, "getdviolacc");
-        check(dv[0] <= 1e-6, "ACC0 (RPLUS) dualmente ammissibile");
-        check(dv[1] <= 1e-6, "ACC1 (QUAD) dualmente ammissibile in K*");
+        check(dv[0] <= 1e-6, "ACC0 (RPLUS) dually feasible");
+        check(dv[1] <= 1e-6, "ACC1 (QUAD) dually feasible in K*");
         check_rc(PRIMAL_putaccdoty(t, PRIMAL_SOL_ITR, 0, (double[]){7.0}), PRIMAL_RES_OK, "putaccdoty");
         double dy0b[1] = {0};
         PRIMAL_getaccdoty(t, PRIMAL_SOL_ITR, 0, dy0b);
-        check(dy0b[0] == 7.0, "putaccdoty scrive");
+        check(dy0b[0] == 7.0, "putaccdoty writes");
         /* putaccbj updates one component of b */
         check_rc(PRIMAL_putaccbj(t, 0, 0, 3.0), PRIMAL_RES_OK, "putaccbj");
-        check_rc(PRIMAL_putaccbj(t, 0, 5, 1.0), PRIMAL_RES_ERR_ARG, "componente fuori");
+        check_rc(PRIMAL_putaccbj(t, 0, 5, 1.0), PRIMAL_RES_ERR_ARG, "component out");
         /* primal violation of the ACCs (RPLUS and QUAD) */
         PRIMALint64t alist[2] = {0, 1};
         double av[2] = {9, 9};
         check_rc(PRIMAL_getpviolacc(t, PRIMAL_SOL_ITR, 2, alist, av), PRIMAL_RES_OK, "getpviolacc");
-        check(av[0] <= 1e-6, "ACC0 (RPLUS) soddisfatto");
-        check(av[1] <= 1e-6, "ACC1 (QUAD) soddisfatto");
+        check(av[0] <= 1e-6, "ACC0 (RPLUS) satisfied");
+        check(av[1] <= 1e-6, "ACC1 (QUAD) satisfied");
         check_rc(PRIMAL_getpviolacc(t, PRIMAL_SOL_ITR, 1, (PRIMALint64t[]){9}, av),
-                 PRIMAL_RES_ERR_ARG, "accidx fuori");
+                 PRIMAL_RES_ERR_ARG, "accidx out");
         pend(&p);
     }
 }
@@ -9868,7 +9876,7 @@ static void test_t146(void) {
  * `getaccftrip` read the F and g that the order of the AFEs inside the ACCs
  * implies. */
 static void test_t147(void) {
-    cur_name = "T147 bar in blocco e ACC impliciti";
+    cur_name = "T147 bulk bar and implicit ACC";
     {   /* bar block triplets: min <I,X> s.t. X00 >= 1 -> 1 */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -9885,14 +9893,14 @@ static void test_t147(void) {
                  "putbarablocktriplet");
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 1.0, INFINITY);
         PRIMALint64t nz = -1;
-        PRIMAL_getnumbaranz(t, &nz); check(nz == 1, "un termine A-bar");
-        PRIMAL_getnumbarcnz(t, &nz); check(nz == 2, "due termini C-bar");
+        PRIMAL_getnumbaranz(t, &nz); check(nz == 1, "one A-bar term");
+        PRIMAL_getnumbarcnz(t, &nz); check(nz == 2, "two C-bar terms");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize");
         double po = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough_tol(po, 1.0, 1e-5, "obj = <I,X> = 1 (X00=1, X11=0)");
         check_rc(PRIMAL_putbarcblocktriplet(t, 1, (int[]){0}, (int[]){0}, (int[]){9}, bv),
-                 PRIMAL_RES_ERR_ARG, "entrata fuori dalla matrice");
+                 PRIMAL_RES_ERR_ARG, "entry outside the matrix");
         pend(&p);
     }
     {   /* putbaraijlist: the same sum via a list of matrices */
@@ -9910,12 +9918,12 @@ static void test_t147(void) {
         check_rc(PRIMAL_putbaraijlist(t, 1, (int[]){0}, (int[]){0}, pb, pe, matidx, wts),
                  PRIMAL_RES_OK, "putbaraijlist");
         PRIMALint64t nz = -1;
-        PRIMAL_getnumbaranz(t, &nz); check(nz == 2, "due termini dalla lista");
+        PRIMAL_getnumbaranz(t, &nz); check(nz == 2, "two terms from the list");
         PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 2.0, INFINITY);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize");
         double po = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough_tol(po, 0.0, 1e-6, "nessun costo: obj 0");
+        close_enough_tol(po, 0.0, 1e-6, "no cost: obj 0");
         pend(&p);
     }
     {   /* implicit ACC reads on an ACC with sparse AFEs */
@@ -9938,12 +9946,12 @@ static void test_t147(void) {
         /* implicit F: comp0 -> (x0,1),(x1,1); comp1 -> (x0,2) */
         PRIMALint64t fnnz = -1;
         check_rc(PRIMAL_getaccfnumnz(t, &fnnz), PRIMAL_RES_OK, "getaccfnumnz");
-        check(fnnz == 3, "tre nonnulli impliciti");
+        check(fnnz == 3, "three implicit nonzeros");
         PRIMALint64t frow[4]; int fcol[4]; double fval[4];
         check_rc(PRIMAL_getaccftrip(t, frow, fcol, fval), PRIMAL_RES_OK, "getaccftrip");
         check(frow[0] == 0 && fcol[0] == 0 && fval[0] == 1.0 &&
               frow[1] == 0 && fcol[1] == 1 && fval[1] == 1.0 &&
-              frow[2] == 1 && fcol[2] == 0 && fval[2] == 2.0, "le triplette implicite");
+              frow[2] == 1 && fcol[2] == 0 && fval[2] == 2.0, "the implicit triplets");
         double gv[2] = {9, 9};
         check_rc(PRIMAL_getaccgvector(t, gv), PRIMAL_RES_OK, "getaccgvector");
         close_enough(gv[0], 4.0, "g0 = 5 - 1 = 4");
@@ -9958,7 +9966,7 @@ static void test_t147(void) {
  * `putslc/putsuc/putslx/putsux` and their `*slice`, `putvarboundlistconst`/
  * `putconboundlistconst`. */
 static void test_t148(void) {
-    cur_name = "T148 nomi, Q e setter di soluzione";
+    cur_name = "T148 names, Q and solution setters";
     {   /* lookup by name (var/con) and cone */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -9967,27 +9975,27 @@ static void test_t148(void) {
         PRIMAL_putconname(t, 0, "r");
         int asgn = -1, idx = -1;
         check_rc(PRIMAL_getvarnameindex(t, "b", &asgn, &idx), PRIMAL_RES_OK, "getvarnameindex");
-        check(idx == 1 && asgn == 0, "indice e assegnazione fissa");
-        check_rc(PRIMAL_getvarnameindex(t, "z", &asgn, &idx), PRIMAL_RES_ERR_ARG, "nome assente");
+        check(idx == 1 && asgn == 0, "index and fixed assignment");
+        check_rc(PRIMAL_getvarnameindex(t, "z", &asgn, &idx), PRIMAL_RES_ERR_ARG, "name absent");
         check_rc(PRIMAL_getconnameindex(t, "r", &asgn, &idx), PRIMAL_RES_OK, "getconnameindex");
-        check(idx == 0, "indice del vincolo");
+        check(idx == 0, "constraint index");
         PRIMAL_putcj(t, 0, 3.0); PRIMAL_putcj(t, 1, 4.0);
         double cv[2] = {0, 0};
         check_rc(PRIMAL_getclist(t, 2, (int[]){1, 0}, cv), PRIMAL_RES_OK, "getclist");
-        check(cv[0] == 4.0 && cv[1] == 3.0, "c per lista");
+        check(cv[0] == 4.0 && cv[1] == 3.0, "c by list");
         PRIMAL_putqobj(t, 1, (int[]){0}, (int[]){0}, (double[]){2.0});
         int mq = -1;
         check_rc(PRIMAL_getmaxnumqnz(t, &mq), PRIMAL_RES_OK, "getmaxnumqnz");
-        check(mq == 1, "un qobj");
+        check(mq == 1, "one qobj");
         PRIMALint64t mq64 = -1;
         check_rc(PRIMAL_getmaxnumqnz64(t, &mq64), PRIMAL_RES_OK, "getmaxnumqnz64");
-        check(mq64 == 1, "idem a 64 bit");
+        check(mq64 == 1, "same at 64 bit");
         check_rc(PRIMAL_putmaxnumvar(t, 10), PRIMAL_RES_OK, "putmaxnumvar");
         check_rc(PRIMAL_putmaxnumcon(t, 10), PRIMAL_RES_OK, "putmaxnumcon");
         check_rc(PRIMAL_putmaxnumcone(t, 10), PRIMAL_RES_OK, "putmaxnumcone");
         check_rc(PRIMAL_putmaxnumanz(t, 100), PRIMAL_RES_OK, "putmaxnumanz");
         check_rc(PRIMAL_putmaxnumqnz(t, 100), PRIMAL_RES_OK, "putmaxnumqnz");
-        check_rc(PRIMAL_putmaxnumvar(t, -1), PRIMAL_RES_ERR_ARG, "negativo rifiutato");
+        check_rc(PRIMAL_putmaxnumvar(t, -1), PRIMAL_RES_ERR_ARG, "negative refused");
         pend(&p);
     }
     {   /* name of a conic block */
@@ -9999,10 +10007,10 @@ static void test_t148(void) {
         PRIMAL_putconename(t, 0, "k0");
         int asgn = -1, idx = -1, len = -1;
         check_rc(PRIMAL_getconenameindex(t, "k0", &asgn, &idx), PRIMAL_RES_OK, "getconenameindex");
-        check(idx == 0 && asgn == 0, "indice del cono");
+        check(idx == 0 && asgn == 0, "cone index");
         check_rc(PRIMAL_getconenamelen(t, 0, &len), PRIMAL_RES_OK, "getconenamelen");
-        check(len == 2, "lunghezza 2");
-        check_rc(PRIMAL_getconenamelen(t, 9, &len), PRIMAL_RES_ERR_ARG, "cono fuori");
+        check(len == 2, "length 2");
+        check_rc(PRIMAL_getconenamelen(t, 9, &len), PRIMAL_RES_ERR_ARG, "cone out");
         pend(&p);
     }
     {   /* solution setters and const bound list */
@@ -10019,32 +10027,32 @@ static void test_t148(void) {
         double nn[2] = {7.0, 7.0};
         check_rc(PRIMAL_putxxslice(t, PRIMAL_SOL_ITR, 0, 2, nn), PRIMAL_RES_OK, "putxxslice");
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, z);
-        check(z[0] == 7.0 && z[1] == 7.0, "la slice scrive le x");
-        check_rc(PRIMAL_putxxslice(t, PRIMAL_SOL_ITR, 0, 5, nn), PRIMAL_RES_ERR_ARG, "fetta fuori");
+        check(z[0] == 7.0 && z[1] == 7.0, "the slice writes the x");
+        check_rc(PRIMAL_putxxslice(t, PRIMAL_SOL_ITR, 0, 5, nn), PRIMAL_RES_ERR_ARG, "slice out");
         double sc[1] = {0};
         double sv[1] = {1.0};
         check_rc(PRIMAL_putslc(t, PRIMAL_SOL_ITR, sv), PRIMAL_RES_OK, "putslc");
         PRIMAL_getslc(t, PRIMAL_SOL_ITR, sc);
-        check(sc[0] == 1.0, "slc scritta");
+        check(sc[0] == 1.0, "slc written");
         check_rc(PRIMAL_putsux(t, PRIMAL_SOL_ITR, (double[]){2.0, 3.0}), PRIMAL_RES_OK, "putsux");
         double sx[2] = {0, 0};
         PRIMAL_getsux(t, PRIMAL_SOL_ITR, sx);
-        check(sx[0] == 2.0 && sx[1] == 3.0, "sux scritta");
+        check(sx[0] == 2.0 && sx[1] == 3.0, "sux written");
         check_rc(PRIMAL_putyslice(t, PRIMAL_SOL_ITR, 0, 1, (double[]){5.0}), PRIMAL_RES_OK, "putyslice");
         double yy[1] = {0};
         PRIMAL_gety(t, PRIMAL_SOL_ITR, yy);
-        check(yy[0] == 5.0, "y scritta");
+        check(yy[0] == 5.0, "y written");
         check_rc(PRIMAL_putvarboundlistconst(t, 2, (int[]){0, 1}, PRIMAL_BK_RA, 0.0, 1.0),
                  PRIMAL_RES_OK, "varboundlistconst");
         PRIMALboundkeye bk; double bl, bu;
         PRIMAL_getvarbound(t, 1, &bk, &bl, &bu);
-        check(bk == PRIMAL_BK_RA && bl == 0.0 && bu == 1.0, "bound applicato alla lista");
+        check(bk == PRIMAL_BK_RA && bl == 0.0 && bu == 1.0, "bound applied to the list");
         check_rc(PRIMAL_putvarboundlistconst(t, 1, (int[]){9}, PRIMAL_BK_RA, 0.0, 1.0),
-                 PRIMAL_RES_ERR_ARG, "indice fuori");
+                 PRIMAL_RES_ERR_ARG, "index out");
         check_rc(PRIMAL_putconboundlistconst(t, 1, (int[]){0}, PRIMAL_BK_LO, 2.0, 0.0),
                  PRIMAL_RES_OK, "conboundlistconst");
         PRIMAL_getconbound(t, 0, &bk, &bl, &bu);
-        check(bk == PRIMAL_BK_LO && bl == 2.0, "bound del vincolo applicato");
+        check(bk == PRIMAL_BK_LO && bl == 2.0, "constraint bound applied");
         pend(&p);
     }
 }
@@ -10054,7 +10062,7 @@ static void test_t148(void) {
  * without writing), `emptyafefrowlist`/`emptyafefcollist`/`putafefcol`,
  * `putskxslice`/`putskcslice`, `getprimalsolutionnorms`. */
 static void test_t149(void) {
-    cur_name = "T149 A triplette, AFE blocco, chiavi, norme";
+    cur_name = "T149 A triplets, bulk AFE, keys, norms";
     {   /* A as triplets */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -10065,14 +10073,14 @@ static void test_t149(void) {
         check_rc(PRIMAL_getarowslicetrip(t, 0, 2, 8, si, sj, sv), PRIMAL_RES_OK, "getarowslicetrip");
         check(si[0] == 0 && sj[0] == 0 && sv[0] == 1.0 &&
               si[1] == 0 && sj[1] == 1 && sv[1] == 2.0 &&
-              si[2] == 1 && sj[2] == 1 && sv[2] == 3.0, "le triplette delle righe");
+              si[2] == 1 && sj[2] == 1 && sv[2] == 3.0, "the triplets of the rows");
         check_rc(PRIMAL_getarowslicetrip(t, 0, 2, 2, si, sj, sv), PRIMAL_RES_ERR_ARG,
-                 "capienza insufficiente: rifiuto");
-        check(si[0] == 0 && sj[0] == 0 && sv[0] == 1.0, "e non scrive");
+                 "insufficient capacity: refusal");
+        check(si[0] == 0 && sj[0] == 0 && sv[0] == 1.0, "and it does not write");
         check_rc(PRIMAL_getacolslicetrip(t, 0, 2, 8, si, sj, sv), PRIMAL_RES_OK, "getacolslicetrip");
         check(sj[0] == 0 && si[0] == 0 && sv[0] == 1.0 &&
               sj[1] == 1 && si[1] == 0 && sv[1] == 2.0 &&
-              sj[2] == 1 && si[2] == 1 && sv[2] == 3.0, "le triplette delle colonne");
+              sj[2] == 1 && si[2] == 1 && sv[2] == 3.0, "the triplets of the columns");
         pend(&p);
     }
     {   /* AFE: clear lists and column */
@@ -10086,20 +10094,20 @@ static void test_t149(void) {
         check_rc(PRIMAL_emptyafefrowlist(t, 1, (PRIMALint64t[]){1}), PRIMAL_RES_OK,
                  "emptyafefrowlist");
         int nz = -1;
-        PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 0, "riga 1 vuota");
+        PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 0, "row 1 empty");
         check_rc(PRIMAL_emptyafefcollist(t, 1, (int[]){0}), PRIMAL_RES_OK,
                  "emptyafefcollist");
-        PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 1, "riga 0 perde la colonna 0");
-        PRIMAL_getafefrownumnz(t, 2, &nz); check(nz == 0, "riga 2 aveva solo la colonna 0");
+        PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 1, "row 0 loses column 0");
+        PRIMAL_getafefrownumnz(t, 2, &nz); check(nz == 0, "row 2 had only column 0");
         /* putafefcol zeroes column 2 and writes two entries into it */
         PRIMALint64t af[2] = {0, 1};
         double av[2] = {7.0, 8.0};
         check_rc(PRIMAL_putafefcol(t, 2, 2, af, av), PRIMAL_RES_OK, "putafefcol");
-        PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 2, "riga 0 ha la nuova colonna");
-        PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 1, "riga 1 ha la nuova colonna");
+        PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 2, "row 0 has the new column");
+        PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 1, "row 1 has the new column");
         double g = 0.0;
         (void)g;
-        check_rc(PRIMAL_putafefcol(t, 9, 1, af, av), PRIMAL_RES_ERR_ARG, "colonna fuori");
+        check_rc(PRIMAL_putafefcol(t, 9, 1, af, av), PRIMAL_RES_ERR_ARG, "column out");
         pend(&p);
     }
     {   /* status keys and norms after a solve */
@@ -10118,19 +10126,19 @@ static void test_t149(void) {
         check_rc(PRIMAL_getprimalsolutionnorms(t, PRIMAL_SOL_ITR, &nxc, &nxx, &nbx),
                  PRIMAL_RES_OK, "getprimalsolutionnorms");
         close_enough_tol(nxx, sqrt(xx[0] * xx[0] + xx[1] * xx[1]), 1e-6, "||x||");
-        close_enough_tol(nxc, fabs(xx[0] + xx[1]), 1e-6, "||x^c|| = |attivita'|");
-        check(nbx == 0.0, "nessuna barra: ||X_bar||_F = 0");
+        close_enough_tol(nxc, fabs(xx[0] + xx[1]), 1e-6, "||x^c|| = |activity|");
+        check(nbx == 0.0, "no bars: ||X_bar||_F = 0");
         PRIMALstakeye sk[1] = {PRIMAL_SK_BAS};
         check_rc(PRIMAL_putskcslice(t, PRIMAL_SOL_ITR, 0, 1, sk), PRIMAL_RES_OK, "putskcslice");
         PRIMALstakeye gsk[1] = {PRIMAL_SK_UNDEF};
         PRIMAL_getskcslice(t, PRIMAL_SOL_ITR, 0, 1, gsk);
-        check(gsk[0] == PRIMAL_SK_BAS, "la chiave scritta");
+        check(gsk[0] == PRIMAL_SK_BAS, "the key written");
         PRIMALstakeye skx[2] = {PRIMAL_SK_BAS, PRIMAL_SK_UNDEF};
         check_rc(PRIMAL_putskxslice(t, PRIMAL_SOL_ITR, 0, 2, skx), PRIMAL_RES_OK, "putskxslice");
         PRIMALstakeye gsx[2] = {PRIMAL_SK_UNDEF, PRIMAL_SK_UNDEF};
         PRIMAL_getskxslice(t, PRIMAL_SOL_ITR, 0, 2, gsx);
-        check(gsx[0] == PRIMAL_SK_BAS && gsx[1] == PRIMAL_SK_UNDEF, "le chiavi x scritte");
-        check_rc(PRIMAL_putskcslice(t, PRIMAL_SOL_ITR, 0, 9, sk), PRIMAL_RES_ERR_ARG, "fetta fuori");
+        check(gsx[0] == PRIMAL_SK_BAS && gsx[1] == PRIMAL_SK_UNDEF, "the x keys written");
+        check_rc(PRIMAL_putskcslice(t, PRIMAL_SOL_ITR, 0, 9, sk), PRIMAL_RES_ERR_ARG, "slice out");
         pend(&p);
     }
 }
@@ -10142,7 +10150,7 @@ static void test_t149(void) {
 static void t150_exitfn(void *handle, const char *msg) { (void)handle; (void)msg; }
 /* T150: task management and dual norms. */
 static void test_t150(void) {
-    cur_name = "T150 gestione task e norme duali";
+    cur_name = "T150 task management and dual norms";
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
     check_rc(PRIMAL_putexitfunc(env, t150_exitfn, NULL), PRIMAL_RES_OK, "putexitfunc");
@@ -10151,7 +10159,7 @@ static void test_t150(void) {
     check_rc(PRIMAL_makeemptytask(env, &t), PRIMAL_RES_OK, "makeemptytask");
     PRIMALenv_t e2 = NULL;
     check_rc(PRIMAL_getenv(t, &e2), PRIMAL_RES_OK, "getenv");
-    check(e2 == env, "lo stesso env");
+    check(e2 == env, "the same env");
     check_rc(PRIMAL_commitchanges(t), PRIMAL_RES_OK, "commitchanges");
     check_rc(PRIMAL_resizetask(t, 10, 10, 5, 100, 100), PRIMAL_RES_OK, "resizetask");
     check_rc(PRIMAL_updatesolutioninfo(t, PRIMAL_SOL_ITR), PRIMAL_RES_OK, "updatesolutioninfo");
@@ -10165,12 +10173,12 @@ static void test_t150(void) {
     double ny = -1, nlc = -1, nuc = -1, nlx = -1, nux = -1, nnx = -1, nbar = -1;
     check_rc(PRIMAL_getdualsolutionnorms(t, PRIMAL_SOL_ITR, &ny, &nlc, &nuc, &nlx, &nux, &nnx, &nbar),
              PRIMAL_RES_OK, "getdualsolutionnorms");
-    check(ny >= 0.0 && nlc >= 0.0 && nuc >= 0.0 && nlx >= 0.0 && nux >= 0.0, "norme non negative");
-    check(nnx == 0.0 && nbar == 0.0, "snx e bars non memorizzati: 0");
+    check(ny >= 0.0 && nlc >= 0.0 && nuc >= 0.0 && nlx >= 0.0 && nux >= 0.0, "non-negative norms");
+    check(nnx == 0.0 && nbar == 0.0, "snx and bars not stored: 0");
     check_rc(PRIMAL_deletesolution(t, PRIMAL_SOL_ITR), PRIMAL_RES_OK, "deletesolution");
     double z[2] = {0, 0};
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, z), PRIMAL_RES_ERR_ARG,
-             "dopo deletesolution il punto non c'e' piu'");
+             "after deletesolution the point is no longer there");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
 }
@@ -10180,7 +10188,7 @@ static void test_t150(void) {
  * `putaijlist64` and `getarowslice64`/`getacolslice64`/`getarowslicenumnz64`/
  * `getacolslicenumnz64`: the same readers/writers with 64-bit row pointers. */
 static void test_t151(void) {
-    cur_name = "T151 varianti a 64 bit";
+    cur_name = "T151 64-bit variants";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
@@ -10189,36 +10197,36 @@ static void test_t151(void) {
     double aval[3] = {1.0, 2.0, 3.0};
     check_rc(PRIMAL_putarowslice64(t, 0, 2, pb, pe, asub, aval), PRIMAL_RES_OK, "putarowslice64");
     int nz = -1;
-    PRIMAL_getarownumnz(t, 0, &nz); check(nz == 2, "row0 ha 2 termini");
-    PRIMAL_getarownumnz(t, 1, &nz); check(nz == 1, "row1 ha 1 termine");
+    PRIMAL_getarownumnz(t, 0, &nz); check(nz == 2, "row0 has 2 terms");
+    PRIMAL_getarownumnz(t, 1, &nz); check(nz == 1, "row1 has 1 term");
     PRIMALint64t n64 = -1;
     check_rc(PRIMAL_getarowslicenumnz64(t, 0, 2, &n64), PRIMAL_RES_OK, "getarowslicenumnz64");
-    check(n64 == 3, "tre nonnulli nelle righe");
+    check(n64 == 3, "three nonzeros in the rows");
     PRIMALint64t ob[2], oe[2];
     int os[3];
     double ov[3];
     check_rc(PRIMAL_getarowslice64(t, 0, 2, 3, ob, oe, os, ov), PRIMAL_RES_OK, "getarowslice64");
-    check(ob[0] == 0 && oe[0] == 2 && ob[1] == 2 && oe[1] == 3, "i puntatori di riga");
-    check(os[0] == 0 && ov[0] == 1.0 && os[2] == 2 && ov[2] == 3.0, "i valori");
+    check(ob[0] == 0 && oe[0] == 2 && ob[1] == 2 && oe[1] == 3, "the row pointers");
+    check(os[0] == 0 && ov[0] == 1.0 && os[2] == 2 && ov[2] == 3.0, "the values");
     check_rc(PRIMAL_getarowslice64(t, 0, 2, 2, ob, oe, os, ov), PRIMAL_RES_ERR_ARG,
-             "capienza insufficiente");
+             "insufficient capacity");
     PRIMALint64t cpb[3] = {0, 1, 2}, cpe[3] = {1, 1, 3};
     int casub[3] = {0, 0, 1};
     double caval[3] = {5.0, 6.0, 7.0};
     check_rc(PRIMAL_putacolslice64(t, 0, 3, cpb, cpe, casub, caval), PRIMAL_RES_OK,
              "putacolslice64");
-    PRIMAL_getacolnumnz(t, 0, &nz); check(nz == 1, "col0 ha 1 termine");
-    PRIMAL_getacolnumnz(t, 1, &nz); check(nz == 0, "col1 vuota");
-    PRIMAL_getacolnumnz(t, 2, &nz); check(nz == 1, "col2 ha 1 termine");
+    PRIMAL_getacolnumnz(t, 0, &nz); check(nz == 1, "col0 has 1 term");
+    PRIMAL_getacolnumnz(t, 1, &nz); check(nz == 0, "col1 empty");
+    PRIMAL_getacolnumnz(t, 2, &nz); check(nz == 1, "col2 has 1 term");
     check_rc(PRIMAL_getacolslicenumnz64(t, 0, 3, &n64), PRIMAL_RES_OK, "getacolslicenumnz64");
-    check(n64 == 2, "due nonnulli nelle colonne");
+    check(n64 == 2, "two nonzeros in the columns");
     check_rc(PRIMAL_putaijlist64(t, 1, (int[]){1}, (int[]){0}, (double[]){9.0}),
              PRIMAL_RES_OK, "putaijlist64");
     double a = 0.0;
     PRIMAL_getaij(t, 1, 0, &a);
     check(a == 9.0, "a10 = 9");
     check_rc(PRIMAL_putaijlist64(t, -1, (int[]){1}, (int[]){0}, (double[]){9.0}),
-             PRIMAL_RES_ERR_ARG, "num negativo");
+             PRIMAL_RES_ERR_ARG, "negative num");
     pend(&p);
 }
 
@@ -10228,29 +10236,29 @@ static void test_t151(void) {
  * (`getnaintparam`/`getnadouparam`/`getnastrparam`). The name is that of our
  * own enum; there is no string parameter. */
 static void test_t152(void) {
-    cur_name = "T152 nomi dei parametri";
+    cur_name = "T152 parameter names";
     P p; pbegin(&p);
     char nm[64];
     check_rc(PRIMAL_getparamname(p.task, PRIMAL_PARAM_KIND_INT,
                                  PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, nm),
              PRIMAL_RES_OK, "getparamname int");
-    check(strcmp(nm, "PRIMAL_IPAR_INTPNT_MAX_ITERATIONS") == 0, "il nome int");
+    check(strcmp(nm, "PRIMAL_IPAR_INTPNT_MAX_ITERATIONS") == 0, "the int name");
     check_rc(PRIMAL_getparamname(p.task, PRIMAL_PARAM_KIND_DOU,
                                  PRIMAL_DPAR_INTPNT_TOL_PFEAS, nm),
              PRIMAL_RES_OK, "getparamname dou");
-    check(strcmp(nm, "PRIMAL_DPAR_INTPNT_TOL_PFEAS") == 0, "il nome dou");
+    check(strcmp(nm, "PRIMAL_DPAR_INTPNT_TOL_PFEAS") == 0, "the dou name");
     int pt = -1, pm = -1;
     check_rc(PRIMAL_whichparam(p.task, "PRIMAL_IPAR_SCALING", &pt, &pm), PRIMAL_RES_OK, "whichparam");
-    check(pt == PRIMAL_PARAM_KIND_INT && pm == PRIMAL_IPAR_SCALING, "tipo e id");
-    check_rc(PRIMAL_whichparam(p.task, "nope", &pt, &pm), PRIMAL_RES_ERR_ARG, "nome ignoto");
+    check(pt == PRIMAL_PARAM_KIND_INT && pm == PRIMAL_IPAR_SCALING, "type and id");
+    check_rc(PRIMAL_whichparam(p.task, "nope", &pt, &pm), PRIMAL_RES_ERR_ARG, "unknown name");
     int id = -1;
     check_rc(PRIMAL_isintparname(p.task, "PRIMAL_IPAR_PRESOLVE", &id), PRIMAL_RES_OK, "isintparname");
-    check(id == PRIMAL_IPAR_PRESOLVE, "id int");
+    check(id == PRIMAL_IPAR_PRESOLVE, "int id");
     check_rc(PRIMAL_isdouparname(p.task, "PRIMAL_DPAR_MIP_TOL_FEAS", &id), PRIMAL_RES_OK, "isdouparname");
-    check(id == PRIMAL_DPAR_MIP_TOL_FEAS, "id dou");
+    check(id == PRIMAL_DPAR_MIP_TOL_FEAS, "dou id");
     check_rc(PRIMAL_isintparname(p.task, "PRIMAL_DPAR_MIP_TOL_FEAS", &id), PRIMAL_RES_ERR_ARG,
-             "un double non e' un int");
-    check_rc(PRIMAL_isstrparname(p.task, "x", &id), PRIMAL_RES_ERR_ARG, "nessun param stringa");
+             "a double is not an int");
+    check_rc(PRIMAL_isstrparname(p.task, "x", &id), PRIMAL_RES_ERR_ARG, "no string param");
     int iv = -1;
     check_rc(PRIMAL_getnaintparam(p.task, "PRIMAL_IPAR_SCALING", &iv), PRIMAL_RES_OK, "getnaintparam");
     check(iv == 1, "scaling default 1");
@@ -10260,18 +10268,18 @@ static void test_t152(void) {
     check(dv == 1e-8, "tol default 1e-8");
     int pmax = -1;
     check_rc(PRIMAL_getparammax(p.task, PRIMAL_PARAM_KIND_INT, &pmax), PRIMAL_RES_OK, "getparammax int");
-    check(pmax == 11, "undici parametri int");
+    check(pmax == 11, "eleven int parameters");
     check_rc(PRIMAL_getparammax(p.task, PRIMAL_PARAM_KIND_DOU, &pmax), PRIMAL_RES_OK, "getparammax dou");
-    check(pmax == 20, "venti parametri double (19 + l'alias)");
-    check_rc(PRIMAL_getnastrparam(p.task, "x", 8, &id, nm), PRIMAL_RES_ERR_ARG, "getnastrparam rifiuta");
+    check(pmax == 20, "twenty double parameters (19 + the alias)");
+    check_rc(PRIMAL_getnastrparam(p.task, "x", 8, &id, nm), PRIMAL_RES_ERR_ARG, "getnastrparam refuses");
     /* setters by name */
     check_rc(PRIMAL_putnaintparam(p.task, "PRIMAL_IPAR_SCALING", 0), PRIMAL_RES_OK, "putnaintparam");
-    PRIMAL_getintparam(p.task, PRIMAL_IPAR_SCALING, &iv); check(iv == 0, "scaling a 0");
-    check_rc(PRIMAL_putnaintparam(p.task, "nope", 0), PRIMAL_RES_ERR_ARG, "nome int ignoto");
+    PRIMAL_getintparam(p.task, PRIMAL_IPAR_SCALING, &iv); check(iv == 0, "scaling to 0");
+    check_rc(PRIMAL_putnaintparam(p.task, "nope", 0), PRIMAL_RES_ERR_ARG, "unknown int name");
     check_rc(PRIMAL_putnadouparam(p.task, "PRIMAL_DPAR_INTPNT_TOL_PFEAS", 1e-7), PRIMAL_RES_OK,
              "putnadouparam");
-    PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv); check(dv == 1e-7, "tol a 1e-7");
-    check_rc(PRIMAL_putnadouparam(p.task, "nope", 1.0), PRIMAL_RES_ERR_ARG, "nome dou ignoto");
+    PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv); check(dv == 1e-7, "tol to 1e-7");
+    check_rc(PRIMAL_putnadouparam(p.task, "nope", 1.0), PRIMAL_RES_ERR_ARG, "unknown dou name");
     /* string family: no parameter */
     check_rc(PRIMAL_putnastrparam(p.task, "x", "y"), PRIMAL_RES_ERR_ARG, "putnastrparam");
     check_rc(PRIMAL_getstrparamlen(p.task, 0, &iv), PRIMAL_RES_ERR_ARG, "getstrparamlen");
@@ -10285,26 +10293,26 @@ static void test_t152(void) {
  * `getlasterror64` (the same read as getlasterror, 64-bit sizes) and the three
  * stream summaries (they print to stdout). */
 static void test_t153(void) {
-    cur_name = "T153 last error 64 e riassunti";
+    cur_name = "T153 last error 64 and summaries";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMALrescodee lr = -1;
     PRIMALint64t len = -1;
     char msg[256];
     check_rc(PRIMAL_getlasterror64(t, &lr, 256, &len, msg), PRIMAL_RES_OK, "getlasterror64");
-    check(len >= 0 && (PRIMALint64t)strlen(msg) == len, "lunghezza coerente col messaggio");
+    check(len >= 0 && (PRIMALint64t)strlen(msg) == len, "length consistent with the message");
     check_rc(PRIMAL_getlasterror64(t, &lr, 0, &len, msg), PRIMAL_RES_ERR_ARG,
-             "buffer piccolo rifiutato");
+             "small buffer refused");
     check_rc(PRIMAL_getlasterror64(t, NULL, 256, &len, msg), PRIMAL_RES_ERR_NULL, "arg NULL");
     check_rc(PRIMAL_optimizersummary(t, 0), PRIMAL_RES_OK, "optimizersummary");
-    check_rc(PRIMAL_solutionsummary(t, 0), PRIMAL_RES_OK, "solutionsummary senza punto");
+    check_rc(PRIMAL_solutionsummary(t, 0), PRIMAL_RES_OK, "solutionsummary without a point");
     PRIMAL_appendvars(t, 1);
     PRIMAL_putcj(t, 0, 1.0);
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 2.0, INFINITY);
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve");
     check_rc(PRIMAL_solutionsummary(t, 0), PRIMAL_RES_OK, "solutionsummary");
     check_rc(PRIMAL_onesolutionsummary(t, 0, PRIMAL_SOL_ITR), PRIMAL_RES_OK, "onesolutionsummary");
-    check_rc(PRIMAL_optimizersummary(t, 0), PRIMAL_RES_OK, "optimizersummary dopo il solve");
+    check_rc(PRIMAL_optimizersummary(t, 0), PRIMAL_RES_OK, "optimizersummary after the solve");
     check_rc(PRIMAL_analyzeproblem(t, 0), PRIMAL_RES_OK, "analyzeproblem");
     check_rc(PRIMAL_analyzesolution(t, 0, PRIMAL_SOL_ITR), PRIMAL_RES_OK, "analyzesolution");
     check_rc(PRIMAL_infeasibilityreport(t, 0, PRIMAL_SOL_ITR), PRIMAL_RES_OK, "infeasibilityreport");
@@ -10316,7 +10324,7 @@ static void test_t153(void) {
  * `getqobj64`/`getqconk64` (64-bit variants of getqobj/getqconk) and
  * `putslcslice`/`putsucslice`. */
 static void test_t154(void) {
-    cur_name = "T154 Q a 64 bit e fette slc/suc";
+    cur_name = "T154 64-bit Q and slc/suc slices";
     {   /* 64-bit Q */
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
@@ -10326,11 +10334,11 @@ static void test_t154(void) {
         double qv[4];
         PRIMALint64t n64 = -1;
         check_rc(PRIMAL_getqobj64(t, qi, qj, qv, 4, &n64), PRIMAL_RES_OK, "getqobj64");
-        check(n64 == 1 && qi[0] == 0 && qj[0] == 1 && qv[0] == 2.0, "la tripletta dell'obiettivo");
-        check_rc(PRIMAL_getqobj64(t, qi, qj, qv, 0, &n64), PRIMAL_RES_ERR_ARG, "capienza insufficiente");
+        check(n64 == 1 && qi[0] == 0 && qj[0] == 1 && qv[0] == 2.0, "the triplet of the objective");
+        check_rc(PRIMAL_getqobj64(t, qi, qj, qv, 0, &n64), PRIMAL_RES_ERR_ARG, "insufficient capacity");
         PRIMAL_putqconk(t, 0, 1, (int[]){1}, (int[]){1}, (double[]){3.0});
         check_rc(PRIMAL_getqconk64(t, 0, qi, qj, qv, 4, &n64), PRIMAL_RES_OK, "getqconk64");
-        check(n64 == 1 && qi[0] == 1 && qj[0] == 1 && qv[0] == 3.0, "la tripletta del vincolo");
+        check(n64 == 1 && qi[0] == 1 && qj[0] == 1 && qv[0] == 3.0, "the triplet of the constraint");
         pend(&p);
     }
     {   /* slc/suc slices after a solve */
@@ -10347,11 +10355,11 @@ static void test_t154(void) {
         check_rc(PRIMAL_putslcslice(t, PRIMAL_SOL_ITR, 0, 1, sv), PRIMAL_RES_OK, "putslcslice");
         double g[1] = {0};
         PRIMAL_getslc(t, PRIMAL_SOL_ITR, g);
-        check(g[0] == 4.0, "slc scritta dalla fetta");
+        check(g[0] == 4.0, "slc written by the slice");
         check_rc(PRIMAL_putsucslice(t, PRIMAL_SOL_ITR, 0, 1, (double[]){5.0}), PRIMAL_RES_OK, "putsucslice");
         PRIMAL_getsuc(t, PRIMAL_SOL_ITR, g);
-        check(g[0] == 5.0, "suc scritta dalla fetta");
-        check_rc(PRIMAL_putslcslice(t, PRIMAL_SOL_ITR, 0, 9, sv), PRIMAL_RES_ERR_ARG, "fetta fuori");
+        check(g[0] == 5.0, "suc written by the slice");
+        check_rc(PRIMAL_putslcslice(t, PRIMAL_SOL_ITR, 0, 9, sv), PRIMAL_RES_ERR_ARG, "slice out");
         pend(&p);
     }
 }
@@ -10360,7 +10368,7 @@ static void test_t154(void) {
  * `readtask`/`writetask`/`readdataautoformat`/`readdataformat` (forms around
  * readdata/writedata) and `getapiecenumnz`. */
 static void test_t155(void) {
-    cur_name = "T155 I/O e getapiecenumnz";
+    cur_name = "T155 I/O and getapiecenumnz";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
@@ -10368,16 +10376,16 @@ static void test_t155(void) {
     PRIMAL_putarow(t, 1, 1, (int[]){1}, (double[]){3.0});
     int nz = -1;
     check_rc(PRIMAL_getapiecenumnz(t, 0, 2, 0, 2, &nz), PRIMAL_RES_OK, "getapiecenumnz");
-    check(nz == 3, "tre nonnulli nel pezzo");
-    check_rc(PRIMAL_getapiecenumnz(t, 0, 1, 0, 1, &nz), PRIMAL_RES_OK, "pezzo 1x1");
-    check(nz == 1, "un nonnullo");
-    check_rc(PRIMAL_getapiecenumnz(t, 5, 1, 0, 2, &nz), PRIMAL_RES_ERR_ARG, "range fuori");
+    check(nz == 3, "three nonzeros in the piece");
+    check_rc(PRIMAL_getapiecenumnz(t, 0, 1, 0, 1, &nz), PRIMAL_RES_OK, "1x1 piece");
+    check(nz == 1, "one nonzero");
+    check_rc(PRIMAL_getapiecenumnz(t, 5, 1, 0, 2, &nz), PRIMAL_RES_ERR_ARG, "range out");
     check_rc(PRIMAL_writetask(t, "/tmp/t155.mps"), PRIMAL_RES_OK, "writetask");
     P q; pbegin(&q);
     check_rc(PRIMAL_readtask(q.task, "/tmp/t155.mps"), PRIMAL_RES_OK, "readtask");
     int nv = 0;
     PRIMAL_getnumvar(q.task, &nv);
-    check(nv == 2, "due variabili rilette");
+    check(nv == 2, "two variables re-read");
     pend(&q);
     P r; pbegin(&r);
     check_rc(PRIMAL_readdataautoformat(r.task, "/tmp/t155.mps"), PRIMAL_RES_OK, "readdataautoformat");
@@ -10395,7 +10403,7 @@ static void test_t155(void) {
  * `emptyafebarfrow(list)` zeroes it. The term really enters the ACC row:
  * `min <I,X>` with `<E00,X> - 1 in RPLUS` -> `X00 >= 1`, value 1. */
 static void test_t156(void) {
-    cur_name = "T156 AFE-bar in un ACC";
+    cur_name = "T156 AFE-bar in an ACC";
     P p; pbegin(&p);
     PRIMALtask_t t = p.task;
     int dim = 2;
@@ -10414,24 +10422,24 @@ static void test_t156(void) {
     /* getters */
     int ne = -1;
     PRIMALint64t nt = -1;
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "una entry");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "one entry");
     PRIMAL_getafebarfrowinfo(t, 0, &ne, &nt); check(ne == 1 && nt == 1, "info");
     int bj[4];
     PRIMALint64t ptr[4], ntm[4], tidx[4];
     double tw[4];
     check_rc(PRIMAL_getafebarfrow(t, 0, bj, ptr, ntm, tidx, tw), PRIMAL_RES_OK, "getafebarfrow");
-    check(bj[0] == 0 && ntm[0] == 1 && tidx[0] == m00 && tw[0] == 1.0, "la riga bar");
+    check(bj[0] == 0 && ntm[0] == 1 && tidx[0] == m00 && tw[0] == 1.0, "the bar row");
     PRIMALint64t ntrip = -1;
-    PRIMAL_getafebarfnumblocktriplets(t, &ntrip); check(ntrip == 1, "un tripletto");
+    PRIMAL_getafebarfnumblocktriplets(t, &ntrip); check(ntrip == 1, "one triplet");
     PRIMALint64t ai[4], numtrip = -1;
     int bvi[4], sk[4], sl[4];
     double vk[4];
     check_rc(PRIMAL_getafebarfblocktriplet(t, 4, &numtrip, ai, bvi, sk, sl, vk),
              PRIMAL_RES_OK, "getafebarfblocktriplet");
     check(numtrip == 1 && ai[0] == 0 && bvi[0] == 0 && sk[0] == 0 && sl[0] == 0 && vk[0] == 1.0,
-          "il tripletto");
+          "the triplet");
     check_rc(PRIMAL_getafebarfblocktriplet(t, 0, &numtrip, ai, bvi, sk, sl, vk),
-             PRIMAL_RES_ERR_ARG, "capienza insufficiente");
+             PRIMAL_RES_ERR_ARG, "insufficient capacity");
     /* ACC: <E00,X> - 1 in RPLUS -> X00 >= 1 */
     PRIMALint64t dP;
     PRIMAL_appendrplusdomain(t, 1, &dP);
@@ -10440,46 +10448,46 @@ static void test_t156(void) {
     /* Fbar implied by the ACCs: component 0 carries E00 */
     PRIMALint64t ntrip2 = -1;
     check_rc(PRIMAL_getaccbarfnumblocktriplets(t, &ntrip2), PRIMAL_RES_OK, "getaccbarfnum");
-    check(ntrip2 == 1, "un tripletto implicito");
+    check(ntrip2 == 1, "one implicit triplet");
     PRIMALint64t ca[4], ntr3 = -1;
     int bvv[4], br[4], bc[4];
     double bval[4];
     check_rc(PRIMAL_getaccbarfblocktriplet(t, 4, &ntr3, ca, bvv, br, bc, bval),
              PRIMAL_RES_OK, "getaccbarfblocktriplet");
     check(ntr3 == 1 && ca[0] == 0 && bvv[0] == 0 && br[0] == 0 && bc[0] == 0 && bval[0] == 1.0,
-          "il tripletto implicito");
+          "the implicit triplet");
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize");
     double po = 0.0;
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(po, 1.0, 1e-5, "pobj 1 (X00=1, X11=0)");
     /* emptyafebarfrow clears (on a second AFE, so as not to touch the solved one) */
     check_rc(PRIMAL_emptyafebarfrow(t, 0), PRIMAL_RES_OK, "emptyafebarfrow");
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 0, "riga bar vuota");
-    check_rc(PRIMAL_putafebarfentry(t, 0, 0, 1, &m0, (double[]){2.0}), PRIMAL_RES_OK, "riscrivi");
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "una entry di nuovo");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 0, "bar row empty");
+    check_rc(PRIMAL_putafebarfentry(t, 0, 0, 1, &m0, (double[]){2.0}), PRIMAL_RES_OK, "rewrite");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "one entry again");
     check_rc(PRIMAL_emptyafebarfrowlist(t, 1, (PRIMALint64t[]){0}), PRIMAL_RES_OK, "list");
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 0, "svuotata dalla lista");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 0, "emptied by the list");
     /* putafebarfentrylist and putafebarfrow */
     PRIMALint64t li_afe[1] = {0}, li_nt[1] = {1}, li_pt[1] = {0}, li_ti[1] = {m11};
     int li_bv[1] = {0};
     double li_tw[1] = {1.0};
     check_rc(PRIMAL_putafebarfentrylist(t, 1, li_afe, li_bv, li_nt, li_pt, 1, li_ti, li_tw),
              PRIMAL_RES_OK, "putafebarfentrylist");
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "una entry dalla lista");
-    check_rc(PRIMAL_emptyafebarfrow(t, 0), PRIMAL_RES_OK, "svuota");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "one entry from the list");
+    check_rc(PRIMAL_emptyafebarfrow(t, 0), PRIMAL_RES_OK, "empty it");
     check_rc(PRIMAL_putafebarfrow(t, 0, 1, li_bv, li_nt, li_pt, 1, li_ti, li_tw),
              PRIMAL_RES_OK, "putafebarfrow");
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "una entry dalla riga");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "one entry from the row");
     /* putafebarfblocktriplet: Fbar[0][0] = E01 */
-    check_rc(PRIMAL_emptyafebarfrow(t, 0), PRIMAL_RES_OK, "svuota per il tripletto");
+    check_rc(PRIMAL_emptyafebarfrow(t, 0), PRIMAL_RES_OK, "empty it for the triplet");
     check_rc(PRIMAL_putafebarfblocktriplet(t, 1, (PRIMALint64t[]){0}, (int[]){0},
              (int[]){0}, (int[]){1}, (double[]){1.0}), PRIMAL_RES_OK,
              "putafebarfblocktriplet");
-    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "una entry dal tripletto");
+    PRIMAL_getafebarfnumrowentries(t, 0, &ne); check(ne == 1, "one entry from the triplet");
     PRIMALint64t nt4 = -1;
-    PRIMAL_getafebarfnumblocktriplets(t, &nt4); check(nt4 == 1, "un tripletto nonnullo");
+    PRIMAL_getafebarfnumblocktriplets(t, &nt4); check(nt4 == 1, "one nonzero triplet");
     check_rc(PRIMAL_putafebarfblocktriplet(t, 1, (PRIMALint64t[]){0}, (int[]){0},
-             (int[]){9}, (int[]){0}, (double[]){1.0}), PRIMAL_RES_ERR_ARG, "indice fuori");
+             (int[]){9}, (int[]){0}, (double[]){1.0}), PRIMAL_RES_ERR_ARG, "index out");
     pend(&p);
 }
 
@@ -10488,7 +10496,7 @@ static void test_t156(void) {
  * `sparsetriangularsolvedense`. Dense column-major matrices, `uplo`/`transpose`
  * with the reference values. */
 static void test_t157(void) {
-    cur_name = "T157 algebra lineare";
+    cur_name = "T157 linear algebra";
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
     /* dot / axpy */
@@ -10522,16 +10530,16 @@ static void test_t157(void) {
     close_enough(P[1], 1.0, "L10 = 1");
     close_enough(P[3], sqrt(2.0), "L11 = sqrt(2)");
     double Pbad[4] = {1, 2, 2, 1};
-    check_rc(PRIMAL_potrf(env, PRIMAL_UPLO_LO, 2, Pbad), PRIMAL_RES_ERR_ARG, "non definita positiva");
+    check_rc(PRIMAL_potrf(env, PRIMAL_UPLO_LO, 2, Pbad), PRIMAL_RES_ERR_ARG, "not positive definite");
     /* syeig / syevd: diag(2,3) */
     double D[4] = {2, 0, 0, 3}, w[2] = {0, 0};
     check_rc(PRIMAL_syeig(env, PRIMAL_UPLO_LO, 2, D, w), PRIMAL_RES_OK, "syeig");
     check((fabs(w[0] - 2.0) < 1e-9 && fabs(w[1] - 3.0) < 1e-9) ||
-          (fabs(w[0] - 3.0) < 1e-9 && fabs(w[1] - 2.0) < 1e-9), "autovalori {2,3}");
+          (fabs(w[0] - 3.0) < 1e-9 && fabs(w[1] - 2.0) < 1e-9), "eigenvalues {2,3}");
     double E[4] = {2, 0, 0, 3}, we[2] = {0, 0};
     check_rc(PRIMAL_syevd(env, PRIMAL_UPLO_LO, 2, E, we), PRIMAL_RES_OK, "syevd");
     check(fabs(E[0] * E[0] + E[1] * E[1] - 1.0) < 1e-9 &&
-          fabs(E[2] * E[2] + E[3] * E[3] - 1.0) < 1e-9, "autovettori ortonormali");
+          fabs(E[2] * E[2] + E[3] * E[3] - 1.0) < 1e-9, "orthonormal eigenvectors");
     /* sparsetriangularsolvedense: L = [[2,0],[1,3]] (CSC) */
     int lnzc[2] = {2, 1};
     PRIMALint64t lptrc[2] = {0, 2};
@@ -10572,9 +10580,9 @@ static void test_t158(void) {
     double qo = 0.0, qx[2] = {0, 0};
     PRIMAL_getprimalobj(q.task, PRIMAL_SOL_ITR, &qo);
     PRIMAL_getxx(q.task, PRIMAL_SOL_ITR, qx);
-    close_enough(qo, po, "pobj riletto");
-    close_enough(qx[0], x[0], "x0 riletto");
-    close_enough(qx[1], x[1], "x1 riletto");
+    close_enough(qo, po, "pobj re-read");
+    close_enough(qx[0], x[0], "x0 re-read");
+    close_enough(qx[1], x[1], "x1 re-read");
     pend(&q);
     /* binary */
     check_rc(PRIMAL_writebsolution(t, "/tmp/t158.bsol", 0), PRIMAL_RES_OK, "writebsolution");
@@ -10583,7 +10591,7 @@ static void test_t158(void) {
     check_rc(PRIMAL_readbsolution(r.task, "/tmp/t158.bsol", 0), PRIMAL_RES_OK, "readbsolution");
     double ro = 0.0;
     PRIMAL_getprimalobj(r.task, PRIMAL_SOL_ITR, &ro);
-    close_enough(ro, po, "pobj binario");
+    close_enough(ro, po, "binary pobj");
     pend(&r);
     /* *file forms */
     check_rc(PRIMAL_writesolutionfile(t, "/tmp/t158f.sol"), PRIMAL_RES_OK, "writesolutionfile");
@@ -10603,7 +10611,7 @@ static void test_t158(void) {
     check_rc(PRIMAL_readjsonstring(t, "{\"pobj\":1.5,\"xx\":[1,2]}"), PRIMAL_RES_OK, "readjsonstring");
     double to = 0.0;
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &to);
-    close_enough(to, 1.5, "pobj da stringa JSON");
+    close_enough(to, 1.5, "pobj from JSON string");
     pend(&p);
 }
 
@@ -10612,7 +10620,7 @@ static void test_t158(void) {
  * putacc/putcone/putafefrowlist, "new" solution API, string I/O, basis solve,
  * sparse Cholesky, clone/dual/subproblem. */
 static void test_t159(void) {
-    cur_name = "T159 superficie di parita'";
+    cur_name = "T159 parity surface";
     PRIMALenv_t env;
     PRIMAL_makeenv(&env, NULL);
     {   /* long parameters, putparam, parameter file */
@@ -10625,18 +10633,18 @@ static void test_t159(void) {
         check_rc(PRIMAL_putlintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 7), PRIMAL_RES_OK,
                  "putlintparam");
         PRIMAL_getlintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &lv);
-        check(lv == 7, "riletto 7");
+        check(lv == 7, "re-read 7");
         check_rc(PRIMAL_putparam(t, "PRIMAL_DPAR_INTPNT_TOL_PFEAS", "1e-6"), PRIMAL_RES_OK,
                  "putparam");
         double dv = 0;
         PRIMAL_getdouparam(t, PRIMAL_DPAR_INTPNT_TOL_PFEAS, &dv);
-        check(dv == 1e-6, "putparam ha scritto");
-        check_rc(PRIMAL_putparam(t, "nope", "1"), PRIMAL_RES_ERR_ARG, "nome ignoto");
+        check(dv == 1e-6, "putparam wrote");
+        check_rc(PRIMAL_putparam(t, "nope", "1"), PRIMAL_RES_ERR_ARG, "unknown name");
         check_rc(PRIMAL_writeparamfile(t, "/tmp/t159.par"), PRIMAL_RES_OK, "writeparamfile");
         PRIMAL_putparam(t, "PRIMAL_IPAR_INTPNT_MAX_ITERATIONS", "400");
         check_rc(PRIMAL_readparamfile(t, "/tmp/t159.par"), PRIMAL_RES_OK, "readparamfile");
         PRIMAL_getlintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, &lv);
-        check(lv == 7, "readparamfile ha rimesso 7");
+        check(lv == 7, "readparamfile put 7 back");
         check_rc(PRIMAL_printparam(t), PRIMAL_RES_OK, "printparam");
         PRIMAL_deletetask(&t);
     }
@@ -10649,11 +10657,11 @@ static void test_t159(void) {
                  PRIMAL_RES_OK, "generatevarnames");
         const char *nm = NULL;
         PRIMAL_getvarnameidx(t, 2, &nm);
-        check(strcmp(nm, "v2") == 0, "nome v2");
+        check(strcmp(nm, "v2") == 0, "name v2");
         PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0, 1, 2});
         PRIMALconetypee ct; double par = 0; int nmm = 0;
         check_rc(PRIMAL_getconeinfo(t, 0, &ct, &par, &nmm), PRIMAL_RES_OK, "getconeinfo");
-        check(ct == PRIMAL_CT_QUAD && nmm == 3, "il cono");
+        check(ct == PRIMAL_CT_QUAD && nmm == 3, "the cone");
         check_rc(PRIMAL_readsummary(t, 0), PRIMAL_RES_OK, "readsummary");
         PRIMAL_deletetask(&t);
     }
@@ -10678,12 +10686,12 @@ static void test_t159(void) {
         check_rc(PRIMAL_optimizetrm(t, &trm), PRIMAL_RES_OK, "optimizetrm");
         check(trm == PRIMAL_RES_OK, "trm OK");
         double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough_tol(po, 3.0, 1e-6, "min x0+x1 con x0>=1, x1>=2");
+        close_enough_tol(po, 3.0, 1e-6, "min x0+x1 with x0>=1, x1>=2");
         PRIMALtask_t tasks[1] = {t};
         PRIMALrescodee tc[1], rc2[1];
         check_rc(PRIMAL_optimizebatch(env, 0, 0.0, 1, 1, tasks, tc, rc2), PRIMAL_RES_OK,
                  "optimizebatch");
-        check(rc2[0] == PRIMAL_RES_OK, "batch risolve");
+        check(rc2[0] == PRIMAL_RES_OK, "batch solves");
         PRIMAL_deletetask(&t);
     }
     {   /* putcone, putafefrowlist */
@@ -10696,7 +10704,7 @@ static void test_t159(void) {
                  "putcone");
         PRIMALconetypee ct; int nmm = 0; double par = 0;
         PRIMAL_getconeinfo(t, 0, &ct, &par, &nmm);
-        check(ct == PRIMAL_CT_RQUAD, "il cono e' stato rimpiazzato");
+        check(ct == PRIMAL_CT_RQUAD, "the cone has been replaced");
         PRIMAL_appendafes(t, 2);
         PRIMALint64t ai[2] = {0, 1};
         int nzr[2] = {2, 1};
@@ -10706,8 +10714,8 @@ static void test_t159(void) {
         check_rc(PRIMAL_putafefrowlist(t, 2, ai, nzr, ptr, 3, vi, vv), PRIMAL_RES_OK,
                  "putafefrowlist");
         int nz = -1;
-        PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 2, "riga 0 due termini");
-        PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 1, "riga 1 un termine");
+        PRIMAL_getafefrownumnz(t, 0, &nz); check(nz == 2, "row 0 two terms");
+        PRIMAL_getafefrownumnz(t, 1, &nz); check(nz == 1, "row 1 one term");
         PRIMAL_deletetask(&t);
     }
     {   /* "new" solution API */
@@ -10722,7 +10730,7 @@ static void test_t159(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve");
         int isdef = -1;
         check_rc(PRIMAL_solutiondef(t, PRIMAL_SOL_ITR, &isdef), PRIMAL_RES_OK, "solutiondef");
-        check(isdef == 1, "soluzione definita");
+        check(isdef == 1, "solution defined");
         double po = 0, dob = 0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         PRIMALprostae ps = 0; PRIMALsolstae ss = 0;
@@ -10730,7 +10738,7 @@ static void test_t159(void) {
         check_rc(PRIMAL_getsolutionnew(t, PRIMAL_SOL_ITR, &ps, &ss, NULL, NULL, NULL, xc, xx,
                  y, slc, suc, slx, sux, snx, doty), PRIMAL_RES_OK, "getsolutionnew");
         close_enough_tol(xc[0], 3.0, 1e-6, "xc = 3");
-        close_enough_tol(xx[0] + xx[1], 3.0, 1e-6, "somma x");
+        close_enough_tol(xx[0] + xx[1], 3.0, 1e-6, "sum x");
         check(ss == 1, "solsta OPTIMAL");
         double pa = 0, pd = 0, da = 0;
         check_rc(PRIMAL_getsolutioninfonew(t, PRIMAL_SOL_ITR, &po, NULL, NULL, NULL, NULL,
@@ -10746,7 +10754,7 @@ static void test_t159(void) {
                  PRIMAL_RES_OK, "putvarsolutionj");
         double y2[1] = {0};
         PRIMAL_gety(t, PRIMAL_SOL_ITR, y2);
-        check(y2[0] == 2.0, "y scritta");
+        check(y2[0] == 2.0, "y written");
         check_rc(PRIMAL_putsolution(t, PRIMAL_SOL_ITR, NULL, NULL, NULL, xc, xx, y, slc, suc,
                  slx, sux, snx), PRIMAL_RES_OK, "putsolution");
         check_rc(PRIMAL_putsolutionnew(t, PRIMAL_SOL_ITR, NULL, NULL, NULL, xc, xx, y, slc,
@@ -10758,9 +10766,9 @@ static void test_t159(void) {
         PRIMAL_maketask(env, 0, 0, &t);
         const char *lp = "Minimize\n obj: +1 x0\nSubject To\n c0: +1 x0 >= 2\nEnd\n";
         check_rc(PRIMAL_readlpstring(t, lp), PRIMAL_RES_OK, "readlpstring");
-        int nv = 0; PRIMAL_getnumvar(t, &nv); check(nv == 1, "una variabile");
-        check_rc(PRIMAL_readopfstring(t, "x"), PRIMAL_RES_ERR_ARG, "opf non supportato");
-        check_rc(PRIMAL_readptfstring(t, "x"), PRIMAL_RES_ERR_ARG, "ptf non supportato");
+        int nv = 0; PRIMAL_getnumvar(t, &nv); check(nv == 1, "one variable");
+        check_rc(PRIMAL_readopfstring(t, "x"), PRIMAL_RES_ERR_ARG, "opf not supported");
+        check_rc(PRIMAL_readptfstring(t, "x"), PRIMAL_RES_ERR_ARG, "ptf not supported");
         check_rc(PRIMAL_writedatahandle(t, NULL, NULL, 0, 0), PRIMAL_RES_ERR_NULL, "handle NULL");
         PRIMAL_deletetask(&t);
     }
@@ -10777,7 +10785,7 @@ static void test_t159(void) {
         check(nout == 2 && fabs(val[0] - 2.0) < 1e-9 && fabs(val[1] - 3.0) < 1e-9, "x = (2,3)");
         double nb = -1, nib = -1;
         check_rc(PRIMAL_basiscond(t, &nb, &nib), PRIMAL_RES_OK, "basiscond");
-        check(nb == 1.0 && nib == 1.0, "cond di I");
+        check(nb == 1.0 && nib == 1.0, "cond of I");
         PRIMAL_deletetask(&t);
     }
     {   /* sparse dense Cholesky */
@@ -10790,7 +10798,7 @@ static void test_t159(void) {
         PRIMALint64t *lp = NULL, lensub = -1;
         check_rc(PRIMAL_computesparsecholesky(env, 0, 0, 1e-14, 2, anzc, aptrc, asubc, avalc,
                  &pm, &dg, &ln, &lp, &lensub, &ls, &lv), PRIMAL_RES_OK, "computesparsecholesky");
-        check(lensub == 3 && ln[0] == 2 && ln[1] == 1, "L ha 3 nonnulli");
+        check(lensub == 3 && ln[0] == 2 && ln[1] == 1, "L has 3 nonzeros");
         close_enough(lv[0], 2.0, "L00 = 2");
         close_enough(lv[1], 0.5, "L10 = 0.5");
         close_enough(lv[2], sqrt(2.75), "L11 = sqrt(2.75)");
@@ -10807,13 +10815,13 @@ static void test_t159(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
         PRIMALtask_t cl = NULL;
         check_rc(PRIMAL_clonetask(t, &cl), PRIMAL_RES_OK, "clonetask");
-        int nv = 0; PRIMAL_getnumvar(cl, &nv); check(nv == 2, "clone con due variabili");
-        check_rc(PRIMAL_optimize(cl), PRIMAL_RES_OK, "clone risolve");
+        int nv = 0; PRIMAL_getnumvar(cl, &nv); check(nv == 2, "clone with two variables");
+        check_rc(PRIMAL_optimize(cl), PRIMAL_RES_OK, "clone solves");
         double p1 = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &p1);
         PRIMALtask_t du = NULL;
         check_rc(PRIMAL_getdualproblem(t, &du), PRIMAL_RES_OK, "getdualproblem");
-        int dv2 = 0; PRIMAL_getnumvar(du, &dv2); check(dv2 == 1, "duale con una y");
-        check_rc(PRIMAL_optimize(du), PRIMAL_RES_OK, "duale risolve");
+        int dv2 = 0; PRIMAL_getnumvar(du, &dv2); check(dv2 == 1, "dual with one y");
+        check_rc(PRIMAL_optimize(du), PRIMAL_RES_OK, "dual solves");
         double do2 = 0; PRIMAL_getprimalobj(du, PRIMAL_SOL_ITR, &do2);
         close_enough_tol(do2, -2.0, 1e-6, "min -2y -> -2");
         PRIMAL_deletetask(&cl); PRIMAL_deletetask(&du); PRIMAL_deletetask(&t);
@@ -10823,22 +10831,22 @@ static void test_t159(void) {
         PRIMAL_maketask(env, 0, 0, &t);
         PRIMAL_appendvars(t, 1);
         check_rc(PRIMAL_analyzenames(t, PRIMAL_STREAM_LOG, PRIMAL_NAME_TYPE_GEN), PRIMAL_RES_OK,
-                 "analyzenames GEN su nomi vuoti");
+                 "analyzenames GEN on empty names");
         PRIMAL_putvarname(t, 0, "ok_name");
         check_rc(PRIMAL_analyzenames(t, PRIMAL_STREAM_LOG, PRIMAL_NAME_TYPE_MPS), PRIMAL_RES_OK,
-                 "un nome senza spazi e' valido per MPS");
+                 "a name without spaces is valid for MPS");
         PRIMAL_putvarname(t, 0, "bad name");
         check_rc(PRIMAL_analyzenames(t, PRIMAL_STREAM_LOG, PRIMAL_NAME_TYPE_MPS), PRIMAL_RES_ERR_ARG,
-                 "uno spazio e' invalido per MPS");
+                 "a space is invalid for MPS");
         check_rc(PRIMAL_analyzenames(t, PRIMAL_STREAM_LOG, PRIMAL_NAME_TYPE_LP), PRIMAL_RES_ERR_ARG,
-                 "e per LP");
+                 "and for LP");
         check_rc(PRIMAL_analyzenames(t, PRIMAL_STREAM_LOG, PRIMAL_NAME_TYPE_GEN), PRIMAL_RES_OK,
-                 "GEN non ha restrizioni di formato");
+                 "GEN has no format restrictions");
         char *sv2 = NULL;
         check_rc(PRIMAL_getstrparamal(t, 0, 0, &sv2), PRIMAL_RES_ERR_ARG, "getstrparamal");
-        check(sv2 == NULL, "e non alloca");
+        check(sv2 == NULL, "and it does not allocate");
         check_rc(PRIMAL_getnastrparamal(t, "x", 0, &sv2), PRIMAL_RES_ERR_ARG, "getnastrparamal");
-        check(sv2 == NULL, "e non alloca");
+        check(sv2 == NULL, "and it does not allocate");
         PRIMAL_deletetask(&t);
     }
     PRIMAL_deleteenv(&env);
@@ -10857,7 +10865,7 @@ static void t162_logcb(void *handle, const char *msg) {
 }
 /* T162: CG cuts on a fractional knapsack; the user model keeps its single row. */
 static void test_t162(void) {
-    cur_name = "T162 tagli di Chvatal-Gomory";
+    cur_name = "T162 Chvatal-Gomory cuts";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
     PRIMAL_appendvars(t, 2);
@@ -10873,14 +10881,14 @@ static void test_t162(void) {
     t162_cg = t162_go = -1;
     PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
     PRIMAL_setlogcb(t, t162_logcb, NULL);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve con tagli");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve with cuts");
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-    close_enough_tol(po, 2.0, 1e-6, "ottimo intero = 2");
-    check(t162_cg == 1, "un taglio CG e' stato generato");
-    check(t162_go <= 0, "dati frazionari: il Gomory non e' applicabile");
+    close_enough_tol(po, 2.0, 1e-6, "integer optimum = 2");
+    check(t162_cg == 1, "one CG cut was generated");
+    check(t162_go <= 0, "fractional data: Gomory is not applicable");
     /* the published model is unchanged: a single row, the cuts are internal */
     int nc = -1; PRIMAL_getnumcon(t, &nc);
-    check(nc == 1, "il modello dell'utente resta con una riga");
+    check(nc == 1, "the user model keeps one row");
     PRIMAL_deletetask(&t);
     {   /* a row with integer coefficients produces no cuts */
         PRIMALtask_t u; PRIMAL_maketask(env, 0, 0, &u);
@@ -10897,11 +10905,11 @@ static void test_t162(void) {
         t162_cg = t162_go = -1;
         PRIMAL_putintparam(u, PRIMAL_IPAR_LOG, 1);
         PRIMAL_setlogcb(u, t162_logcb, NULL);
-        check_rc(PRIMAL_optimize(u), PRIMAL_RES_OK, "solve senza tagli");
+        check_rc(PRIMAL_optimize(u), PRIMAL_RES_OK, "solve without cuts");
         double po2 = 0; PRIMAL_getprimalobj(u, PRIMAL_SOL_ITR, &po2);
-        close_enough_tol(po2, 1.0, 1e-6, "ottimo intero = 1");
-        check(t162_cg <= 0, "nessun taglio CG su una riga intera");
-        check(t162_go == 1, "un taglio Gomory dal tableau");
+        close_enough_tol(po2, 1.0, 1e-6, "integer optimum = 1");
+        check(t162_cg <= 0, "no CG cut on an integer row");
+        check(t162_go == 1, "one Gomory cut from the tableau");
         PRIMAL_deletetask(&u);
     }
     PRIMAL_deleteenv(&env);
@@ -10943,7 +10951,7 @@ static void t172_case(int cuts) {
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, m2 + 1, (int[]){TV, Z0, Z0 + 1});
     for (int i = 0; i < n; i++)
         PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0.0, 3, (int[]){X0 + i, ONE, S0 + i});
-    const char *rt = cuts ? "tagli" : "nativo";
+    const char *rt = cuts ? "cuts" : "native";
     if (cuts) setenv("GMB_NO_EXP_IPM", "1", 1); else unsetenv("GMB_NO_EXP_IPM");
     PRIMALrescodee rc = PRIMAL_optimize(t);
     unsetenv("GMB_NO_EXP_IPM");
@@ -10960,7 +10968,7 @@ static void t172_case(int cuts) {
     snprintf(msg, sizeof msg, "T172 %s x1 = sqrt2", rt);
     close_enough_tol(x[X0 + 1], sqrt(2.0), 1e-4, msg);
     double viol = -1; PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &viol);
-    snprintf(msg, sizeof msg, "T172 %s punto ammissibile", rt);
+    snprintf(msg, sizeof msg, "T172 %s feasible point", rt);
     check(viol <= 1e-6, msg);
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
@@ -10969,18 +10977,18 @@ static void t172_case(int cuts) {
 static void test_t172(void) {
     /* The native path (where the fallback candidate and the fourth digit
      * of the gate live). */
-    cur_name = "T172 risk-budgeting, strada nativa";
+    cur_name = "T172 risk-budgeting, native path";
     t172_case(0);
     /* The cut path on the same model: after normalizing the cut rows the cut
      * LP is no longer badly conditioned and converges here too (before it
      * exhausted the rounds and answered TRM_MAX_ITER). */
-    cur_name = "T172 risk-budgeting, strada a tagli";
+    cur_name = "T172 risk-budgeting, cut path";
     t172_case(1);
 }
 
 /* T171: PPOW cuts with small v; forces the cut path and checks t = |v|^{3/2}. */
 static void test_t171(void) {
-    cur_name = "T171 tagli PPOW con v piccolo";
+    cur_name = "T171 PPOW cuts with small v";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
     PRIMAL_appendvars(t, 3);
@@ -11004,7 +11012,7 @@ static void test_t171(void) {
  * With 2 threads the LP path runs simplex and IPM in parallel and takes whichever
  * converges (on a tie, simplex): same optimum as the sequential run. */
 static void test_t170(void) {
-    cur_name = "T170 optimizer concorrente";
+    cur_name = "T170 concurrent optimizer";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     double p1 = 0, p2 = 0;
     for (int nth = 1; nth <= 2; nth++) {
@@ -11024,7 +11032,7 @@ static void test_t170(void) {
         PRIMAL_deletetask(&t);
     }
     close_enough_tol(p1, -1.0, 1e-6, "1 thread: obj -1");
-    close_enough_tol(p2, -1.0, 1e-6, "2 thread: stesso obj");
+    close_enough_tol(p2, -1.0, 1e-6, "2 threads: same obj");
     PRIMAL_deleteenv(&env);
 }
 
@@ -11033,7 +11041,7 @@ static void test_t170(void) {
  * children are x0<=2 (feasible, obj 2) and x0>=3 (infeasible). With 2 threads the
  * root decomposition gives the same optimum as the sequential run. */
 static void test_t169(void) {
-    cur_name = "T169 B&B parallelo";
+    cur_name = "T169 parallel B&B";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     double p1 = 0, p2 = 0;
     for (int nth = 1; nth <= 2; nth++) {
@@ -11055,7 +11063,7 @@ static void test_t169(void) {
         PRIMAL_deletetask(&t);
     }
     close_enough_tol(p1, 2.0, 1e-6, "1 thread: obj 2");
-    close_enough_tol(p2, 2.0, 1e-6, "2 thread: stesso obj");
+    close_enough_tol(p2, 2.0, 1e-6, "2 threads: same obj");
     PRIMAL_deleteenv(&env);
 }
 
@@ -11063,7 +11071,7 @@ static void test_t169(void) {
  * The same MIP solved with 1 and 2 threads: probing is deterministic (the fixings
  * do not depend on the order), so the same point and the same objective. */
 static void test_t168(void) {
-    cur_name = "T168 probing parallelo";
+    cur_name = "T168 parallel probing";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     double po1 = 0, po2 = 0, xa = 0, xb = 0;
     for (int nth = 1; nth <= 2; nth++) {
@@ -11087,8 +11095,8 @@ static void test_t168(void) {
         PRIMAL_deletetask(&t);
     }
     close_enough_tol(po1, 1.0, 1e-6, "1 thread: obj 1");
-    close_enough_tol(po2, 1.0, 1e-6, "2 thread: stesso obj");
-    check(xa == xb, "stesso punto con 1 e 2 thread");
+    close_enough_tol(po2, 1.0, 1e-6, "2 threads: same obj");
+    check(xa == xb, "same point with 1 and 2 threads");
     PRIMAL_deleteenv(&env);
 }
 
@@ -11104,7 +11112,7 @@ static void t167_logcb(void *h, const char *msg) {
 }
 /* T167: conic presolve drops a redundant row; turning it off keeps the answer. */
 static void test_t167(void) {
-    cur_name = "T167 presolve conico";
+    cur_name = "T167 conic presolve";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
     PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -11122,7 +11130,7 @@ static void test_t167(void) {
     unsetenv("GMB_DBG");
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(po, 1.0, 1e-6, "min x0 = 1");
-    check(t167_rr == 1, "una riga ridondante tolta dal percorso conico");
+    check(t167_rr == 1, "one redundant row removed by the conic path");
     /* IPAR_PRESOLVE=0 also turns off the conic presolve: same answer, no
      * row removed (the parameter is the only switch for the presolve). */
     check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE, 0), PRIMAL_RES_OK, "presolve off");
@@ -11132,7 +11140,7 @@ static void test_t167(void) {
     unsetenv("GMB_DBG");
     double po2 = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po2);
     close_enough_tol(po2, 1.0, 1e-6, "min x0 = 1 (presolve off)");
-    check(t167_rr <= 0, "presolve conico spento: nessuna riga tolta");
+    check(t167_rr <= 0, "conic presolve off: no row removed");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -11167,7 +11175,7 @@ static void test_t166(void) {
     close_enough_tol(po, 2.0, 1e-6, "min x0 = 2 (x0 >= 5 - x1_max)");
     double x[2] = {0, 0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     close_enough_tol(x[0], 2.0, 1e-6, "x0 = 2");
-    check(t166_bt >= 1, "il bound tightening ha limitato la variabile libera");
+    check(t166_bt >= 1, "the bound tightening has limited the free variable");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -11204,8 +11212,8 @@ static void test_t165(void) {
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(po, 1.0, 1e-6, "min x0 = 1");
     double x[2] = {0, 0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
-    close_enough_tol(x[0], 1.0, 1e-6, "x0 = 1 (fissata dal probing)");
-    check(t165_pf >= 1, "il probing ha fissato una variabile");
+    close_enough_tol(x[0], 1.0, 1e-6, "x0 = 1 (fixed by probing)");
+    check(t165_pf >= 1, "probing has fixed a variable");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -11220,7 +11228,7 @@ static void t164_logcb(void *h, const char *msg) {
 }
 /* T164: the LP presolve removes a row already implied by the variable bounds. */
 static void test_t164(void) {
-    cur_name = "T164 righe ridondanti";
+    cur_name = "T164 redundant rows";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
     PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
@@ -11239,7 +11247,7 @@ static void test_t164(void) {
     unsetenv("GMB_DBG");
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     close_enough_tol(po, 2.0, 1e-6, "min x0 = 2");
-    check(t164_rr == 1, "una riga ridondante tolta");
+    check(t164_rr == 1, "one redundant row removed");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -11276,7 +11284,7 @@ static void test_t163(void) {
     double x[2] = {0, 0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     close_enough_tol(x[0], 5.0, 1e-6, "x0 = 5");
     close_enough_tol(x[1], 3.0, 1e-6, "x1 = 3");
-    check(t163_bt >= 1, "il bound tightening e' stato esercitato");
+    check(t163_bt >= 1, "the bound tightening has been exercised");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -11318,7 +11326,7 @@ static void test_t161(void) {
     close_enough_tol(x[0], 1.0, 1e-5, "x0 = 1");
     double B[4] = {0}; PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B);
     check(B[0] > 1e-6 && B[3] > 1e-6 && B[0] * B[3] - B[1] * B[2] >= -1e-6,
-          "X pubblicata e' PSD");
+          "the published X is PSD");
     PRIMAL_deletetask(&t);
     {   /* with a barC term: min x0 + <E00,X> = x0 + X00 = 2 x0 -> 2 at x0=1 */
         PRIMALtask_t u; PRIMAL_maketask(env, 0, 0, &u);
@@ -11340,7 +11348,7 @@ static void test_t161(void) {
         PRIMAL_putbaraij(u, 2, 0, 1, &a2, &one);
         PRIMAL_putconbound(u, 2, PRIMAL_BK_FX, 1.0, 1.0);
         PRIMAL_putbarcj(u, 0, 1, &a0, &one);
-        check_rc(PRIMAL_optimize(u), PRIMAL_RES_OK, "solve SDP MIP con barC");
+        check_rc(PRIMAL_optimize(u), PRIMAL_RES_OK, "solve SDP MIP with barC");
         double po2 = 0; PRIMAL_getprimalobj(u, PRIMAL_SOL_ITR, &po2);
         close_enough_tol(po2, 2.0, 1e-5, "min x0 + X00 = 2");
         PRIMAL_deletetask(&u);
@@ -11367,21 +11375,21 @@ static void test_t160(void) {
     check(mx == 137, "INT 0..136");
     PRIMAL_getinfmax(t, PRIMAL_INF_LINT_TYPE, &mx);
     check(mx == 22, "LINT 0..21");
-    check_rc(PRIMAL_getinfmax(t, (PRIMALinftypee)7, &mx), PRIMAL_RES_ERR_ARG, "tipo ignoto");
+    check_rc(PRIMAL_getinfmax(t, (PRIMALinftypee)7, &mx), PRIMAL_RES_ERR_ARG, "unknown type");
     char nm[PRIMAL_MAX_INFNAME_LEN];
     check_rc(PRIMAL_getinfname(t, PRIMAL_INF_DOU_TYPE, PRIMAL_DINF_OPTIMIZER_TIME, nm),
              PRIMAL_RES_OK, "infname OPTIMIZER_TIME");
-    check(strcmp(nm, "MSK_DINF_OPTIMIZER_TIME") == 0, "il nome del riferimento");
+    check(strcmp(nm, "MSK_DINF_OPTIMIZER_TIME") == 0, "the reference name");
     check_rc(PRIMAL_getinfname(t, PRIMAL_INF_INT_TYPE, PRIMAL_IINF_OPT_NUMVAR, nm),
              PRIMAL_RES_OK, "infname OPT_NUMVAR");
-    check(strcmp(nm, "MSK_IINF_OPT_NUMVAR") == 0, "nome IINF");
+    check(strcmp(nm, "MSK_IINF_OPT_NUMVAR") == 0, "IINF name");
     check_rc(PRIMAL_getinfname(t, PRIMAL_INF_LINT_TYPE, PRIMAL_LIINF_RD_NUMANZ, nm),
              PRIMAL_RES_OK, "infname RD_NUMANZ");
-    check(strcmp(nm, "MSK_LIINF_RD_NUMANZ") == 0, "nome LIINF");
+    check(strcmp(nm, "MSK_LIINF_RD_NUMANZ") == 0, "LIINF name");
     check_rc(PRIMAL_getinfname(t, PRIMAL_INF_DOU_TYPE, 116, nm), PRIMAL_RES_ERR_ARG,
-             "infname fuori range");
+             "infname out of range");
     check_rc(PRIMAL_getinfname(t, PRIMAL_INF_DOU_TYPE, -1, nm), PRIMAL_RES_ERR_ARG,
-             "infname negativo");
+             "infname negative");
     /* name -> index, and the index -> name -> index round-trip */
     int idx = -1;
     check_rc(PRIMAL_getinfindex(t, PRIMAL_INF_DOU_TYPE, "MSK_DINF_SOL_ITR_PRIMAL_OBJ", &idx),
@@ -11391,12 +11399,12 @@ static void test_t160(void) {
              PRIMAL_RES_OK, "infindex solsta");
     check(idx == 135, "SOL_ITR_SOLSTA = 135");
     check_rc(PRIMAL_getinfindex(t, PRIMAL_INF_DOU_TYPE, "NOPE", &idx), PRIMAL_RES_ERR_ARG,
-             "nome ignoto");
+             "unknown name");
     /* the two by name */
     PRIMALrealt dv = -1;
     check_rc(PRIMAL_getnadouinf(t, "MSK_DINF_OPTIMIZER_TIME", &dv), PRIMAL_RES_OK, "nadouinf");
-    check(dv == 0.0, "prima di un solve il tempo e' 0");
-    check_rc(PRIMAL_getnadouinf(t, "MSK_DINF_NOPE", &dv), PRIMAL_RES_ERR_ARG, "nadouinf ignoto");
+    check(dv == 0.0, "before a solve the time is 0");
+    check_rc(PRIMAL_getnadouinf(t, "MSK_DINF_NOPE", &dv), PRIMAL_RES_ERR_ARG, "unknown nadouinf");
     /* model: x0 in [0,1], x1 >= 0, x2 free; one FX row; min x0+x1+x2 */
     PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
     PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 1.0);
@@ -11407,21 +11415,21 @@ static void test_t160(void) {
     PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
     int iv = -1;
     check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_CON, &iv), PRIMAL_RES_OK, "NUM_CON");
-    check(iv == 1, "una riga");
+    check(iv == 1, "one row");
     PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR, &iv);
-    check(iv == 3, "tre variabili");
-    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_RA, &iv); check(iv == 1, "una RA");
-    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_LO, &iv); check(iv == 1, "una LO");
-    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_FR, &iv); check(iv == 1, "una FR");
+    check(iv == 3, "three variables");
+    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_RA, &iv); check(iv == 1, "one RA");
+    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_LO, &iv); check(iv == 1, "one LO");
+    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_FR, &iv); check(iv == 1, "one FR");
     PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_UP, &iv); check(iv == 0, "zero UP");
-    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_CON_EQ, &iv); check(iv == 1, "riga FX = EQ");
-    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_CONT, &iv); check(iv == 3, "tutte continue");
-    check_rc(PRIMAL_getintinf(t, (PRIMALiinfiteme)137, &iv), PRIMAL_RES_ERR_ARG, "IINF fuori range");
+    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_CON_EQ, &iv); check(iv == 1, "row FX = EQ");
+    PRIMAL_getintinf(t, PRIMAL_IINF_ANA_PRO_NUM_VAR_CONT, &iv); check(iv == 3, "all continuous");
+    check_rc(PRIMAL_getintinf(t, (PRIMALiinfiteme)137, &iv), PRIMAL_RES_ERR_ARG, "IINF out of range");
     PRIMALint64t lv = -1;
     check_rc(PRIMAL_getlintinf(t, PRIMAL_LIINF_RD_NUMANZ, &lv), PRIMAL_RES_OK, "RD_NUMANZ");
-    check(lv == 3, "tre nonnulli in A");
-    PRIMAL_getlintinf(t, PRIMAL_LIINF_RD_NUMQNZ, &lv); check(lv == 0, "nessun Q");
-    check_rc(PRIMAL_getlintinf(t, (PRIMALliinfiteme)22, &lv), PRIMAL_RES_ERR_ARG, "LIINF fuori range");
+    check(lv == 3, "three nonzeros in A");
+    PRIMAL_getlintinf(t, PRIMAL_LIINF_RD_NUMQNZ, &lv); check(lv == 0, "no Q");
+    check_rc(PRIMAL_getlintinf(t, (PRIMALliinfiteme)22, &lv), PRIMAL_RES_ERR_ARG, "LIINF out of range");
     /* solve and the measured items */
     check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve");
     double po = -1;
@@ -11430,11 +11438,11 @@ static void test_t160(void) {
     PRIMAL_getdouinf(t, PRIMAL_DINF_INTPNT_PRIMAL_OBJ, &po);
     check(fabs(po - 2.0) < 1e-6, "INTPNT_PRIMAL_OBJ = 2");
     PRIMAL_getdouinf(t, PRIMAL_DINF_OPTIMIZER_TIME, &po);
-    check(po >= 0.0, "il tempo e' misurato");
+    check(po >= 0.0, "the time is measured");
     PRIMAL_getdouinf(t, PRIMAL_DINF_SOL_ITR_PVIOLCON, &po);
-    check(po >= 0.0 && po < 1e-6, "violazione di riga ~0");
+    check(po >= 0.0 && po < 1e-6, "row violation ~0");
     PRIMAL_getdouinf(t, PRIMAL_DINF_ANA_PRO_SCALARIZED_CONSTRAINT_MATRIX_DENSITY, &po);
-    check(fabs(po - 1.0) < 1e-9, "densita' = 3/(1*3)");
+    check(fabs(po - 1.0) < 1e-9, "density = 3/(1*3)");
     PRIMAL_getintinf(t, PRIMAL_IINF_OPTIMIZE_RESPONSE, &iv);
     check(iv == (int)PRIMAL_RES_OK, "OPTIMIZE_RESPONSE = OK");
     PRIMAL_getintinf(t, PRIMAL_IINF_SOL_ITR_SOLSTA, &iv);
@@ -11444,50 +11452,50 @@ static void test_t160(void) {
     PRIMAL_getintinf(t, PRIMAL_IINF_RD_PROTYPE, &iv);
     check(iv == (int)PRIMAL_PROBTYPE_LO, "RD_PROTYPE = LO");
     PRIMAL_getintinf(t, PRIMAL_IINF_OPT_NUMVAR, &iv); check(iv == 3, "OPT_NUMVAR");
-    check_rc(PRIMAL_getdouinf(t, (PRIMALdinfiteme)116, &po), PRIMAL_RES_ERR_ARG, "DINF fuori range");
+    check_rc(PRIMAL_getdouinf(t, (PRIMALdinfiteme)116, &po), PRIMAL_RES_ERR_ARG, "DINF out of range");
     /* an unmeasured item answers 0, not a refusal */
     PRIMAL_getdouinf(t, PRIMAL_DINF_MIO_CLIQUE_SELECTION_TIME, &po);
-    check(po == 0.0, "item non misurato = 0");
+    check(po == 0.0, "unmeasured item = 0");
     /* ---- symbolic constants (reference table) ---- */
     int nsym = -1; size_t smax = 0;
     check_rc(PRIMAL_getsymbcondim(env, &nsym, &smax), PRIMAL_RES_OK, "getsymbcondim");
-    check(nsym == 1438 && smax == 60, "1438 simboli, maxlen 60");
+    check(nsym == 1438 && smax == 60, "1438 symbols, maxlen 60");
     char sn[PRIMAL_MAX_SYMBNAME_LEN]; int sv = -1;
     check_rc(PRIMAL_getsymbcon(t, 0, (int)sizeof(sn), sn, &sv), PRIMAL_RES_OK, "getsymbcon 0");
-    check(strcmp(sn, "MSK_BI_NEVER") == 0 && sv == 0, "il primo simbolo");
+    check(strcmp(sn, "MSK_BI_NEVER") == 0 && sv == 0, "the first symbol");
     PRIMAL_getsymbcon(t, 7, (int)sizeof(sn), sn, &sv);
     check(strcmp(sn, "MSK_BK_FX") == 0 && sv == 2, "MSK_BK_FX = 2");
     check_rc(PRIMAL_getsymbcon(t, 1438, (int)sizeof(sn), sn, &sv), PRIMAL_RES_ERR_ARG,
-             "indice fuori range");
+             "index out of range");
     char vbuf[PRIMAL_MAX_SYMBNAME_LEN];
-    check(PRIMAL_symnamtovalue("MSK_BK_FX", vbuf) == 1, "symnamtovalue trovato");
-    check(strcmp(vbuf, "2") == 0, "valore come stringa decimale");
-    check(PRIMAL_symnamtovalue("MSK_NOPE", vbuf) == 0, "symnamtovalue non trovato");
+    check(PRIMAL_symnamtovalue("MSK_BK_FX", vbuf) == 1, "symnamtovalue found");
+    check(strcmp(vbuf, "2") == 0, "value as a decimal string");
+    check(PRIMAL_symnamtovalue("MSK_NOPE", vbuf) == 0, "symnamtovalue not found");
     char pn[PRIMAL_MAX_SYMBNAME_LEN];
     check_rc(PRIMAL_iparvaltosymnam(env, PRIMAL_IPAR_OPTIMIZER, 2, pn), PRIMAL_RES_OK, "iparv");
     check(strcmp(pn, "MSK_OPTIMIZER_FREE") == 0, "optimizer 2 = FREE");
     PRIMAL_iparvaltosymnam(env, PRIMAL_IPAR_PRESOLVE, 1, pn);
     check(strcmp(pn, "MSK_ON") == 0, "presolve 1 = ON");
     PRIMAL_iparvaltosymnam(env, PRIMAL_IPAR_LOG, 5, pn);
-    check(pn[0] == '\0', "un parametro numerico non ha nome simbolico");
+    check(pn[0] == '\0', "a numeric parameter has no symbolic name");
     /* ---- names as strings (no task) ---- */
     char ib[PRIMAL_MAX_INFNAME_LEN];
     check_rc(PRIMAL_dinfitemtostr(PRIMAL_DINF_OPTIMIZER_TIME, ib), PRIMAL_RES_OK, "dinfitemtostr");
-    check(strcmp(ib, "MSK_DINF_OPTIMIZER_TIME") == 0, "nome DINF");
+    check(strcmp(ib, "MSK_DINF_OPTIMIZER_TIME") == 0, "DINF name");
     check_rc(PRIMAL_iinfitemtostr(PRIMAL_IINF_OPT_NUMVAR, ib), PRIMAL_RES_OK, "iinfitemtostr");
-    check(strcmp(ib, "MSK_IINF_OPT_NUMVAR") == 0, "nome IINF");
+    check(strcmp(ib, "MSK_IINF_OPT_NUMVAR") == 0, "IINF name");
     check_rc(PRIMAL_liinfitemtostr(PRIMAL_LIINF_RD_NUMANZ, ib), PRIMAL_RES_OK, "liinfitemtostr");
-    check(strcmp(ib, "MSK_LIINF_RD_NUMANZ") == 0, "nome LIINF");
-    check_rc(PRIMAL_dinfitemtostr((PRIMALdinfiteme)116, ib), PRIMAL_RES_ERR_ARG, "DINF fuori range");
-    check_rc(PRIMAL_iinfitemtostr((PRIMALiinfiteme)137, ib), PRIMAL_RES_ERR_ARG, "IINF fuori range");
-    check_rc(PRIMAL_liinfitemtostr((PRIMALliinfiteme)22, ib), PRIMAL_RES_ERR_ARG, "LIINF fuori range");
+    check(strcmp(ib, "MSK_LIINF_RD_NUMANZ") == 0, "LIINF name");
+    check_rc(PRIMAL_dinfitemtostr((PRIMALdinfiteme)116, ib), PRIMAL_RES_ERR_ARG, "DINF out of range");
+    check_rc(PRIMAL_iinfitemtostr((PRIMALiinfiteme)137, ib), PRIMAL_RES_ERR_ARG, "IINF out of range");
+    check_rc(PRIMAL_liinfitemtostr((PRIMALliinfiteme)22, ib), PRIMAL_RES_ERR_ARG, "LIINF out of range");
     check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_BEGIN_OPTIMIZER, ib), PRIMAL_RES_OK,
              "callbackcodetostr");
-    check(strcmp(ib, "MSK_CALLBACK_BEGIN_OPTIMIZER") == 0, "nome callback");
+    check(strcmp(ib, "MSK_CALLBACK_BEGIN_OPTIMIZER") == 0, "callback name");
     check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_END_MIO, ib), PRIMAL_RES_OK, "callback END_MIO");
-    check(strcmp(ib, "MSK_CALLBACK_END_MIO") == 0, "nome END_MIO");
+    check(strcmp(ib, "MSK_CALLBACK_END_MIO") == 0, "END_MIO name");
     check_rc(PRIMAL_callbackcodetostr((PRIMALcallbackcodee)9999, ib), PRIMAL_RES_ERR_ARG,
-             "codice ignoto");
+             "unknown code");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
 }
@@ -11546,103 +11554,103 @@ static void test_t108(void) {
 
     /* A. the count-only port: two NULLs ask for nothing, so they cannot
      * be refused even with capacity 0. */
-    cur_name = "T108 A la porta del conteggio non rifiuta";
+    cur_name = "T108 A the count port does not refuse";
     int num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 0, 0, 0, &num, NULL, NULL), PRIMAL_RES_OK,
-             "symidx e val NULL = chiedere il solo numero");
-    check(num == 3, "e il numero dice TRE termini, dove la capienza sarebbe 0");
+             "symidx and val NULL = ask for the number only");
+    check(num == 3, "and the number says THREE terms, where the capacity would be 0");
     num = SENT;
-    check_rc(PRIMAL_getbarcidxj(t, 0, 0, &num, NULL, NULL), PRIMAL_RES_OK, "porta di barC");
-    check(num == 2, "e la barC ne ha due");
+    check_rc(PRIMAL_getbarcidxj(t, 0, 0, &num, NULL, NULL), PRIMAL_RES_OK, "barC port");
+    check(num == 2, "and barC has two");
 
     /* B. the refusal that writes nothing: before this round the same call
      * answered OK with num=2, i.e. a truncated list that looked like a successful
      * read. */
-    cur_name = "T108 B capienza insufficiente = rifiuto senza effetti";
+    cur_name = "T108 B insufficient capacity = refusal with no effect";
     for (int k = 0; k < 8; k++) { sym[k] = SENT; val[k] = (double)SENT; }
     num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 0, 0, 2, &num, sym, val), PRIMAL_RES_ERR_ARG,
-             "due posti per tre termini: rifiutato");
-    check(num == SENT, "*num non e' stato toccato dal rifiuto");
+             "two slots for three terms: refused");
+    check(num == SENT, "*num has not been touched by the refusal");
     int touched = 0;
     for (int k = 0; k < 8; k++) if (sym[k] != SENT || val[k] != (double)SENT) touched = 1;
-    check(!touched, "e nessun buffer e' stato toccato: il prefisso monco non esce piu'");
+    check(!touched, "and no buffer has been touched: the truncated prefix no longer comes out");
     num = SENT;
     check_rc(PRIMAL_getbarcidxj(t, 0, 1, &num, sym, val), PRIMAL_RES_ERR_ARG,
-             "lo stesso sulla barC");
-    check(num == SENT, "idem: *num intatto");
+             "the same on barC");
+    check(num == SENT, "same: *num intact");
 
     /* C. the exact capacity: three entries, in write order, with the store's
      * values (not merged: summing is the job of whoever solves). */
-    cur_name = "T108 C la capienza esatta serve tutta la lista";
+    cur_name = "T108 C the exact capacity serves the whole list";
     num = SENT;
-    check_rc(PRIMAL_getbaraidxij(t, 0, 0, 3, &num, sym, val), PRIMAL_RES_OK, "3 per 3");
-    check(num == 3, "e la lista ha tre entrate");
+    check_rc(PRIMAL_getbaraidxij(t, 0, 0, 3, &num, sym, val), PRIMAL_RES_OK, "3 for 3");
+    check(num == 3, "and the list has three entries");
     check(val[0] == 1.0 && val[1] == 2.0 && val[2] == 4.0,
-          "i tre coefficienti come scritti, duplicato compreso: il negozio li dice");
+          "the three coefficients as written, duplicate included: the store tells them");
     check(sym[0] == sym[1] && sym[0] != sym[2],
-          "e le due E00 sono lo STESSO indice di matrice: e' un duplicato, non un buco");
+          "and the two E00 are the SAME matrix index: it is a duplicate, not a hole");
     num = SENT;
-    check_rc(PRIMAL_getbarcidxj(t, 0, 2, &num, sym, val), PRIMAL_RES_OK, "2 per 2 sulla barC");
-    check(num == 2 && val[0] == 1.0 && val[1] == -1.0, "e i due coefficienti di barC escono");
+    check_rc(PRIMAL_getbarcidxj(t, 0, 2, &num, sym, val), PRIMAL_RES_OK, "2 for 2 on barC");
+    check(num == 2 && val[0] == 1.0 && val[1] == -1.0, "and the two barC coefficients come out");
 
     /* D. a pair without terms: empty verdict, not a refusal (the same
      * distinction as `T104` case D). */
-    cur_name = "T108 D la riga senza termini risponde 0 con OK";
+    cur_name = "T108 D the row without terms answers 0 with OK";
     for (int k = 0; k < 8; k++) { sym[k] = SENT; val[k] = (double)SENT; }
     num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 3, 0, 3, &num, sym, val), PRIMAL_RES_OK,
-             "zero termini stanno in zero posti");
-    check(num == 0, "e rispondono 0");
+             "zero terms fit in zero slots");
+    check(num == 0, "and they answer 0");
     touched = 0;
     for (int k = 0; k < 8; k++) if (sym[k] != SENT || val[k] != (double)SENT) touched = 1;
-    check(!touched, "senza scrivere niente");
+    check(!touched, "without writing anything");
 
     /* E. malformed arguments: negative capacity and out-of-domain index
      * refuse, and *num stays the caller's. */
-    cur_name = "T108 E capienza negativa e indice fuori dominio";
+    cur_name = "T108 E negative capacity and out-of-domain index";
     num = SENT;
     check_rc(PRIMAL_getbaraidxij(t, 0, 0, -1, &num, sym, val), PRIMAL_RES_ERR_ARG,
-             "maxnum negativo non e' una capienza");
-    check(num == SENT, "*num intatto");
+             "negative maxnum is not a capacity");
+    check(num == SENT, "*num intact");
     check_rc(PRIMAL_getbaraidxij(t, 9, 0, 3, &num, sym, val), PRIMAL_RES_ERR_ARG,
-             "riga fuori dominio");
+             "row out of domain");
     check(num == SENT, "idem");
     check_rc(PRIMAL_getbarcidxj(t, 5, 3, &num, sym, val), PRIMAL_RES_ERR_ARG,
-             "barra fuori dominio");
-    check(num == SENT, "e nemmeno qui");
+             "bar out of domain");
+    check(num == SENT, "and not even here");
 
     /* F. the two enumerations of the same table cannot diverge: the integral
      * read counts 5 barA terms and 2 barC terms, and the sum of the per-pair
      * counts gives the SAME number. That is how a truncation is seen from outside. */
-    cur_name = "T108 F il conteggio integrale e la somma delle coppie";
+    cur_name = "T108 F the integral count and the sum over pairs";
     int nbarA = -1, nbarC = -1;
-    check_rc(PRIMAL_getnumbaraterm(t, &nbarA), PRIMAL_RES_OK, "termini barA");
-    check_rc(PRIMAL_getnumbarcterm(t, &nbarC), PRIMAL_RES_OK, "termini barC");
-    check(nbarA == 5 && nbarC == 2, "misura: 3 + 1 + 1 sulla barra, 2 sulla barC");
+    check_rc(PRIMAL_getnumbaraterm(t, &nbarA), PRIMAL_RES_OK, "barA terms");
+    check_rc(PRIMAL_getnumbarcterm(t, &nbarC), PRIMAL_RES_OK, "barC terms");
+    check(nbarA == 5 && nbarC == 2, "measurement: 3 + 1 + 1 on the bar, 2 on barC");
     int sum = 0;
     for (int i = 0; i < 4; i++) {
         int want = SENT;
-        check_rc(PRIMAL_getbaraidxij(t, i, 0, 0, &want, NULL, NULL), PRIMAL_RES_OK, "conteggio");
-        check(want >= 0, "e non e' un rifiuto");
+        check_rc(PRIMAL_getbaraidxij(t, i, 0, 0, &want, NULL, NULL), PRIMAL_RES_OK, "count");
+        check(want >= 0, "and it is not a refusal");
         sum += want;
     }
-    check(sum == nbarA, "somma dei conteggi per coppia == il totale del negozio");
+    check(sum == nbarA, "sum of the per-pair counts == the store total");
     int w2 = SENT;
-    check_rc(PRIMAL_getbarcidxj(t, 0, 0, &w2, NULL, NULL), PRIMAL_RES_OK, "conteggio barC");
-    check(w2 == nbarC, "e anche qui le due enumerazioni concordano");
+    check_rc(PRIMAL_getbarcidxj(t, 0, 0, &w2, NULL, NULL), PRIMAL_RES_OK, "barC count");
+    check(w2 == nbarC, "and here too the two enumerations agree");
 
     /* G. and they agree term by term: every entry of the per-pair list is
      * one of the entries of the whole table, with the same (con,bar,sym,coef). */
-    cur_name = "T108 G le due enumerazioni coincidono voce per voce";
+    cur_name = "T108 G the two enumerations coincide term by term";
     int matched = 0;
     for (int i = 0; i < 4; i++) {
         int want = 0;
         PRIMAL_getbaraidxij(t, i, 0, 0, &want, NULL, NULL);
         if (want > 8) want = 8;
         check_rc(PRIMAL_getbaraidxij(t, i, 0, want, &num, sym, val), PRIMAL_RES_OK,
-                 "capienza presa dal proprio conteggio");
-        check(num == want, "e la lista serve esattamente tanti termini");
+                 "capacity taken from its own count");
+        check(num == want, "and the list serves exactly that many terms");
         for (int e = 0; e < num; e++) {
             int found = 0;
             for (int k = 0; k < nbarA; k++) {
@@ -11651,11 +11659,11 @@ static void test_t108(void) {
                 if (c2 == i && j2 == 0 && s2 == sym[e] && v2 == val[e]) found = 1;
             }
             if (found) matched++;
-            else { n_fail++; printf("  FAIL [%s] termine (%d,0) sym=%d coef=%g non nella tabella\n",
+            else { n_fail++; printf("  FAIL [%s] term (%d,0) sym=%d coef=%g not in the table\n",
                                     cur_name, i, sym[e], val[e]); }
         }
     }
-    check(matched == nbarA, "e tutti i termini della tabella sono stati nominati una volta");
+    check(matched == nbarA, "and all the terms of the table have been named once");
 
     /* H. positive control: the model on those terms answers 2*sqrt(15), and it
      * answers AFTER four refusals. Derived by hand: row 0 is
@@ -11665,7 +11673,7 @@ static void test_t108(void) {
      * If the solving route read a single term per pair it would answer
      * 2 (x0 = X00, x1 = X11, X01 = 1 => X00*X11 >= 1, AM-GM): the three coefficients
      * ADD UP, and this is the half that makes case B a guard and not a renunciation. */
-    cur_name = "T108 H il modello risponde ancora, e risponde della somma";
+    cur_name = "T108 H the model still answers, and it answers about the sum";
     for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putcj(t, 0, 1.0);
     PRIMAL_putcj(t, 1, 1.0);
@@ -11674,19 +11682,19 @@ static void test_t108(void) {
     PRIMAL_putarow(t, 1, 1, (int[]){1}, (double[]){-1.0});
     PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 0.0, 0.0);
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolto dopo i rifiuti");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solved after the refusals");
     double po = 0.0, dbo = 0.0, xx[2] = {-1, -1};
     check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
     check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dbo), PRIMAL_RES_OK, "dobj");
-    close_enough_tol(po, 2.0 * sqrt(15.0), 1e-4, "2*sqrt(15): i tre termini sommano");
-    close_enough_tol(dbo, 2.0 * sqrt(15.0), 1e-4, "e il duale converge allo stesso valore");
+    close_enough_tol(po, 2.0 * sqrt(15.0), 1e-4, "2*sqrt(15): the three terms add up");
+    close_enough_tol(dbo, 2.0 * sqrt(15.0), 1e-4, "and the dual converges to the same value");
     check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, xx), PRIMAL_RES_OK, "getxx");
     close_enough_tol(xx[0], 3.0 * sqrt(5.0 / 3.0) + 4.0 * sqrt(3.0 / 5.0), 1e-3,
-                     "x0 = 3*X00 + 4*X11 all'ottimo");
+                     "x0 = 3*X00 + 4*X11 at the optimum");
     double pinf = 1.0;
     check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
              "getprimalinfeas");
-    check(pinf <= 1e-6, "e la misura di ammissibilita' resta dentro la tolleranza");
+    check(pinf <= 1e-6, "and the feasibility measure stays within tolerance");
     pend(&p);
 }
 
@@ -11717,58 +11725,58 @@ static void test_t107(void) {
     /* A. the contradiction, measured where it is born: the number and the answer
      * that number should describe. */
     {
-        cur_name = "T107 A getaij risponde del coefficiente risolto";
+        cur_name = "T107 A getaij answers about the solved coefficient";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 1);
         check_rc(PRIMAL_putarow(t, 0, 2, (int[]){0, 0}, (double[]){1.0, 2.0}),
-                 PRIMAL_RES_OK, "la stessa colonna due volte in una riga");
+                 PRIMAL_RES_OK, "the same column twice in a row");
         int na = -1;
         PRIMAL_getnumanz(t, &na);
-        check(na == 2, "il negozio ha DUE entrate: numanzs le conta");
+        check(na == 2, "the store has TWO entries: numanzs counts them");
         int sub[8]; double val[8]; int nret = -1;
-        check_rc(PRIMAL_getarow(t, 0, sub, val, 8, &nret), PRIMAL_RES_OK, "lettura della riga");
+        check_rc(PRIMAL_getarow(t, 0, sub, val, 8, &nret), PRIMAL_RES_OK, "row read");
         check(nret == 2 && val[0] == 1.0 && val[1] == 2.0,
-              "e la lettura del negozio le restituisce entrambe, per ordine");
+              "and the store read returns them both, in order");
         double a = -1;
-        check_rc(PRIMAL_getaij(t, 0, 0, &a), PRIMAL_RES_OK, "lettura scalare");
-        close_enough(a, 3.0, "il numero scalare e' la SOMMA, non il primo");
+        check_rc(PRIMAL_getaij(t, 0, 0, &a), PRIMAL_RES_OK, "scalar read");
+        close_enough(a, 3.0, "the scalar number is the SUM, not the first");
         /* The test self-reports as discriminating: 3 is neither of the two
          * entries, so NEITHER a "first" NOR a "last" read can
          * pass it. It is the equivalent, within a single build, of the negative
          * control by revert — which this session's permission level
          * did not allow re-measuring. */
         check(a != val[0] && a != val[1],
-              "e la cifra letta non e' nessuna delle entrate singole: e' il loro totale");
+              "and the number read is none of the single entries: it is their total");
         PRIMAL_putcj(t, 0, -1.0);
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 3.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solved");
         double x = -1, po = 0;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(x, 1.0, "il modello risolto e' 3x <= 3, non 1x <= 3");
-        close_enough(po, -1.0, "e l'obiettivo e' -1 (a x=3 sarebbe -3)");
+        close_enough(x, 1.0, "the solved model is 3x <= 3, not 1x <= 3");
+        close_enough(po, -1.0, "and the objective is -1 (at x=3 it would be -3)");
         pend(&p);
     }
     /* B. the same write enters through the other port: putacol. The store is
      * columnwise, so the duplicate here is native, and the verdict cannot
      * depend on which of the two ports wrote it. */
     {
-        cur_name = "T107 B identico da putacol";
+        cur_name = "T107 B identical from putacol";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 1);
         check_rc(PRIMAL_putacol(t, 0, 2, (int[]){0, 0}, (double[]){1.0, 2.0}),
-                 PRIMAL_RES_OK, "la stessa riga due volte in una colonna");
+                 PRIMAL_RES_OK, "the same row twice in a column");
         int idx[8]; double val[8]; int nret = -1;
-        check_rc(PRIMAL_getacol(t, 0, idx, val, 8, &nret), PRIMAL_RES_OK, "lettura della colonna");
-        check(nret == 2 && val[0] == 1.0 && val[1] == 2.0, "il negozio esce per come e' scritto");
+        check_rc(PRIMAL_getacol(t, 0, idx, val, 8, &nret), PRIMAL_RES_OK, "column read");
+        check(nret == 2 && val[0] == 1.0 && val[1] == 2.0, "the store comes out as it is written");
         int na = -1; PRIMAL_getnumanz(t, &na);
-        check(na == 2, "e viene contato per due");
+        check(na == 2, "and it is counted as two");
         double a = -1;
         PRIMAL_getaij(t, 0, 0, &a);
-        close_enough(a, 3.0, "la lettura scalare dice 3 da entrambe le porte");
+        close_enough(a, 3.0, "the scalar read says 3 from both ports");
         pend(&p);
     }
     /* C. the point where the TWO contracts really diverge: two nonzero
@@ -11777,29 +11785,29 @@ static void test_t107(void) {
      * say whether (i,j) was written and cancelled or never written: the store
      * says it. */
     {
-        cur_name = "T107 C due entrate che si annullano";
+        cur_name = "T107 C two entries that cancel";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 0}, (double[]){2.0, -2.0});
         double a = -1;
         PRIMAL_getaij(t, 0, 0, &a);
-        check(a == 0.0, "il coefficiente dell'operatore e' 0");
+        check(a == 0.0, "the operator coefficient is 0");
         int sub[8]; double val[8]; int nret = -1;
         PRIMAL_getarow(t, 0, sub, val, 8, &nret);
         check(nret == 2 && val[0] == 2.0 && val[1] == -2.0,
-              "il negozio ha due ENTRATE, e le dice: non e' un buco");
+              "the store has two ENTRIES, and it says so: it is not a hole");
         int na = -1; PRIMAL_getnumanz(t, &na);
-        check(na == 2, "contate due");
+        check(na == 2, "counted two");
         double b = -1;
         PRIMAL_getaij(t, 0, 1, &b);
-        check(b == 0.0, "e un (i,j) mai scritto dice 0 altrettanto: distinguere e' compito del negozio");
+        check(b == 0.0, "and an (i,j) never written says 0 just the same: telling them apart is the store's job");
         /* three entries of mixed signs: the sum is neither the first nor the last */
         PRIMAL_putarow(t, 0, 3, (int[]){1, 1, 1}, (double[]){1.0, -2.0, 4.0});
         PRIMAL_getaij(t, 0, 1, &b);
-        close_enough(b, 3.0, "1 - 2 + 4 = 3, non 1 (primo) e non 4 (ultimo)");
+        close_enough(b, 3.0, "1 - 2 + 4 = 3, not 1 (first) and not 4 (last)");
         check(b != 1.0 && b != -2.0 && b != 4.0,
-              "e 3 non e' nessuna delle tre entrate: la lettura non puo' essere una di esse");
+              "and 3 is none of the three entries: the read cannot be one of them");
         pend(&p);
     }
     /* D. parity with the twins: the three scalar readings of the three stores answer
@@ -11807,33 +11815,33 @@ static void test_t107(void) {
      * this round `getaij` was the only exception, and no check crossed the
      * three surfaces in the same state. */
     {
-        cur_name = "T107 D i tre getter scalari rispondono come uno solo";
+        cur_name = "T107 D the three scalar getters answer as one";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
         check_rc(PRIMAL_putqobj(t, 3, (int[]){0, 0, 1}, (int[]){0, 0, 1},
                                 (double[]){1.0, 2.0, 5.0}), PRIMAL_RES_OK,
-                 "Q scritta con (0,0) due volte");
+                 "Q written with (0,0) twice");
         int qnz = -1; PRIMAL_getnumqobjnz(t, &qnz);
-        check(qnz == 3, "il negozio di triplette conta TRE scritture");
+        check(qnz == 3, "the triplet store counts THREE writes");
         int qi[8], qj[8]; double qv[8]; int qret = -1;
-        check_rc(PRIMAL_getqobj(t, qi, qj, qv, 8, &qret), PRIMAL_RES_OK, "lettura della tabella Q");
+        check_rc(PRIMAL_getqobj(t, qi, qj, qv, 8, &qret), PRIMAL_RES_OK, "read of the Q table");
         check(qret == 3 && qv[0] == 1.0 && qv[1] == 2.0,
-              "e la tabella intera le restituisce entrambe: risponde del negozio");
+              "and the whole table returns them both: it answers about the store");
         double q00 = -1;
         PRIMAL_getqobjij(t, 0, 0, &q00);
-        close_enough(q00, 3.0, "il scalare di Q risponde della SOMMA (gia' cosi' prima)");
+        close_enough(q00, 3.0, "the scalar of Q answers about the SUM (already so before)");
         check_rc(PRIMAL_putqconk(t, 1, 2, (int[]){0, 0}, (int[]){0, 0},
                                  (double[]){1.0, 2.0}), PRIMAL_RES_OK,
-                 "riga quadratica con (0,0) due volte");
+                 "quadratic row with (0,0) twice");
         double c00 = -1;
         PRIMAL_getqconkij(t, 1, 0, 0, &c00);
-        close_enough(c00, 3.0, "il scalare di una riga quadratica risponde della somma");
+        close_enough(c00, 3.0, "the scalar of a quadratic row answers about the sum");
         double a00 = -1;
         PRIMAL_putarow(t, 0, 2, (int[]){0, 0}, (double[]){1.0, 2.0});
         PRIMAL_getaij(t, 0, 0, &a00);
-        close_enough(a00, 3.0, "e A non puo' essere l'unica delle tre a rispondere del negozio");
-        check(a00 == q00 && q00 == c00, "tre superfici, una cifra: la divergenza ora e' impossibile");
+        close_enough(a00, 3.0, "and A cannot be the only one of the three to answer about the store");
+        check(a00 == q00 && q00 == c00, "three surfaces, one number: the divergence is now impossible");
         pend(&p);
     }
     /* E. the invariant that BINDS the two contracts, verified on EVERY (i,j) of a
@@ -11841,7 +11849,7 @@ static void test_t107(void) {
      * of the entries that the two integral reads return. Not a frozen
      * number: if the store changes, this moves with it. */
     {
-        cur_name = "T107 E getaij = somma delle entrate di getarow e di getacol";
+        cur_name = "T107 E getaij = sum of the entries of getarow and of getacol";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 4); PRIMAL_appendcons(t, 3);
@@ -11850,21 +11858,21 @@ static void test_t107(void) {
         PRIMAL_putarow(t, 2, 2, (int[]){3, 3}, (double[]){7.0, -7.0});
         for (int i = 0; i < 3; i++) {
             int sub[16]; double val[16]; int nret = -1;
-            check_rc(PRIMAL_getarow(t, i, sub, val, 16, &nret), PRIMAL_RES_OK, "riga");
+            check_rc(PRIMAL_getarow(t, i, sub, val, 16, &nret), PRIMAL_RES_OK, "row");
             for (int j = 0; j < 4; j++) {
                 double from_row = 0.0, aij = -1;
                 for (int k = 0; k < nret; k++) if (sub[k] == j) from_row += val[k];
-                check_rc(PRIMAL_getaij(t, i, j, &aij), PRIMAL_RES_OK, "scalare");
+                check_rc(PRIMAL_getaij(t, i, j, &aij), PRIMAL_RES_OK, "scalar");
                 if (aij != from_row) {
                     n_fail++;
-                    printf("  FAIL [%s] (%d,%d): scalare %.10g vs fila %.10g\n",
+                    printf("  FAIL [%s] (%d,%d): scalar %.10g vs row %.10g\n",
                            cur_name, i, j, aij, from_row);
                 } else n_pass++;
                 int idx[16]; double cval[16]; int ncret = -1;
-                check_rc(PRIMAL_getacol(t, j, idx, cval, 16, &ncret), PRIMAL_RES_OK, "colonna");
+                check_rc(PRIMAL_getacol(t, j, idx, cval, 16, &ncret), PRIMAL_RES_OK, "column");
                 double from_col = 0.0;
                 for (int k = 0; k < ncret; k++) if (idx[k] == i) from_col += cval[k];
-                check(aij == from_col, "la stessa cifra dalla lettura per colonna");
+                check(aij == from_col, "the same number from the column read");
             }
         }
         int na = -1; PRIMAL_getnumanz(t, &na);
@@ -11874,26 +11882,26 @@ static void test_t107(void) {
             PRIMAL_getacol(t, j, idx, cval, 16, &ncret);
             tot += ncret;
         }
-        check(na == tot, "numanzs e' la somma delle nz delle colonne, duplicati compresi");
+        check(na == tot, "numanzs is the sum of the nz of the columns, duplicates included");
         /* 8, not 9: `putarow(2,...)` has ROW-REPLACEMENT semantics and
          * deletes, from every column, the entry (2,1) that `putacol(1,...)` had
          * just written. The count is therefore of the store AFTER the
          * replacement, and this is the line that measures it. */
-        check(na == 8, "4 + 3 + 2 scritture, meno la (2,1) sostituita dalla riga 2: 8");
+        check(na == 8, "4 + 3 + 2 writes, minus the (2,1) replaced by row 2: 8");
         double a21 = -1;
         PRIMAL_getaij(t, 2, 1, &a21);
-        check(a21 == 0.0, "e l'entrata (2,1) cancellata non lascia un valore");
+        check(a21 == 0.0, "and the cancelled entry (2,1) leaves no value");
         int idx[16]; double cval[16]; int ncret = -1;
         PRIMAL_getacol(t, 1, idx, cval, 16, &ncret);
         int still = 0;
         for (int k = 0; k < ncret; k++) if (idx[k] == 2) still = 1;
-        check(!still, "e non lascia nemmeno l'entrata nel negozio");
+        check(!still, "and it does not leave the entry in the store either");
         pend(&p);
     }
     /* F. the sense is irrelevant: the sum is an addition, not a sign
      * convention. Same model as A in MAXIMIZE. */
     {
-        cur_name = "T107 F identico in maximize";
+        cur_name = "T107 F identical in maximize";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 1); PRIMAL_appendcons(t, 1);
@@ -11902,14 +11910,14 @@ static void test_t107(void) {
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
         PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 3.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolto in max");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solved in max");
         double x = -1, po = 0, a = -1;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x);
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         PRIMAL_getaij(t, 0, 0, &a);
-        close_enough(a, 3.0, "il numero scalare non dipende dal senso");
-        close_enough(x, 1.0, "e il modello risolto e' ancora 3x <= 3");
-        close_enough(po, 1.0, "max x con x <= 1 vale 1");
+        close_enough(a, 3.0, "the scalar number does not depend on the sense");
+        close_enough(x, 1.0, "and the solved model is still 3x <= 3");
+        close_enough(po, 1.0, "max x with x <= 1 is 1");
         pend(&p);
     }
     /* G. the public measure and the scalar number say the SAME row: it was the
@@ -11917,7 +11925,7 @@ static void test_t107(void) {
      * this suite builds `a'x` with this getter (kkt_check) — before, it
      * verified a model that was not the one solved. */
     {
-        cur_name = "T107 G la misura di ammissibilita' concorda col scalare";
+        cur_name = "T107 G the feasibility measure agrees with the scalar";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
@@ -11928,17 +11936,17 @@ static void test_t107(void) {
         PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, INFINITY);
         PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 6.0);
         PRIMAL_putconbound(t, 1, PRIMAL_BK_UP, -INFINITY, 2.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solved");
         double xx[2] = {-1, -1}, pinf = -1;
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, xx);
         PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);
-        check(pinf <= 1e-6, "il punto pubblicato misura nel modello");
+        check(pinf <= 1e-6, "the published point measures in the model");
         double a00 = -1, a01 = -1;
         PRIMAL_getaij(t, 0, 0, &a00); PRIMAL_getaij(t, 0, 1, &a01);
-        close_enough(a00, 3.0, "la riga 0 della colonna 0 vale 3 letta dal numero scalare");
-        close_enough(a00 * xx[0] + a01 * xx[1], 6.0, "e a'x con quei numeri tocca il bordo");
+        close_enough(a00, 3.0, "the row 0 of column 0 is 3 read from the scalar number");
+        close_enough(a00 * xx[0] + a01 * xx[1], 6.0, "and a'x with those numbers touches the bound");
         KKT k = kkt_check(t, 1.0);
-        check(k.feas_p < 1e-6, "e il KKT checker, che usa questo getter, non vede una riga violata");
+        check(k.feas_p < 1e-6, "and the KKT checker, which uses this getter, sees no violated row");
         pend(&p);
     }
 }
@@ -11977,24 +11985,24 @@ static void test_t107(void) {
 static void test_t106(void) {
     /* A. the two reads agree, element by element. */
     {
-        cur_name = "T106 A la tabella intera e' getconenameidx scritto in fila";
+        cur_name = "T106 A the whole table is getconenameidx written out in order";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 6);
         int m0[3] = {0,1,2}, m1[3] = {3,4,5}, m2[2] = {0,3};
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m0), PRIMAL_RES_OK, "cono 0");
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0.0, 3, m1), PRIMAL_RES_OK, "cono 1");
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m2), PRIMAL_RES_OK, "cono 2");
-        check_rc(PRIMAL_putconename(t, 0, "K0"), PRIMAL_RES_OK, "nome al cono 0");
-        check_rc(PRIMAL_putconename(t, 2, "K2"), PRIMAL_RES_OK, "nome al cono 2");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m0), PRIMAL_RES_OK, "cone 0");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0.0, 3, m1), PRIMAL_RES_OK, "cone 1");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m2), PRIMAL_RES_OK, "cone 2");
+        check_rc(PRIMAL_putconename(t, 0, "K0"), PRIMAL_RES_OK, "name for cone 0");
+        check_rc(PRIMAL_putconename(t, 2, "K2"), PRIMAL_RES_OK, "name for cone 2");
         char marker;
         const char *poison = &marker;         /* real address, never read */
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
-        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "la quarta tabella si legge");
+        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "the fourth table is read");
         int nk = -1;
         PRIMAL_getnumcone(t, &nk);
-        check(nk == 3, "tre coni nel conteggio");
+        check(nk == 3, "three cones in the count");
         int agree = 1, same_pointer = 1;
         for (int k = 0; k < nk; k++) {
             const char *one = NULL;
@@ -12002,148 +12010,148 @@ static void test_t106(void) {
             if (!all[k] || strcmp(all[k], one) != 0) agree = 0;
             if (one && one[0] != '\0' && all[k] != one) same_pointer = 0;
         }
-        check(agree, "ogni elemento dice cio' che dice il getter per indice");
-        check(same_pointer, "un nome prestato non e' copiato: e' la stessa stringa");
-        check(all[0] && strcmp(all[0], "K0") == 0, "K0 e' al cono 0");
-        check(all[2] && strcmp(all[2], "K2") == 0, "K2 e' al cono 2");
-        check(all[1] && all[1][0] == '\0', "lo slot senza nome e' vuoto, non (null)");
+        check(agree, "each element says what the per-index getter says");
+        check(same_pointer, "a borrowed name is not copied: it is the same string");
+        check(all[0] && strcmp(all[0], "K0") == 0, "K0 is at cone 0");
+        check(all[2] && strcmp(all[2], "K2") == 0, "K2 is at cone 2");
+        check(all[1] && all[1][0] == '\0', "the slot without a name is empty, not (null)");
         check(all[3] == poison && all[4] == poison && all[5] == poison && all[6] == poison
-              && all[7] == poison, "si scrivono numcone elementi, non uno di piu'");
+              && all[7] == poison, "it writes numcone elements, not one more");
         pend(&p);
     }
     /* B. appendcone grows the table at the tail, beyond the capacity, without
      * moving the strings taken before. */
     {
-        cur_name = "T106 B la tabella dei coni cresce in coda con appendcone";
+        cur_name = "T106 B the cone table grows at the tail with appendcone";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
         int m[3] = {0,1,2};
         for (int k = 0; k < 4; k++)       /* fills the initial capacity (4) */
-            check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m), PRIMAL_RES_OK, "cono");
-        check_rc(PRIMAL_putconename(t, 0, "K0"), PRIMAL_RES_OK, "il nome del primo");
+            check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m), PRIMAL_RES_OK, "cone");
+        check_rc(PRIMAL_putconename(t, 0, "K0"), PRIMAL_RES_OK, "the first one's name");
         const char *first = NULL;
-        check_rc(PRIMAL_getconenameidx(t, 0, &first), PRIMAL_RES_OK, "lettura per indice");
+        check_rc(PRIMAL_getconenameidx(t, 0, &first), PRIMAL_RES_OK, "per-index read");
         check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m), PRIMAL_RES_OK,
-                 "il quinto cono, che forza la capacita' a raddoppiare");
+                 "the fifth cone, which forces the capacity to double");
         check(first && strcmp(first, "K0") == 0,
-              "la stringa presa prima della crescita legge ancora il suo nome");
+              "the string taken before the growth still reads its name");
         int nk = -1;
         PRIMAL_getnumcone(t, &nk);
-        check(nk == 5, "e il conteggio e' cresciuto");
+        check(nk == 5, "and the count has grown");
         char marker;
         const char *poison = &marker;
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
-        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "rilettura a cinque");
-        check(all[0] == first, "la tabella si muove, la stringa no");
+        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "re-read at five");
+        check(all[0] == first, "the table moves, the string does not");
         check(all[1] && all[1][0] == '\0' && all[4] && all[4][0] == '\0',
-              "gli slot appena aggiunti escono senza nome, non con un nome vecchio");
+              "the just-added slots come out without a name, not with an old name");
         check(all[5] == poison && all[6] == poison && all[7] == poison,
-              "e la scrittura si ferma a numcone");
+              "and the write stops at numcone");
         pend(&p);
     }
     /* C. the cone namespace is separate, and the confusable pair
      * getconname/getconename is closed there, not in a comment. */
     {
-        cur_name = "T106 C la stessa stringa nomina quattro cose diverse";
+        cur_name = "T106 C the same string names four different things";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
         PRIMAL_appendcons(t, 1);
         int d2 = 2;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "una barra");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "a bar");
         int m[3] = {0,1};
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m), PRIMAL_RES_OK, "un cono");
-        check_rc(PRIMAL_putvarname(t, 0, "stessa"), PRIMAL_RES_OK, "nome alla variabile");
-        check_rc(PRIMAL_putconname(t, 0, "stessa"), PRIMAL_RES_OK, "nome al vincolo");
-        check_rc(PRIMAL_putbarname(t, 0, "stessa"), PRIMAL_RES_OK, "nome alla barra");
-        check_rc(PRIMAL_putconename(t, 0, "stessa"), PRIMAL_RES_OK, "nome al cono");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m), PRIMAL_RES_OK, "one cone");
+        check_rc(PRIMAL_putvarname(t, 0, "same"), PRIMAL_RES_OK, "name for the variable");
+        check_rc(PRIMAL_putconname(t, 0, "same"), PRIMAL_RES_OK, "name for the constraint");
+        check_rc(PRIMAL_putbarname(t, 0, "same"), PRIMAL_RES_OK, "name for the bar");
+        check_rc(PRIMAL_putconename(t, 0, "same"), PRIMAL_RES_OK, "name for the cone");
         int jj = -1, ii = -1, bb = -1, kk = -1;
-        check_rc(PRIMAL_getvarname(t, "stessa", &jj), PRIMAL_RES_OK, "cerca come variabile");
-        check_rc(PRIMAL_getconname(t, "stessa", &ii), PRIMAL_RES_OK, "cerca come vincolo");
-        check_rc(PRIMAL_getbarname(t, "stessa", &bb), PRIMAL_RES_OK, "cerca come barra");
-        check_rc(PRIMAL_getconename(t, "stessa", &kk), PRIMAL_RES_OK, "cerca come cono");
+        check_rc(PRIMAL_getvarname(t, "same", &jj), PRIMAL_RES_OK, "look up as a variable");
+        check_rc(PRIMAL_getconname(t, "same", &ii), PRIMAL_RES_OK, "look up as a constraint");
+        check_rc(PRIMAL_getbarname(t, "same", &bb), PRIMAL_RES_OK, "look up as a bar");
+        check_rc(PRIMAL_getconename(t, "same", &kk), PRIMAL_RES_OK, "look up as a cone");
         check(jj == 0 && ii == 0 && bb == 0 && kk == 0,
-              "quattro tabelle, quattro risposte: nessuna ha visto un duplicato");
+              "four tables, four answers: none saw a duplicate");
         int kd = -1;
-        check_rc(PRIMAL_getidxcone(t, "stessa", &kd), PRIMAL_RES_OK, "la forma del riferimento");
-        check(kd == kk, "e risponde lo stesso indice: e' una delega, non una seconda regola");
+        check_rc(PRIMAL_getidxcone(t, "same", &kd), PRIMAL_RES_OK, "the form of the reference");
+        check(kd == kk, "and it answers the same index: it is a delegate, not a second rule");
         int m2[3] = {1,0};
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m2), PRIMAL_RES_OK, "un secondo cono");
-        check_rc(PRIMAL_putconename(t, 1, "stessa"), PRIMAL_RES_ERR_ARG,
-                 "la stessa stringa su DUE coni e' rifiutata: l'univocita' vale dentro la tabella");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m2), PRIMAL_RES_OK, "a second cone");
+        check_rc(PRIMAL_putconename(t, 1, "same"), PRIMAL_RES_ERR_ARG,
+                 "the same string on TWO cones is refused: uniqueness holds inside the table");
         const char *cn = NULL;
-        check_rc(PRIMAL_getconnameidx(t, 0, &cn), PRIMAL_RES_OK, "il vincolo sopravvive al rifiuto");
-        check(cn && strcmp(cn, "stessa") == 0,
-              "e sopravvive perche' le due tabelle non si toccano: questo e' il discriminante");
+        check_rc(PRIMAL_getconnameidx(t, 0, &cn), PRIMAL_RES_OK, "the constraint survives the refusal");
+        check(cn && strcmp(cn, "same") == 0,
+              "and it survives because the two tables do not touch: this is the discriminant");
         const char *c0 = NULL;
-        check_rc(PRIMAL_getconenameidx(t, 0, &c0), PRIMAL_RES_OK, "e anche il primo cono");
-        check(c0 && strcmp(c0, "stessa") == 0, "il nome del cono 0 non e' stato mosso");
+        check_rc(PRIMAL_getconenameidx(t, 0, &c0), PRIMAL_RES_OK, "and the first cone too");
+        check(c0 && strcmp(c0, "same") == 0, "the name of cone 0 has not been moved");
         const char *ck1 = NULL;
         check(PRIMAL_getconenameidx(t, 1, &ck1) == PRIMAL_RES_OK && ck1 && ck1[0] == '\0',
-              "il cono rifiutato resta senza nome");
+              "the refused cone stays without a name");
         pend(&p);
     }
     /* D. "" removes the name from a cone; a name looked up and not found does not move
      * the index; the freed slot is reusable. */
     {
-        cur_name = "T106 D togliere il nome a un cono e' riusare lo slot";
+        cur_name = "T106 D removing the name from a cone is reusing the slot";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
         int m[3] = {0,1,2};
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m), PRIMAL_RES_OK, "un cono");
-        check_rc(PRIMAL_putconename(t, 0, "K"), PRIMAL_RES_OK, "il nome");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, m), PRIMAL_RES_OK, "one cone");
+        check_rc(PRIMAL_putconename(t, 0, "K"), PRIMAL_RES_OK, "the name");
         int k = -1;
-        check_rc(PRIMAL_getconename(t, "K", &k), PRIMAL_RES_OK, "e si trova");
-        check(k == 0, "all'indice 0");
-        check_rc(PRIMAL_putconename(t, 0, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
+        check_rc(PRIMAL_getconename(t, "K", &k), PRIMAL_RES_OK, "and it is found");
+        check(k == 0, "at index 0");
+        check_rc(PRIMAL_putconename(t, 0, ""), PRIMAL_RES_OK, "\"\" removes the name");
         const char *n = NULL;
-        check_rc(PRIMAL_getconenameidx(t, 0, &n), PRIMAL_RES_OK, "e la lettura risponde");
-        check(n && n[0] == '\0', "la stringa VUOTA, non (null)");
+        check_rc(PRIMAL_getconenameidx(t, 0, &n), PRIMAL_RES_OK, "and the read answers");
+        check(n && n[0] == '\0', "the EMPTY string, not (null)");
         int keep = 4242;
         check(PRIMAL_getconename(t, "K", &keep) == PRIMAL_RES_ERR_ARG && keep == 4242,
-              "un nome che non c'e' piu' rifiuta e non tocca l'indice");
+              "a name that is no longer there refuses and does not touch the index");
         check(PRIMAL_getconename(t, "", &keep) == PRIMAL_RES_ERR_ARG && keep == 4242,
-              "e la stringa vuota non e' mai un nome trovato");
-        check_rc(PRIMAL_putconename(t, 0, "nuovo"), PRIMAL_RES_OK, "lo slot liberato si riusa");
-        check_rc(PRIMAL_getconename(t, "nuovo", &keep), PRIMAL_RES_OK, "e il nuovo nome si trova");
-        check(keep == 0, "allo stesso indice");
+              "and the empty string is never a found name");
+        check_rc(PRIMAL_putconename(t, 0, "new"), PRIMAL_RES_OK, "the freed slot is reused");
+        check_rc(PRIMAL_getconename(t, "new", &keep), PRIMAL_RES_OK, "and the new name is found");
+        check(keep == 0, "at the same index");
         pend(&p);
     }
     /* E. duplicate refused, previous name alive, ONE single occurrence in the
      * integral read. */
     {
-        cur_name = "T106 E un duplicato esce dalla tabella intera una volta sola";
+        cur_name = "T106 E a duplicate leaves the whole table only once";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 4);
         int a[2] = {0,1}, b[2] = {2,3};
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, a), PRIMAL_RES_OK, "cono 0");
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, b), PRIMAL_RES_OK, "cono 1");
-        check_rc(PRIMAL_putconename(t, 0, "dup"), PRIMAL_RES_OK, "nome al cono 0");
-        check_rc(PRIMAL_putconename(t, 1, "dup"), PRIMAL_RES_ERR_ARG, "il secondo rifiutato");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, a), PRIMAL_RES_OK, "cone 0");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, b), PRIMAL_RES_OK, "cone 1");
+        check_rc(PRIMAL_putconename(t, 0, "dup"), PRIMAL_RES_OK, "name for cone 0");
+        check_rc(PRIMAL_putconename(t, 1, "dup"), PRIMAL_RES_ERR_ARG, "the second one refused");
         const char *n0 = NULL, *n1 = NULL;
-        check_rc(PRIMAL_getconenameidx(t, 0, &n0), PRIMAL_RES_OK, "lettura 0");
-        check_rc(PRIMAL_getconenameidx(t, 1, &n1), PRIMAL_RES_OK, "lettura 1");
-        check(n0 && strcmp(n0, "dup") == 0, "il nome precedente sopravvive");
-        check(n1 && n1[0] == '\0', "e il rifiutato resta senza nome");
+        check_rc(PRIMAL_getconenameidx(t, 0, &n0), PRIMAL_RES_OK, "read 0");
+        check_rc(PRIMAL_getconenameidx(t, 1, &n1), PRIMAL_RES_OK, "read 1");
+        check(n0 && strcmp(n0, "dup") == 0, "the previous name survives");
+        check(n1 && n1[0] == '\0', "and the refused one stays without a name");
         char marker;
         const char *poison = &marker;
         const char *all[4];
         for (int k = 0; k < 4; k++) all[k] = poison;
-        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "la tabella intera");
+        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "the whole table");
         int hits = (all[0] && strcmp(all[0], "dup") == 0)
                  + (all[1] && strcmp(all[1], "dup") == 0);
-        check(hits == 1, "UNA sola occorrenza del nome conteso");
-        check(all[2] == poison && all[3] == poison, "la scrittura non va oltre numcone");
+        check(hits == 1, "ONE single occurrence of the contested name");
+        check(all[2] == poison && all[3] == poison, "the write does not go beyond numcone");
         pend(&p);
     }
     /* F. the name names the BLOCK: two cones of different type, located by name
      * and verified by type + members, on a model that answers sqrt(2). */
     {
-        cur_name = "T106 F il nome nomina il blocco, e il solve non muove la tabella";
+        cur_name = "T106 F the name names the block, and the solve does not move the table";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 6);
@@ -12163,121 +12171,121 @@ static void test_t106(void) {
         PRIMAL_putcj(t, 2, 1.0);
         PRIMAL_putcj(t, 3, 1.0);
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
-        check_rc(PRIMAL_putconename(t, 0, "primo"), PRIMAL_RES_OK, "nome al QUAD");
-        check_rc(PRIMAL_putconename(t, 1, "secondo"), PRIMAL_RES_OK, "nome al RQUAD");
-        check_rc(PRIMAL_putobjname(t, "somma-delle-tracce"), PRIMAL_RES_OK, "nome all'obiettivo");
+        check_rc(PRIMAL_putconename(t, 0, "first"), PRIMAL_RES_OK, "name for the QUAD");
+        check_rc(PRIMAL_putconename(t, 1, "second"), PRIMAL_RES_OK, "name for the RQUAD");
+        check_rc(PRIMAL_putobjname(t, "sum-of-traces"), PRIMAL_RES_OK, "name for the objective");
         const char *before[2];
-        check_rc(PRIMAL_getallconename(t, before), PRIMAL_RES_OK, "lettura prima del solve");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolve");
+        check_rc(PRIMAL_getallconename(t, before), PRIMAL_RES_OK, "read before the solve");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solves");
         double po = 0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
         close_enough_tol(po, 1.4142135623730951, 1e-5, "pobj = sqrt(2)");
         const char *after[2];
-        check_rc(PRIMAL_getallconename(t, after), PRIMAL_RES_OK, "lettura dopo il solve");
+        check_rc(PRIMAL_getallconename(t, after), PRIMAL_RES_OK, "read after the solve");
         check(strcmp(before[0], after[0]) == 0 && strcmp(before[1], after[1]) == 0,
-              "la tabella dei nomi non ha partecipato al solve");
+              "the name table did not take part in the solve");
         int nk = -1;
         PRIMAL_getnumcone(t, &nk);
-        check(nk == 2, "e nemmeno il conteggio dei coni ha partecipato");
+        check(nk == 2, "and neither did the cone count take part");
         const char *on = NULL;
-        check_rc(PRIMAL_getobjname(t, &on), PRIMAL_RES_OK, "l'obiettivo ha ancora il suo nome");
-        check(on && strcmp(on, "somma-delle-tracce") == 0, "e lo legge");
+        check_rc(PRIMAL_getobjname(t, &on), PRIMAL_RES_OK, "the objective still has its name");
+        check(on && strcmp(on, "sum-of-traces") == 0, "and it reads it");
         int k1 = -1, k0 = -1;
-        check_rc(PRIMAL_getidxcone(t, "secondo", &k1), PRIMAL_RES_OK, "il nome 'secondo' si cerca");
-        check_rc(PRIMAL_getconename(t, "primo", &k0), PRIMAL_RES_OK, "e cosi' 'primo'");
-        check(k0 == 0 && k1 == 1, "due nomi, due indici: i blocchi non si sono scambiati");
+        check_rc(PRIMAL_getidxcone(t, "second", &k1), PRIMAL_RES_OK, "the name 'second' is looked up");
+        check_rc(PRIMAL_getconename(t, "first", &k0), PRIMAL_RES_OK, "and so is 'first'");
+        check(k0 == 0 && k1 == 1, "two names, two indices: the blocks did not swap");
         PRIMALconetypee ct;
         int nm = -1, mem[4] = {-1,-1,-1,-1};
-        check_rc(PRIMAL_getcone(t, k1, &ct, &nm, mem), PRIMAL_RES_OK, "il blocco nominato si legge");
-        check(ct == PRIMAL_CT_RQUAD, "ed e' il RQUAD che il nome promette");
-        check(nm == 3 && mem[0] == 3 && mem[1] == 4 && mem[2] == 5, "con i suoi tre membri");
-        check_rc(PRIMAL_getcone(t, k0, &ct, &nm, mem), PRIMAL_RES_OK, "l'altro blocco");
-        check(ct == PRIMAL_CT_QUAD, "ed e' il QUAD");
-        check(nm == 3 && mem[0] == 2 && mem[1] == 0 && mem[2] == 1, "coi suoi membri, nell'ordine");
+        check_rc(PRIMAL_getcone(t, k1, &ct, &nm, mem), PRIMAL_RES_OK, "the named block is read");
+        check(ct == PRIMAL_CT_RQUAD, "and it is the RQUAD that the name promises");
+        check(nm == 3 && mem[0] == 3 && mem[1] == 4 && mem[2] == 5, "with its three members");
+        check_rc(PRIMAL_getcone(t, k0, &ct, &nm, mem), PRIMAL_RES_OK, "the other block");
+        check(ct == PRIMAL_CT_QUAD, "and it is the QUAD");
+        check(nm == 3 && mem[0] == 2 && mem[1] == 0 && mem[2] == 1, "with its members, in order");
         double al = -1.0;
-        check_rc(PRIMAL_getconeparam(t, k1, &al), PRIMAL_RES_OK, "il parametro del blocco nominato");
-        check(al == 0.0, "RQUAD non ha alpha");
+        check_rc(PRIMAL_getconeparam(t, k1, &al), PRIMAL_RES_OK, "the parameter of the named block");
+        check(al == 0.0, "RQUAD has no alpha");
         pend(&p);
     }
     /* G. the objective: a single place. n = 1 removes the duplicate question, not
      * the ownership rule. */
     {
-        cur_name = "T106 G il nome dell'obiettivo si sostituisce, non si duplica";
+        cur_name = "T106 G the objective name is replaced, not duplicated";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         const char *n0 = NULL;
-        check_rc(PRIMAL_getobjname(t, &n0), PRIMAL_RES_OK, "si legge anche senza nome");
-        check(n0 && n0[0] == '\0', "e senza nome esce la stringa vuota");
-        check_rc(PRIMAL_putobjname(t, "profitto"), PRIMAL_RES_OK, "un nome");
+        check_rc(PRIMAL_getobjname(t, &n0), PRIMAL_RES_OK, "it is read even without a name");
+        check(n0 && n0[0] == '\0', "and without a name the empty string comes out");
+        check_rc(PRIMAL_putobjname(t, "profit"), PRIMAL_RES_OK, "a name");
         const char *a = NULL, *b = NULL;
-        check_rc(PRIMAL_getobjname(t, &a), PRIMAL_RES_OK, "lettura 1");
-        check_rc(PRIMAL_getobjname(t, &b), PRIMAL_RES_OK, "lettura 2");
-        check(a && strcmp(a, "profitto") == 0, "e il nome c'e'");
-        check(a == b, "le due letture sono la STESSA stringa: prestata, non copiata");
-        check_rc(PRIMAL_putobjname(t, "perdita"), PRIMAL_RES_OK,
-                 "un secondo nome non e' un duplicato: con un solo posto SOSTITUISCE");
+        check_rc(PRIMAL_getobjname(t, &a), PRIMAL_RES_OK, "read 1");
+        check_rc(PRIMAL_getobjname(t, &b), PRIMAL_RES_OK, "read 2");
+        check(a && strcmp(a, "profit") == 0, "and the name is there");
+        check(a == b, "the two reads are the SAME string: borrowed, not copied");
+        check_rc(PRIMAL_putobjname(t, "loss"), PRIMAL_RES_OK,
+                 "a second name is not a duplicate: with a single slot it REPLACES");
         const char *c = NULL;
-        check_rc(PRIMAL_getobjname(t, &c), PRIMAL_RES_OK, "rilettura");
-        check(c && strcmp(c, "perdita") == 0, "e legge il nuovo");
-        check_rc(PRIMAL_putobjname(t, NULL), PRIMAL_RES_ERR_ARG, "NULL non e' \"\": e' rifiutato");
+        check_rc(PRIMAL_getobjname(t, &c), PRIMAL_RES_OK, "re-read");
+        check(c && strcmp(c, "loss") == 0, "and it reads the new one");
+        check_rc(PRIMAL_putobjname(t, NULL), PRIMAL_RES_ERR_ARG, "NULL is not \"\": it is refused");
         const char *d = NULL;
-        check_rc(PRIMAL_getobjname(t, &d), PRIMAL_RES_OK, "e dopo il rifiuto");
-        check(d && strcmp(d, "perdita") == 0, "il nome precedente sopravvive");
-        check_rc(PRIMAL_putobjname(t, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
+        check_rc(PRIMAL_getobjname(t, &d), PRIMAL_RES_OK, "and after the refusal");
+        check(d && strcmp(d, "loss") == 0, "the previous name survives");
+        check_rc(PRIMAL_putobjname(t, ""), PRIMAL_RES_OK, "\"\" removes the name");
         const char *e = NULL;
-        check_rc(PRIMAL_getobjname(t, &e), PRIMAL_RES_OK, "rilettura");
-        check(e && e[0] == '\0', "e' vuota, non (null)");
-        check_rc(PRIMAL_putobjname(t, "profitto"), PRIMAL_RES_OK, "e il posto si riusa");
+        check_rc(PRIMAL_getobjname(t, &e), PRIMAL_RES_OK, "re-read");
+        check(e && e[0] == '\0', "it is empty, not (null)");
+        check_rc(PRIMAL_putobjname(t, "profit"), PRIMAL_RES_OK, "and the slot is reused");
         /* independent of the four tables: the same string names a
          * variable and the objective, and neither of the two knows. */
         PRIMAL_appendvars(t, 1);
-        check_rc(PRIMAL_putvarname(t, 0, "profitto"), PRIMAL_RES_OK,
-                 "la variabile prende lo STESSO nome dell'obiettivo");
+        check_rc(PRIMAL_putvarname(t, 0, "profit"), PRIMAL_RES_OK,
+                 "the variable takes the SAME name as the objective");
         int jv = -1;
-        check_rc(PRIMAL_getvarname(t, "profitto", &jv), PRIMAL_RES_OK, "e la variabile si trova");
-        check(jv == 0, "al suo indice");
+        check_rc(PRIMAL_getvarname(t, "profit", &jv), PRIMAL_RES_OK, "and the variable is found");
+        check(jv == 0, "at its index");
         const char *f = NULL;
-        check_rc(PRIMAL_getobjname(t, &f), PRIMAL_RES_OK, "e l'obiettivo ha ancora il suo");
-        check(f && strcmp(f, "profitto") == 0, "stessa stringa, due posti diversi");
+        check_rc(PRIMAL_getobjname(t, &f), PRIMAL_RES_OK, "and the objective still has its own");
+        check(f && strcmp(f, "profit") == 0, "same string, two different slots");
         pend(&p);
     }
     /* H. the guards: no new accessor writes where it should not, and a task
      * without cones answers like a task without bars. */
     {
-        cur_name = "T106 H i guardiani della quarta tabella e del nome singolo";
+        cur_name = "T106 H the guardians of the fourth table and of the single name";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
         int m[2] = {0,1};
-        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m), PRIMAL_RES_OK, "un cono");
-        check_rc(PRIMAL_putconename(t, 0, "K"), PRIMAL_RES_OK, "il suo nome");
+        check_rc(PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, m), PRIMAL_RES_OK, "one cone");
+        check_rc(PRIMAL_putconename(t, 0, "K"), PRIMAL_RES_OK, "its name");
         const char *np = NULL; int ki = 0;
-        check(PRIMAL_putconename(NULL, 0, "x") == PRIMAL_RES_ERR_NULL, "putconename su task NULL");
-        check(PRIMAL_getconenameidx(NULL, 0, &np) == PRIMAL_RES_ERR_NULL, "getter per indice su NULL");
-        check(PRIMAL_getconename(NULL, "K", &ki) == PRIMAL_RES_ERR_NULL, "nome->indice su NULL");
-        check(PRIMAL_getidxcone(NULL, "K", &ki) == PRIMAL_RES_ERR_NULL, "la delega su NULL");
-        check(PRIMAL_getallconename(NULL, NULL) == PRIMAL_RES_ERR_NULL, "tabella intera su NULL");
-        check(PRIMAL_putobjname(NULL, "x") == PRIMAL_RES_ERR_NULL, "putobjname su NULL");
-        check(PRIMAL_getobjname(NULL, &np) == PRIMAL_RES_ERR_NULL, "getobjname su NULL");
-        check(PRIMAL_getconenameidx(t, 0, NULL) == PRIMAL_RES_ERR_NULL, "uscita NULL rifiutata");
-        check(PRIMAL_getconename(t, "K", NULL) == PRIMAL_RES_ERR_NULL, "indice NULL rifiutato");
-        check(PRIMAL_getallconename(t, NULL) == PRIMAL_RES_ERR_NULL, "buffer NULL rifiutato");
-        check(PRIMAL_getobjname(t, NULL) == PRIMAL_RES_ERR_NULL, "e anche per l'obiettivo");
+        check(PRIMAL_putconename(NULL, 0, "x") == PRIMAL_RES_ERR_NULL, "putconename on a NULL task");
+        check(PRIMAL_getconenameidx(NULL, 0, &np) == PRIMAL_RES_ERR_NULL, "per-index getter on NULL");
+        check(PRIMAL_getconename(NULL, "K", &ki) == PRIMAL_RES_ERR_NULL, "name->index on NULL");
+        check(PRIMAL_getidxcone(NULL, "K", &ki) == PRIMAL_RES_ERR_NULL, "the delegate on NULL");
+        check(PRIMAL_getallconename(NULL, NULL) == PRIMAL_RES_ERR_NULL, "whole table on NULL");
+        check(PRIMAL_putobjname(NULL, "x") == PRIMAL_RES_ERR_NULL, "putobjname on NULL");
+        check(PRIMAL_getobjname(NULL, &np) == PRIMAL_RES_ERR_NULL, "getobjname on NULL");
+        check(PRIMAL_getconenameidx(t, 0, NULL) == PRIMAL_RES_ERR_NULL, "NULL output refused");
+        check(PRIMAL_getconename(t, "K", NULL) == PRIMAL_RES_ERR_NULL, "NULL index refused");
+        check(PRIMAL_getallconename(t, NULL) == PRIMAL_RES_ERR_NULL, "NULL buffer refused");
+        check(PRIMAL_getobjname(t, NULL) == PRIMAL_RES_ERR_NULL, "and for the objective too");
         ki = 4242;
-        check(PRIMAL_getconenameidx(t, -1, &np) == PRIMAL_RES_ERR_ARG, "indice -1 rifiutato");
-        check(PRIMAL_putconename(t, 1, "y") == PRIMAL_RES_ERR_ARG, "indice fuori tabella rifiutato");
-        check(PRIMAL_getconenameidx(t, 1, &np) == PRIMAL_RES_ERR_ARG, "e la lettura pure");
+        check(PRIMAL_getconenameidx(t, -1, &np) == PRIMAL_RES_ERR_ARG, "index -1 refused");
+        check(PRIMAL_putconename(t, 1, "y") == PRIMAL_RES_ERR_ARG, "index out of the table refused");
+        check(PRIMAL_getconenameidx(t, 1, &np) == PRIMAL_RES_ERR_ARG, "and the read as well");
         double pn = -1.0;
-        check(PRIMAL_getconeparam(t, 1, &pn) == PRIMAL_RES_ERR_ARG, "come il getter che esisteva");
+        check(PRIMAL_getconeparam(t, 1, &pn) == PRIMAL_RES_ERR_ARG, "like the getter that existed");
         check(PRIMAL_getconename(t, "mai-nominato", &ki) == PRIMAL_RES_ERR_ARG && ki == 4242,
-              "un buco non tocca l'indice");
-        check(PRIMAL_putconename(t, 0, NULL) == PRIMAL_RES_ERR_ARG, "NULL non e' \"\"");
+              "a hole does not touch the index");
+        check(PRIMAL_putconename(t, 0, NULL) == PRIMAL_RES_ERR_ARG, "NULL is not \"\"");
         check(PRIMAL_getconenameidx(t, 0, &np) == PRIMAL_RES_OK && np && strcmp(np, "K") == 0,
-              "e dopo il rifiuto il nome e' ancora li'");
+              "and after the refusal the name is still there");
         pend(&p);
     }
     {
-        cur_name = "T106 H2 un task senza coni: la tabella esiste vuota";
+        cur_name = "T106 H2 a task without cones: the table exists empty";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -12285,20 +12293,20 @@ static void test_t106(void) {
         const char *poison = &marker;
         const char *all[4];
         for (int k = 0; k < 4; k++) all[k] = poison;
-        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "la tabella vuota si legge");
+        check_rc(PRIMAL_getallconename(t, all), PRIMAL_RES_OK, "the empty table is read");
         int nk = -1;
         PRIMAL_getnumcone(t, &nk);
-        check(nk == 0, "zero coni");
+        check(nk == 0, "zero cones");
         check(all[0] == poison && all[1] == poison && all[2] == poison && all[3] == poison,
-              "e non scrive nessun elemento: zero e' la misura, non un rifiuto");
+              "and it writes no element: zero is the measurement, not a refusal");
         int kk = 4242;
         const char *n = NULL;
         check(PRIMAL_getconename(t, "qualunque", &kk) == PRIMAL_RES_ERR_ARG && kk == 4242,
-              "cercare un nome dove non ci sono coni rifiuta e non tocca l'indice");
+              "looking up a name where there are no cones refuses and does not touch the index");
         check(PRIMAL_getconenameidx(t, 0, &n) == PRIMAL_RES_ERR_ARG,
-              "e non esiste un cono 0 da leggere");
+              "and there is no cone 0 to read");
         check(PRIMAL_putconename(t, 0, "K") == PRIMAL_RES_ERR_ARG,
-              "ne' uno da nominare");
+              "nor one to name");
         pend(&p);
     }
 }
@@ -12340,21 +12348,21 @@ static void test_t106(void) {
 static void test_t105(void) {
     /* A. the two reads agree, element by element. */
     {
-        cur_name = "T105 A la tabella intera e' getbarnameidx scritto in fila";
+        cur_name = "T105 A the whole table is getbarnameidx written out in order";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int dims[3] = {2, 3, 4};
-        check_rc(PRIMAL_appendbarvars(t, 3, dims), PRIMAL_RES_OK, "tre barre");
-        check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "nome alla barra 0");
-        check_rc(PRIMAL_putbarname(t, 2, "B4"), PRIMAL_RES_OK, "nome alla barra 2");
+        check_rc(PRIMAL_appendbarvars(t, 3, dims), PRIMAL_RES_OK, "three bars");
+        check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "name for bar 0");
+        check_rc(PRIMAL_putbarname(t, 2, "B4"), PRIMAL_RES_OK, "name for bar 2");
         char marker;
         const char *poison = &marker;         /* real address, never read */
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
-        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "la terza tabella si legge");
+        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "the third table is read");
         int nb = -1;
         PRIMAL_getnumbarvar(t, &nb);
-        check(nb == 3, "tre barre nel conteggio");
+        check(nb == 3, "three bars in the count");
         int agree = 1, same_pointer = 1;
         for (int j = 0; j < nb; j++) {
             const char *one = NULL;
@@ -12362,137 +12370,137 @@ static void test_t105(void) {
             if (!all[j] || strcmp(all[j], one) != 0) agree = 0;
             if (one && one[0] != '\0' && all[j] != one) same_pointer = 0;
         }
-        check(agree, "ogni elemento dice cio' che dice il getter per indice");
-        check(same_pointer, "un nome prestato non e' copiato: e' la stessa stringa");
-        check(all[0] && strcmp(all[0], "B2") == 0, "B2 e' alla barra 0");
-        check(all[2] && strcmp(all[2], "B4") == 0, "B4 e' alla barra 2");
-        check(all[1] && all[1][0] == '\0', "lo slot senza nome e' vuoto, non (null)");
+        check(agree, "each element says what the per-index getter says");
+        check(same_pointer, "a borrowed name is not copied: it is the same string");
+        check(all[0] && strcmp(all[0], "B2") == 0, "B2 is at bar 0");
+        check(all[2] && strcmp(all[2], "B4") == 0, "B4 is at bar 2");
+        check(all[1] && all[1][0] == '\0', "the slot without a name is empty, not (null)");
         check(all[3] == poison && all[4] == poison && all[5] == poison
               && all[6] == poison && all[7] == poison,
-              "si scrivono numbarvar elementi, non uno di piu'");
+              "it writes numbarvar elements, not one more");
         pend(&p);
     }
     /* B. appendbarvars grows the table at the tail, without moving the strings. */
     {
-        cur_name = "T105 B la tabella delle barre cresce in coda";
+        cur_name = "T105 B the bar table grows at the tail";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int d2 = 2;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "una barra");
-        check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "il suo nome");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "a bar");
+        check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "its name");
         const char *first = NULL;
-        check_rc(PRIMAL_getbarnameidx(t, 0, &first), PRIMAL_RES_OK, "lettura per indice");
+        check_rc(PRIMAL_getbarnameidx(t, 0, &first), PRIMAL_RES_OK, "per-index read");
         int d3 = 3;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "una barra in piu'");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "one more bar");
         check(first && strcmp(first, "B2") == 0,
-              "la stringa presa prima dell'append legge ancora il suo nome");
+              "the string taken before the append still reads its name");
         int nb = -1;
         PRIMAL_getnumbarvar(t, &nb);
-        check(nb == 2, "e il conteggio e' cresciuto");
+        check(nb == 2, "and the count has grown");
         char marker;
         const char *poison = &marker;
         const char *all[4];
         for (int k = 0; k < 4; k++) all[k] = poison;
-        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "rilettura a due");
-        check(all[0] == first, "la tabella si muove, la stringa no");
-        check(all[1] && all[1][0] == '\0', "quella appena aggiunta esce senza nome");
-        check(all[2] == poison && all[3] == poison, "e la scrittura si ferma a numbarvar");
+        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "re-read at two");
+        check(all[0] == first, "the table moves, the string does not");
+        check(all[1] && all[1][0] == '\0', "the just-added one comes out without a name");
+        check(all[2] == poison && all[3] == poison, "and the write stops at numbarvar");
         pend(&p);
     }
     /* C. the bar namespace is separate: the same string names three
      * different things, and the uniqueness of the bar table holds by itself. */
     {
-        cur_name = "T105 C la barra non compete con le variabili scalari";
+        cur_name = "T105 C the bar does not compete with the scalar variables";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         int d2 = 2;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "una barra");
-        check_rc(PRIMAL_putvarname(t, 1, "stessa"), PRIMAL_RES_OK, "la variabile la nomina");
-        check_rc(PRIMAL_putconname(t, 0, "stessa"), PRIMAL_RES_OK, "il vincolo la nomina");
-        check_rc(PRIMAL_putbarname(t, 0, "stessa"), PRIMAL_RES_OK,
-                 "e la barra NO: non e' un duplicato, e' un'altra tabella");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "a bar");
+        check_rc(PRIMAL_putvarname(t, 1, "same"), PRIMAL_RES_OK, "the variable names it");
+        check_rc(PRIMAL_putconname(t, 0, "same"), PRIMAL_RES_OK, "the constraint names it");
+        check_rc(PRIMAL_putbarname(t, 0, "same"), PRIMAL_RES_OK,
+                 "and the bar does NOT: it is not a duplicate, it is another table");
         int jv = -1, jc = -1, jb = -1;
-        check_rc(PRIMAL_getvarname(t, "stessa", &jv), PRIMAL_RES_OK, "ricerca variabili");
-        check_rc(PRIMAL_getconname(t, "stessa", &jc), PRIMAL_RES_OK, "ricerca vincoli");
-        check_rc(PRIMAL_getbarname(t, "stessa", &jb), PRIMAL_RES_OK, "ricerca barre");
+        check_rc(PRIMAL_getvarname(t, "same", &jv), PRIMAL_RES_OK, "variable search");
+        check_rc(PRIMAL_getconname(t, "same", &jc), PRIMAL_RES_OK, "constraint search");
+        check_rc(PRIMAL_getbarname(t, "same", &jb), PRIMAL_RES_OK, "bar search");
         check(jv == 1 && jc == 0 && jb == 0,
-              "e le tre ricerche rispondono ciascuna il proprio indice");
+              "and the three searches answer each its own index");
         int k = -1;
-        check_rc(PRIMAL_getidxbarvar(t, "stessa", &k), PRIMAL_RES_OK, "getidxbarvar risponde");
-        check(k == jb, "e' lo stesso nome che cerca la stessa cosa");
+        check_rc(PRIMAL_getidxbarvar(t, "same", &k), PRIMAL_RES_OK, "getidxbarvar answers");
+        check(k == jb, "it is the same name looking up the same thing");
         /* the same string on A SECOND bar is instead refused: uniqueness
          * holds inside the table, and here one sees that it was not widened by chance */
         int d3 = 3;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "una seconda barra");
-        check_rc(PRIMAL_putbarname(t, 1, "stessa"), PRIMAL_RES_ERR_ARG,
-                 "duplice DENTRO la tabella delle barre, rifiutato");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "a second bar");
+        check_rc(PRIMAL_putbarname(t, 1, "same"), PRIMAL_RES_ERR_ARG,
+                 "duplicate INSIDE the bar table, refused");
         const char *b1 = NULL;
-        check_rc(PRIMAL_getbarnameidx(t, 1, &b1), PRIMAL_RES_OK, "la barra rifiutata si legge");
-        check(b1 && b1[0] == '\0', "e resta senza nome");
+        check_rc(PRIMAL_getbarnameidx(t, 1, &b1), PRIMAL_RES_OK, "the refused bar is read");
+        check(b1 && b1[0] == '\0', "and it stays without a name");
         const char *v1 = NULL;
         PRIMAL_getvarnameidx(t, 1, &v1);
-        check(v1 && strcmp(v1, "stessa") == 0,
-              "e il nome della variabile non e' stato toccato dal rifiuto");
+        check(v1 && strcmp(v1, "same") == 0,
+              "and the variable name has not been touched by the refusal");
         pend(&p);
     }
     /* D. "" removes the name, and the slot is taken back. */
     {
-        cur_name = "T105 D togliere e ridare un nome di barra";
+        cur_name = "T105 D removing and giving back a bar name";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int dims[2] = {2, 2};
-        check_rc(PRIMAL_appendbarvars(t, 2, dims), PRIMAL_RES_OK, "due barre");
-        check_rc(PRIMAL_putbarname(t, 0, "P"), PRIMAL_RES_OK, "nome alla 0");
-        check_rc(PRIMAL_putbarname(t, 1, "Q"), PRIMAL_RES_OK, "nome alla 1");
-        check_rc(PRIMAL_putbarname(t, 0, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
+        check_rc(PRIMAL_appendbarvars(t, 2, dims), PRIMAL_RES_OK, "two bars");
+        check_rc(PRIMAL_putbarname(t, 0, "P"), PRIMAL_RES_OK, "name for 0");
+        check_rc(PRIMAL_putbarname(t, 1, "Q"), PRIMAL_RES_OK, "name for 1");
+        check_rc(PRIMAL_putbarname(t, 0, ""), PRIMAL_RES_OK, "\"\" removes the name");
         int j = -1;
-        check_rc(PRIMAL_getbarname(t, "P", &j), PRIMAL_RES_ERR_ARG, "il nome tolto non si trova");
-        check(j == -1, "e l'indice che gli hai dato resta intonso");
+        check_rc(PRIMAL_getbarname(t, "P", &j), PRIMAL_RES_ERR_ARG, "the removed name is not found");
+        check(j == -1, "and the index you gave it stays intact");
         const char *all[2];
-        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "lettura integrale");
-        check(all[0] && all[0][0] == '\0', "nella tabella intera lo slot e' vuoto");
-        check(all[1] && strcmp(all[1], "Q") == 0, "e l'altro nome non e' stato toccato");
+        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "integral read");
+        check(all[0] && all[0][0] == '\0', "in the whole table the slot is empty");
+        check(all[1] && strcmp(all[1], "Q") == 0, "and the other name has not been touched");
         check_rc(PRIMAL_putbarname(t, 0, "P"), PRIMAL_RES_OK,
-                 "lo slot liberato si riprende: non e' bruciato");
+                 "the freed slot is taken back: it is not burned");
         j = -1;
-        check_rc(PRIMAL_getidxbarvar(t, "P", &j), PRIMAL_RES_OK, "e si ritrova");
-        check(j == 0, "all'indice giusto");
+        check_rc(PRIMAL_getidxbarvar(t, "P", &j), PRIMAL_RES_OK, "and it is found again");
+        check(j == 0, "at the right index");
         pend(&p);
     }
     /* E. duplicate refused, the previous name survives, a single occurrence. */
     {
-        cur_name = "T105 E un nome, una barra";
+        cur_name = "T105 E one name, one bar";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         int dims[3] = {2, 2, 2};
-        check_rc(PRIMAL_appendbarvars(t, 3, dims), PRIMAL_RES_OK, "tre barre");
-        check_rc(PRIMAL_putbarname(t, 0, "X"), PRIMAL_RES_OK, "X alla 0");
-        check_rc(PRIMAL_putbarname(t, 2, "Y"), PRIMAL_RES_OK, "Y alla 2");
-        check_rc(PRIMAL_putbarname(t, 2, "X"), PRIMAL_RES_ERR_ARG, "X su 2 e' un duplicato");
+        check_rc(PRIMAL_appendbarvars(t, 3, dims), PRIMAL_RES_OK, "three bars");
+        check_rc(PRIMAL_putbarname(t, 0, "X"), PRIMAL_RES_OK, "X at 0");
+        check_rc(PRIMAL_putbarname(t, 2, "Y"), PRIMAL_RES_OK, "Y at 2");
+        check_rc(PRIMAL_putbarname(t, 2, "X"), PRIMAL_RES_ERR_ARG, "X on 2 is a duplicate");
         const char *all[3];
-        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "lettura dopo il rifiuto");
-        check(all[2] && strcmp(all[2], "Y") == 0, "il nome precedente di 2 sopravvive");
+        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "read after the refusal");
+        check(all[2] && strcmp(all[2], "Y") == 0, "the previous name of 2 survives");
         int hits = 0;
         for (int j = 0; j < 3; j++) if (all[j] && strcmp(all[j], "X") == 0) hits++;
-        check(hits == 1, "e la lettura integrale ne mostra UNA sola occorrenza");
+        check(hits == 1, "and the integral read shows only ONE occurrence");
         hits = 0;
         for (int j = 0; j < 3; j++) if (all[j] && strcmp(all[j], "Y") == 0) hits++;
-        check(hits == 1, "Y resta alla sua barra");
-        check(all[1] && all[1][0] == '\0', "la 1 non ha mai avuto nome");
+        check(hits == 1, "Y stays at its bar");
+        check(all[1] && all[1][0] == '\0', "1 never had a name");
         pend(&p);
     }
     /* F. the name names the BLOCK: two bars of different dimension, located
      * by name, verified by dimension and by published content, on a
      * model that answers a hand-derived value. */
     {
-        cur_name = "T105 F il nome nomina il blocco, e il solve non muove la tabella";
+        cur_name = "T105 F the name names the block, and the solve does not move the table";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendcons(t, 2);
         int d2 = 2, d3 = 3;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "barra 2x2");
-        check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "barra 3x3");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "2x2 bar");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d3), PRIMAL_RES_OK, "3x3 bar");
         int mS01_2, mI2, mI3;
         PRIMAL_appendsparsesymmat(t, 2, 1, (int[]){0}, (int[]){1}, (double[]){1.0}, &mS01_2);
         PRIMAL_appendsparsesymmat(t, 2, 2, (int[]){0,1}, (int[]){0,1}, (double[]){1.0,1.0}, &mI2);
@@ -12510,76 +12518,76 @@ static void test_t105(void) {
         PRIMAL_putbarcj(t, 0, 1, (int[]){mI2}, (double[]){1.0});
         PRIMAL_putbarcj(t, 1, 1, (int[]){mI3}, (double[]){1.0});
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
-        check_rc(PRIMAL_putbarname(t, 0, "due"), PRIMAL_RES_OK, "nome alla 2x2");
-        check_rc(PRIMAL_putbarname(t, 1, "tre"), PRIMAL_RES_OK, "nome alla 3x3");
+        check_rc(PRIMAL_putbarname(t, 0, "two"), PRIMAL_RES_OK, "name for the 2x2");
+        check_rc(PRIMAL_putbarname(t, 1, "three"), PRIMAL_RES_OK, "name for the 3x3");
         const char *before[2];
-        check_rc(PRIMAL_getallbarname(t, before), PRIMAL_RES_OK, "lettura prima del solve");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolve");
+        check_rc(PRIMAL_getallbarname(t, before), PRIMAL_RES_OK, "read before the solve");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solves");
         double po = 0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(po, 5.0, "pobj = 2 (AM-GM) + 3 (traccia fissata)");
+        close_enough(po, 5.0, "pobj = 2 (AM-GM) + 3 (fixed trace)");
         const char *after[2];
-        check_rc(PRIMAL_getallbarname(t, after), PRIMAL_RES_OK, "lettura dopo il solve");
+        check_rc(PRIMAL_getallbarname(t, after), PRIMAL_RES_OK, "read after the solve");
         check(strcmp(before[0], after[0]) == 0 && strcmp(before[1], after[1]) == 0,
-              "la tabella dei nomi non ha partecipato al solve");
+              "the name table did not take part in the solve");
         int jb = -1, dim = -1;
-        check_rc(PRIMAL_getidxbarvar(t, "tre", &jb), PRIMAL_RES_OK, "il nome 'tre' si cerca");
-        check_rc(PRIMAL_getbarsize(t, jb, &dim), PRIMAL_RES_OK, "e nomina una barra");
-        check(dim == 3, "la barra nominata 'tre' ha dimensione 3: il nome nomina il blocco");
+        check_rc(PRIMAL_getidxbarvar(t, "three", &jb), PRIMAL_RES_OK, "the name 'three' is looked up");
+        check_rc(PRIMAL_getbarsize(t, jb, &dim), PRIMAL_RES_OK, "and it names a bar");
+        check(dim == 3, "the named bar 'three' has dimension 3: the name names the block");
         double X[9];
-        check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, jb, X), PRIMAL_RES_OK, "il suo blocco si legge");
-        close_enough_tol(X[0] + X[4] + X[8], 3.0, 1e-5, "e la sua traccia e' 3");
+        check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, jb, X), PRIMAL_RES_OK, "its block is read");
+        close_enough_tol(X[0] + X[4] + X[8], 3.0, 1e-5, "and its trace is 3");
         int j2 = -1;
-        check_rc(PRIMAL_getidxbarvar(t, "due", &j2), PRIMAL_RES_OK, "anche l'altra");
-        check(j2 != jb, "due nomi, due indici");
+        check_rc(PRIMAL_getidxbarvar(t, "two", &j2), PRIMAL_RES_OK, "the other one too");
+        check(j2 != jb, "two names, two indices");
         double Y[4];
-        check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, j2, Y), PRIMAL_RES_OK, "il blocco 2x2");
-        close_enough_tol(Y[0] + Y[3], 2.0, 1e-5, "la cui traccia e' 2");
-        close_enough_tol(Y[1], 1.0, 1e-5, "e l'off-diagonale e' il 1 che il nome promette");
+        check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, j2, Y), PRIMAL_RES_OK, "the 2x2 block");
+        close_enough_tol(Y[0] + Y[3], 2.0, 1e-5, "whose trace is 2");
+        close_enough_tol(Y[1], 1.0, 1e-5, "and the off-diagonal is the 1 the name promises");
         pend(&p);
     }
     /* G. the guards: out-of-range indices, null pointers, empty table. */
     {
-        cur_name = "T105 G rifiutare senza scrivere";
+        cur_name = "T105 G refusing without writing";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         char marker;
         const char *poison = &marker;
         const char *one = poison;
-        check_rc(PRIMAL_putbarname(NULL, 0, "x"), PRIMAL_RES_ERR_NULL, "task NULL");
-        check_rc(PRIMAL_getbarnameidx(NULL, 0, &one), PRIMAL_RES_ERR_NULL, "task NULL in lettura");
+        check_rc(PRIMAL_putbarname(NULL, 0, "x"), PRIMAL_RES_ERR_NULL, "NULL task");
+        check_rc(PRIMAL_getbarnameidx(NULL, 0, &one), PRIMAL_RES_ERR_NULL, "NULL task in read");
         int jb_null = -1;
-        check_rc(PRIMAL_getbarname(NULL, "x", &jb_null), PRIMAL_RES_ERR_NULL, "task NULL in ricerca");
-        check(jb_null == -1, "neanche qui l'indice e' stato scritto");
+        check_rc(PRIMAL_getbarname(NULL, "x", &jb_null), PRIMAL_RES_ERR_NULL, "NULL task in lookup");
+        check(jb_null == -1, "not even here has the index been written");
         check_rc(PRIMAL_getallbarname(t, NULL), PRIMAL_RES_ERR_NULL, "names NULL");
-        check_rc(PRIMAL_getallbarname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL in lettura integrale");
-        check(one == poison, "un rifiuto non scrive nemmeno il puntatore che gli hai dato");
+        check_rc(PRIMAL_getallbarname(NULL, &one), PRIMAL_RES_ERR_NULL, "NULL task in integral read");
+        check(one == poison, "a refusal does not even write the pointer you gave it");
         /* a task without bars: the table exists and has zero rows */
         int j = 0;
-        check_rc(PRIMAL_putbarname(t, 0, "x"), PRIMAL_RES_ERR_ARG, "zero barre, niente da nominare");
-        check_rc(PRIMAL_getbarnameidx(t, 0, &one), PRIMAL_RES_ERR_ARG, "neppure da leggere");
-        check_rc(PRIMAL_getbarname(t, "x", &j), PRIMAL_RES_ERR_ARG, "neppure da cercare");
-        check(j == 0, "e l'indice dato non e' stato scritto");
-        check_rc(PRIMAL_getallbarname(t, &one), PRIMAL_RES_OK, "la tabella vuota si legge: non e' un errore");
-        check(one == poison, "e nessun elemento e' scritto");
+        check_rc(PRIMAL_putbarname(t, 0, "x"), PRIMAL_RES_ERR_ARG, "zero bars, nothing to name");
+        check_rc(PRIMAL_getbarnameidx(t, 0, &one), PRIMAL_RES_ERR_ARG, "nor to read");
+        check_rc(PRIMAL_getbarname(t, "x", &j), PRIMAL_RES_ERR_ARG, "nor to look up");
+        check(j == 0, "and the given index has not been written");
+        check_rc(PRIMAL_getallbarname(t, &one), PRIMAL_RES_OK, "the empty table is read: it is not an error");
+        check(one == poison, "and no element is written");
         /* now the bars are there: out-of-range indices stay refused */
         int d2 = 2;
-        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "una barra");
-        check_rc(PRIMAL_putbarname(t, -1, "x"), PRIMAL_RES_ERR_ARG, "indice negativo");
-        check_rc(PRIMAL_putbarname(t, 1, "x"), PRIMAL_RES_ERR_ARG, "indice oltre numbarvar");
-        check_rc(PRIMAL_getbarnameidx(t, 1, &one), PRIMAL_RES_ERR_ARG, "lettura oltre");
-        check_rc(PRIMAL_getbarnameidx(t, -1, &one), PRIMAL_RES_ERR_ARG, "lettura negativa");
+        check_rc(PRIMAL_appendbarvars(t, 1, &d2), PRIMAL_RES_OK, "a bar");
+        check_rc(PRIMAL_putbarname(t, -1, "x"), PRIMAL_RES_ERR_ARG, "negative index");
+        check_rc(PRIMAL_putbarname(t, 1, "x"), PRIMAL_RES_ERR_ARG, "index beyond numbarvar");
+        check_rc(PRIMAL_getbarnameidx(t, 1, &one), PRIMAL_RES_ERR_ARG, "read beyond");
+        check_rc(PRIMAL_getbarnameidx(t, -1, &one), PRIMAL_RES_ERR_ARG, "negative read");
         check_rc(PRIMAL_putbarname(t, 0, NULL), PRIMAL_RES_ERR_ARG,
-                 "NULL non e' 'togli il nome': per quello c'e' \"\"");
-        check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "il nome vero passa");
-        check_rc(PRIMAL_putbarname(t, 0, NULL), PRIMAL_RES_ERR_ARG, "e il rifiuto non lo toglie");
+                 "NULL is not 'remove the name': for that there is \"\"");
+        check_rc(PRIMAL_putbarname(t, 0, "B2"), PRIMAL_RES_OK, "the real name passes");
+        check_rc(PRIMAL_putbarname(t, 0, NULL), PRIMAL_RES_ERR_ARG, "and the refusal does not remove it");
         const char *all[1];
-        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "rilettura");
-        check(all[0] && strcmp(all[0], "B2") == 0, "il nome sopravvive al rifiuto");
+        check_rc(PRIMAL_getallbarname(t, all), PRIMAL_RES_OK, "re-read");
+        check(all[0] && strcmp(all[0], "B2") == 0, "the name survives the refusal");
         j = -1;
         check_rc(PRIMAL_getbarname(t, "", &j), PRIMAL_RES_ERR_ARG,
-                 "la stringa vuota non nomina niente, quindi non si cerca");
-        check(j == -1, "e non scrive l'indice");
+                 "the empty string names nothing, so it is not looked up");
+        check(j == -1, "and it does not write the index");
         pend(&p);
     }
 }
@@ -12614,7 +12622,7 @@ static void test_t104(void) {
     /* A. the objective list: write order, zero included,
      * accumulation between two putqobj, and the same number as the counter. */
     {
-        cur_name = "T104 A getqobj e' il listato come e' stato scritto";
+        cur_name = "T104 A getqobj is the listing as it was written";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -12622,25 +12630,25 @@ static void test_t104(void) {
         PRIMAL_putqobj(t, 1, (int[]){0}, (int[]){1}, (double[]){2.0});
         int nz = -1;
         check_rc(PRIMAL_getnumqobjnz(t, &nz), PRIMAL_RES_OK, "getnumqobjnz");
-        check(nz == 3, "tre scritture, nessuna fusa");
+        check(nz == 3, "three writes, none merged");
         int qi[4], qj[4]; double qv[4];
         for (int e = 0; e < 4; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         int numret = -1;
         check_rc(PRIMAL_getqobj(t, qi, qj, qv, 4, &numret), PRIMAL_RES_OK, "getqobj");
-        check(numret == nz, "lettore e contatore rispondono della stessa tabella");
-        check(qi[0] == 1 && qj[0] == 1 && qv[0] == 3.0, "la prima scrittura esce prima");
+        check(numret == nz, "reader and counter answer for the same table");
+        check(qi[0] == 1 && qj[0] == 1 && qv[0] == 3.0, "the first write comes out first");
         check(qi[1] == 0 && qj[1] == 0 && qv[1] == 0.0,
-              "lo zero scritto c'e': e' una scrittura, non un buco");
+              "the written zero is there: it is a write, not a hole");
         check(qi[2] == 0 && qj[2] == 1 && qv[2] == 2.0,
-              "la seconda chiamata accumula, non sostituisce");
+              "the second call accumulates, does not replace");
         check(qi[3] == -777 && qj[3] == -777 && qv[3] == -777.0,
-              "non si scrive oltre numret");
+              "nothing is written beyond numret");
         pend(&p);
     }
     /* B. a cross write is ONE declaration of the user and TWO halves
      * of the operator, and the solved model says which of the two counts. */
     {
-        cur_name = "T104 B un termine incrociato: una scrittura, due meta'";
+        cur_name = "T104 B a cross term: one write, two halves";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
@@ -12653,15 +12661,15 @@ static void test_t104(void) {
         PRIMAL_putcj(t, 0, -2.0); PRIMAL_putcj(t, 1, -2.0);
         int qi[3], qj[3]; double qv[3]; int numret = -1;
         check_rc(PRIMAL_getqobj(t, qi, qj, qv, 3, &numret), PRIMAL_RES_OK, "getqobj");
-        check(numret == 3, "tre triplette, la incrociata una sola");
+        check(numret == 3, "three triplets, the cross one only once");
         int cross = 0;
         for (int e = 0; e < numret; e++)
             if ((qi[e] == 0 && qj[e] == 1) || (qi[e] == 1 && qj[e] == 0)) cross++;
-        check(cross == 1, "il listato non aggiunge lo specchio");
+        check(cross == 1, "the listing does not add the mirror");
         double a = -1, b = -1;
         check_rc(PRIMAL_getqobjij(t, 0, 1, &a), PRIMAL_RES_OK, "getqobjij(0,1)");
         check_rc(PRIMAL_getqobjij(t, 1, 0, &b), PRIMAL_RES_OK, "getqobjij(1,0)");
-        check(a == 2.0 && b == 2.0, "l'operatore ha entrambe le meta'");
+        check(a == 2.0 && b == 2.0, "the operator has both halves");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "optimize");
         double x[2] = {0, 0};
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
@@ -12671,13 +12679,13 @@ static void test_t104(void) {
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &pobj), PRIMAL_RES_OK,
                  "getprimalobj");
         close_enough(pobj, -2.0 / 3.0,
-                     "l'obiettivo e' quello dell'operatore simmetrico, non del listato");
+                     "the objective is that of the symmetric operator, not of the listing");
         pend(&p);
     }
     /* C. the Q of a constraint: increasing upper triangle, and every entry is
      * what getqconkij says at that index and on the other half. */
     {
-        cur_name = "T104 C getqconk: triangolo superiore, e le due letture concordano";
+        cur_name = "T104 C getqconk: upper triangle, and the two reads agree";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -12685,31 +12693,31 @@ static void test_t104(void) {
                         (double[]){2.0, -1.0});
         int want = -1;
         check_rc(PRIMAL_getnumqconknz(t, 0, &want), PRIMAL_RES_OK, "getnumqconknz");
-        check(want == 2, "due entrate del triangolo, lo specchio non e' una terza");
+        check(want == 2, "two entries of the triangle, the mirror is not a third");
         int qi[4], qj[4]; double qv[4];
         for (int e = 0; e < 4; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         int numret = -1;
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 4, &numret), PRIMAL_RES_OK,
                  "getqconk");
-        check(numret == want, "lettore e contatore contano la stessa tabella");
-        check(qi[0] == 0 && qj[0] == 0 && qv[0] == 2.0, "la diagonale per prima");
-        check(qi[1] == 0 && qj[1] == 1 && qv[1] == -1.0, "l'incrociata col j maggiore");
+        check(numret == want, "reader and counter count the same table");
+        check(qi[0] == 0 && qj[0] == 0 && qv[0] == 2.0, "the diagonal first");
+        check(qi[1] == 0 && qj[1] == 1 && qv[1] == -1.0, "the cross one with the larger j");
         check(qi[2] == -777 && qj[2] == -777 && qv[2] == -777.0,
-              "non si scrive oltre numret");
+              "nothing is written beyond numret");
         for (int e = 0; e < numret; e++) {
-            check(qi[e] <= qj[e], "solo il triangolo superiore esce");
+            check(qi[e] <= qj[e], "only the upper triangle comes out");
             double dij = 0, dji = 0;
             PRIMAL_getqconkij(t, 0, qi[e], qj[e], &dij);
             PRIMAL_getqconkij(t, 0, qj[e], qi[e], &dji);
-            check(dij == qv[e], "l'uscita e' l'elemento che getqconkij dice");
-            check(dji == qv[e], "e l'altra meta' risponde lo stesso numero");
+            check(dij == qv[e], "the output is the element getqconkij says");
+            check(dji == qv[e], "and the other half answers the same number");
         }
         pend(&p);
     }
     /* D. two triplets that cancel: the row measures zero, and a written zero is not
      * a refusal. */
     {
-        cur_name = "T104 D annullamento: verdetto vuoto, non rifiuto";
+        cur_name = "T104 D cancellation: empty verdict, not refusal";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
@@ -12718,24 +12726,24 @@ static void test_t104(void) {
                         (double[]){1.0, -1.0});
         int w1 = -1, w0 = -1;
         check_rc(PRIMAL_getnumqconknz(t, 1, &w1), PRIMAL_RES_OK, "getnumqconknz(1)");
-        check(w1 == 0, "la riga che si annulla non ha entrate");
+        check(w1 == 0, "the row that cancels has no entries");
         int qi[2], qj[2]; double qv[2];
         for (int e = 0; e < 2; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         int numret = -1;
         check_rc(PRIMAL_getqconk(t, 1, qi, qj, qv, 2, &numret), PRIMAL_RES_OK,
-                 "il vuoto risponde OK");
-        check(numret == 0, "e scrive zero entrate");
-        check(qi[0] == -777 && qv[0] == -777.0, "zero vuol dire niente scritto");
+                 "the empty answers OK");
+        check(numret == 0, "and writes zero entries");
+        check(qi[0] == -777 && qv[0] == -777.0, "zero means nothing written");
         check_rc(PRIMAL_getnumqconknz(t, 0, &w0), PRIMAL_RES_OK, "getnumqconknz(0)");
-        check(w0 == 1, "l'altra riga non e' toccata: la sostituzione e' per riga");
+        check(w0 == 1, "the other row is untouched: replacement is per row");
         double dij = 0;
         check_rc(PRIMAL_getqconkij(t, 1, 0, 1, &dij), PRIMAL_RES_OK, "getqconkij");
-        check(dij == 0.0, "e l'elemento cancellato risponde zero");
+        check(dij == 0.0, "and the cancelled element answers zero");
         pend(&p);
     }
     /* E. maxnum is one short: refusal, no buffer written, *numret untouched. */
     {
-        cur_name = "T104 E la chiamata corta non scrive niente";
+        cur_name = "T104 E the short call writes nothing";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -12746,62 +12754,62 @@ static void test_t104(void) {
         for (int e = 0; e < 2; e++) { qi[e] = -777; qj[e] = -777; qv[e] = -777.0; }
         int numret = 12345;
         check_rc(PRIMAL_getqobj(t, qi, qj, qv, 1, &numret), PRIMAL_RES_ERR_ARG,
-                 "getqobj di 2 con capienza 1");
-        check(numret == 12345, "*numret non e' toccato dal rifiuto");
+                 "getqobj of 2 with capacity 1");
+        check(numret == 12345, "*numret is not touched by the refusal");
         check(qi[0] == -777 && qj[0] == -777 && qv[0] == -777.0,
-              "e i buffer restano intonsi");
+              "and the buffers stay untouched");
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 1, &numret), PRIMAL_RES_ERR_ARG,
-                 "getqconk di 2 con capienza 1");
-        check(numret == 12345, "*numret nemmeno qui");
+                 "getqconk of 2 with capacity 1");
+        check(numret == 12345, "*numret not even here");
         check(qi[0] == -777 && qj[0] == -777 && qv[0] == -777.0,
-              "buffer nemmeno qui");
+              "buffer not even here");
         /* the right capacity, right after, answers: the refusal broke nothing */
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, 2, &numret), PRIMAL_RES_OK,
-                 "la stessa lettura con la capienza giusta risponde");
-        check(numret == 2, "e scrive le due entrate");
+                 "the same read with the right capacity answers");
+        check(numret == 2, "and writes the two entries");
         pend(&p);
     }
     /* F. an empty table answers, does not refuse: zero is an answer. */
     {
-        cur_name = "T104 F il modello senza Q risponde zero, non ERR_ARG";
+        cur_name = "T104 F the model without Q answers zero, not ERR_ARG";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         int qi[1]; double qv[1]; int numret = -1;
         check_rc(PRIMAL_getqobj(t, qi, qi, qv, 1, &numret), PRIMAL_RES_OK,
-                 "getqobj vuoto");
-        check(numret == 0, "zero triplette");
+                 "getqobj empty");
+        check(numret == 0, "zero triplets");
         numret = -1;
         check_rc(PRIMAL_getqconk(t, 0, qi, qi, qv, 1, &numret), PRIMAL_RES_OK,
-                 "getqconk vuoto");
-        check(numret == 0, "zero entrate anche qui");
+                 "getqconk empty");
+        check(numret == 0, "zero entries here too");
         pend(&p);
     }
     /* G. the guards: constraint k out of range, null pointers, negative capacity. */
     {
-        cur_name = "T104 G le guardie dei due lettori";
+        cur_name = "T104 G the guards of the two readers";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         int qi[1], qj[1]; double qv[1]; int numret = 0;
         check_rc(PRIMAL_getqconk(t, -1, qi, qj, qv, 1, &numret), PRIMAL_RES_ERR_ARG,
-                 "k negativo");
+                 "negative k");
         check_rc(PRIMAL_getqconk(t, 1, qi, qj, qv, 1, &numret), PRIMAL_RES_ERR_ARG,
-                 "k = numcon non e' un vincolo");
+                 "k = numcon is not a constraint");
         check_rc(PRIMAL_getqconk(t, 0, NULL, qj, qv, 1, &numret), PRIMAL_RES_ERR_NULL,
                  "qi NULL");
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, NULL, 1, &numret), PRIMAL_RES_ERR_NULL,
                  "qval NULL");
         check_rc(PRIMAL_getqconk(t, 0, qi, qj, qv, -1, &numret), PRIMAL_RES_ERR_ARG,
-                 "capienza negativa");
+                 "negative capacity");
         check_rc(PRIMAL_getqconk(NULL, 0, qi, qj, qv, 1, &numret), PRIMAL_RES_ERR_NULL,
                  "task NULL");
         check_rc(PRIMAL_getqobj(t, qi, qj, qv, -1, &numret), PRIMAL_RES_ERR_ARG,
-                 "getqobj con capienza negativa");
+                 "getqobj with negative capacity");
         check_rc(PRIMAL_getqobj(t, qi, NULL, qv, 1, &numret), PRIMAL_RES_ERR_NULL,
                  "qj NULL");
         check_rc(PRIMAL_getqobj(NULL, qi, qj, qv, 1, &numret), PRIMAL_RES_ERR_NULL,
-                 "task NULL anche qui");
+                 "task NULL here too");
         pend(&p);
     }
 }
@@ -12833,21 +12841,21 @@ static void test_t104(void) {
 static void test_t103(void) {
     /* A. the two reads agree, element by element. */
     {
-        cur_name = "T103 A la tabella intera e' getvarnameidx scritto in fila";
+        cur_name = "T103 A the whole table is getvarnameidx written in a row";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 4); PRIMAL_appendcons(t, 3);
         PRIMAL_putvarname(t, 0, "x0");
         PRIMAL_putvarname(t, 2, "cost");      /* 1 and 3 stay unnamed */
-        PRIMAL_putconname(t, 1, "domanda");
+        PRIMAL_putconname(t, 1, "demand");
         char marker;
         const char *poison = &marker;         /* real address, never read */
         const char *all[8];
         for (int k = 0; k < 8; k++) all[k] = poison;
-        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "la tabella delle variabili si legge");
+        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "the variable table can be read");
         int nv = -1;
         PRIMAL_getnumvar(t, &nv);
-        check(nv == 4, "quattro variabili");
+        check(nv == 4, "four variables");
         int agree = 1, same_pointer = 1;
         for (int j = 0; j < nv; j++) {
             const char *one = NULL;
@@ -12855,147 +12863,147 @@ static void test_t103(void) {
             if (!all[j] || strcmp(all[j], one) != 0) agree = 0;
             if (one && one[0] != '\0' && all[j] != one) same_pointer = 0;
         }
-        check(agree, "ogni elemento dice cio' che dice il getter per indice");
-        check(same_pointer, "un nome prestato non e' copiato: e' la stessa stringa");
-        check(all[1] && all[1][0] == '\0', "lo slot senza nome e' vuoto, non sporcato");
-        check(all[3] && all[3][0] == '\0', "anche in coda");
-        check(all[0] && strcmp(all[0], "x0") == 0, "x0 e' alla variabile 0");
-        check(all[2] && strcmp(all[2], "cost") == 0, "cost e' alla variabile 2");
+        check(agree, "every element says what the index getter says");
+        check(same_pointer, "a lent name is not copied: it is the same string");
+        check(all[1] && all[1][0] == '\0', "the slot without a name is empty, not dirtied");
+        check(all[3] && all[3][0] == '\0', "at the tail too");
+        check(all[0] && strcmp(all[0], "x0") == 0, "x0 is at variable 0");
+        check(all[2] && strcmp(all[2], "cost") == 0, "cost is at variable 2");
         check(all[4] == poison && all[5] == poison && all[6] == poison && all[7] == poison,
-              "si scrivono numvar elementi, non uno di piu'");
+              "numvar elements are written, not one more");
         for (int k = 0; k < 8; k++) all[k] = poison;
-        check_rc(PRIMAL_getallconname(t, all), PRIMAL_RES_OK, "la tabella dei vincoli si legge");
+        check_rc(PRIMAL_getallconname(t, all), PRIMAL_RES_OK, "the constraint table can be read");
         int nc = -1;
         PRIMAL_getnumcon(t, &nc);
-        check(nc == 3, "tre vincoli");
-        check(all[0] && all[0][0] == '\0' && all[1] && strcmp(all[1], "domanda") == 0
+        check(nc == 3, "three constraints");
+        check(all[0] && all[0][0] == '\0' && all[1] && strcmp(all[1], "demand") == 0
               && all[2] && all[2][0] == '\0',
-              "l'ordine e' quello degli indici, i buchi sono vuoti");
-        check(all[3] == poison, "e anche qui niente scrittura oltre numcon");
+              "the order is that of the indices, the holes are empty");
+        check(all[3] == poison, "and here too no write beyond numcon");
         pend(&p);
     }
     /* B. appendvars grows the table at the tail, without moving the strings. */
     {
-        cur_name = "T103 B la tabella cresce in coda";
+        cur_name = "T103 B the table grows at the tail";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2);
         PRIMAL_putvarname(t, 0, "x0"); PRIMAL_putvarname(t, 1, "x1");
         const char *first = NULL;
         const char *all[5];
-        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "lettura a due");
+        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "read of two");
         first = all[0];
-        check_rc(PRIMAL_appendvars(t, 3), PRIMAL_RES_OK, "tre variabili in piu'");
+        check_rc(PRIMAL_appendvars(t, 3), PRIMAL_RES_OK, "three more variables");
         check(first && strcmp(first, "x0") == 0,
-              "la stringa presa prima dell'append legge ancora il suo nome");
+              "the string taken before the append still reads its name");
         int nv = -1;
         PRIMAL_getnumvar(t, &nv);
-        check(nv == 5, "e il conteggio e' cresciuto");
-        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "rilettura a cinque");
+        check(nv == 5, "and the count has grown");
+        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "re-read of five");
         check(all[0] && strcmp(all[0], "x0") == 0 && all[1] && strcmp(all[1], "x1") == 0,
-              "i nomi vecchi restano ai loro indici");
+              "the old names stay at their indices");
         check(all[2] && all[2][0] == '\0' && all[3] && all[3][0] == '\0'
               && all[4] && all[4][0] == '\0',
-              "quelle appena aggiunte escono senza nome");
-        check(all[0] == first, "la tabella si muove, la stringa no");
+              "the just-added ones come out without a name");
+        check(all[0] == first, "the table moves, the string does not");
         pend(&p);
     }
     /* C. a name appears only once: one sees it in a read. */
     {
-        cur_name = "T103 C un nome, un indice: la tabella lo dice tutta";
+        cur_name = "T103 C one name, one index: the whole table says it";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
         PRIMAL_putvarname(t, 0, "x1");
-        check_rc(PRIMAL_putvarname(t, 1, "x1"), PRIMAL_RES_ERR_ARG, "duplice rifiutato");
+        check_rc(PRIMAL_putvarname(t, 1, "x1"), PRIMAL_RES_ERR_ARG, "duplicate rejected");
         const char *all[3];
-        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "lettura dopo il rifiuto");
+        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "read after the refusal");
         int hits = 0;
         for (int j = 0; j < 3; j++) if (all[j] && strcmp(all[j], "x1") == 0) hits++;
-        check(hits == 1, "il nome rifiutato non e' entrato: una sola occorrenza");
-        check(all[1] && strcmp(all[1], "") == 0, "e l'indice rifiutato resta senza nome");
+        check(hits == 1, "the rejected name did not enter: a single occurrence");
+        check(all[1] && strcmp(all[1], "") == 0, "and the rejected index stays without a name");
         int k = -1;
-        check_rc(PRIMAL_getvarname(t, "x1", &k), PRIMAL_RES_OK, "la ricerca per nome ha una risposta");
-        check(k == 0, "e' lui");
+        check_rc(PRIMAL_getvarname(t, "x1", &k), PRIMAL_RES_OK, "the search by name has an answer");
+        check(k == 0, "it is the one");
         /* "" removes the name and it is seen from the table */
-        check_rc(PRIMAL_putvarname(t, 0, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
-        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "rilettura");
+        check_rc(PRIMAL_putvarname(t, 0, ""), PRIMAL_RES_OK, "\"\" removes the name");
+        check_rc(PRIMAL_getallvarname(t, all), PRIMAL_RES_OK, "re-read");
         hits = 0;
         for (int j = 0; j < 3; j++) if (all[j] && all[j][0] != '\0') hits++;
-        check(hits == 0, "ora la tabella non nomina piu' niente");
+        check(hits == 0, "now the table names nothing anymore");
         pend(&p);
     }
     /* D. the two tables stay independent even read whole. */
     {
-        cur_name = "T103 D la stessa stringa nelle due tabelle";
+        cur_name = "T103 D the same string in the two tables";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
         PRIMAL_putvarname(t, 1, "r1");
         PRIMAL_putconname(t, 0, "r1");
         const char *v[2], *cn[2];
-        check_rc(PRIMAL_getallvarname(t, v), PRIMAL_RES_OK, "variabili");
-        check_rc(PRIMAL_getallconname(t, cn), PRIMAL_RES_OK, "vincoli");
+        check_rc(PRIMAL_getallvarname(t, v), PRIMAL_RES_OK, "variables");
+        check_rc(PRIMAL_getallconname(t, cn), PRIMAL_RES_OK, "constraints");
         check(v[0] && v[0][0] == '\0' && v[1] && strcmp(v[1], "r1") == 0,
-              "la tabella delle variabili ha r1 alla 1");
+              "the variable table has r1 at 1");
         check(cn[0] && strcmp(cn[0], "r1") == 0 && cn[1] && cn[1][0] == '\0',
-              "quella dei vincoli alla 0");
+              "the constraint one at 0");
         int j = -1, i = -1;
         PRIMAL_getvarname(t, "r1", &j); PRIMAL_getconname(t, "r1", &i);
-        check(j == 1 && i == 0, "e le due ricerche restano due domande diverse");
+        check(j == 1 && i == 0, "and the two searches stay two different questions");
         pend(&p);
     }
     /* E. a solve does not touch the names, and a shadow writes none. */
     {
-        cur_name = "T103 E la tabella sopravvive al solve";
+        cur_name = "T103 E the table survives the solve";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
         PRIMAL_putvarname(t, 0, "x0"); PRIMAL_putvarname(t, 1, "x1");
-        PRIMAL_putvarname(t, 2, "x2"); PRIMAL_putconname(t, 0, "somma");
+        PRIMAL_putvarname(t, 2, "x2"); PRIMAL_putconname(t, 0, "sum");
         for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, 3.0);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
         PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 2.0);
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
         const char *before[3], *after[3];
-        check_rc(PRIMAL_getallvarname(t, before), PRIMAL_RES_OK, "lettura prima");
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolve");
-        check_rc(PRIMAL_getallvarname(t, after), PRIMAL_RES_OK, "lettura dopo");
+        check_rc(PRIMAL_getallvarname(t, before), PRIMAL_RES_OK, "read before");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solves");
+        check_rc(PRIMAL_getallvarname(t, after), PRIMAL_RES_OK, "read after");
         int same = 1;
         for (int j = 0; j < 3; j++) if (strcmp(before[j], after[j]) != 0) same = 0;
-        check(same, "la tabella e' la stessa di prima");
+        check(same, "the table is the same as before");
         const char *cn[1];
-        check_rc(PRIMAL_getallconname(t, cn), PRIMAL_RES_OK, "anche quella dei vincoli");
-        check(cn[0] && strcmp(cn[0], "somma") == 0, "e il vincolo si chiama ancora somma");
+        check_rc(PRIMAL_getallconname(t, cn), PRIMAL_RES_OK, "the constraint one too");
+        check(cn[0] && strcmp(cn[0], "sum") == 0, "and the constraint is still called sum");
         double po = 0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(po, 2.0, "e la risposta e' sempre 2");
+        close_enough(po, 2.0, "and the answer is still 2");
         pend(&p);
     }
     /* F. the refusals and the empty model. */
     {
-        cur_name = "T103 F puntatori nulli e tabella vuota";
+        cur_name = "T103 F null pointers and empty table";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         char marker;
         const char *poison = &marker;
         const char *one = poison;
         check_rc(PRIMAL_getallvarname(t, NULL), PRIMAL_RES_ERR_NULL, "names NULL");
-        check_rc(PRIMAL_getallconname(t, NULL), PRIMAL_RES_ERR_NULL, "con names NULL");
+        check_rc(PRIMAL_getallconname(t, NULL), PRIMAL_RES_ERR_NULL, "with names NULL");
         check_rc(PRIMAL_getallvarname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL");
-        check_rc(PRIMAL_getallconname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL sui vincoli");
-        check(one == poison, "un rifiuto non scrive nemmeno il puntatore che gli hai dato");
+        check_rc(PRIMAL_getallconname(NULL, &one), PRIMAL_RES_ERR_NULL, "task NULL on constraints");
+        check(one == poison, "a refusal does not even write the pointer you gave it");
         /* a just-created task has nothing to read: it answers, and does not
          * write -- it is not a "not found", the table is there and has zero rows */
-        check_rc(PRIMAL_getallvarname(t, &one), PRIMAL_RES_OK, "variabili zero: non e' un errore");
-        check(one == poison, "e nessun elemento e' scritto");
+        check_rc(PRIMAL_getallvarname(t, &one), PRIMAL_RES_OK, "zero variables: it is not an error");
+        check(one == poison, "and no element is written");
         one = poison;
-        check_rc(PRIMAL_getallconname(t, &one), PRIMAL_RES_OK, "vincoli zero: idem");
-        check(one == poison, "nessuna scrittura anche qui");
+        check_rc(PRIMAL_getallconname(t, &one), PRIMAL_RES_OK, "zero constraints: same");
+        check(one == poison, "no write here either");
         PRIMAL_appendvars(t, 1);
-        check_rc(PRIMAL_getallvarname(t, &one), PRIMAL_RES_OK, "una variabile senza nome");
-        check(one && one[0] == '\0', "esce la stringa vuota, non il veleno");
+        check_rc(PRIMAL_getallvarname(t, &one), PRIMAL_RES_OK, "a variable without a name");
+        check(one && one[0] == '\0', "the empty string comes out, not the poison");
         pend(&p);
     }
 }
@@ -13024,51 +13032,51 @@ static void test_t103(void) {
 static void test_t102(void) {
     /* A. the counts count the WRITTEN ENTRIES, duplicates included. */
     {
-        cur_name = "T102 A conteggi: un duplicato scritto due volte conta due volte";
+        cur_name = "T102 A counts: a duplicate written twice counts twice";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
         int na = -1, mn = -1;
-        check_rc(PRIMAL_getnumanz(t, &na), PRIMAL_RES_OK, "getnumanz risponde su un modello vuoto");
-        check(na == 0, "nessuna entrata scritta: 0");
-        check_rc(PRIMAL_getmaxnumanz(t, &mn), PRIMAL_RES_OK, "getmaxnumanz risponde");
+        check_rc(PRIMAL_getnumanz(t, &na), PRIMAL_RES_OK, "getnumanz answers on an empty model");
+        check(na == 0, "no entry written: 0");
+        check_rc(PRIMAL_getmaxnumanz(t, &mn), PRIMAL_RES_OK, "getmaxnumanz answers");
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){5.0, 7.0});
         PRIMAL_getnumanz(t, &na);
-        check(na == 2, "due entrate: 2");
+        check(na == 2, "two entries: 2");
         PRIMAL_putarow(t, 1, 1, (int[]){1}, (double[]){3.0});
         PRIMAL_getnumanz(t, &na);
-        check(na == 3, "una terza entrata in un'altra riga: 3");
+        check(na == 3, "a third entry in another row: 3");
         /* row 1 rewritten with column 1 TWICE: no deduplication */
         PRIMAL_putarow(t, 1, 2, (int[]){1, 1}, (double[]){7.0, 100.0});
         PRIMAL_getnumanz(t, &na); PRIMAL_getmaxnumanz(t, &mn);
-        check(na == 4, "la riga 1 tiene due entrate per la colonna 1: 4 in tutto");
-        check(mn >= na, "invariante: maxnumanzs non scende sotto numanzs");
+        check(na == 4, "row 1 keeps two entries for column 1: 4 in all");
+        check(mn >= na, "invariant: maxnumanzs does not drop below numanzs");
         int sub[8]; double val[8];
         for (int k = 0; k < 8; k++) { sub[k] = -777; val[k] = -777.0; }
         int nret = -1;
         check_rc(PRIMAL_getarow(t, 1, sub, val, 8, &nret), PRIMAL_RES_OK,
-                 "lettura della riga 1");
-        check(nret == 2, "la riga 1 esce con le sue due entrate");
+                 "read of row 1");
+        check(nret == 2, "row 1 comes out with its two entries");
         check(sub[0] == 1 && val[0] == 7.0 && sub[1] == 1 && val[1] == 100.0,
-              "il duplicato esce duplicato, per indice crescente");
+              "the duplicate comes out duplicated, by increasing index");
         /* Q: the same contract on the triplet store */
         int qnz = -1;
-        check_rc(PRIMAL_getnumqobjnz(t, &qnz), PRIMAL_RES_OK, "getnumqobjnz risponde");
-        check(qnz == 0, "nessun termine quadratico: 0");
+        check_rc(PRIMAL_getnumqobjnz(t, &qnz), PRIMAL_RES_OK, "getnumqobjnz answers");
+        check(qnz == 0, "no quadratic term: 0");
         check_rc(PRIMAL_putqobj(t, 2, (int[]){0, 1}, (int[]){0, 1},
-                                (double[]){2.0, 2.0}), PRIMAL_RES_OK, "due triplette");
+                                (double[]){2.0, 2.0}), PRIMAL_RES_OK, "two triplets");
         PRIMAL_getnumqobjnz(t, &qnz);
-        check(qnz == 2, "due triplette memorizzate: 2");
+        check(qnz == 2, "two stored triplets: 2");
         PRIMAL_putqobj(t, 0, NULL, NULL, NULL);
         PRIMAL_getnumqobjnz(t, &qnz);
-        check(qnz == 0, "svuotato il quadrato: 0");
+        check(qnz == 0, "the square emptied: 0");
         pend(&p);
     }
     /* B. on a model without duplicates the row slice is exactly what
      * getaij reports: same value for every entry, and the only difference from
      * a count of the nonzeros is the zero WRITTEN explicitly. */
     {
-        cur_name = "T102 B la fetta di riga risponde come getaij";
+        cur_name = "T102 B the row slice answers like getaij";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 4); PRIMAL_appendcons(t, 3);
@@ -13078,7 +13086,7 @@ static void test_t102(void) {
         int sub[8]; double val[8];
         for (int i = 0; i < 3; i++) {
             int nret = -1;
-            check_rc(PRIMAL_getarow(t, i, sub, val, 8, &nret), PRIMAL_RES_OK, "lettura riga");
+            check_rc(PRIMAL_getarow(t, i, sub, val, 8, &nret), PRIMAL_RES_OK, "row read");
             int want = 0;
             double aij;
             for (int j = 0; j < 4; j++) {
@@ -13087,27 +13095,27 @@ static void test_t102(void) {
             }
             if (i == 0) {
                 check(nret == 3 && want == 2,
-                      "lo zero scritto sta nella fetta, non fra i non nulli");
+                      "the written zero is in the slice, not among the nonzeros");
                 check(sub[2] == 3 && val[2] == 0.0,
-                      "e l'entrata in piu' e' proprio la colonna 3, a valore 0");
+                      "and the extra entry is precisely column 3, with value 0");
             } else {
-                check(nret == want, "dove non ci sono zeri scritti le due cifre coincidono");
+                check(nret == want, "where there are no written zeros the two figures coincide");
             }
             int asc = 1;
             for (int k = 1; k < nret; k++) if (sub[k] < sub[k - 1]) asc = 0;
-            check(asc, "indice crescente");
+            check(asc, "increasing index");
             int match = 1;
             for (int k = 0; k < nret; k++) {
                 PRIMAL_getaij(t, i, sub[k], &aij);
                 if (aij != val[k]) match = 0;
             }
-            check(match, "ogni entrata della fetta vale quanto getaij dice");
+            check(match, "every entry of the slice is worth what getaij says");
         }
         pend(&p);
     }
     /* C. a slice that does not fit writes nothing; offset reassembles the whole. */
     {
-        cur_name = "T102 C rifiuto senza effetti, offset che ricompone";
+        cur_name = "T102 C refusal with no effects, offset that reassembles";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 5); PRIMAL_appendcons(t, 1);
@@ -13120,141 +13128,141 @@ static void test_t102(void) {
         }
         int nret = -1;
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 0, 3, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
-                 "quattro entrate in tre posti: rifiuto");
-        check(nret == -1, "numret non toccato dal rifiuto");
+                 "four entries in three slots: refusal");
+        check(nret == -1, "numret not touched by the refusal");
         int untouched = 1;
         for (int k = 0; k < 5; k++) if (a_s[k] != -777 || a_v[k] != -777.0) untouched = 0;
-        check(untouched, "i buffer dell'utente non sono stati toccati dal rifiuto");
+        check(untouched, "the user's buffers were not touched by the refusal");
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 0, 4, &nret, a_s, a_v), PRIMAL_RES_OK,
-                 "lo spazio esatto basta");
-        check(nret == 4, "la riga intera: 4 entrate");
+                 "the exact space is enough");
+        check(nret == 4, "the whole row: 4 entries");
         nret = -1; /* the earlier round trip already wrote the count: re-arm it */
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 1, 4, &nret, b_s, b_v), PRIMAL_RES_ERR_ARG,
-                 "offset 1 dentro capienza 4 lascia 3 posti per 4 entrate");
-        check(nret == -1, "anche qui numret non e' stato scritto");
+                 "offset 1 within capacity 4 leaves 3 slots for 4 entries");
+        check(nret == -1, "here too numret was not written");
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 1, 5, &nret, b_s, b_v), PRIMAL_RES_OK,
-                 "offset 1 con capienza 5: quattro posti ci stanno");
+                 "offset 1 with capacity 5: four slots fit");
         check(nret == 4 && b_s[0] == -777 && b_s[1] == a_s[0] && b_v[1] == a_v[0],
-              "offset e' una posizione del buffer: numret conta le ENTRATE, non l'ultima posizione");
+              "offset is a buffer position: numret counts the ENTRIES, not the last position");
         /* two-slice column read: [0,3) then [3,5) written after the first */
         int n1 = -1, n2 = -1;
         check_rc(PRIMAL_getarowslice(t, 0, 0, 3, 0, 5, &n1, a_s, a_v), PRIMAL_RES_OK,
-                 "prima fetta di colonne [0,3)");
+                 "first column slice [0,3)");
         check_rc(PRIMAL_getarowslice(t, 0, 3, 5, n1, 5, &n2, a_s, a_v), PRIMAL_RES_OK,
-                 "seconda fetta [3,5) scritta a partire da dove eravamo");
-        check(n1 == 2 && n2 == 2 && n1 + n2 == 4, "le due fette sono 2 e 2");
+                 "second slice [3,5) written starting from where we were");
+        check(n1 == 2 && n2 == 2 && n1 + n2 == 4, "the two slices are 2 and 2");
         check_rc(PRIMAL_getarow(t, 0, full_s, full_v, 5, &nret), PRIMAL_RES_OK,
-                 "lettura integrale");
+                 "integral read");
         int same = (nret == n1 + n2);
         for (int k = 0; k < nret && same; k++)
             if (full_s[k] != a_s[k] || full_v[k] != a_v[k]) same = 0;
-        check(same, "la concatenazione delle fette E' la lettura integrale");
+        check(same, "the concatenation of the slices IS the integral read");
         /* out-of-range indices are not a silent rejection */
         check_rc(PRIMAL_getarowslice(t, 1, 0, 5, 0, 5, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
-                 "riga 1 non esiste (numcon=1)");
+                 "row 1 does not exist (numcon=1)");
         check_rc(PRIMAL_getarowslice(t, 0, 0, 6, 0, 5, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
-                 "last oltre numvar");
+                 "last beyond numvar");
         check_rc(PRIMAL_getarowslice(t, 0, 3, 2, 0, 5, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
                  "first > last");
         check_rc(PRIMAL_getarowslice(t, 0, 0, 5, 5, 4, &nret, a_s, a_v), PRIMAL_RES_ERR_ARG,
-                 "offset oltre maxnum");
+                 "offset beyond maxnum");
         pend(&p);
     }
     /* D. the column answers in the order it was written: here the solver
      * neither requires nor enforces sorted input indices. */
     {
-        cur_name = "T102 D la colonna esce nell'ordine memorizzato";
+        cur_name = "T102 D the column comes out in stored order";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 3);
         PRIMAL_putacol(t, 1, 3, (int[]){2, 0, 1}, (double[]){6.0, 1.0, -4.0});
         int sub[4]; double val[4]; int nret = -1;
-        check_rc(PRIMAL_getacol(t, 1, sub, val, 4, &nret), PRIMAL_RES_OK, "lettura colonna 1");
+        check_rc(PRIMAL_getacol(t, 1, sub, val, 4, &nret), PRIMAL_RES_OK, "read column 1");
         check(nret == 3 && sub[0] == 2 && sub[1] == 0 && sub[2] == 1,
-              "ordine di memorizzazione, non ordinato a forza");
+              "storage order, not forced sorted");
         check_rc(PRIMAL_getacolslice(t, 1, 0, 2, 0, 4, &nret, sub, val), PRIMAL_RES_OK,
-                 "fetta di righe [0,2)");
+                 "row slice [0,2)");
         check(nret == 2 && sub[0] == 0 && sub[1] == 1 && val[0] == 1.0 && val[1] == -4.0,
-              "meta' aperta a destra: la riga 2 resta fuori");
+              "half-open to the right: row 2 stays out");
         check_rc(PRIMAL_getacolslice(t, 1, 2, 3, 0, 4, &nret, sub, val), PRIMAL_RES_OK,
-                 "fetta di righe [2,3)");
-        check(nret == 1 && sub[0] == 2 && val[0] == 6.0, "quello che restava");
+                 "row slice [2,3)");
+        check(nret == 1 && sub[0] == 2 && val[0] == 6.0, "what remained");
         int agree = 1;
         for (int i = 0; i < 3; i++) {
             double aij; PRIMAL_getaij(t, i, 1, &aij);
             check_rc(PRIMAL_getacolslice(t, 1, i, i + 1, 0, 4, &nret, sub, val),
-                     PRIMAL_RES_OK, "una riga alla volta");
+                     PRIMAL_RES_OK, "one row at a time");
             if (nret != 1 || sub[0] != i || val[0] != aij) agree = 0;
         }
-        check(agree, "una fetta per riga alla volta ricostruisce la colonna di getaij");
+        check(agree, "one row-slice at a time reconstructs the column of getaij");
         check_rc(PRIMAL_getacol(t, 0, sub, val, 4, &nret), PRIMAL_RES_OK,
-                 "una colonna mai scritta si legge vuota");
-        check(nret == 0, "vuota dice zero entrate, non un errore");
+                 "a column never written reads empty");
+        check(nret == 0, "empty says zero entries, not an error");
         pend(&p);
     }
     /* E. the two name tables. */
     {
-        cur_name = "T102 E nomi: due tabelle, univoche, prestati";
+        cur_name = "T102 E names: two tables, unique, lent";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
         const char *nm = NULL;
-        check_rc(PRIMAL_getvarnameidx(t, 0, &nm), PRIMAL_RES_OK, "un nome non messo si legge");
-        check(nm && nm[0] == '\0', "senza nome: stringa vuota");
-        check_rc(PRIMAL_putvarname(t, 0, "x1"), PRIMAL_RES_OK, "nome alla variabile 0");
-        check_rc(PRIMAL_putvarname(t, 1, "x2"), PRIMAL_RES_OK, "nome alla variabile 1");
+        check_rc(PRIMAL_getvarnameidx(t, 0, &nm), PRIMAL_RES_OK, "a name not set reads");
+        check(nm && nm[0] == '\0', "without a name: empty string");
+        check_rc(PRIMAL_putvarname(t, 0, "x1"), PRIMAL_RES_OK, "name to variable 0");
+        check_rc(PRIMAL_putvarname(t, 1, "x2"), PRIMAL_RES_OK, "name to variable 1");
         check_rc(PRIMAL_putconname(t, 0, "x1"), PRIMAL_RES_OK,
-                 "lo STESSO nome su un vincolo: tabelle indipendenti");
+                 "the SAME name on a constraint: independent tables");
         PRIMAL_getvarnameidx(t, 0, &nm);
-        check(nm && strcmp(nm, "x1") == 0, "indice -> nome");
+        check(nm && strcmp(nm, "x1") == 0, "index -> name");
         int j = -1, i = -1;
-        check_rc(PRIMAL_getvarname(t, "x2", &j), PRIMAL_RES_OK, "nome -> indice");
-        check(j == 1, "e' la variabile 1");
-        check_rc(PRIMAL_getconname(t, "x1", &i), PRIMAL_RES_OK, "lo stesso nome cerca il vincolo");
-        check(i == 0, "e' il vincolo 0, non la variabile 0");
-        check_rc(PRIMAL_getidxvar(t, "x2", &j), PRIMAL_RES_OK, "getidxvar: la stessa domanda");
-        check(j == 1, "e la stessa risposta");
-        check_rc(PRIMAL_getidxcon(t, "x1", &i), PRIMAL_RES_OK, "getidxcon: la stessa domanda");
-        check(i == 0, "e la stessa risposta");
+        check_rc(PRIMAL_getvarname(t, "x2", &j), PRIMAL_RES_OK, "name -> index");
+        check(j == 1, "it is variable 1");
+        check_rc(PRIMAL_getconname(t, "x1", &i), PRIMAL_RES_OK, "the same name searches the constraint");
+        check(i == 0, "it is constraint 0, not variable 0");
+        check_rc(PRIMAL_getidxvar(t, "x2", &j), PRIMAL_RES_OK, "getidxvar: the same question");
+        check(j == 1, "and the same answer");
+        check_rc(PRIMAL_getidxcon(t, "x1", &i), PRIMAL_RES_OK, "getidxcon: the same question");
+        check(i == 0, "and the same answer");
         /* duplicate rejected WITHOUT touching the previous name */
         check_rc(PRIMAL_putvarname(t, 1, "x1"), PRIMAL_RES_ERR_ARG,
-                 "nome gia' in uso: rifiutato");
+                 "name already in use: rejected");
         PRIMAL_getvarnameidx(t, 1, &nm);
-        check(nm && strcmp(nm, "x2") == 0, "il nome precedente sopravvive al rifiuto");
+        check(nm && strcmp(nm, "x2") == 0, "the previous name survives the refusal");
         /* renaming the same index with the same name is not a conflict */
-        check_rc(PRIMAL_putvarname(t, 1, "x2"), PRIMAL_RES_OK, "ribattere lo stesso nome va bene");
+        check_rc(PRIMAL_putvarname(t, 1, "x2"), PRIMAL_RES_OK, "retyping the same name is fine");
         /* "" removes the name, and a removed name reads as never set */
-        check_rc(PRIMAL_putvarname(t, 1, ""), PRIMAL_RES_OK, "\"\" toglie il nome");
+        check_rc(PRIMAL_putvarname(t, 1, ""), PRIMAL_RES_OK, "\"\" removes the name");
         PRIMAL_getvarnameidx(t, 1, &nm);
-        check(nm && nm[0] == '\0', "senza nome di nuovo: stringa vuota");
+        check(nm && nm[0] == '\0', "without a name again: empty string");
         j = -1;
         check_rc(PRIMAL_getvarname(t, "", &j), PRIMAL_RES_ERR_ARG,
-                 "la stringa vuota non nomina niente");
-        check(j == -1, "e l'indice restituito non e' toccato");
-        check_rc(PRIMAL_getvarname(t, "nessuno", &j), PRIMAL_RES_ERR_ARG, "nome inesistente");
-        check(j == -1, "l'indice esce intatto anche qui");
+                 "the empty string names nothing");
+        check(j == -1, "and the returned index is not touched");
+        check_rc(PRIMAL_getvarname(t, "none", &j), PRIMAL_RES_ERR_ARG, "nonexistent name");
+        check(j == -1, "the index comes out intact here too");
         /* an out-of-range index is not a name */
-        check_rc(PRIMAL_putvarname(t, 3, "oltre"), PRIMAL_RES_ERR_ARG, "variabile 3 non esiste");
-        check_rc(PRIMAL_putconname(t, 2, "oltre"), PRIMAL_RES_ERR_ARG, "vincolo 2 non esiste");
-        check_rc(PRIMAL_getvarnameidx(t, -1, &nm), PRIMAL_RES_ERR_ARG, "indice negativo");
-        check_rc(PRIMAL_getconnameidx(t, 5, &nm), PRIMAL_RES_ERR_ARG, "indice oltre numcon");
+        check_rc(PRIMAL_putvarname(t, 3, "beyond"), PRIMAL_RES_ERR_ARG, "variable 3 does not exist");
+        check_rc(PRIMAL_putconname(t, 2, "beyond"), PRIMAL_RES_ERR_ARG, "constraint 2 does not exist");
+        check_rc(PRIMAL_getvarnameidx(t, -1, &nm), PRIMAL_RES_ERR_ARG, "negative index");
+        check_rc(PRIMAL_getconnameidx(t, 5, &nm), PRIMAL_RES_ERR_ARG, "index beyond numcon");
         /* the borrowed pointer survives appendvars: the strings do not
          * move, the table pointing at them moves */
         const char *borrowed = NULL;
         PRIMAL_getvarnameidx(t, 0, &borrowed);
-        check_rc(PRIMAL_appendvars(t, 2), PRIMAL_RES_OK, "appendvars dopo il nome");
+        check_rc(PRIMAL_appendvars(t, 2), PRIMAL_RES_OK, "appendvars after the name");
         check(borrowed && strcmp(borrowed, "x1") == 0,
-              "il puntatore ottenuto prima dell'append legge ancora il nome");
+              "the pointer obtained before the append still reads the name");
         int k = -1;
-        check_rc(PRIMAL_getvarname(t, "x1", &k), PRIMAL_RES_OK, "e la tabella lo trova ancora");
-        check(k == 0, "allo stesso indice");
+        check_rc(PRIMAL_getvarname(t, "x1", &k), PRIMAL_RES_OK, "and the table still finds it");
+        check(k == 0, "at the same index");
         PRIMAL_getvarnameidx(t, 4, &nm);
-        check(nm && nm[0] == '\0', "la variabile appena aggiunta non ha nome");
+        check(nm && nm[0] == '\0', "the just-added variable has no name");
         pend(&p);
     }
     /* F. no accessor accepts a null pointer. */
     {
-        cur_name = "T102 F puntatori nulli su tutta la famiglia";
+        cur_name = "T102 F null pointers on the whole family";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -13274,10 +13282,10 @@ static void test_t102(void) {
                  "acolslice val NULL");
         check_rc(PRIMAL_getacolslice(t, 0, 0, 1, 0, 2, NULL, sub, val), PRIMAL_RES_ERR_NULL,
                  "acolslice numret NULL");
-        check_rc(PRIMAL_putvarname(t, 0, NULL), PRIMAL_RES_ERR_ARG, "nome NULL: argomento");
+        check_rc(PRIMAL_putvarname(t, 0, NULL), PRIMAL_RES_ERR_ARG, "name NULL: argument");
         check_rc(PRIMAL_getvarnameidx(t, 0, NULL), PRIMAL_RES_ERR_NULL, "name NULL");
-        check_rc(PRIMAL_getvarname(t, NULL, &nret), PRIMAL_RES_ERR_NULL, "cerca NULL");
-        check_rc(PRIMAL_getvarname(t, "x", NULL), PRIMAL_RES_ERR_NULL, "risultato NULL");
+        check_rc(PRIMAL_getvarname(t, NULL, &nret), PRIMAL_RES_ERR_NULL, "search NULL");
+        check_rc(PRIMAL_getvarname(t, "x", NULL), PRIMAL_RES_ERR_NULL, "result NULL");
         check_rc(PRIMAL_getconnameidx(t, 0, NULL), PRIMAL_RES_ERR_NULL, "connameidx NULL");
         check_rc(PRIMAL_getidxvar(t, "x", NULL), PRIMAL_RES_ERR_NULL, "getidxvar NULL");
         check_rc(PRIMAL_getidxcon(t, "x", NULL), PRIMAL_RES_ERR_NULL, "getidxcon NULL");
@@ -13288,28 +13296,28 @@ static void test_t102(void) {
      * no cost and does not appear in the row: its part of the answer is not unique,
      * and indeed is not asserted here. */
     {
-        cur_name = "T102 G nominare non perturba la risposta";
+        cur_name = "T102 G naming does not perturb the answer";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
         PRIMAL_putvarname(t, 0, "x0"); PRIMAL_putvarname(t, 1, "x1");
-        PRIMAL_putvarname(t, 2, "x2"); PRIMAL_putconname(t, 0, "somma");
+        PRIMAL_putvarname(t, 2, "x2"); PRIMAL_putconname(t, 0, "sum");
         for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, 3.0);
         PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
         PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 2.0);
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "risolve");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solves");
         double po = 0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough(po, 2.0, "l'obiettivo e' 2, come senza nomi");
+        close_enough(po, 2.0, "the objective is 2, as without names");
         double xx[3];
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, xx);
         check(xx[0] > 1.99 && xx[1] < 1e-6, "x0 = 2, x1 = 0");
         int nret = -1; int sub[4]; double val[4];
         check_rc(PRIMAL_getarow(t, 0, sub, val, 4, &nret), PRIMAL_RES_OK,
-                 "dopo il solve la riga si legge ancora");
-        check(nret == 2 && val[0] == 1.0 && val[1] == 1.0, "e dice sempre le sue due entrate");
+                 "after the solve the row is still read");
+        check(nret == 2 && val[0] == 1.0 && val[1] == 1.0, "and always says its two entries");
         pend(&p);
     }
 }
@@ -13420,7 +13428,7 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
 static void test_t101(void) {
     /* A. a cone WITHOUT rows has no finite value: the vertex closes the triple. */
     {
-        cur_name = "T101 A cono illimitato, nessuna riga";
+        cur_name = "T101 A unbounded cone, no row";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -13430,14 +13438,14 @@ static void test_t101(void) {
         PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
         PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0, 1, 2});
         check(t101_verdict(t, PRIMAL_RES_ERR_UNBOUNDED, 5, 1) == 1,
-              "rc=1003, prosta=5, solsta=6: il raggio primale misura");
+              "rc=1003, prosta=5, solsta=6: the primal ray measures");
         pend(&p);
     }
     /* B. the same unboundedness with one row: here the conic route does NOT converge,
      * and the verdict comes from the direction measured on the model rows, not
      * from convergence. */
     {
-        cur_name = "T101 B cono illimitato, con la riga";
+        cur_name = "T101 B unbounded cone, with the row";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -13450,14 +13458,14 @@ static void test_t101(void) {
         PRIMAL_putarow(t, 0, 3, (int[]){0, 1, 2}, (double[]){1.0, -1.0, -1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
         check(t101_verdict(t, PRIMAL_RES_ERR_UNBOUNDED, 5, 1) == 1,
-              "il raggio primale misura anche con la riga (A rho = 0)");
+              "the primal ray measures with the row too (A rho = 0)");
         pend(&p);
     }
     /* C. min x0 over PPOW(1/2) with x0 = -1: the cone domain asks t >= 0 while the
      * row asks -1. The linear consequences of membership alone already
      * contradict each other, and here the answer concerns the PRIMAL. */
     {
-        cur_name = "T101 C cono primale infeasible";
+        cur_name = "T101 C primal infeasible cone";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -13470,14 +13478,14 @@ static void test_t101(void) {
         PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, -1.0, -1.0);
         check(t101_verdict(t, PRIMAL_RES_ERR_INFEASIBLE, 4, 2) == 1,
-              "rc=1002, prosta=4, solsta=5: il raggio duale misura in K*");
+              "rc=1002, prosta=4, solsta=5: the dual ray measures in K*");
         pend(&p);
     }
     /* J. the same infeasibility with a QUAD cone (self-dual), the form of
      * Section 3.7 of Seven Sins: `x0 = -1` lies outside `x0 >= ||(x1,x2)||`. The
      * certificate is y0 = 1 on the row, d = (1,0,0) in QUAD, b'y = -1 < 0. */
     {
-        cur_name = "T101 J cono QUAD primale infeasible";
+        cur_name = "T101 J QUAD cone primal infeasible";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         PRIMAL_appendvars(t, 3);
@@ -13489,7 +13497,7 @@ static void test_t101(void) {
         PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, -1.0, -1.0);
         check(t101_verdict(t, PRIMAL_RES_ERR_INFEASIBLE, 4, 2) == 1,
-              "rc=1002, prosta=4, solsta=5: raggio duale per il cono QUAD");
+              "rc=1002, prosta=4, solsta=5: dual ray for the QUAD cone");
         pend(&p);
     }
     /* D/E/G. the same model in the three senses, with the dual by hand:
@@ -13508,8 +13516,8 @@ static void test_t101(void) {
         static const double y0_of[3] = { 2.0/3.0, -8.0/3.0, -2.0/3.0 };
         static const double y1_of[3] = { -7.0/3.0, 1.0/3.0, 7.0/3.0 };
         static const double d2_of[3] = { 1.0, -1.0, 1.0 };
-        static const char *nm_of[3] = { "T101 D min", "T101 E max +costo",
-                                        "T101 G max -costo (discriminante)" };
+        static const char *nm_of[3] = { "T101 D min", "T101 E max +cost",
+                                        "T101 G max -cost (discriminator)" };
         for (int cs = 0; cs < 3; cs++) {
             cur_name = nm_of[cs];
             P p;
@@ -13521,28 +13529,28 @@ static void test_t101(void) {
             check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "rc = OK");
             check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
             check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
-            close_enough_tol(po, obj_of[cs], 1e-5, "l'obiettivo a mano");
-            close_enough_tol(dob, obj_of[cs], 1e-5, "dobj = pobj: il duale e' raggiunto");
+            close_enough_tol(po, obj_of[cs], 1e-5, "the objective by hand");
+            close_enough_tol(dob, obj_of[cs], 1e-5, "dobj = pobj: the dual is attained");
             check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
-            close_enough_tol(x[2], x2_of[cs], 1e-4, "x2 all'estremo del cono");
+            close_enough_tol(x[2], x2_of[cs], 1e-4, "x2 at the cone's extreme");
             check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "gety");
-            close_enough_tol(y[0], y0_of[cs], 1e-5, "y0 a mano");
-            close_enough_tol(y[1], y1_of[cs], 1e-5, "y1 a mano");
+            close_enough_tol(y[0], y0_of[cs], 1e-5, "y0 by hand");
+            close_enough_tol(y[1], y1_of[cs], 1e-5, "y1 by hand");
             double d0 = s * (cj + y[0]), d1 = s * (cj + y[1]), d2 = s * cj;
-            close_enough_tol(d0, 5.0/3.0, 1e-5, "il blocco duale in K* ha t = 5/3");
-            close_enough_tol(d1, -4.0/3.0, 1e-5, "e u = -4/3");
+            close_enough_tol(d0, 5.0/3.0, 1e-5, "the dual block in K* has t = 5/3");
+            close_enough_tol(d1, -4.0/3.0, 1e-5, "and u = -4/3");
             close_enough_tol(d2, d2_of[cs], 1e-5, "v = +/-1");
             close_enough_tol(d0, sqrt(d1 * d1 + d2 * d2), 1e-5,
-                             "d sta ESATTAMENTE sul bordo di K*: t = |(u,v)|");
+                             "d lies EXACTLY on the boundary of K*: t = |(u,v)|");
             close_enough_tol(d0 * x[0] + d1 * x[1] + d2 * x[2], 0.0, 1e-4,
-                             "complementarita' d*x = 0");
+                             "complementarity d*x = 0");
             check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf),
                      PRIMAL_RES_OK, "pinf");
-            check(pinf >= 0.0 && pinf <= 1e-6, "il punto consegnato misura ammissibile");
+            check(pinf >= 0.0 && pinf <= 1e-6, "the delivered point measures feasible");
             check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf),
                      PRIMAL_RES_OK, "dinf");
             check(dinf >= 0.0 && dinf <= 1e-6,
-                  "e il duale -- barre E cono -- misura ammissibile");
+                  "and the dual -- bars AND cone -- measures feasible");
             pend(&p);
         }
     }
@@ -13550,14 +13558,14 @@ static void test_t101(void) {
      * readable and must be left unmeasured, not measured badly. The model must
      * still answer, with the same value. */
     {
-        cur_name = "T101 H membro del cono bordato: blocco non misurato";
+        cur_name = "T101 H bounded cone member: block not measured";
         P p;
         PRIMALtask_t t = t101_soc(&p, 1.0, 0, 1);
         double po = 0.0;
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK,
-                 "un bordo slack su un membro non rende il modello illeggibile");
+                 "a slack bound on a member does not make the model unreadable");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(po, 6.0, 1e-5, "e non ne muove il valore");
+        close_enough_tol(po, 6.0, 1e-5, "and does not move its value");
         pend(&p);
     }
     /* I. bar + cone: here the conic construction answers (the cut route is
@@ -13566,7 +13574,7 @@ static void test_t101(void) {
      * the true dual is (5/3,-4/3,1). What still holds: the model answers, and
      * the zero on those columns does not become a dual violation. */
     {
-        cur_name = "T101 I barra + cono (deviazione slx/sux non pubblicati)";
+        cur_name = "T101 I bar + cone (deviation slx/sux not published)";
         P p;
         PRIMALtask_t t = t101_soc(&p, 1.0, 0, 0);
         int bd = 1;
@@ -13575,15 +13583,15 @@ static void test_t101(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "rc = OK");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
-        close_enough_tol(po, 6.0, 1e-5, "lo stesso valore di D");
-        close_enough_tol(dob, 6.0, 1e-5, "e lo stesso duale");
+        close_enough_tol(po, 6.0, 1e-5, "the same value as D");
+        close_enough_tol(dob, 6.0, 1e-5, "and the same dual");
         check_rc(PRIMAL_getslx(t, PRIMAL_SOL_ITR, sl), PRIMAL_RES_OK, "getslx");
         check_rc(PRIMAL_getsux(t, PRIMAL_SOL_ITR, su), PRIMAL_RES_OK, "getsux");
         check(fabs(sl[0] + su[0]) <= 1e-12,
-              "DEVIAZIONE: sulla barra slx+sux del membro x0 legge 0, non -5/3");
+              "DEVIATION: on the bar slx+sux of member x0 reads 0, not -5/3");
         check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf), PRIMAL_RES_OK, "dinf");
         check(dinf >= 0.0 && dinf <= 1e-6,
-              "e lo zero pubblicato non e' una violazione duale");
+              "and the published zero is not a dual violation");
         pend(&p);
     }
     /* F. the u = 0 face of a PEXP is NOT an escape route: min -x2 with x1 = 0 and
@@ -13592,7 +13600,7 @@ static void test_t101(void) {
      * through a direction escaping along v, answering 1003 on a bounded
      * model. */
     {
-        cur_name = "T101 F la faccia u=0 di un PEXP non e' illimitatezza";
+        cur_name = "T101 F the u=0 face of a PEXP is not unboundedness";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         double po = 0.0, dob = 0.0;
@@ -13606,11 +13614,11 @@ static void test_t101(void) {
         PRIMAL_putarow(t, 0, 1, (int[]){1}, (double[]){1.0});
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 0.0, 0.0);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK,
-                 "non e' duale infeasible: sulla faccia u=0 il cono chiede anche v=0");
+                 "it is not dual infeasible: on the u=0 face the cone also asks v=0");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
-        check(fabs(po) <= 1e-6, "il valore e' 0 (x2 = 0), non -inf");
-        check(fabs(dob) <= 1e-6, "e il duale dice lo stesso");
+        check(fabs(po) <= 1e-6, "the value is 0 (x2 = 0), not -inf");
+        check(fabs(dob) <= 1e-6, "and the dual says the same");
         pend(&p);
     }
 }
@@ -13627,7 +13635,7 @@ static void test_t100(void) {
      * declared deviation says the ray is missing when the direction lives in
      * a bar, not that conic routes never publish a 6. */
     {
-        cur_name = "T100 F scalare illimitata (raggio pubblicato)";
+        cur_name = "T100 F unbounded scalar (ray published)";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
         double rho[4];
@@ -13638,9 +13646,9 @@ static void test_t100(void) {
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED, "rc = ERR_UNBOUNDED");
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
-        check(sta == 6 && pro == 5, "solsta = 6 e prosta = 5, come T99 B");
-        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "il vettore pero' c'e'");
-        check(t85_measures_primal(t, rho) == 1, "e il vettore misura");
+        check(sta == 6 && pro == 5, "solsta = 6 and prosta = 5, like T99 B");
+        check_rc(PRIMAL_getprimalray(t, rho), PRIMAL_RES_OK, "but the vector is there");
+        check(t85_measures_primal(t, rho) == 1, "and the vector measures");
         pend(&p);
     }
     /* G..I. the SAME unboundedness going through a bar facing a CONE.
@@ -13650,17 +13658,17 @@ static void test_t100(void) {
      * measured before the guard, rc=0 with pobj = dobj = -2e6, x0 = x1 = 1e6,
      * Sj = [[-1,0],[0,-1]] (dual OUTSIDE the cone) and dinf = 1. */
     {
-        cur_name = "T100 G barra su cono, illimitata (via conica)";
+        cur_name = "T100 G bar on cone, unbounded (conic route)";
         P p;
         PRIMALtask_t t = t100_conic(&p, -1.0, 1.0, 400);
         check(t100_no_value(t, PRIMAL_optimize(t)) == 1,
-              "rc=1003, prosta=5, solsta=0, nulla pubblicato");
+              "rc=1003, prosta=5, solsta=0, nothing published");
         check(t100_caplog == 1,
-              "e' stata la via conica a domandare il cappuccio: la guardia non vive in una sola strada");
+              "it was the conic route that asked for the cap: the guard does not live on one route only");
         pend(&p);
     }
     {
-        cur_name = "T100 L via conica affamata (un iterazione)";
+        cur_name = "T100 L starved conic route (one iteration)";
         P p;
         PRIMALtask_t t = t100_conic(&p, -1.0, 1.0, 1);
         int sta = -9, pro = -9;
@@ -13670,50 +13678,50 @@ static void test_t100(void) {
          * verdict in prosta and no vector -- the same family as G, not a
          * "no verdict". */
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED,
-                 "la via conica affamata interroga il modello: illimitato");
+                 "the starved conic route queries the model: unbounded");
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) &pro);
         check(sta == 0 && pro == PRIMAL_PRO_STA_DUAL_INFEAS,
-              "solsta UNKNOWN e prosta DUAL_INFEAS (verdetto senza certificato)");
+              "solsta UNKNOWN and prosta DUAL_INFEAS (verdict without certificate)");
         check(t99_no_point(t) == 1,
-              "nessun getter del punto risponde (T99 vale anche qui)");
-        check(t100_caplog == 0, "non si interroga il cappuccio su un punto che non c'e'");
+              "no point getter answers (T99 holds here too)");
+        check(t100_caplog == 0, "the cap is not queried on a point that is not there");
         pend(&p);
     }
     {
-        cur_name = "T100 H barra su cono, limitata (positive control)";
+        cur_name = "T100 H bar on cone, bounded (positive control)";
         P p;
         PRIMALtask_t t = t100_conic(&p, 1.0, 1.0, 400);
         double x[8] = {0}, po = 0.0, dob = 0.0, pinf = -1.0, B[4] = {0}, S[4] = {0};
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "il modello limitato risponde ancora");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "the model bounded still answers");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
-        close_enough_tol(po, 2.0, 1e-5, "pobj = 2, il cono non tocca l'ottimo");
+        close_enough_tol(po, 2.0, 1e-5, "pobj = 2, the cone does not touch the optimum");
         close_enough_tol(dob, 2.0, 1e-5, "dobj = 2");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "getxx");
         check(fabs(x[0] - 1.0) <= 1e-4 && fabs(x[1] - 1.0) <= 1e-4, "x = (1,1)");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "pinf");
-        check(pinf >= 0.0 && pinf <= 1e-6, "il punto consegnato misura ammissibile");
+        check(pinf >= 0.0 && pinf <= 1e-6, "the delivered point measures feasible");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "getbarxj");
         check(fabs(B[0] - 1.0) <= 1e-4 && fabs(B[3] - 1.0) <= 1e-4,
-              "la barra pubblicata e' [[1,1],[1,1]]");
+              "the published bar is [[1,1],[1,1]]");
         check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, S), PRIMAL_RES_OK, "getbarsj");
         check(S[0] >= -1e-6 && S[3] >= -1e-6 &&
-              S[0] * S[3] - S[1] * S[2] >= -1e-6, "il duale sta in S^2_+");
-        check(t100_caplog == 0, "entrate a 1 contro un cappuccio di 1e6: la domanda non sorge");
+              S[0] * S[3] - S[1] * S[2] >= -1e-6, "the dual lies in S^2_+");
+        check(t100_caplog == 0, "entries at 1 against a cap of 1e6: the question does not arise");
         pend(&p);
     }
     {
-        cur_name = "T100 I barra su cono a 1e3 (cappuccio, non soglia)";
+        cur_name = "T100 I bar on cone at 1e3 (cap, not threshold)";
         P p;
         PRIMALtask_t t = t100_conic(&p, 1.0, 1000.0, 400);
         double po = 0.0, dob = 0.0;
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "1e3 non e' 1e6");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "1e3 is not 1e6");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
         close_enough_tol(po, 2000.0, 1e-3, "pobj = 2000 = 2r");
         close_enough_tol(dob, 2000.0, 1e-3, "dobj = 2000");
-        check(t100_caplog == 0, "la guardia non si accende su un valore finito e grande");
+        check(t100_caplog == 0, "the guard does not trigger on a finite and large value");
         pend(&p);
     }
     /* M. TWO bars, with distinct r, solved by the conic construction. It is the
@@ -13732,42 +13740,42 @@ static void test_t100(void) {
      * (two attempts, source and copy in /tmp). What discriminates here
      * is the assert on the two orders, not a measured broken build. */
     {
-        cur_name = "T100 M due barre con r distinti (via conica)";
+        cur_name = "T100 M two bars with distinct r (conic route)";
         P p;
         PRIMALtask_t t = t100_twobars(&p, 2.0, 3.0);
         double po = 0.0, dob = 0.0, pinf = -1.0, B0[4] = {0}, B1[4] = {0};
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "chi risponde alla seconda barra la risolve");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "whoever answers for the second bar solves it");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
         check_rc(PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "dobj");
         close_enough_tol(po, 10.0, 1e-5, "pobj = 2*r0 + 2*r1 = 10");
         close_enough_tol(dob, 10.0, 1e-5, "dobj = 10");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK, "pinf");
-        check(pinf >= 0.0 && pinf <= 1e-6, "il punto consegnato misura ammissibile");
+        check(pinf >= 0.0 && pinf <= 1e-6, "the delivered point measures feasible");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B0), PRIMAL_RES_OK, "getbarxj 0");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 1, B1), PRIMAL_RES_OK, "getbarxj 1");
         check(fabs(B0[0] - 2.0) <= 1e-4 && fabs(B0[1] - 2.0) <= 1e-4 &&
               fabs(B0[2] - 2.0) <= 1e-4 && fabs(B0[3] - 2.0) <= 1e-4,
-              "la barra 0 e' [[2,2],[2,2]], il suo proprio bordo");
+              "bar 0 is [[2,2],[2,2]], its own bound");
         check(fabs(B1[0] - 3.0) <= 1e-4 && fabs(B1[1] - 3.0) <= 1e-4 &&
               fabs(B1[2] - 3.0) <= 1e-4 && fabs(B1[3] - 3.0) <= 1e-4,
-              "la barra 1 e' [[3,3],[3,3]], non la barra 0 letta due volte");
-        check(t100_caplog == 0, "entrate a 2 e 3: il cappuccio non e' in gioco");
+              "bar 1 is [[3,3],[3,3]], not bar 0 read twice");
+        check(t100_caplog == 0, "entries at 2 and 3: the cap is not in play");
         pend(&p);
     }
     {
-        cur_name = "T100 M barre invertite (controllo di collocazione)";
+        cur_name = "T100 M swapped bars (placement check)";
         P p;
         PRIMALtask_t t = t100_twobars(&p, 3.0, 2.0);
         double po = 0.0, B0[4] = {0}, B1[4] = {0};
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "lo stesso modello con i bordi scambiati");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "the same model with the bounds swapped");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "pobj");
-        close_enough_tol(po, 10.0, 1e-5, "la somma non cambia, 2*r1 + 2*r0 = 10");
+        close_enough_tol(po, 10.0, 1e-5, "the sum does not change, 2*r1 + 2*r0 = 10");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B0), PRIMAL_RES_OK, "getbarxj 0");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 1, B1), PRIMAL_RES_OK, "getbarxj 1");
         check(fabs(B0[0] - 3.0) <= 1e-4 && fabs(B0[3] - 3.0) <= 1e-4,
-              "cio' che era della barra 1 ora e' della barra 0");
+              "what was bar 1's is now bar 0's");
         check(fabs(B1[0] - 2.0) <= 1e-4 && fabs(B1[3] - 2.0) <= 1e-4,
-              "e viceversa: ogni barra segue la propria riga");
+              "and vice versa: each bar follows its own row");
         pend(&p);
     }
 }
@@ -13791,7 +13799,7 @@ static void test_t100(void) {
  * (if `Z` has a negative eigenvalue, `dinf` cannot lie below that value)
  * and cannot invent another one. */
 static void test_t97(void) {
-    cur_name = "T97 infeasibility misurata sul modello come e' scritto";
+    cur_name = "T97 infeasibility measured on the model as written";
     enum { NB = 2, D20 = 20 };
 
     /* A. min x0+x1 s.t. <E00,B> = x0, <E11,B> = x1, <S01,B> = 1, B in S^2_+.
@@ -13818,32 +13826,32 @@ static void test_t97(void) {
         PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 0.0, 0.0);
         PRIMAL_putbaraij(t, 2, 0, 1, &m01, (double[]){1.0});
         PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T97 A risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T97 A solved");
         double x[NB], po = 0.0, pinf = -1.0, dinf = -1.0, B[NB * NB], Z[NB * NB];
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T97 A getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T97 A pobj");
-        close_enough_tol(po, 2.0, 1e-5, "T97 A obiettivo 2 (AM-GM)");
+        close_enough_tol(po, 2.0, 1e-5, "T97 A objective 2 (AM-GM)");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
-                 "T97 A getprimalinfeas risponde");
+                 "T97 A getprimalinfeas answers");
         /* The biting guard: it used to publish 1.0 = |b| of row 2. */
-        check(pinf >= 0.0 && pinf <= 1e-6, "T97 A il primo membro include la barra");
-        check(pinf < 1e-3, "T97 A non e' il bordo della riga di barra");
+        check(pinf >= 0.0 && pinf <= 1e-6, "T97 A the left-hand side includes the bar");
+        check(pinf < 1e-3, "T97 A it is not the bound of the bar row");
         check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf), PRIMAL_RES_OK,
-                 "T97 A getdualinfeas risponde");
-        check(dinf >= 0.0, "T97 A la misura duale non e' negativa");
+                 "T97 A getdualinfeas answers");
+        check(dinf >= 0.0, "T97 A the dual measure is not negative");
         double emax = 0.0, ev[NB], evec[NB * NB];
         check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, Z), PRIMAL_RES_OK, "T97 A getbarsj");
         { double Zc[NB * NB];
           for (int a = 0; a < NB * NB; a++) Zc[a] = Z[a];
           dmat_eig_jacobi(NB, Zc, ev, evec);
           for (int a = 0; a < NB; a++) if (fabs(Z[a * NB + a]) > emax) emax = fabs(Z[a * NB + a]); }
-        check(dinf >= -ev[0] - 1e-9, "T97 A getdualinfeas vede Z fuori dal cono duale");
-        check(emax <= 2.0, "T97 A il duale pubblicato sta sulla scala del modello");
+        check(dinf >= -ev[0] - 1e-9, "T97 A getdualinfeas sees Z outside the dual cone");
+        check(emax <= 2.0, "T97 A the published dual is on the model's scale");
         check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "T97 A getbarxj");
         /* Rows 0 and 1 tie bars to scalars: if the bar term
          * were not summed, the read violation would be |x0| or |x1| (1), not ~0. */
         check(fabs(B[0] - x[0]) <= 1e-6 && fabs(B[3] - x[1]) <= 1e-6,
-              "T97 A <E00,B> = x0 e <E11,B> = x1 al punto pubblicato");
+              "T97 A <E00,B> = x0 and <E11,B> = x1 at the published point");
         pend(&p);
     }
 
@@ -13869,20 +13877,20 @@ static void test_t97(void) {
         PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 0.0, 0.0);
         PRIMAL_putbaraij(t, 1, 0, 1, &mI, (double[]){1.0});
         PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T97 B risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T97 B solved");
         double po = 0.0, pinf = -1.0, dinf = -1.0;
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T97 B pobj");
-        close_enough_tol(po, -1.0, 1e-6, "T97 B obiettivo -1");
+        close_enough_tol(po, -1.0, 1e-6, "T97 B objective -1");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "T97 B getprimalinfeas");
-        check(pinf >= 0.0 && pinf <= 1e-6, "T97 B <I,B> = 1 non e' una violazione di 1");
+        check(pinf >= 0.0 && pinf <= 1e-6, "T97 B <I,B> = 1 is not a violation of 1");
         check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf), PRIMAL_RES_OK,
                  "T97 B getdualinfeas");
         double Z[D20 * D20], Zc[D20 * D20], ev[D20], evec[D20 * D20];
         check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, Z), PRIMAL_RES_OK, "T97 B getbarsj");
         for (int a = 0; a < D20 * D20; a++) Zc[a] = Z[a];
         dmat_eig_jacobi(D20, Zc, ev, evec);
-        check(dinf >= -ev[0] - 1e-9, "T97 B il duale bar entra nella misura duale");
+        check(dinf >= -ev[0] - 1e-9, "T97 B the bar dual enters the dual measure");
         pend(&p);
     }
 
@@ -13905,26 +13913,26 @@ static void test_t97(void) {
         PRIMAL_putqconk(t, 0, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
         PRIMAL_putbaraij(t, 1, 0, 1, &m00, (double[]){1.0});
         PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T97 C risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T97 C solved");
         double x[NB], po = 0.0, pinf = -1.0;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T97 C getxx");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T97 C pobj");
-        close_enough_tol(po, -2.0, 1e-5, "T97 C obiettivo -2");
+        close_enough_tol(po, -2.0, 1e-5, "T97 C objective -2");
         check_rc(PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf), PRIMAL_RES_OK,
                  "T97 C getprimalinfeas");
-        check(pinf >= 0.0 && pinf <= 1e-6, "T97 C riga quadratica + riga di barra");
+        check(pinf >= 0.0 && pinf <= 1e-6, "T97 C quadratic row + bar row");
         /* The quadratic-row sign is hand-checked on the solution:
          * x0^2+x1^2 - 2 must lie within tolerance, because that is the
          * left-hand side the getter must see. */
         double q = x[0] * x[0] + x[1] * x[1] - 2.0;
-        check(q <= 1e-6, "T97 C la riga quadratica e' soddisfatta al punto pubblicato");
+        check(q <= 1e-6, "T97 C the quadratic row is satisfied at the published point");
         pend(&p);
     }
 }
 
 /* Tests the near-optimal factor as a verdict, not a third status. */
 static void test_t96(void) {
-    cur_name = "T96 fattore near-optimal: il verdetto, non un terzo status";
+    cur_name = "T96 near-optimal factor: the verdict, not a third status";
     enum { D20 = 20 };
     double po86 = 0.0, po1 = 0.0, poBig = 0.0;
 
@@ -13934,54 +13942,54 @@ static void test_t96(void) {
         double dflt = 0, lo = 0, hi = 0, v = -1;
         check_rc(PRIMAL_getparaminfo(p.task, PRIMAL_PARAM_KIND_DOU,
                                      PRIMAL_DPAR_INTPNT_TOL_NEAR_REL, &dflt, &lo, &hi),
-                 PRIMAL_RES_OK, "A la riga del fattore esiste");
-        check(dflt == 1000.0, "A default 1000, il valore del riferimento");
-        check(lo == 1.0, "A il bordo basso e' 1: disattiva la regola");
-        check(hi == DBL_MAX, "A nessun massimo dichiarato");
+                 PRIMAL_RES_OK, "A the factor's row exists");
+        check(dflt == 1000.0, "A default 1000, the reference value");
+        check(lo == 1.0, "A the low bound is 1: disables the rule");
+        check(hi == DBL_MAX, "A no declared maximum");
         check_rc(PRIMAL_getdouparam(p.task, PRIMAL_DPAR_INTPNT_TOL_NEAR_REL, &v),
-                 PRIMAL_RES_OK, "A il getter risponde");
-        check(v == 1000.0, "A una task fresca porta il default");
+                 PRIMAL_RES_OK, "A the getter answers");
+        check(v == 1000.0, "A a fresh task carries the default");
         pend(&p);
     }
 
     /* B1. tol 1e-10, default factor: 86 times outside, published optimal */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-10, 0.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B1 dichiarato risolto dal fattore");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B1 declared solved by the factor");
         PRIMALsolstae sta = PRIMAL_SOL_STA_UNKNOWN;
         PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta);
         check(sta == PRIMAL_SOL_STA_OPTIMAL && (int)sta == 1, "B1 solsta = OPTIMAL = 1");
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po86), PRIMAL_RES_OK, "B1 pobj");
-        close_enough_tol(po86, 2.0, 1e-7, "B1 il valore pubblicato e' l'ottimo");
+        close_enough_tol(po86, 2.0, 1e-7, "B1 the published value is the optimum");
         pend(&p);
     }
     /* B2. the same tolerances, factor disabled: that point is no longer
      * acceptable and the other route answers -- which is tighter. */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-10, 1.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B2 l'outer approximation risponde");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B2 the outer approximation answers");
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po1), PRIMAL_RES_OK, "B2 pobj");
-        check(fabs(po1 - po86) > 1e-12, "B2 ha risposto un percorso diverso");
-        check(fabs(po1 - 2.0) <= fabs(po86 - 2.0), "B2 rifiutare il punto near non peggiora la risposta");
+        check(fabs(po1 - po86) > 1e-12, "B2 a different route answered");
+        check(fabs(po1 - 2.0) <= fabs(po86 - 2.0), "B2 rejecting the near point does not worsen the answer");
         pend(&p);
     }
     /* B3. a huge factor re-enables the same point: the number is read */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-13, 1e15);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B3 pubblicato con il fattore grande");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B3 published with the large factor");
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &poBig), PRIMAL_RES_OK, "B3 pobj");
-        check(fabs(poBig - po86) <= 1e-12, "B3 e' lo stesso punto dell'IPM");
+        check(fabs(poBig - po86) <= 1e-12, "B3 it is the same point as the IPM");
         pend(&p);
     }
     /* B4. eighty-six hundred times the tolerance does not fit in 1000x: the
      * factor is not a free pass, the answer comes back from the cuts. */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-13, 0.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B4 risolto dai tagli");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B4 solved by the cuts");
         double po;
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "B4 pobj");
-        check(fabs(po - po86) > 1e-12, "B4 il fattore di default non basta a 8.6e4 volte la tol");
-        close_enough_tol(po, 2.0, 1e-7, "B4 il valore resta quello giusto");
+        check(fabs(po - po86) > 1e-12, "B4 the default factor is not enough at 8.6e4 times the tol");
+        close_enough_tol(po, 2.0, 1e-7, "B4 the value stays the right one");
         pend(&p);
     }
 
@@ -13989,7 +13997,7 @@ static void test_t96(void) {
      * with the default it IS optimal, and the cone is not widened. */
     {
         P p; pbegin(&p); t96_bar20(p.task);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "C1 1.01x dichiarato ottimo dal fattore");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "C1 1.01x declared optimal by the factor");
         PRIMALsolstae sta = PRIMAL_SOL_STA_UNKNOWN;
         PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta);
         check(sta == PRIMAL_SOL_STA_OPTIMAL && (int)sta == 1, "C1 solsta = OPTIMAL = 1");
@@ -13998,11 +14006,11 @@ static void test_t96(void) {
         check_rc(PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_OK, "C1 dobj");
         close_enough_tol(po, -1.0, 1e-6, "C1 obj = -1");
         close_enough_tol(dob, -1.0, 1e-6, "C1 dobj = -1");
-        check_rc(PRIMAL_getbarxj(p.task, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "C1 barra letta");
+        check_rc(PRIMAL_getbarxj(p.task, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_OK, "C1 bar read");
         int incone = 1;
         double tr = 0.0;
         for (int a = 0; a < D20; a++) { if (B[a * D20 + a] < -1e-8) incone = 0; tr += B[a * D20 + a]; }
-        check(incone, "C1 il fattore allarga il giudizio, non il dominio: B >= 0");
+        check(incone, "C1 the factor widens the verdict, not the domain: B >= 0");
         close_enough_tol(tr, 1.0, 1e-6, "C1 <I,B> = 1");
         pend(&p);
     }
@@ -14011,15 +14019,15 @@ static void test_t96(void) {
      * getxx/getprimalobj answered OK with the opt_prepare zero. */
     {
         P p; pbegin(&p); t96_bar20(p.task); t96_set(p.task, 0.0, 1.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_TRM_MAX_ITER, "C2 non risolto senza il fattore");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_TRM_MAX_ITER, "C2 not solved without the factor");
         PRIMALsolstae sta = PRIMAL_SOL_STA_OPTIMAL;
         PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta);
         check(sta == PRIMAL_SOL_STA_UNKNOWN && (int)sta == 0, "C2 solsta = UNKNOWN = 0");
         double x1[1], po = 0, dob = 0, B[D20 * D20];
-        check_rc(PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x1), PRIMAL_RES_ERR_ARG, "C2 getxx rifiuta");
-        check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_ERR_ARG, "C2 pobj rifiuta");
-        check_rc(PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_ERR_ARG, "C2 dobj rifiuta");
-        check_rc(PRIMAL_getbarxj(p.task, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_ERR_ARG, "C2 barra rifiuta");
+        check_rc(PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x1), PRIMAL_RES_ERR_ARG, "C2 getxx refuses");
+        check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_ERR_ARG, "C2 pobj refuses");
+        check_rc(PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dob), PRIMAL_RES_ERR_ARG, "C2 dobj refuses");
+        check_rc(PRIMAL_getbarxj(p.task, PRIMAL_SOL_ITR, 0, B), PRIMAL_RES_ERR_ARG, "C2 bar refuses");
         pend(&p);
     }
 
@@ -14038,15 +14046,15 @@ static void test_t96(void) {
             PRIMAL_putcj(t, 0, 1.0);
             PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0.0, 3, (int[]){0, 1, 2});
             t96_set(t, 1e-12, nears[i]);
-            check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "D il PEXP risponde a tol 1e-12");
+            check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "D the PEXP answers at tol 1e-12");
             double x[3];
             check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "D getxx");
             td[i] = x[0];
             pend(&p);
         }
-        close_enough_tol(td[0], exp(-1.0), 1e-6, "D t = e^-1 con il fattore spento");
-        close_enough_tol(td[1], exp(-1.0), 1e-6, "D t = e^-1 con il fattore di default");
-        check(fabs(td[0] - td[1]) <= 1e-6, "D la scelta del percorso e' sulle tol dichiarate");
+        close_enough_tol(td[0], exp(-1.0), 1e-6, "D t = e^-1 with the factor off");
+        close_enough_tol(td[1], exp(-1.0), 1e-6, "D t = e^-1 with the default factor");
+        check(fabs(td[0] - td[1]) <= 1e-6, "D the route choice is on the declared tols");
     }
 }
 
@@ -14070,7 +14078,7 @@ static void test_t96(void) {
  * Each tried at four thresholds: the threshold changes the path, never what
  * comes out. */
 static void test_t95(void) {
-    cur_name = "T95 il punto pubblicato da un MIP misura nel modello";
+    cur_name = "T95 the point published by a MIP measures in the model";
     static const double THR[] = { 0.0, 1e-9, 1e-5, 1e-3 };   /* 0 = default */
     const char *TLAB[] = { "default", "1e-9", "1e-5", "1e-3" };
     const int NT = (int)(sizeof THR / sizeof THR[0]);
@@ -14084,14 +14092,14 @@ static void test_t95(void) {
                      "T95 A %s inther=%s rc OK", mx ? "max" : "min", TLAB[i]);
             check_rc(rc, PRIMAL_RES_OK, msg);
             snprintf(msg, sizeof msg,
-                     "T95 A %s inther=%s il punto sta in una delle due disgiunzioni",
+                     "T95 A %s inther=%s the point lies in one of the two disjunctions",
                      mx ? "max" : "min", TLAB[i]);
             check(x0 <= 2.0 + 1e-6 || (x0 >= 6.0 - 1e-6 && x0 <= 7.0 + 1e-6), msg);
             snprintf(msg, sizeof msg, "T95 A %s inther=%s obj = %s",
                      mx ? "max" : "min", TLAB[i], mx ? "7" : "0");
             close_enough_tol(po, mx ? 7.0 : 0.0, 1e-6, msg);
             snprintf(msg, sizeof msg,
-                     "T95 A %s inther=%s getprimalinfeas dentro MIP_TOL_FEAS",
+                     "T95 A %s inther=%s getprimalinfeas within MIP_TOL_FEAS",
                      mx ? "max" : "min", TLAB[i]);
             check(pi <= 1e-6, msg);
         }
@@ -14099,13 +14107,13 @@ static void test_t95(void) {
         t95_semi(THR[i], &rc, &po, x, &pi);
         snprintf(msg, sizeof msg, "T95 B inther=%s rc OK", TLAB[i]);
         check_rc(rc, PRIMAL_RES_OK, msg);
-        snprintf(msg, sizeof msg, "T95 B inther=%s obj = 3 (il ramo disattivato)",
+        snprintf(msg, sizeof msg, "T95 B inther=%s obj = 3 (the deactivated branch)",
                  TLAB[i]);
         close_enough_tol(po, 3.0, 1e-6, msg);
         snprintf(msg, sizeof msg, "T95 B inther=%s x = (3,0)", TLAB[i]);
         check(fabs(x[0] - 3.0) <= 1e-6 && fabs(x[1]) <= 1e-6, msg);
         snprintf(msg, sizeof msg,
-                 "T95 B inther=%s il punto inattivo 0 non e' una violazione di bordo",
+                 "T95 B inther=%s the inactive point 0 is not a bound violation",
                  TLAB[i]);
         check(pi <= 1e-6, msg);
     }
@@ -14129,13 +14137,13 @@ static void test_t95(void) {
         PRIMALint64t al[3] = {0, 0, 0};
         double bb[3] = {2.0, 7.0, 6.0};
         PRIMAL_putdjc(t, 0, 3, dl, 3, al, bb, 2, ts);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T95 C il max chiude");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T95 C the max closes");
         int sta = -1;
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) &sta);
         double x[8] = {0};
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         check(sta == 9 && fabs(x[0] - 7.0) <= 1e-6,
-              "T95 C INTEGER_OPTIMAL (9) accompagna il punto 7, non 10");
+              "T95 C INTEGER_OPTIMAL (9) accompanies point 7, not 10");
         pend(&p);
     }
 }
@@ -14150,14 +14158,14 @@ static void test_t95(void) {
  * is the one that matters, because name comparison holds under any
  * renumbering (the T93 lesson, read backwards). */
 static void test_t94(void) {
-    cur_name = "T94 numerazione degli enum pubblici";
+    cur_name = "T94 numbering of the public enums";
 
     /* A. bound keys: MSK_BK_LO=0, UP=1, FX=2, FR=3, RA=4. Here FR/RA/FX used to sit
      * on 2/3/4: the reference number for a fixed variable asked for a
      * free variable. */
     check((int)PRIMAL_BK_LO == 0 && (int)PRIMAL_BK_UP == 1 &&
           (int)PRIMAL_BK_FX == 2 && (int)PRIMAL_BK_FR == 3 && (int)PRIMAL_BK_RA == 4,
-          "A i cinque bound key sono i numeri del riferimento");
+          "A the five bound keys are the reference numbers");
 
     {   /* NUMBER 2 = FX: x is fixed, not free */
         P pp; pbegin(&pp);
@@ -14166,9 +14174,9 @@ static void test_t94(void) {
         PRIMAL_appendvars(t, 1);
         PRIMAL_putcj(t, 0, 1.0);
         PRIMAL_putvarbound(t, 0, (PRIMALboundkeye)2, 5.0, 7.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A solve con il numero 2");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A solve with number 2");
         check_rc(PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "A obj");
-        close_enough_tol(po, 5.0, 1e-9, "A il numero 2 fissa x a 5, non a 7");
+        close_enough_tol(po, 5.0, 1e-9, "A number 2 fixes x at 5, not 7");
         pend(&pp);
     }
     {   /* NUMBER 3 = FR: both passed bounds are ignored, the model is
@@ -14179,7 +14187,7 @@ static void test_t94(void) {
         PRIMAL_putcj(t, 0, -1.0);
         PRIMAL_putvarbound(t, 0, (PRIMALboundkeye)3, 5.0, 7.0);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED,
-                 "A il numero 3 libera la variabile");
+                 "A number 3 frees the variable");
         pend(&pp);
     }
     {   /* NUMBER 4 = RA: both bounds count */
@@ -14189,9 +14197,9 @@ static void test_t94(void) {
         PRIMAL_appendvars(t, 1);
         PRIMAL_putcj(t, 0, -1.0);
         PRIMAL_putvarbound(t, 0, (PRIMALboundkeye)4, 5.0, 7.0);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A solve con il numero 4");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "A solve with number 4");
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough_tol(po, -7.0, 1e-9, "A il numero 4 tiene il cappuccio a 7");
+        close_enough_tol(po, -7.0, 1e-9, "A number 4 keeps the cap at 7");
         pend(&pp);
     }
 
@@ -14202,25 +14210,25 @@ static void test_t94(void) {
     check((int)PRIMAL_CT_QUAD == 0 && (int)PRIMAL_CT_RQUAD == 1 &&
           (int)PRIMAL_CT_PEXP == 2 && (int)PRIMAL_CT_DEXP == 3 &&
           (int)PRIMAL_CT_PPOW == 4 && (int)PRIMAL_CT_RPOW == 7,
-          "B i coni che implementiamo hanno i numeri del riferimento");
+          "B the cones we implement have the reference numbers");
     check(PRIMAL_CT_RPOW != 5 && PRIMAL_CT_RPOW != 6,
-          "B RPOW non occupa il 5 (DPOW) ne' il 6 (ZERO)");
+          "B RPOW does not occupy 5 (DPOW) nor 6 (ZERO)");
     {   P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         PRIMAL_appendvars(t, 3);
         for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0.0, 0.0);
         check_rc(PRIMAL_appendcone(t, (PRIMALconetypee)5, 0.5, 3, (int[]){0,1,2}),
-                 PRIMAL_RES_ERR_ARG, "B il 5 (DPOW) e' rifiutato, non risolto");
+                 PRIMAL_RES_ERR_ARG, "B 5 (DPOW) is rejected, not solved");
         check_rc(PRIMAL_appendcone(t, (PRIMALconetypee)6, 0.0, 3, (int[]){0,1,2}),
-                 PRIMAL_RES_ERR_ARG, "B il 6 (ZERO) e' rifiutato");
+                 PRIMAL_RES_ERR_ARG, "B 6 (ZERO) is rejected");
         check_rc(PRIMAL_appendcone(t, (PRIMALconetypee)7, 0.5, 3, (int[]){0,1,2}),
-                 PRIMAL_RES_OK, "B il 7 e' il nostro RPOW");
+                 PRIMAL_RES_OK, "B 7 is our RPOW");
         pend(&pp);
     }
 
     /* C. solution keys: MSK_SOL_ITR=0, BAS=1, ITG=2. ITG did not exist here before. */
     check((int)PRIMAL_SOL_ITR == 0 && (int)PRIMAL_SOL_BAS == 1 &&
-          (int)PRIMAL_SOL_ITG == 2, "C le tre chiavi soluzione");
+          (int)PRIMAL_SOL_ITG == 2, "C the three solution keys");
     {   P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         PRIMAL_appendvars(t, 1);
@@ -14230,11 +14238,11 @@ static void test_t94(void) {
         double xa, xb; PRIMALsolstae s1; PRIMALprostae p1;
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, &xa), PRIMAL_RES_OK, "C getxx ITR");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITG, &xb), PRIMAL_RES_OK, "C getxx ITG");
-        check(xa == xb, "C ITG riporta lo stesso punto");
+        check(xa == xb, "C ITG reports the same point");
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITG, &s1);
         PRIMAL_getprosta(t, PRIMAL_SOL_ITG, &p1);
         check((int)s1 == (int)PRIMAL_SOL_STA_OPTIMAL && (int)p1 == 1,
-              "C solsta e prosta via ITG");
+              "C solsta and prosta via ITG");
         pend(&pp);
     }
 
@@ -14244,7 +14252,7 @@ static void test_t94(void) {
           PRIMAL_SOL_ITEM_Y == 2 && PRIMAL_SOL_ITEM_SLC == 3 &&
           PRIMAL_SOL_ITEM_SUC == 4 && PRIMAL_SOL_ITEM_SLX == 5 &&
           PRIMAL_SOL_ITEM_SUX == 6 && PRIMAL_SOL_ITEM_SNX == 7,
-          "D gli otto item di slice sono i numeri del riferimento");
+          "D the eight slice items are the reference numbers");
     {   P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
@@ -14257,20 +14265,20 @@ static void test_t94(void) {
         check_rc(PRIMAL_getsolutionslice(t, PRIMAL_SOL_ITR, PRIMAL_SOL_ITEM_XX,
                                          0, 2, v), PRIMAL_RES_OK, "D slice XX = 1");
         check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, w), PRIMAL_RES_OK, "D getxx");
-        check(v[0] == w[0] && v[1] == w[1], "D l'item 1 porta le x");
+        check(v[0] == w[0] && v[1] == w[1], "D item 1 carries the x");
         /* XC (item 0) is the row activity: here x0+x1 = 2. SNX (item 7)
          * stays rejected (per-variable conic multipliers are not
          * stored: declared deviation). */
         check_rc(PRIMAL_getsolutionslice(t, PRIMAL_SOL_ITR, PRIMAL_SOL_ITEM_XC,
                                          0, 1, v), PRIMAL_RES_OK,
-                 "D l'item 0 (XC) e' servito");
-        close_enough_tol(v[0], 2.0, 1e-6, "D XC = attivita' della riga x0+x1");
+                 "D item 0 (XC) is served");
+        close_enough_tol(v[0], 2.0, 1e-6, "D XC = activity of row x0+x1");
         /* SNX (item 7) is now served: it is the storage of conic multipliers
          * per variable (0 until some route writes it). */
         check_rc(PRIMAL_getsolutionslice(t, PRIMAL_SOL_ITR, PRIMAL_SOL_ITEM_SNX,
                                          0, 2, v), PRIMAL_RES_OK,
-                 "D l'item 7 (SNX) e' servito");
-        check(v[0] == 0.0 && v[1] == 0.0, "D SNX letto dallo storage");
+                 "D item 7 (SNX) is served");
+        check(v[0] == 0.0 && v[1] == 0.0, "D SNX read from storage");
         /* the six served items are the same vector as the whole getter, read by
          * number: if 2 (Y) returned the x instead of the multipliers the
          * slice would not be answering what the number promises */
@@ -14287,10 +14295,10 @@ static void test_t94(void) {
             check_rc(it[i].g(t, PRIMAL_SOL_ITR, full), PRIMAL_RES_OK, it[i].lbl);
             check_rc(PRIMAL_getsolutionslice(t, PRIMAL_SOL_ITR, it[i].item,
                                              0, it[i].len, v), PRIMAL_RES_OK,
-                     "D slice servita");
+                     "D slice served");
             int same = 1;
             for (int k = 0; k < it[i].len; k++) same &= (v[k] == full[k]);
-            check(same, "D la slice e' lo stesso vettore del getter");
+            check(same, "D the slice is the same vector as the getter");
         }
         pend(&pp);
     }
@@ -14299,14 +14307,14 @@ static void test_t94(void) {
      * PRIMAL_SIMPLEX=8. */
     check((int)PRIMAL_OPTIMIZER_DUAL_SIMPLEX == 1 && (int)PRIMAL_OPTIMIZER_FREE == 2 &&
           (int)PRIMAL_OPTIMIZER_INTPNT == 4 && (int)PRIMAL_OPTIMIZER_PRIMAL_SIMPLEX == 8,
-          "E i quattro selettori di ottimizzatore");
+          "E the four optimizer selectors");
     {   P pp; pbegin(&pp);
         PRIMALtask_t t = pp.task;
         double po; int dflt = -1;
         /* a fresh task must answer the reference default: FREE, i.e.
          * 2 in MSKoptimizertypee. Keeping 0 would have published CONIC. */
         PRIMAL_getintparam(t, PRIMAL_IPAR_OPTIMIZER, &dflt);
-        check(dflt == 2, "E il default di IPAR_OPTIMIZER e' FREE = 2");
+        check(dflt == 2, "E the default of IPAR_OPTIMIZER is FREE = 2");
         PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
         PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 1.0);
         PRIMAL_putarow(t, 0, 2, (int[]){0,1}, (double[]){1.0,1.0});
@@ -14314,23 +14322,23 @@ static void test_t94(void) {
         for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 1.0);
         check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_OPTIMIZER,
                                     (int)PRIMAL_OPTIMIZER_INTPNT), PRIMAL_RES_OK,
-                 "E il numero 4 e' accettato");
+                 "E number 4 is accepted");
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "E solve in 4");
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-        close_enough_tol(po, 2.0, 1e-6, "E ottimizzatore 4 risponde 2");
+        close_enough_tol(po, 2.0, 1e-6, "E optimizer 4 answers 2");
         check_rc(PRIMAL_putintparam(t, PRIMAL_IPAR_OPTIMIZER, 9), PRIMAL_RES_ERR_ARG,
-                 "E il 9 non e' un ottimizzatore");
+                 "E 9 is not an optimizer");
         pend(&pp);
     }
 
     /* F. the `kind` of PRIMAL_getparaminfo: MSK_PAR_DOU_TYPE=1, INT_TYPE=2. */
     check(PRIMAL_PARAM_KIND_DOU == 1 && PRIMAL_PARAM_KIND_INT == 2,
-          "F i due kind sono i numeri del riferimento");
+          "F the two kinds are the reference numbers");
     {   P pp; pbegin(&pp);
         double d, lo, hi;
         check_rc(PRIMAL_getparaminfo(pp.task, PRIMAL_PARAM_KIND_INT,
                                      PRIMAL_IPAR_OPTIMIZER, &d, &lo, &hi),
-                 PRIMAL_RES_OK, "F kind 2 legge un id int");
+                 PRIMAL_RES_OK, "F kind 2 reads an int id");
         /* The same number 0 in both namespaces: `kind` is not decoration,
          * it is the input selecting the row. IPAR_OPTIMIZER has default 0 and range
          * 0..8; DPAR_INTPNT_TOL_PFEAS has default 1e-8 and range [0,1] (the
@@ -14338,15 +14346,15 @@ static void test_t94(void) {
          * both queries would answer the same. */
         check_rc(PRIMAL_getparaminfo(pp.task, PRIMAL_PARAM_KIND_DOU,
                                      PRIMAL_DPAR_INTPNT_TOL_PFEAS, &d, &lo, &hi),
-                 PRIMAL_RES_OK, "F kind 1 legge un id double");
+                 PRIMAL_RES_OK, "F kind 1 reads a double id");
         check(d == 1e-8 && lo == 0.0 && hi == 1.0,
-              "F il numero 0 in kind 1 e' la riga double, non quella int");
+              "F number 0 in kind 1 is the double row, not the int one");
         check_rc(PRIMAL_getparaminfo(pp.task, 0 /* PAR_INVALID_TYPE */,
                                      PRIMAL_IPAR_OPTIMIZER, &d, &lo, &hi),
-                 PRIMAL_RES_ERR_ARG, "F il kind 0 non esiste");
+                 PRIMAL_RES_ERR_ARG, "F kind 0 does not exist");
         check_rc(PRIMAL_getparaminfo(pp.task, 3 /* PAR_STR_TYPE */,
                                      PRIMAL_IPAR_OPTIMIZER, &d, &lo, &hi),
-                 PRIMAL_RES_ERR_ARG, "F il kind 3 (stringhe) non e' implementato");
+                 PRIMAL_RES_ERR_ARG, "F kind 3 (strings) is not implemented");
         pend(&pp);
     }
 
@@ -14355,17 +14363,17 @@ static void test_t94(void) {
      * reference does not use for this enum: the reference has no
      * binary/semi members in MSKvariabletypee. */
     check((int)PRIMAL_VAR_TYPE_CONT == 0 && (int)PRIMAL_VAR_TYPE_INT == 1,
-          "G cont/int restano i numeri del riferimento");
+          "G cont/int stay the reference numbers");
 
     /* H. the prosta+solsta PAIR published by a solve: tables 7.2 (continuous)
      * and 7.3 (integer) of the reference, asserted on the two raw numbers. */
     struct { const char *lbl; int prosta; int solsta; } cs[] = {
-        { "H LP ottimo",              1, 1 },   /* PRIM_AND_DUAL_FEAS + OPTIMAL */
-        { "H LP infeasibile",         4, 5 },   /* PRIM_INFEAS + PRIM_INFEAS_CER */
-        { "H LP illimitato",          5, 6 },   /* DUAL_INFEAS + DUAL_INFEAS_CER */
-        { "H MIP ottimo",             2, 9 },   /* PRIM_FEAS + INTEGER_OPTIMAL */
-        { "H MIP infeasibile",        4, 0 },   /* PRIM_INFEAS + UNKNOWN (7.3) */
-        { "H modello mai risolto",    0, 0 },
+        { "H LP optimal",              1, 1 },   /* PRIM_AND_DUAL_FEAS + OPTIMAL */
+        { "H LP infeasible",         4, 5 },   /* PRIM_INFEAS + PRIM_INFEAS_CER */
+        { "H LP unbounded",          5, 6 },   /* DUAL_INFEAS + DUAL_INFEAS_CER */
+        { "H MIP optimal",             2, 9 },   /* PRIM_FEAS + INTEGER_OPTIMAL */
+        { "H MIP infeasible",        4, 0 },   /* PRIM_INFEAS + UNKNOWN (7.3) */
+        { "H never-solved model",    0, 0 },
     };
     for (int i = 0; i < 6; i++) {
         P pp; pbegin(&pp);
@@ -14433,9 +14441,9 @@ static void test_t94(void) {
         PRIMAL_getprosta(t, PRIMAL_SOL_ITR, &ps);
         PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &ss);
         check(rc == PRIMAL_RES_TRM_MAX_ITER && (int)ps == 2 && (int)ss == 2,
-              "H incumbent al nodo-limit = PRIM_FEAS + PRIM_FEAS");
+              "H incumbent at the node-limit = PRIM_FEAS + PRIM_FEAS");
         double xa; PRIMAL_getxx(t, PRIMAL_SOL_ITG, &xa);
-        close_enough_tol(xa, 2.0, 1e-9, "H l'incumbente resta leggibile");
+        close_enough_tol(xa, 2.0, 1e-9, "H the incumbent stays readable");
         pend(&pp);
         unsetenv("GMB_NO_MIP_CUTS");
     }
@@ -14443,28 +14451,28 @@ static void test_t94(void) {
 
 /* Tests that solution statuses match the reference numbering. */
 static void test_t93(void) {
-    cur_name = "T93 solsta = numeri del riferimento";
+    cur_name = "T93 solsta = reference numbers";
     check((int)PRIMAL_SOL_STA_UNKNOWN == 0 &&
           (int)PRIMAL_SOL_STA_OPTIMAL == 1 &&
           (int)PRIMAL_SOL_STA_PRIM_INFEAS_CER == 5 &&
           (int)PRIMAL_SOL_STA_DUAL_INFEAS_CER == 6 &&
           (int)PRIMAL_SOL_STA_INTEGER_OPTIMAL == 9,
-          "i cinque valori dichiarati sono quelli della tabella");
+          "the five declared values are those of the table");
     /* none of our members claims a number the reference gives to a verdict this
      * solver never publishes */
     check(PRIMAL_SOL_STA_UNKNOWN != 2 && PRIMAL_SOL_STA_OPTIMAL != 2 &&
           PRIMAL_SOL_STA_PRIM_INFEAS_CER != 2 && PRIMAL_SOL_STA_DUAL_INFEAS_CER != 2 &&
-          PRIMAL_SOL_STA_INTEGER_OPTIMAL != 2, "nessuno dichiara 2 = PRIM_FEAS");
+          PRIMAL_SOL_STA_INTEGER_OPTIMAL != 2, "no one declares 2 = PRIM_FEAS");
     check(PRIMAL_SOL_STA_PRIM_INFEAS_CER != 4 && PRIMAL_SOL_STA_DUAL_INFEAS_CER != 4 &&
           PRIMAL_SOL_STA_INTEGER_OPTIMAL != 4 && PRIMAL_SOL_STA_OPTIMAL != 4 &&
-          PRIMAL_SOL_STA_UNKNOWN != 4, "nessuno dichiara 4 = PRIM_AND_DUAL_FEAS");
+          PRIMAL_SOL_STA_UNKNOWN != 4, "no one declares 4 = PRIM_AND_DUAL_FEAS");
 
     /* what each verdict looks like coming out of PRIMAL_getsolsta */
     struct { const char *lbl; PRIMALsolstae want; int wantnum; } cs[] = {
-        { "A LP ottimo",            PRIMAL_SOL_STA_OPTIMAL,           1 },
-        { "B LP infeasibile",       PRIMAL_SOL_STA_PRIM_INFEAS_CER,   5 },
-        { "C LP illimitato",        PRIMAL_SOL_STA_DUAL_INFEAS_CER,   6 },
-        { "D MIP ottimo",           PRIMAL_SOL_STA_INTEGER_OPTIMAL,   9 },
+        { "A LP optimal",            PRIMAL_SOL_STA_OPTIMAL,           1 },
+        { "B LP infeasible",       PRIMAL_SOL_STA_PRIM_INFEAS_CER,   5 },
+        { "C LP unbounded",        PRIMAL_SOL_STA_DUAL_INFEAS_CER,   6 },
+        { "D MIP optimal",           PRIMAL_SOL_STA_INTEGER_OPTIMAL,   9 },
     };
 
     /* A: min x0+x1, x0+x1 >= 2, 0 <= x <= 1 -> 2 */
@@ -14480,7 +14488,7 @@ static void test_t93(void) {
         PRIMALsolstae sta;
         check_rc(PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta), PRIMAL_RES_OK, cs[0].lbl);
         check(sta == cs[0].want, cs[0].lbl);
-        check((int)sta == cs[0].wantnum, "A il numero pubblicato e' 1");
+        check((int)sta == cs[0].wantnum, "A the published number is 1");
         pend(&p);
     }
     /* B: x >= 5 and x <= 3 */
@@ -14496,7 +14504,7 @@ static void test_t93(void) {
         PRIMALsolstae sta;
         check_rc(PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta), PRIMAL_RES_OK, cs[1].lbl);
         check(sta == cs[1].want, cs[1].lbl);
-        check((int)sta == cs[1].wantnum, "B il numero pubblicato e' 5, non 4");
+        check((int)sta == cs[1].wantnum, "B the published number is 5, not 4");
         pend(&p);
     }
     /* C: min -x, x free */
@@ -14509,7 +14517,7 @@ static void test_t93(void) {
         PRIMALsolstae sta;
         check_rc(PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta), PRIMAL_RES_OK, cs[2].lbl);
         check(sta == cs[2].want, cs[2].lbl);
-        check((int)sta == cs[2].wantnum, "C il numero pubblicato e' 6, non 5");
+        check((int)sta == cs[2].wantnum, "C the published number is 6, not 5");
         pend(&p);
     }
     /* D: the T24 model, integer optimal */
@@ -14530,7 +14538,7 @@ static void test_t93(void) {
         PRIMALsolstae sta;
         check_rc(PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta), PRIMAL_RES_OK, cs[3].lbl);
         check(sta == cs[3].want, cs[3].lbl);
-        check((int)sta == cs[3].wantnum, "D il numero pubblicato e' 9, non 2");
+        check((int)sta == cs[3].wantnum, "D the published number is 9, not 2");
         pend(&p);
     }
     /* E: a task that was never optimized answers with the reference's UNKNOWN */
@@ -14541,7 +14549,7 @@ static void test_t93(void) {
         PRIMAL_putvarbound(p.task, 0, PRIMAL_BK_LO, 0.0, 0.0);
         PRIMALsolstae sta = PRIMAL_SOL_STA_OPTIMAL;
         check_rc(PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta), PRIMAL_RES_OK,
-                 "E getter su un modello mai risolto");
+                 "E getter on a never-solved model");
         check(sta == PRIMAL_SOL_STA_UNKNOWN && (int)sta == 0, "E UNKNOWN = 0");
         pend(&p);
     }
@@ -14553,7 +14561,7 @@ static void test_t93(void) {
  * The model has a hand-derived optimum: min x0^2+x1^2-2x0-2x1, x>=0 -> x*=(1,1),
  * pobj=-2. With QO_TOL_*=1.0 the IPM stops at the first iterate and publishes more. */
 static void test_t173(void) {
-    cur_name = "T173 QO_TOL_* governa la rotta quadratica";
+    cur_name = "T173 QO_TOL_* governs the quadratic route";
     /* Tridiagonal QP n=50 (Q = tridiag(-1,2,-1), c = 1, x>=0): the IPM converges
      * in several iterates and the stopping point depends on the triple. With default
      * QO_TOL_* the published value is the optimum; raising the QO triple to 1.0 the IPM
@@ -14589,9 +14597,9 @@ static void test_t173(void) {
         }
         pend(&p);
     }
-    check(po_default != 0.0, "T173 default QO: il QP pubblica un valore");
+    check(po_default != 0.0, "T173 QO default: the QP publishes a value");
     check(fabs(po_loose - po_default) > 1e-3,
-          "T173 QO_TOL_*=1 ferma prima l'IPM: la rotta quadratica legge la terna QO");
+          "T173 QO_TOL_*=1 stops the IPM first: the quadratic route reads the QO triple");
 }
 
 /* T174 - PRIMAL_DPAR_OPTIMIZER_MAX_TIME: wall-clock cap on the solve. With 0 the
@@ -14599,7 +14607,7 @@ static void test_t173(void) {
  * TRM_MAX_TIME without publishing an optimum; with the default (-1, no limit) the
  * same QP converges. The cap is read by the IPM loops (ipm_set_deadline) and the B&B. */
 static void test_t174(void) {
-    cur_name = "T174 OPTIMIZER_MAX_TIME ferma il solve";
+    cur_name = "T174 OPTIMIZER_MAX_TIME stops the solve";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cap = PRIMAL_RES_OK;
     for (int cap = 0; cap < 2; cap++) {
         P p; pbegin(&p);
@@ -14623,9 +14631,9 @@ static void test_t174(void) {
         if (cap) rc_cap = rc; else rc_default = rc;
         pend(&p);
     }
-    check_rc(rc_default, PRIMAL_RES_OK, "T174 default: nessun cap, il QP converge");
+    check_rc(rc_default, PRIMAL_RES_OK, "T174 default: no cap, the QP converges");
     check(rc_cap == PRIMAL_RES_TRM_MAX_TIME,
-          "T174 OPTIMIZER_MAX_TIME=0: il deadline scaduto e' TRM_MAX_TIME");
+          "T174 OPTIMIZER_MAX_TIME=0: the expired deadline is TRM_MAX_TIME");
 }
 
 /* T175 - PRIMAL_DPAR_MIO_MAX_TIME: wall-clock cap on the MIP phase ALONE. With 0 the
@@ -14633,7 +14641,7 @@ static void test_t174(void) {
  * TRM_MAX_TIME; with the default (-1) the same MIP converges. If the B&B read only
  * OPTIMIZER_MAX_TIME (unbounded here) it would not stop. */
 static void test_t175(void) {
-    cur_name = "T175 MIO_MAX_TIME ferma la fase MIP";
+    cur_name = "T175 MIO_MAX_TIME stops the MIP phase";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cap = PRIMAL_RES_OK;
     for (int cap = 0; cap < 2; cap++) {
         P p; pbegin(&p);
@@ -14649,9 +14657,9 @@ static void test_t175(void) {
         if (cap) rc_cap = rc; else rc_default = rc;
         pend(&p);
     }
-    check_rc(rc_default, PRIMAL_RES_OK, "T175 default: nessun cap, il MIP converge");
+    check_rc(rc_default, PRIMAL_RES_OK, "T175 default: no cap, the MIP converges");
     check(rc_cap == PRIMAL_RES_TRM_MAX_TIME,
-          "T175 MIO_MAX_TIME=0: il deadline del B&B scaduto e' TRM_MAX_TIME");
+          "T175 MIO_MAX_TIME=0: the B&B expired deadline is TRM_MAX_TIME");
 }
 
 /* T176 - PRIMAL_DPAR_LOWER_OBJ_CUT: a primal FEASIBLE point with objective
@@ -14660,7 +14668,7 @@ static void test_t175(void) {
  * the cut at -1 the IPM stops as soon as a feasible iterate drops below -1; with
  * the default (-inf) it converges. */
 static void test_t176(void) {
-    cur_name = "T176 LOWER_OBJ_CUT: ottimo provato sotto il taglio";
+    cur_name = "T176 LOWER_OBJ_CUT: optimum proven below the cut";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cut = PRIMAL_RES_OK;
     for (int cut = 0; cut < 2; cut++) {
         P p; pbegin(&p);
@@ -14676,9 +14684,9 @@ static void test_t176(void) {
         if (cut) rc_cut = rc; else rc_default = rc;
         pend(&p);
     }
-    check_rc(rc_default, PRIMAL_RES_OK, "T176 default: nessun taglio, il QP converge");
+    check_rc(rc_default, PRIMAL_RES_OK, "T176 default: no cut, the QP converges");
     check(rc_cut == PRIMAL_RES_TRM_OBJECTIVE_RANGE,
-          "T176 LOWER_OBJ_CUT=-1: l'ottimo -2 e' provato sotto il taglio");
+          "T176 LOWER_OBJ_CUT=-1: the optimum -2 is proven below the cut");
 }
 
 /* T177 - PRIMAL_DPAR_UPPER_OBJ_CUT: the dual twin of LOWER_OBJ_CUT. A
@@ -14688,7 +14696,7 @@ static void test_t176(void) {
  * the cut; with the default (+inf) it converges. IPM route forced (OPTIMIZER=INTPNT),
  * because the dual cut is wired into the IPM LP route. */
 static void test_t177(void) {
-    cur_name = "T177 UPPER_OBJ_CUT: duale prova l'ottimo sopra il taglio";
+    cur_name = "T177 UPPER_OBJ_CUT: dual proves the optimum above the cut";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_cut = PRIMAL_RES_OK;
     for (int cut = 0; cut < 2; cut++) {
         P p; pbegin(&p);
@@ -14705,9 +14713,9 @@ static void test_t177(void) {
         if (cut) rc_cut = rc; else rc_default = rc;
         pend(&p);
     }
-    check_rc(rc_default, PRIMAL_RES_OK, "T177 default: nessun taglio, l'LP converge");
+    check_rc(rc_default, PRIMAL_RES_OK, "T177 default: no cut, the LP converges");
     check(rc_cut == PRIMAL_RES_TRM_OBJECTIVE_RANGE,
-          "T177 UPPER_OBJ_CUT=-3: il duale prova l'ottimo -2 sopra il taglio");
+          "T177 UPPER_OBJ_CUT=-3: the dual proves the optimum -2 above the cut");
 }
 
 /* T178 - PRIMAL_DPAR_SEMIDEFINITE_TOL_APPROX: the tolerance that decides whether a
@@ -14717,7 +14725,7 @@ static void test_t177(void) {
  * (nonconvex); raising the tolerance to 1e-8 makes the threshold 2e-8 and the model
  * accepted. Proves the parameter governs the answer. */
 static void test_t178(void) {
-    cur_name = "T178 SEMIDEFINITE_TOL_APPROX governa la convessita'";
+    cur_name = "T178 SEMIDEFINITE_TOL_APPROX governs convexity";
     PRIMALrescodee rc_default = PRIMAL_RES_OK, rc_loose = PRIMAL_RES_OK;
     for (int loose = 0; loose < 2; loose++) {
         P p; pbegin(&p);
@@ -14733,9 +14741,9 @@ static void test_t178(void) {
         pend(&p);
     }
     check_rc(rc_default, PRIMAL_RES_ERR_ARG,
-             "T178 default 1e-10: autovalore -1e-9 rifiutato (non convesso)");
+             "T178 default 1e-10: eigenvalue -1e-9 rejected (non-convex)");
     check_rc(rc_loose, PRIMAL_RES_OK,
-             "T178 SEMIDEFINITE_TOL_APPROX=1e-8: lo stesso modello e' accettato");
+             "T178 SEMIDEFINITE_TOL_APPROX=1e-8: the same model is accepted");
 }
 
 /* T179 - RINS primal heuristic in the B&B. Binary knapsack max 3x0+2x1+4x2+5x3+x4
@@ -14744,7 +14752,7 @@ static void test_t178(void) {
  * problem: it does not change the optimum, so the test is about CORRECTNESS (same 8)
  * and the kill-switch GMB_NO_MIP_RINS=1 must not change the answer. */
 static void test_t179(void) {
-    cur_name = "T179 RINS: euristica primale MIP (stesso ottimo)";
+    cur_name = "T179 RINS: MIP primal heuristic (same optimum)";
     for (int off = 0; off < 2; off++) {
         P p; pbegin(&p);
         PRIMAL_appendvars(p.task, 5);
@@ -14760,10 +14768,10 @@ static void test_t179(void) {
         PRIMAL_putarow(p.task, 0, 5, (int[]){0, 1, 2, 3, 4}, w);
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 7.0);
         if (off) setenv("GMB_NO_MIP_RINS", "1", 1);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T179 il knapsack si risolve");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T179 the knapsack solves");
         double po = 0.0;
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "T179 pobj");
-        close_enough_tol(po, 8.0, 1e-6, "T179 ottimo 8 (x0=x3=1)");
+        close_enough_tol(po, 8.0, 1e-6, "T179 optimum 8 (x0=x3=1)");
         double x[5];
         check_rc(PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T179 getxx");
         check(fabs(x[0] - 1.0) < 1e-6 && fabs(x[3] - 1.0) < 1e-6 && fabs(x[1]) < 1e-6 &&
@@ -14779,51 +14787,51 @@ static void test_t179(void) {
  * -x1+x2=1, basis {x1} (requires an iteration). Revised: from a primal
  * feasible basis, with and without iteration. */
 static void test_t180(void) {
-    cur_name = "T180 simplesso duale + revised (porting gmbortools)";
+    cur_name = "T180 dual simplex + revised (gmbortools port)";
     /* dual: already optimal */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {1}; double x[2];
       int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
-      check(rc == 0, "T180 dual gia' ottimo");
-      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 dual gia' ottimo soluzione"); }
+      check(rc == 0, "T180 dual already optimal");
+      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 dual already optimal solution"); }
     /* dual: infeasible */
     { double A[1] = {1}, b[1] = {-1}, c[1] = {1}; int bas[1] = {0}; double x[1];
       int rc = simplex_dual_solve_std(A, 1, 1, b, c, bas, 100, x, NULL, NULL);
-      check(rc == 1, "T180 dual inammissibile"); }
+      check(rc == 1, "T180 dual infeasible"); }
     /* dual: requires an iteration */
     { double A[2] = {-1, 1}, b[1] = {1}, c[2] = {3, 2}; int bas[1] = {0}; double x[2];
       int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
-      check(rc == 0, "T180 dual iterazione");
-      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 1.0) < 1e-9, "T180 dual iterazione soluzione"); }
+      check(rc == 0, "T180 dual iteration");
+      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 1.0) < 1e-9, "T180 dual iteration solution"); }
     /* revised: already optimal from basis {x2} */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {1}; double x[2];
       int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL);
-      check(rc == 0, "T180 revised gia' ottimo");
-      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised gia' ottimo soluzione"); }
+      check(rc == 0, "T180 revised already optimal");
+      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised already optimal solution"); }
     /* revised: requires an iteration from basis {x1} */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {0}; double x[2];
       int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL);
-      check(rc == 0, "T180 revised iterazione");
-      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised iterazione soluzione"); }
+      check(rc == 0, "T180 revised iteration");
+      check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised iteration solution"); }
     /* reduced costs: c - A'y with y=1 on min 2x1+x2 s.t. x1+x2=2 -> red=(1,0) */
     { double A[2] = {1, 1}, c[2] = {2, 1}, y[1] = {1}, red[2];
       simplex_reduced_costs(A, 1, 2, c, y, red);
-      check(fabs(red[0] - 1.0) < 1e-12 && fabs(red[1]) < 1e-12, "T180 costi ridotti"); }
+      check(fabs(red[0] - 1.0) < 1e-12 && fabs(red[1]) < 1e-12, "T180 reduced costs"); }
     /* dual m=2: min x0+x1+x2+x3 s.t. x0+x1=2, x2+x3=3, basis {x0,x2} = I.
      * Exercises the STRIDE of B^-1 (m rows x 2m columns): with the `m` stride
      * of the original source the rows overlap and B^-1 is wrong. */
     { double A[8] = {1, 1, 0, 0, 0, 0, 1, 1}; double b[2] = {2, 3};
       double c[4] = {1, 1, 1, 1}; int bas[2] = {0, 2}; double x[4];
       int rc = simplex_dual_solve_std(A, 2, 4, b, c, bas, 100, x, NULL, NULL);
-      check(rc == 0, "T180 dual m=2 ottimo");
+      check(rc == 0, "T180 dual m=2 optimal");
       check(fabs(x[0] - 2.0) < 1e-9 && fabs(x[1]) < 1e-9 &&
-            fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 dual m=2 soluzione"); }
+            fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 dual m=2 solution"); }
     /* revised m=2: same model, basis {x0,x2} */
     { double A[8] = {1, 1, 0, 0, 0, 0, 1, 1}; double b[2] = {2, 3};
       double c[4] = {1, 1, 1, 1}; int bas[2] = {0, 2}; double x[4];
       int rc = simplex_revised_solve_std(A, 2, 4, b, c, bas, 100, x, NULL);
-      check(rc == 0, "T180 revised m=2 ottimo");
+      check(rc == 0, "T180 revised m=2 optimal");
       check(fabs(x[0] - 2.0) < 1e-9 && fabs(x[1]) < 1e-9 &&
-            fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 revised m=2 soluzione"); }
+            fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 revised m=2 solution"); }
 }
 
 /* T181 - IPM->basis crossover: after an LP solved by the IPM, getskx/getskc
@@ -14840,15 +14848,15 @@ static void test_t181(void) {
     PRIMAL_putcj(p.task, 0, 2.0); PRIMAL_putcj(p.task, 1, 1.0);
     PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
     PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 2.0, 2.0);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T181 LP risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T181 LP solved");
     PRIMALstakeye skx[2], skc[1];
     check_rc(PRIMAL_getskx(p.task, PRIMAL_SOL_ITR, skx), PRIMAL_RES_OK, "T181 getskx");
     check_rc(PRIMAL_getskc(p.task, PRIMAL_SOL_ITR, skc), PRIMAL_RES_OK, "T181 getskc");
     int nbas = 0;
     for (int j = 0; j < 2; j++) if (skx[j] == PRIMAL_SK_BAS) nbas++;
-    check(skx[0] != PRIMAL_SK_BAS, "T181 x0 (a 0) nonbasic");
+    check(skx[0] != PRIMAL_SK_BAS, "T181 x0 (at 0) nonbasic");
     check(skx[1] == PRIMAL_SK_BAS, "T181 x1 (=2) basic");
-    check(nbas == 1, "T181 esattamente una variabile basic");
+    check(nbas == 1, "T181 exactly one basic variable");
     pend(&p);
     /* degenerate LP min x0+x1 s.t. x0+x1=2: the IPM gives (1,1) (both "interior",
      * 2 basic candidates for m=1) -> the cleanup rebuilds a square basis. */
@@ -14860,14 +14868,14 @@ static void test_t181(void) {
         PRIMAL_putcj(q.task, 0, 1.0); PRIMAL_putcj(q.task, 1, 1.0);
         PRIMAL_putarow(q.task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(q.task, 0, PRIMAL_BK_FX, 2.0, 2.0);
-        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "T181 degenere risolto");
+        check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "T181 degenerate solved");
         PRIMALstakeye sx[2], sc[1];
         PRIMAL_getskx(q.task, PRIMAL_SOL_ITR, sx);
         PRIMAL_getskc(q.task, PRIMAL_SOL_ITR, sc);
         int nbb = 0;
         for (int j = 0; j < 2; j++) if (sx[j] == PRIMAL_SK_BAS) nbb++;
         if (sc[0] == PRIMAL_SK_BAS) nbb++;
-        check(nbb == 1, "T181 cleanup: base quadrata (1 basic su m=1)");
+        check(nbb == 1, "T181 cleanup: square basis (1 basic on m=1)");
         pend(&q);
     }
 }
@@ -14886,17 +14894,17 @@ static void test_t182(void) {
         PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
         check_rc(PRIMAL_putnaintparam(p.task, "PRIMAL_IPAR_INTPNT_MAX_NUM_COR", cor),
-                 PRIMAL_RES_OK, "T182 set correttori");
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T182 risolto");
+                 PRIMAL_RES_OK, "T182 set correctors");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T182 solved");
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z[cor - 1]);
         pend(&p);
     }
-    check(fabs(z[0] - (-12.0)) < 1e-6, "T182 ottimo default -12");
-    check(fabs(z[1] - z[0]) < 1e-6, "T182 2 correttori stesso ottimo");
+    check(fabs(z[0] - (-12.0)) < 1e-6, "T182 default optimum -12");
+    check(fabs(z[1] - z[0]) < 1e-6, "T182 2 correctors same optimum");
     P p; pbegin(&p);
     int iv = -1;
     check_rc(PRIMAL_getnaintparam(p.task, "PRIMAL_IPAR_INTPNT_MAX_NUM_COR", &iv),
-             PRIMAL_RES_OK, "T182 nome param");
+             PRIMAL_RES_OK, "T182 param name");
     check(iv == -1, "T182 default -1 (auto)");
     pend(&p);
 }
@@ -14919,16 +14927,16 @@ static void test_t183(void) {
         PRIMAL_putconbound(p.task, 1, PRIMAL_BK_UP, -INFINITY, 4.0);
         check_rc(PRIMAL_putnaintparam(p.task, "PRIMAL_IPAR_PRESOLVE_LEVEL", lev),
                  PRIMAL_RES_OK, "T183 set level");
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T183 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T183 solved");
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z[lev]);
         pend(&p);
     }
     check(fabs(z[0] + 12.0) < 1e-6 && fabs(z[1] + 12.0) < 1e-6 && fabs(z[2] + 12.0) < 1e-6,
-          "T183 stesso ottimo ai tre livelli");
+          "T183 same optimum at the three levels");
     P p; pbegin(&p);
     int iv = -1;
     check_rc(PRIMAL_getnaintparam(p.task, "PRIMAL_IPAR_PRESOLVE_LEVEL", &iv),
-             PRIMAL_RES_OK, "T183 nome param");
+             PRIMAL_RES_OK, "T183 param name");
     check(iv == 1, "T183 default 1");
     pend(&p);
 }
@@ -14951,10 +14959,10 @@ static void test_t184(void) {
             PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 1.0);
             PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT_BIN);
         }
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T184 risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T184 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 9.0) < 1e-6, "T184 ottimo -9");
+        check(fabs(z + 9.0) < 1e-6, "T184 optimum -9");
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     }
     unsetenv("GMB_NO_MIP_FPUMP");
@@ -14977,10 +14985,10 @@ static void test_t185(void) {
         PRIMAL_putcj(p.task, 0, -2.0); PRIMAL_putcj(p.task, 1, -1.0); PRIMAL_putcj(p.task, 2, -1.0);
         PRIMAL_putarow(p.task, 0, 3, (int[]){0, 1, 2}, (double[]){5.0, 4.0, 1.0});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 6.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T185 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T185 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 3.0) < 1e-6, "T185 ottimo -3");
+        check(fabs(z + 3.0) < 1e-6, "T185 optimum -3");
         pend(&p);
     }
     unsetenv("GMB_NO_MIP_CUTS");
@@ -15003,10 +15011,10 @@ static void test_t186(void) {
             PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 1.0);
             PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT_BIN);
         }
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T186 risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T186 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 9.0) < 1e-6, "T186 ottimo -9");
+        check(fabs(z + 9.0) < 1e-6, "T186 optimum -9");
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     }
     unsetenv("GMB_NO_MIP_LOCALSEARCH");
@@ -15025,10 +15033,10 @@ static void test_t187(void) {
     PRIMAL_putcj(p.task, 0, -1.0); PRIMAL_putcj(p.task, 1, -1.0);
     PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
     PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 1.0);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T187 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T187 solved");
     double z = 0.0;
     PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-    check(fabs(z + 1.0) < 1e-6, "T187 ottimo -1");
+    check(fabs(z + 1.0) < 1e-6, "T187 optimum -1");
     pend(&p);
 }
 
@@ -15048,10 +15056,10 @@ static void test_t188(void) {
         PRIMAL_putcj(p.task, 0, -1.0); PRIMAL_putcj(p.task, 1, -1.0);
         PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){2.5, 1.0});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 3.5);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T188 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T188 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 2.0) < 1e-6, "T188 ottimo -2");
+        check(fabs(z + 2.0) < 1e-6, "T188 optimum -2");
         pend(&p);
     }
     unsetenv("GMB_MIP_CMIR");
@@ -15074,10 +15082,10 @@ static void test_t189(void) {
                  PRIMAL_RES_OK, "T189 set threads");
         check_rc(PRIMAL_putintparam(p.task, PRIMAL_IPAR_CONCURRENT_TIME, nt - 1),
                  PRIMAL_RES_OK, "T189 set concurrent_time");
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T189 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T189 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 12.0) < 1e-6, "T189 ottimo -12");
+        check(fabs(z + 12.0) < 1e-6, "T189 optimum -12");
         pend(&p);
     }
 }
@@ -15098,10 +15106,10 @@ static void test_t190(void) {
         PRIMAL_putcj(p.task, 0, -1.0); PRIMAL_putcj(p.task, 1, -1.0);
         PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){2.5, 3.5});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 5.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T190 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T190 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 1.0) < 1e-6, "T190 ottimo -1");
+        check(fabs(z + 1.0) < 1e-6, "T190 optimum -1");
         pend(&p);
     }
     unsetenv("GMB_MIP_LIPRO");
@@ -15120,10 +15128,10 @@ static void test_t191(void) {
         PRIMAL_putcj(p.task, 0, -3.0); PRIMAL_putcj(p.task, 1, -2.0);
         PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T191 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T191 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 12.0) < 1e-6, "T191 ottimo -12");
+        check(fabs(z + 12.0) < 1e-6, "T191 optimum -12");
         pend(&p);
     }
     unsetenv("GMB_SIMPLEX_STEEPEST");
@@ -15142,10 +15150,10 @@ static void test_t192(void) {
     PRIMAL_putarow(p.task, 1, 2, (int[]){0, 1}, (double[]){2.0, 2.0});
     PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
     PRIMAL_putconbound(p.task, 1, PRIMAL_BK_UP, -INFINITY, 8.0);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T192 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T192 solved");
     double z = 0.0;
     PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-    check(fabs(z + 4.0) < 1e-6, "T192 ottimo -4");
+    check(fabs(z + 4.0) < 1e-6, "T192 optimum -4");
     pend(&p);
 }
 
@@ -15165,10 +15173,10 @@ static void test_t193(void) {
         PRIMAL_putcj(p.task, 0, -1.0); PRIMAL_putcj(p.task, 1, -1.0);
         PRIMAL_putarow(p.task, 0, 2, (int[]){0, 1}, (double[]){3.0, 5.0});
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_UP, -INFINITY, 4.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T193 risolto");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T193 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &z);
-        check(fabs(z + 1.0) < 1e-6, "T193 ottimo -1");
+        check(fabs(z + 1.0) < 1e-6, "T193 optimum -1");
         pend(&p);
     }
     unsetenv("GMB_MIP_IMPLIED_BOUND");
@@ -15296,7 +15304,7 @@ static void test_t194(void) {
         if (fabs(ee - eta) < 1e-9) { eta = ee; break; }
         eta = ee;
     }
-    check(solved, "T194 SCA/Dinkelbach converge su ogni sottoproblema");
+    check(solved, "T194 SCA/Dinkelbach converges on every subproblem");
 
     /* 2-D brute force on the TRUE objective (independent of the surrogates) */
     double best_ee = -1e300, span = 1.4142135623730951;
@@ -15316,10 +15324,10 @@ static void test_t194(void) {
     }
     double power = t194_dot(p, p), harvest = t194_dot(T194_HE, p) * t194_dot(T194_HE, p);
     check(fabs(ee - best_ee) < 2e-3 * (1.0 + fabs(best_ee)),
-          "T194 SEE coincide col brute-force 2-D dell'obiettivo vero");
-    check(power <= 2.0 + 1e-7, "T194 potenza entro Pmax");
+          "T194 SEE matches the 2-D brute-force of the true objective");
+    check(power <= 2.0 + 1e-7, "T194 power within Pmax");
     check(harvest >= ereq - 1e-7, "T194 harvested >= E_req");
-    check(rate > 0.0, "T194 secrecy rate positiva");
+    check(rate > 0.0, "T194 positive secrecy rate");
 }
 
 /* deterministic LCG returning a value in [0,1]. */
@@ -15415,7 +15423,7 @@ static void test_t195(void) {
     for (int i = 0; i < NS; i++) PRIMAL_putcj(p.task, SB[i], 1.0 / NS);
     for (int j = 0; j < NF; j++) PRIMAL_putcj(p.task, GJ[j], LAM * SIG[j]);
 
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T195 modello conico risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T195 conic model solved");
     double x[1 + 2 * 3 + 5 * 16 + 1];
     PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double b[NL] = {x[0], x[BJ[0]], x[BJ[1]], x[BJ[2]]};
@@ -15450,11 +15458,11 @@ static void test_t195(void) {
             }
         }
     }
-    check(fabs(sum) < 1e-6, "T195 vincolo log-contrast esatto (somma b = 0)");
-    check(fabs(obj - best) < 2e-3, "T195 obiettivo = brute-force 3-D");
+    check(fabs(sum) < 1e-6, "T195 exact log-contrast constraint (sum b = 0)");
+    check(fabs(obj - best) < 2e-3, "T195 objective = 3-D brute-force");
     check(fabs(b[1]) < 1e-6 && fabs(b[2] + 0.16119) < 1e-3 && fabs(b[3] - 0.16119) < 1e-3,
-          "T195 LASSO azzera b_0 e recupera b=(0,-0.161,0.161)");
-    check(fabs(b[0] - 0.27601) < 1e-3, "T195 intercetta 0.27601");
+          "T195 LASSO zeroes b_0 and recovers b=(0,-0.161,0.161)");
+    check(fabs(b[0] - 0.27601) < 1e-3, "T195 intercept 0.27601");
 }
 
 /* T196 - PPT and CCNR separability criteria (port of y1-zhu/quantum-
@@ -15555,16 +15563,16 @@ static void test_t196(void) {
     int sdp_ok = t196_sdp(&t);
     t196_realign(t196_RHO, Rm);
     double ccnr = t196_nuc(Rm);
-    check(sdp_ok, "T196 SDP robustness PPT risolto");
+    check(sdp_ok, "T196 PPT robustness SDP solved");
     check(fabs(lmin - (1.0 - 4.0 * 0.5) / 9.0) < 1e-9, "T196 lambda_min(rho^T)=(1-4p)/9");
-    check(fabs(t - 1.0 / (4.0 * 0.5)) < 1e-5, "T196 t*_PPT=1/(4p) da SDP");
+    check(fabs(t - 1.0 / (4.0 * 0.5)) < 1e-5, "T196 t*_PPT=1/(4p) from SDP");
     check(fabs(ccnr - (1.0 + 8.0 * 0.5) / 3.0) < 1e-8, "T196 ||R(rho)||_1=(1+8p)/3");
     t196_build(0.25);
     double lmin_t = t196_lmin(t196_RHOT);
     t196_realign(t196_RHO, Rm);
     double ccnr_t = t196_nuc(Rm);
     check(fabs(1.0 / (1.0 - 9.0 * lmin_t) - 1.0) < 1e-8 && fabs(ccnr_t - 1.0) < 1e-8,
-          "T196 soglia p=1/4: PPT e CCNR valgono 1");
+          "T196 threshold p=1/4: PPT and CCNR equal 1");
 }
 
 /* T197: opt-in HSD embedding (GMB_SDP_HSD) on a degenerate max-margin SDP.
@@ -15618,7 +15626,7 @@ static int t197_solve(double *margin) {
     static const double FP[4][3] = {{1, 0, 0}, {-3, 1, 0}, {0, -1, 1}, {0, 0, -1}};
     int pairs[T197_NP][4], np = 0;
     t197_pairs(pairs, &np);
-    check(np == T197_NP, "T197 27 coppie di Handelman al grado 3");
+    check(np == T197_NP, "T197 27 Handelman pairs at degree 3");
     int NM = 10; /* monomials (i,j), 0<=i<=j<=3 */
     int mm[10], nn[10], t = 0;
     for (int i = 0; i <= 3; i++) for (int j = i; j <= 3; j++) { mm[t] = i; nn[t] = j; t++; }
@@ -15672,11 +15680,11 @@ static int t197_solve(double *margin) {
 }
 /* T197: opt-in HSD embedding on the degree-3 M1 SDP, vs a reference margin. */
 static void test_t197(void) {
-    cur_name = "T197 HSD opt-in su M1 grado 3 (jcpaik/p2-kkt-flag-sos)";
+    cur_name = "T197 HSD opt-in on M1 degree 3 (jcpaik/p2-kkt-flag-sos)";
     double margin = 0.0;
     int ok = t197_solve(&margin);
-    check(ok, "T197 GMB_SDP_HSD risolve M1 grado 3");
-    check(ok && fabs(margin - (-0.85506573)) < 1e-4, "T197 margine entro 1e-4 dal riferimento -0.85506573");
+    check(ok, "T197 GMB_SDP_HSD solves M1 degree 3");
+    check(ok && fabs(margin - (-0.85506573)) < 1e-4, "T197 margin within 1e-4 of the reference -0.85506573");
 }
 
 /* T198 - Lovasz theta as an upper bound for max-clique (port of
@@ -15743,7 +15751,7 @@ static int t198_X_ok(int n, const int adj[T198_NMAX][T198_NMAX], const double *X
 }
 /* T198: Lovasz theta by SDP on C5, K3 and the empty graph. */
 static void test_t198(void) {
-    cur_name = "T198 Lovasz theta per max-clique (SDP bar)";
+    cur_name = "T198 Lovasz theta for max-clique (SDP bar)";
     int C5[T198_NMAX][T198_NMAX] = {{0}};
     for (int i = 0; i < 5; i++) { C5[i][(i + 1) % 5] = 1; C5[(i + 1) % 5][i] = 1; }
     int K3[T198_NMAX][T198_NMAX] = {{0}};
@@ -15754,7 +15762,7 @@ static void test_t198(void) {
     double th5 = t198_theta_sdp(5, C5, &ok5, X); int x5 = ok5 && t198_X_ok(5, C5, X);
     double th3 = t198_theta_sdp(3, K3, &ok3, X); int x3 = ok3 && t198_X_ok(3, K3, X);
     double the = t198_theta_sdp(5, E5, &oke, X); int xe = oke && t198_X_ok(5, E5, X);
-    check(x5 && x3 && xe, "T198 X ammissibile (tr=1, PSD, non-archi nulli)");
+    check(x5 && x3 && xe, "T198 X feasible (tr=1, PSD, non-edges zero)");
     check(fabs(th5 - sqrt(5.0)) < 1e-6, "T198 theta(C5)=sqrt(5)");
     check(fabs(th3 - 3.0) < 1e-6, "T198 theta(K3)=3");
     check(fabs(the - 1.0) < 1e-6, "T198 theta(E5)=1");
@@ -15799,7 +15807,7 @@ static double t199_evar(const double *x) {
 }
 /* T199: portfolio EVaR via exponential cones, checked against a simplex brute force. */
 static void test_t199(void) {
-    cur_name = "T199 EVaR portafoglio (coni esponenziali)";
+    cur_name = "T199 EVaR portfolio (exponential cones)";
     const double delta = 1.0;
     enum { X0 = 0, Z = T199_NA, S = T199_NA + 1, U = T199_NA + 2, V = T199_NA + 2 + T199_NS,
            NV = T199_NA + 2 + 2 * T199_NS };
@@ -15841,7 +15849,7 @@ static void test_t199(void) {
     PRIMAL_putcj(p.task, Z, -delta);
     PRIMAL_putcj(p.task, S, delta * log(1.0 - 0.95));
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MAXIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T199 modello EVaR risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T199 EVaR model solved");
     double x[T199_NA] = {0}, ev = 0, obj = 0;
     {   double xs[NV];
         PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, xs);
@@ -15857,9 +15865,9 @@ static void test_t199(void) {
         double f = ret - delta * t199_evar(xr);
         if (f > best) best = f;
     }
-    check(fabs(obj - best) < 1e-3 * (1.0 + fabs(best)), "T199 obiettivo = brute force");
-    check(fabs(ev - t199_evar(x)) < 1e-4 * (1.0 + fabs(ev)), "T199 EVaR = sezione aurea");
-    check(fabs(x[0] + x[1] - 1.0) < 1e-7 && x[0] >= -1e-9, "T199 x sul simplice");
+    check(fabs(obj - best) < 1e-3 * (1.0 + fabs(best)), "T199 objective = brute force");
+    check(fabs(ev - t199_evar(x)) < 1e-4 * (1.0 + fabs(ev)), "T199 EVaR = golden section");
+    check(fabs(x[0] + x[1] - 1.0) < 1e-7 && x[0] >= -1e-9, "T199 x on the simplex");
 }
 
 /* T200 - market-neutral long-short portfolio (fy23-art/Portfolio-
@@ -15928,17 +15936,17 @@ static int t200_solve(double c, double t0, double *obj_out, double *x_out) {
 }
 /* T200: market-neutral long-short portfolio under leverage, turnover and risk caps. */
 static void test_t200(void) {
-    cur_name = "T200 portafoglio market-neutral (leva/turnover/rischio)";
+    cur_name = "T200 market-neutral portfolio (leverage/turnover/risk)";
     double T = t200_tmax(), a = T200_M[0] - T200_M[1];
     double x[2] = {0}, obj = 0;
     int okA = t200_solve(0.0, 0.1, &obj, x);
     check(okA && fabs(x[0] - T) < 1e-5 && fabs(x[0] + x[1]) < 1e-7,
-          "T200 caso A (c=0): x = (Tmax, -Tmax)");
-    check(okA && fabs(obj - a * T) < 1e-7, "T200 caso A: obj = a*Tmax");
+          "T200 case A (c=0): x = (Tmax, -Tmax)");
+    check(okA && fabs(obj - a * T) < 1e-7, "T200 case A: obj = a*Tmax");
     int okB = t200_solve(0.002, 0.1, &obj, x);
     check(okB && fabs(x[0] - 0.1) < 1e-6 && fabs(x[0] + x[1]) < 1e-7,
-          "T200 caso B (c grande): nessun trade, x = x0");
-    check(okB && fabs(obj - a * 0.1) < 1e-8, "T200 caso B: obj = a*t0");
+          "T200 case B (large c): no trade, x = x0");
+    check(okB && fabs(obj - a * 0.1) < 1e-8, "T200 case B: obj = a*t0");
 }
 
 /* T201 - smallest enclosing ball (MOSEK/Tutorials, minimum-ellipsoid):
@@ -15983,8 +15991,8 @@ static void test_t201(void) {
     int ok2 = 0, ok3 = 0;
     double r2 = t201_ball(2, P2, &ok2);
     double r3 = t201_ball(3, P3, &ok3);
-    check(ok2 && fabs(r2 - 1.0) < 1e-7, "T201 due punti: r = d/2");
-    check(ok3 && fabs(r3 - 2.0 / sqrt(3.0)) < 1e-7, "T201 triangolo: r = a/sqrt(3)");
+    check(ok2 && fabs(r2 - 1.0) < 1e-7, "T201 two points: r = d/2");
+    check(ok3 && fabs(r3 - 2.0 / sqrt(3.0)) < 1e-7, "T201 triangle: r = a/sqrt(3)");
 }
 
 /* T202 - Shor SDP relaxation for a binary quadratic problem
@@ -15992,7 +16000,7 @@ static void test_t201(void) {
  * Z=[[X,x],[x',1]]>=0, diag(X)=x, Z_nn=1.  The SDP value is a lower bound
  * of the binary optimum (brute force 2^n); n=4 case with optimum -4. */
 static void test_t202(void) {
-    cur_name = "T202 Shor SDP per binary quadratic";
+    cur_name = "T202 Shor SDP for binary quadratic";
     enum { N = 4 };
     static const double Q[N][N] = {{2,-2,0,0},{-2,2,-2,0},{0,-2,2,-2},{0,0,-2,2}};
     P p; pbegin(&p);
@@ -16016,7 +16024,7 @@ static void test_t202(void) {
         PRIMAL_putbaraij(p.task, N, 0, 1, &m, (double[]){1.0}); PRIMAL_putconbound(p.task, N, PRIMAL_BK_FX, 1.0, 1.0);
     }
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T202 SDP risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T202 SDP solved");
     double sdp = 0.0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &sdp);
     pend(&p);
     double best = 1e300;
@@ -16026,8 +16034,8 @@ static void test_t202(void) {
         for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) f += Q[i][j] * x[i] * x[j];
         if (f < best) best = f;
     }
-    check(best == -4.0, "T202 ottimo binario = -4");
-    check(sdp <= best + 1e-6 && sdp > best - 1e-3, "T202 SDP e' un lower bound tight (-4)");
+    check(best == -4.0, "T202 binary optimum = -4");
+    check(sdp <= best + 1e-6 && sdp > best - 1e-3, "T202 SDP is a tight lower bound (-4)");
 }
 
 /* T203 - exact planar cover (MOSEK/Tutorials exact-planar-cover).  2x3 with
@@ -16061,16 +16069,16 @@ static void test_t203(void) {
     cur_name = "T203 exact planar cover (MIP)";
     int h1[4] = {1, 2}, w1[4] = {2, 1}, h2[4] = {2}, w2[4] = {2}, nb = 0;
     int a = t203_cover(2, 3, 2, h1, w1, &nb);
-    check(a == 1 && nb == 3, "T203 2x3 domino -> 3 mattoni");
+    check(a == 1 && nb == 3, "T203 2x3 domino -> 3 bricks");
     int b = t203_cover(3, 3, 1, h2, w2, &nb);
-    check(b == 0, "T203 3x3 con 2x2 -> infeasible");
+    check(b == 0, "T203 3x3 with 2x2 -> infeasible");
 }
 
 /* T204 - PWL convex regression (MOSEK/Tutorials pwl-convex-approximation):
  * min m s.t. m >= ||t-Y||^2 (RQUAD) and t_i >= t_j + s_j(X_i-X_j).  X=(0,1,2),
  * Y=(0,1,0) -> t=(1/3,1/3,1/3), m=2/3. */
 static void test_t204(void) {
-    cur_name = "T204 PWL convex regression (cono ruotato)";
+    cur_name = "T204 PWL convex regression (rotated cone)";
     enum { NP = 3 };
     static const double XD[NP] = {0, 1, 2}, YD[NP] = {0, 1, 0};
     enum { M = 0, T = 1, S = 1 + NP, AD = 1 + 2 * NP, HALF = 1 + 3 * NP, NV = 1 + 3 * NP + 1 };
@@ -16092,7 +16100,7 @@ static void test_t204(void) {
     }
     PRIMAL_appendcone(p.task, PRIMAL_CT_RQUAD, 0.0, 2 + NP, (int[]){HALF, M, AD, AD + 1, AD + 2});
     PRIMAL_putcj(p.task, M, 1.0); PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T204 modello risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T204 model solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     check(fabs(x[M] - 2.0 / 3.0) < 1e-7, "T204 SSE = 2/3");
     check(fabs(x[T] - 1.0 / 3.0) < 1e-6 && fabs(x[T + 1] - 1.0 / 3.0) < 1e-6 && fabs(x[T + 2] - 1.0 / 3.0) < 1e-6, "T204 t=(1/3,1/3,1/3)");
@@ -16103,7 +16111,7 @@ static void test_t204(void) {
  * min y s.t. ||(x,y)-anchor_i|| <= l (one QUAD cone per wire).  Two anchors at
  * (+-1,0), l=2: the free mass falls to (0,-sqrt(3)). */
 static void test_t205(void) {
-    cur_name = "T205 equilibrio di masse su fili (SOCP)";
+    cur_name = "T205 equilibrium of masses on wires (SOCP)";
     enum { X0 = 0, X1, D0 = 2, D1 = 4, L = 6, NV = 7 };
     const double A0x = -1.0, A1x = 1.0, l = 2.0;
     P p; pbegin(&p);
@@ -16117,9 +16125,9 @@ static void test_t205(void) {
     PRIMAL_appendcone(p.task, PRIMAL_CT_QUAD, 0.0, 3, (int[]){L, D0, D0 + 1});
     PRIMAL_appendcone(p.task, PRIMAL_CT_QUAD, 0.0, 3, (int[]){L, D1, D1 + 1});
     PRIMAL_putcj(p.task, X1, 1.0); PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T205 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T205 solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
-    check(fabs(x[X1] + sqrt(3.0)) < 1e-6 && fabs(x[X0]) < 1e-6, "T205 massa in (0,-sqrt(3))");
+    check(fabs(x[X1] + sqrt(3.0)) < 1e-6 && fabs(x[X0]) < 1e-6, "T205 mass at (0,-sqrt(3))");
     pend(&p);
 }
 
@@ -16128,7 +16136,7 @@ static void test_t205(void) {
  * <= s_i, |a_k x_j| <= lambda, sum x = 1.  Instance m=2, N=3, eps=0.05 ->
  * x=(1/2,1/2), objective 1.16333333. */
 static void test_t206(void) {
-    cur_name = "T206 portafoglio dist-robust (Wasserstein DRO, LP)";
+    cur_name = "T206 dist-robust portfolio (Wasserstein DRO, LP)";
     enum { M = 2, NS = 3 };
     static const double DATA[NS][M] = {{0.02, 0.01}, {-0.01, 0.03}, {0.04, -0.02}};
     static const double AK[2] = {-1.0, -51.0}, BK[2] = {10.0, -40.0};
@@ -16159,12 +16167,12 @@ static void test_t206(void) {
     PRIMAL_putcj(p.task, LAM, eps);
     for (int i = 0; i < NS; i++) PRIMAL_putcj(p.task, S + i, 1.0 / NS);
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T206 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T206 solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double obj = eps * x[LAM];
     for (int i = 0; i < NS; i++) obj += x[S + i] / NS;
-    check(fabs(x[X] + x[X + 1] - 1.0) < 1e-7, "T206 x sul simplice");
-    check(fabs(obj - 1.1633333333) < 1e-5 && fabs(x[X] - 0.5) < 1e-6, "T206 obiettivo 1.1633333, x=(1/2,1/2)");
+    check(fabs(x[X] + x[X + 1] - 1.0) < 1e-7, "T206 x on the simplex");
+    check(fabs(obj - 1.1633333333) < 1e-5 && fabs(x[X] - 0.5) < 1e-6, "T206 objective 1.1633333, x=(1/2,1/2)");
     pend(&p);
 }
 
@@ -16174,7 +16182,7 @@ static void test_t206(void) {
  * into a real constraint (-T<=0) and publishing a suboptimal point.  Here
  * min M s.t. M >= (t-1)^2 plus the null row: the optimum stays M=0, t=1. */
 static void test_t207(void) {
-    cur_name = "T207 percorso conico somma i duplicati (i,j)";
+    cur_name = "T207 conic route sums the duplicates (i,j)";
     enum { M = 0, T = 1, AD = 2, HALF = 3, NV = 4 };
     P p; pbegin(&p);
     PRIMAL_appendvars(p.task, NV);
@@ -16190,10 +16198,10 @@ static void test_t207(void) {
     PRIMAL_appendcone(p.task, PRIMAL_CT_RQUAD, 0.0, 3, (int[]){HALF, M, AD});
     PRIMAL_putcj(p.task, M, 1.0);
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T207 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T207 solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     check(fabs(x[M]) < 1e-7 && fabs(x[T] - 1.0) < 1e-6,
-          "T207 la riga duplicata e' nulla: M=0, t=1");
+          "T207 the duplicated row is zero: M=0, t=1");
     pend(&p);
 }
 
@@ -16201,7 +16209,7 @@ static void test_t207(void) {
  * min t s.t. ||p_i-x_j||<=r_j+M(1-s_ij), sum_j s_ij=1, s binary, t>=r_j.
  * 4 collinear points 0..3, k=2 -> t=0.5 (centers 0.5 and 2.5). */
 static void test_t208(void) {
-    cur_name = "T208 copertura con k dischi (MISOCP)";
+    cur_name = "T208 covering with k disks (MISOCP)";
     enum { NP = 4, NK = 2, DIM = 2 };
     static const double PTS[NP][DIM] = {{0, 0}, {1, 0}, {2, 0}, {3, 0}};
     const double BIGM = 10.0;
@@ -16239,9 +16247,9 @@ static void test_t208(void) {
         PRIMAL_appendcone(p.task, PRIMAL_CT_QUAD, 0.0, 3, (int[]){vw, vd, vd + 1});
     }
     PRIMAL_putcj(p.task, VT, 1.0); PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T208 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T208 solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
-    check(fabs(x[VT] - 0.5) < 1e-6, "T208 raggio min-max = 0.5");
+    check(fabs(x[VT] - 0.5) < 1e-6, "T208 min-max radius = 0.5");
     pend(&p);
 }
 
@@ -16277,13 +16285,13 @@ static void test_t209(void) {
     for (int k = 0; k < NK; k++) for (int i = 0; i < NB; i++) for (int j = 0; j < NB; j++)
         PRIMAL_putcj(p.task, VPI + k * npi + i * NB + j, fabs(XS[i] - XS[j]));
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T209 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T209 solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double obj = 0.0, msum = 0.0;
     for (int i = 0; i < NB; i++) msum += x[VMU + i];
     for (int k = 0; k < NK; k++) for (int i = 0; i < NB; i++) for (int j = 0; j < NB; j++)
         obj += fabs(XS[i] - XS[j]) * x[VPI + k * npi + i * NB + j];
-    check(fabs(obj - 1.0) < 1e-8 && fabs(msum - 1.0) < 1e-7, "T209 costo 1.0, mu sul simplice");
+    check(fabs(obj - 1.0) < 1e-8 && fabs(msum - 1.0) < 1e-7, "T209 cost 1.0, mu on the simplex");
     pend(&p);
 }
 
@@ -16292,7 +16300,7 @@ static void test_t209(void) {
  * trapezoidal normalization.  n=3, dy=1/2, w=(1,2,3) -> x=(2/3,2/3,2),
  * objective -3 log(4/3). */
 static void test_t210(void) {
-    cur_name = "T210 MLE densita' log-concava (coni esponenziali)";
+    cur_name = "T210 log-concave density MLE (exponential cones)";
     enum { ND = 3 };
     static const double dy[ND] = {0.5, 0.5, 0.5}, w[ND] = {1.0, 2.0, 3.0};
     enum { X = 0, U = ND, NNEG = 2 * ND, ONE = 3 * ND, NV = 3 * ND + 1 };
@@ -16316,10 +16324,10 @@ static void test_t210(void) {
     for (int i = 0; i < ND; i++) PRIMAL_appendcone(p.task, PRIMAL_CT_PEXP, 0.0, 3, (int[]){X + i, ONE, NNEG + i});
     for (int i = 0; i < ND; i++) PRIMAL_putcj(p.task, U + i, w[i]);
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T210 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T210 solved");
     double x[NV]; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double obj = 0.0; for (int i = 0; i < ND; i++) obj += w[i] * x[U + i];
-    check(fabs(obj + 3.0 * log(4.0 / 3.0)) < 1e-6, "T210 obiettivo = -3 log(4/3)");
+    check(fabs(obj + 3.0 * log(4.0 / 3.0)) < 1e-6, "T210 objective = -3 log(4/3)");
     check(fabs(x[X] - 2.0 / 3.0) < 2e-3 && fabs(x[X + 1] - 2.0 / 3.0) < 2e-3 && fabs(x[X + 2] - 2.0) < 2e-3,
           "T210 x = (2/3, 2/3, 2)");
     pend(&p);
@@ -16387,11 +16395,11 @@ static void test_t211(void) {
         double bb[2] = {1.0, 0.0};
         check_rc(PRIMAL_putdjc(p.task, i, 2, dom, 2, afe, bb, 2, ts), PRIMAL_RES_OK, "T211 putdjc");
     }
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T211 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T211 solved");
     double x[64] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double obj = 0.0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj);
     check(fabs(obj - 1.5) < 1e-6 && ((fabs(x[B]) < 1e-6) || (fabs(x[B + 1]) < 1e-6)),
-          "T211 obiettivo 1.5, cardinalita' 1");
+          "T211 objective 1.5, cardinality 1");
     pend(&p);
 }
 
@@ -16451,10 +16459,10 @@ static void test_t212(void) {
         }
         check_rc(PRIMAL_putdjc(p.task, i, 2 * NK, dom, 2 * NK, afe, bb, NK, ts), PRIMAL_RES_OK, "T212 putdjc");
     }
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T212 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T212 solved");
     double x[128] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double obj = 0.0; for (int i = 0; i < NPTS; i++) obj += x[DIST + i];
-    check(fabs(obj - 1.0) < 1e-6, "T212 inerzia 1.0");
+    check(fabs(obj - 1.0) < 1e-6, "T212 inertia 1.0");
     pend(&p);
 }
 
@@ -16475,7 +16483,7 @@ static void addT_213(PRIMALtask_t t, int row, int bar, int dim, int i, double co
 }
 /* T213: filter design as a multi-block Toeplitz SDP with dense spec sampling. */
 static void test_t213(void) {
-    cur_name = "T213 progetto di filtro (SDP Toeplitz, rescue multi-blocco)";
+    cur_name = "T213 filter design (Toeplitz SDP, multi-block rescue)";
     enum { NF = 3 };
     const double DELTA = 0.05, WP = M_PI / 4.0, WS = M_PI / 4.0 + M_PI / 8.0;
     enum { X = 0, TT = NF + 1, NV = NF + 2 };
@@ -16509,7 +16517,7 @@ static void test_t213(void) {
         PRIMAL_putconbound(p.task, row, PRIMAL_BK_FX, 0.0, 0.0); row++;
     }
     PRIMAL_putcj(p.task, TT, 1.0); PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T213 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T213 solved");
     double x[NV] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     pend(&p);
     double topt = x[TT];
@@ -16521,8 +16529,8 @@ static void test_t213(void) {
         if (w <= WP + 1e-9 && (H > 1.0 + DELTA + 1e-4 || H < 1.0 - DELTA - 1e-4)) pbad = 1;
         if (w >= WS - 1e-9 && H > topt + 1e-4) sbad = 1;
     }
-    check(!neg && !pbad && !sbad, "T213 H>=0, passabanda e arresto rispettati");
-    check(topt < 1.0 && topt > 0.5, "T213 t* di arresto in (0.5,1)");
+    check(!neg && !pbad && !sbad, "T213 H>=0, passband and stopband respected");
+    check(topt < 1.0 && topt > 0.5, "T213 stopband t* in (0.5,1)");
 }
 
 /* T214 - subcarrier/power allocation (MOSEK/Tutorials f-sparc) as
@@ -16530,7 +16538,7 @@ static void test_t213(void) {
  * sum z >= t d, (t+p/n, t, z log2/BW) in PEXP.  I=1,J=1,n=1,d=0.2 ->
  * z*=0.2206127 (t=0.0582), validated against a dense scan of t. */
 static void test_t214(void) {
-    cur_name = "T214 f-sparc (MIP + cono esponenziale)";
+    cur_name = "T214 f-sparc (MIP + exponential cone)";
     const double SIGMAp = 10.0, PMAX = 36.0, BWp = 1.25, NOISE = 1.0, DEM = 0.2;
     enum { Z = 0, X = 1, PP = 2, TT = 3, TP = 4, ZC = 5, NV = 6 };
     P p; pbegin(&p);
@@ -16548,7 +16556,7 @@ static void test_t214(void) {
     PRIMAL_putarow(p.task, 4, 2, (int[]){ZC, Z}, (double[]){1.0, -log(2.0) / BWp}); PRIMAL_putconbound(p.task, 4, PRIMAL_BK_FX, 0.0, 0.0);
     PRIMAL_appendcone(p.task, PRIMAL_CT_PEXP, 0.0, 3, (int[]){TP, TT, ZC});
     PRIMAL_putcj(p.task, Z, 1.0); PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MAXIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T214 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T214 solved");
     double x[NV] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x);
     double z = x[Z];
     pend(&p);
@@ -16559,7 +16567,7 @@ static void test_t214(void) {
         double zz = BWp * tt * log2(1.0 + pp / (NOISE * tt));
         if (zz >= DEM * tt && zz > best) best = zz;
     }
-    check(fabs(z - best) < 1e-4 * (1.0 + fabs(best)), "T214 z* = scansione di t");
+    check(fabs(z - best) < 1e-4 * (1.0 + fabs(best)), "T214 z* = scan of t");
 }
 
 /* T215 - robust optimization with a "hard" uncertain inequality, solved
@@ -16568,7 +16576,7 @@ static void test_t214(void) {
  * for every vertex z_k, PEXP cones.  L=1, n=1, p=2, B=(1/2),(1/5) -> x*=1.08673,
  * the smallest feasible x (validated with a dense scan of x). */
 static void test_t215(void) {
-    cur_name = "T215 disuguaglianza incerta robusta (vertici, PEXP)";
+    cur_name = "T215 robust uncertain inequality (vertices, PEXP)";
     enum { L = 1, NPP = 2, NVERT = 2, NH = 4 };
     static const double B[2] = {0.5, 0.2};
     static const double VT[2] = {-1.0, 1.0};
@@ -16592,7 +16600,7 @@ static void test_t215(void) {
     }
     for (int q = 0; q < NH; q++) PRIMAL_appendcone(p.task, PRIMAL_CT_PEXP, 0.0, 3, (int[]){H1 + q, ONE, H3 + q});
     PRIMAL_putcj(p.task, X, 1.0); PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T215 risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T215 solved");
     double v[NV] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, v);
     double x = v[X];
     pend(&p);
@@ -16605,7 +16613,7 @@ static void test_t215(void) {
         }
         if (feas) { xstar = xx; break; }
     }
-    check(fabs(x - xstar) < 1e-4 * (1.0 + fabs(xstar)), "T215 x* = scansione dei vertici");
+    check(fabs(x - xstar) < 1e-4 * (1.0 + fabs(xstar)), "T215 x* = scan of the vertices");
 }
 
 /* T216 - transformer design as a geometric program (MOSEK/Tutorials
@@ -16681,7 +16689,7 @@ static void test_t216(void) {
     POS[k].m[0] = T216K(1.0, VNLS,-1); POS[k++].nm = 1;
     POS[k].m[0] = T216K(m_layers, VNLS,1, VNS,-1); POS[k++].nm = 1;
     POS[k].m[0] = T216K(coeff_vr, VVRR,1); POS[k].m[1] = T216K(coeff_vr, VVRX,1); POS[k++].nm = 2;
-    check(k == MCON, "T216 28 slot di vincolo");
+    check(k == MCON, "T216 28 constraint slots");
     T216Mono OBJ[2] = { T216K(1.0, VPC,1), T216K(1.0, VPCU,1) };
     int nmulti = 2; for (int i = 0; i < MCON; i++) if (POS[i].nm > 1) nmulti += POS[i].nm;
     int YBASE = 0, TV = NGP, EBASE = NGP + 1, PBASE = EBASE + nmulti, ONEV = PBASE + nmulti;
@@ -16734,7 +16742,7 @@ static void test_t216(void) {
     }
     PRIMAL_putcj(p.task, TV, 1.0);
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T216 GP risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T216 GP solved");
     double vv[512] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, vv);
     double xx[NGP]; for (int i = 0; i < NGP; i++) xx[i] = exp(vv[YBASE + i]);
     double topt = vv[TV];
@@ -16751,7 +16759,7 @@ static void test_t216(void) {
     }
     double objf = 0.0;
     for (int q = 0; q < 2; q++) { double val = OBJ[q].coef; for (int z = 0; z < OBJ[q].n; z++) val *= pow(xx[OBJ[q].var[z]], OBJ[q].alpha[z]); objf += val; }
-    check(worst < 1e-6, "T216 tutti i 28 posinomi <= 1");
+    check(worst < 1e-6, "T216 all 28 posynomials <= 1");
     check(fabs(objf - 4.578609) < 1e-5 && fabs(exp(topt) - objf) < 1e-6 * (1.0 + objf),
           "T216 loss = 4.578609 = exp(t)");
 }
@@ -16788,7 +16796,7 @@ static void test_t217(void) {
         int a = F[t][q], b = F[t][(q + 1) % 3];
         if (t217_edge(a, b) < 0) { if (a > b) { int s = a; a = b; b = s; } t217_E[ne][0] = a; t217_E[ne][1] = b; ne++; }
     }
-    check(ne == T217NE, "T217 16 edge dal cilindro");
+    check(ne == T217NE, "T217 16 edges from the cylinder");
     const double sq[4][2] = {{0.5, 0.5}, {-0.5, 0.5}, {-0.5, -0.5}, {0.5, -0.5}};
     double xyz[T217NV][3];
     for (int i = 0; i < T217N; i++) {
@@ -16834,7 +16842,7 @@ static void test_t217(void) {
     }
     for (int e = 0; e < T217NE; e++) PRIMAL_putcj(p.task, AB + e, W[e]);
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T217 LP risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T217 LP solved");
     double v[T217NE * 3];
     PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, v);
     double x[T217NE], xabs[T217NE], y[T217NT], obj = 0.0;
@@ -16845,10 +16853,10 @@ static void test_t217(void) {
     for (int i = 0; i < T217NV; i++) { double s = 0; for (int e = 0; e < T217NE; e++) s += t217_D1[i][e]*x[e]; cyc = fmax(cyc, fabs(s)); }
     for (int e = 0; e < T217NE; e++) { double s = x[e]-C[e]; for (int t = 0; t < nf; t++) s -= t217_D2[e][t]*y[t]; hom = fmax(hom, fabs(s)); }
     for (int e = 0; e < T217NE; e++) absok = fmax(absok, fabs(xabs[e]-fabs(x[e])));
-    check(cyc < 1e-8, "T217 x e' un ciclo (D1 x = 0)");
+    check(cyc < 1e-8, "T217 x is a cycle (D1 x = 0)");
     check(hom < 1e-8, "T217 x ~ C (x - C = D2 y)");
     check(absok < 1e-8, "T217 xabs = |x|");
-    check(fabs(obj - 4.0) < 1e-6, "T217 ciclo minimo = 4");
+    check(fabs(obj - 4.0) < 1e-6, "T217 minimum cycle = 4");
 }
 
 /* T218 - small geometric program (MOSEK/Tutorials gp-toolbox):
@@ -16902,7 +16910,7 @@ static void test_t218(void) {
     }
     PRIMAL_putcj(p.task, TV, 1.0);
     PRIMAL_putobjsense(p.task, PRIMAL_OPTIMIZE_MINIMIZE);
-    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T218 GP risolto");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T218 GP solved");
     double v[64] = {0}; PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, v);
     double x[NV]; for (int i = 0; i < NV; i++) x[i] = exp(v[YBASE + i]);
     double topt = v[TV];
@@ -16910,7 +16918,7 @@ static void test_t218(void) {
     double obj = x[0] + x[1] * x[1] * x[2];
     double c0 = 0.1 * sqrt(x[0]) + 2.0 / x[1];
     double c1 = 1.0 / x[2] + x[1] / (x[0] * x[0]);
-    check(c0 < 1.0 + 1e-7 && c1 < 1.0 + 1e-7, "T218 entrambi i vincoli <= 1");
+    check(c0 < 1.0 + 1e-7 && c1 < 1.0 + 1e-7, "T218 both constraints <= 1");
     check(fabs(obj - 10.981644) < 1e-5 && fabs(exp(topt) - obj) < 1e-7 * (1.0 + obj),
           "T218 obj = 10.981644 = exp(t)");
 }
@@ -17000,7 +17008,7 @@ static void test_t219(void) {
         double rs = t219_socp(ks[c], P[c], cc, &ok);
         double re = t219_exact(ks[c], P[c]);
         check(ok && fabs(rs - re) < 1e-6, "T219 SOCP == exact");
-        check(fabs(rs - want[c]) < 1e-5, "T219 valore atteso");
+        check(fabs(rs - want[c]) < 1e-5, "T219 expected value");
     }
 }
 
@@ -17057,7 +17065,7 @@ static void test_t220(void) {
         double rs = t219_socp(KP, P, cc, &ok);
         if (!(ok && fabs(w.r - rs) < 1e-6)) bad++;
     }
-    check(bad == 0, "T220 Welzl == SOCP su 20 set");
+    check(bad == 0, "T220 Welzl == SOCP on 20 sets");
 }
 
 /* T221 - positivity least squares with a weighted L1 penalty
@@ -17260,7 +17268,7 @@ static void test_t222(void) {
     const double want[3] = {0.0000, 0.1412, 0.2679};
     for (int i = 0; i < 3; i++) {
         int ok = 0; double v = t222_sr(0, ws[i], &ok);
-        check(ok && v > -1e-6 && fabs(v - want[i]) < 1e-3, "T222 SR(w) dal riferimento");
+        check(ok && v > -1e-6 && fabs(v - want[i]) < 1e-3, "T222 SR(w) from the reference");
     }
 }
 
@@ -17281,17 +17289,17 @@ static void test_t223(void) {
         PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0.0, 4, (int[]){4*k, 4*k+1, 4*k+2, 4*k+3});
     for (int k = 0; k < 8; k++) { PRIMAL_putcj(t, 4*k, 1.0); PRIMAL_putcj(t, 4*k+1, 1.0); }
     PRIMAL_putcfix(t, -1.0);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T223 modello con variabile inutilizzata risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T223 model with unused variable solved");
     double obj = 99.0;
     if (PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj) == PRIMAL_RES_OK)
-        check(fabs(obj - (-1.0)) < 1e-6, "T223 ottimo = -1 (la variabile inutilizzata non conta)");
+        check(fabs(obj - (-1.0)) < 1e-6, "T223 optimum = -1 (the unused variable does not count)");
     else
-        check(0, "T223 ottimo = -1 (la variabile inutilizzata non conta)");
+        check(0, "T223 optimum = -1 (the unused variable does not count)");
     double x[64] = {0};
     if (PRIMAL_getxx(t, PRIMAL_SOL_ITR, x) == PRIMAL_RES_OK)
-        check(fabs(x[32]) < 1e-9, "T223 x_32 = 0 (variabile inutilizzata)");
+        check(fabs(x[32]) < 1e-9, "T223 x_32 = 0 (unused variable)");
     else
-        check(0, "T223 x_32 = 0 (variabile inutilizzata)");
+        check(0, "T223 x_32 = 0 (unused variable)");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
 }
@@ -17302,7 +17310,7 @@ static void test_t223(void) {
 static void test_t224(void) {
     cur_name = "T224 redundant equality rows in a conic model";
     int ok = 0; double v = t222_sr(1, 1.0, &ok);
-    check(ok && fabs(v - 0.2679) < 1e-3, "T224 modello ridondante risolto, stesso SR(1.0)");
+    check(ok && fabs(v - 0.2679) < 1e-3, "T224 redundant model solved, same SR(1.0)");
 }
 
 /* T225 - long-short risk budgeting as a mixed-integer conic program
@@ -17371,7 +17379,7 @@ static void test_t225(void) {
     double G[N][N] = {{1.0,0.0},{0.0,1.0}}, b[N] = {0.5,0.5}, xabs[N];
     int ok = 0; double obj = t225_rb(N, (const double *)G, b, 1.0, xabs, &ok);
     double want = 0.5 + 0.34657359027997264, xw = 1.0/sqrt(2.0);
-    check(ok, "T225 MICP risolto");
+    check(ok, "T225 MICP solved");
     check(fabs(obj - want) < 1e-4, "T225 obj = 1/2 - log(1/sqrt2)");
     check(fabs(xabs[0]-xw) < 1e-3 && fabs(xabs[1]-xw) < 1e-3, "T225 |x_i| = 1/sqrt(2)");
 }
@@ -17397,13 +17405,13 @@ static void test_t226(void) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 0.1, 0.1);
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){GAMMA, Z1, Z2});
     PRIMAL_putcj(t, X0, 2.0); PRIMAL_putcj(t, X1, 3.0); PRIMAL_putcj(t, X2, -1.0);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T226 risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T226 solved");
     double x[8] = {0}, obj = 0.0;
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     check(fabs(obj - 3.2805112648) < 1e-6 && fabs(x[X0] + 0.0783801115) < 1e-6 &&
           fabs(x[X1] - 1.1289128998) < 1e-6 && fabs(x[X2] + 0.0505327883) < 1e-6,
-          "T226 obj e x al valore a mano");
+          "T226 obj and x at the hand value");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -17451,11 +17459,11 @@ static void test_t227(void) {
     double sh = t227_sharpe(0.5, w, &ok);
     check(ok && fabs(sh - sqrt(20.0)) < 1e-4 && fabs(w[0]-0.375) < 1e-4 &&
           fabs(w[1]-0.125) < 1e-4 && fabs(w[2]-0.375) < 1e-4 && fabs(w[3]-0.125) < 1e-4,
-          "T227 cap 0.5 non attivo: Sharpe = sqrt(20), w = mu/8");
+          "T227 cap 0.5 not active: Sharpe = sqrt(20), w = mu/8");
     sh = t227_sharpe(0.4, w, &ok);
     double sum = w[0]+w[1]+w[2]+w[3], s1 = w[0]+w[1];
     check(ok && sh > 0 && sh < sqrt(20.0) - 1e-6 && fabs(sum-1.0) < 1e-6 && s1 <= 0.4 + 1e-6,
-          "T227 cap 0.4 attivo: Sharpe < sqrt(20), pesi ammissibili");
+          "T227 cap 0.4 active: Sharpe < sqrt(20), weights feasible");
 }
 
 /* T228 - Stigler's diet LP and its dual (AlexHahnPublic/PortfolioOptimizationMosek,
@@ -17490,7 +17498,7 @@ static void test_t228(void) {
     for (int i = 0; i < 3; i++) { double s = 0; for (int j = 0; j < 3; j++) s += N[i][j]*xp[j];
         if (BB[i]-s > mindef) mindef = BB[i]-s; }
     check(ok && fabs(cost-5.0) < 1e-7 && fabs(xp[0]-1) < 1e-7 && fabs(xp[1]-2) < 1e-7 &&
-          fabs(xp[2]-1) < 1e-7 && mindef < 1e-9, "T228 primale: cost=5, x=(1,2,1), ammissibile");
+          fabs(xp[2]-1) < 1e-7 && mindef < 1e-9, "T228 primal: cost=5, x=(1,2,1), feasible");
     {   /* dual: max b'y s.t. N'y <= c, y >= 0 */
         PRIMALenv_t env; PRIMALtask_t t;
         PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 0, 0, &t);
@@ -17513,7 +17521,7 @@ static void test_t228(void) {
     for (int j = 0; j < 3; j++) { double s = 0; for (int i = 0; i < 3; i++) s += N[i][j]*yd[i];
         if (s-CC[j] > vmax) vmax = s-CC[j]; }
     check(ok && fabs(value-5.0) < 1e-7 && vmax < 1e-9 && fabs(value-cost) < 1e-7,
-          "T228 duale: value=5, ammissibile, dualita' forte");
+          "T228 dual: value=5, feasible, strong duality");
 }
 
 /* T229 - dotted-board polygon nesting MILP (eellookkaa/mddm): minimise
@@ -17561,7 +17569,7 @@ static void test_t229(void) {
                 PRIMAL_putarow(t, r, 2, (int[]){X0+i*NDOT+d1, X0+j*NDOT+d2}, (double[]){1.0, 1.0});
                 PRIMAL_putconbound(t, r, PRIMAL_BK_UP, -INFINITY, 1.0); r++;
             }
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T229 MILP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T229 MILP solved");
     double obj = 0.0, v[64] = {0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, v);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     int chosen[NP], legal = 1;
@@ -17570,7 +17578,7 @@ static void test_t229(void) {
         if (chosen[i] < 0) legal = 0; }
     for (int i = 0; i < NP; i++) for (int j = 0; j < NP; j++) if (i != j && chosen[i] >= 0 && chosen[j] >= 0)
         if (abs(chosen[i]/NG - chosen[j]/NG) <= 1 && abs(chosen[i]%NG - chosen[j]%NG) <= 1) legal = 0;
-    check(fabs(obj - 3.0) < 1e-6 && legal, "T229 z = 3 e piazzamento legale");
+    check(fabs(obj - 3.0) < 1e-6 && legal, "T229 z = 3 and legal placement");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -17621,7 +17629,7 @@ static void test_t230(void) {
     }
     for (int i = 0; i < N; i++) for (int j = 0; j <= i; j++) PRIMAL_putqobjij(t, i, j, Q[i][j]);
     for (int i = 0; i < N; i++) PRIMAL_putcj(t, i, c[i]);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T230 QP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T230 QP solved");
     double all[3*N] = {0}, a[N], obj = 0.0;
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, all); PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     for (int k = 0; k < N; k++) a[k] = all[A+k];
@@ -17635,8 +17643,8 @@ static void test_t230(void) {
         direct += mass*a[k]*av + mass*g*rrc*av + 0.5*rho*CD*FA*v_mean*av*av;
     }
     check(worst < 1e-6 && fabs(direct-obj) < 1e-6*(1.0+fabs(obj)),
-          "T230 punto ammissibile e obiettivo coerente");
-    check(obj > 0 && obj < 5190.0, "T230 energia sotto il profilo di riferimento (5190.7)");
+          "T230 feasible point and consistent objective");
+    check(obj > 0 && obj < 5190.0, "T230 energy below the reference profile (5190.7)");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -17699,7 +17707,7 @@ static void test_t231(void) {
         }
     }
     PRIMAL_putcj(t, YBASE + D, 1.0);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T231 GP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T231 GP solved");
     double v[64] = {0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, v);
     double s1 = exp(v[YBASE+S1]), s2 = exp(v[YBASE+S2]);
     double delay = (s2+1.0)/s1 + 10.0/s2;
@@ -17744,7 +17752,7 @@ static void test_t232(void) {
                   "T232 min cut = 0.7, d = (0,1,1,0)");
         else
             check(rc == PRIMAL_RES_OK && val >= 0.7 - 1e-9 && fabs(x[D0+0]-x[D0+3]) < 1e-7,
-                  "T232 correlato d01=d23: cut >= 0.7 e d01 = d23");
+                  "T232 correlated d01=d23: cut >= 0.7 and d01 = d23");
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     }
 }
@@ -17807,7 +17815,7 @@ static void test_t233(void) {
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     }
     check(first == 3 && L == R && L == 6730 && n1 == 4 && n2 == 5,
-          "T233 8/11/15: grado 3, 4 = 5 termini, LHS = RHS = 6730");
+          "T233 8/11/15: degree 3, 4 = 5 terms, LHS = RHS = 6730");
 }
 
 /* T234 - Drucker-Prager yield cone of a rigid-plastic limit analysis as an
@@ -17849,14 +17857,14 @@ static void test_t234(void) {
       PRIMAL_putarow(t, r, 4, sub, vv); PRIMAL_putconbound(t, r, PRIMAL_BK_FX, sqrt(2.0)*kk, sqrt(2.0)*kk); r++; }
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 7, (int[]){RHS, SDEV+0, SDEV+1, SDEV+2, SDEV+3, SDEV+4, SDEV+5});
     PRIMAL_putcj(t, T, 1.0);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T234 SOCP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T234 SOCP solved");
     double v[32] = {0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, v);
     double tstar = v[T];
     double m = (v[SIG+0]+v[SIG+1]+v[SIG+2])/3.0;
     double sq = 0; double d[6] = {v[SIG+0]-m, v[SIG+1]-m, v[SIG+2]-m, v[SIG+3], v[SIG+4], v[SIG+5]};
     for (int i = 0; i < 6; i++) sq += d[i]*d[i];
     double yf = sqrt(sq/2.0) + 3.0*alpha*m - kk;
-    check(fabs(tstar - 1.128237) < 1e-5 && fabs(yf) < 1e-7, "T234 t* = 1.128237 e yf = 0");
+    check(fabs(tstar - 1.128237) < 1e-5 && fabs(yf) < 1e-7, "T234 t* = 1.128237 and yf = 0");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -17892,7 +17900,7 @@ static void test_t235(void) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, -1.0, -1.0);
     PRIMAL_putbarcj(t, 0, 1, &m00, (double[]){1.0});
     PRIMAL_putbarcj(t, 0, 1, &m11, (double[]){1.0});
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T235 LMI risolta");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T235 LMI solved");
     double obj = 0.0, P[4] = {0}, S[4] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, P);
@@ -17933,7 +17941,7 @@ static double t236_brl(double A, double B, double C, double D, double *Pout) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, -D*D, -D*D);
     PRIMALrescodee rc = PRIMAL_optimize(t);
     double g2 = 0.0, P[4] = {0};
-    check_rc(rc, PRIMAL_RES_OK, "T236 LMI risolta");
+    check_rc(rc, PRIMAL_RES_OK, "T236 LMI solved");
     double x[4] = {0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x); g2 = x[G];
     PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, P);
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
@@ -17957,7 +17965,7 @@ static void test_t236(void) {
         double m00 = 2*A*P + C*C, m01 = P*B + C*D, m11 = D*D - gamma*gamma;
         double tr = m00 + m11, det = m00*m11 - m01*m01;
         double lmax = tr/2 + sqrt(fmax(0.0, tr*tr/4 - det));
-        check(lmax <= 1e-6 && P > 0, "T236 LMI <= 0 e P > 0 al punto consegnato");
+        check(lmax <= 1e-6 && P > 0, "T236 LMI <= 0 and P > 0 at the delivered point");
     }
 }
 
@@ -17989,7 +17997,7 @@ static void t237_svm(int nd, int nim, const double X[][2], const double *y,
         PRIMAL_putarow(t, i, nn, sub, val);
         PRIMAL_putconbound(t, i, PRIMAL_BK_LO, 1.0, INFINITY);
     }
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T237 SVM risolta");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T237 SVM solved");
     double x[16] = {0};
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, obj);
@@ -18008,9 +18016,9 @@ static void test_t237(void) {
         t237_svm(2, 4, X, y, 1.0, &obj, w, &b);
         check(fabs(obj - 0.25) < 1e-6 && fabs(w[0] - 0.5) < 1e-6 &&
               fabs(w[1] - 0.5) < 1e-6 && fabs(b) < 1e-6,
-              "T237 A: obj=1/4, w=(1/2,1/2), b=0 (diamante separabile)");
+              "T237 A: obj=1/4, w=(1/2,1/2), b=0 (separable diamond)");
         check(fabs(2.0 * 0.25 - (w[0]*w[0] + w[1]*w[1])) < 1e-6,
-              "T237 A: t = ||w||^2/2 sulla faccia del cono");
+              "T237 A: t = ||w||^2/2 on the cone face");
     }
     {   /* B) soft margin: same feature, opposite labels -> w=0, b=0, xi=(1,1) */
         const double X[2][2] = {{0, 0}, {0, 0}};
@@ -18018,7 +18026,7 @@ static void test_t237(void) {
         double obj = 0, w[2] = {0}, b = 0;
         t237_svm(1, 2, X, y, 1.0, &obj, w, &b);
         check(fabs(obj - 2.0) < 1e-6 && fabs(w[0]) < 1e-6 && fabs(b) < 1e-6,
-              "T237 B: obj=2c=2, w=0, b=0 (margine soffice)");
+              "T237 B: obj=2c=2, w=0, b=0 (soft margin)");
     }
 }
 
@@ -18059,7 +18067,7 @@ static void test_t238(void) {
         PRIMAL_putarow(t, row, 1, (int[]){((HR[f][0]-1)*N + (HR[f][1]-1))*N + (HR[f][2]-1)}, (double[]){1.0});
         PRIMAL_putconbound(t, row, PRIMAL_BK_FX, 1.0, 1.0); row++;
     }
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T238 Sudoku risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T238 Sudoku solved");
     double x[64] = {0};
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     int g[4][4] = {{0}};
@@ -18077,9 +18085,9 @@ static void test_t238(void) {
     }
     for (int f = 0; f < NFIX && good; f++)
         if (g[HR[f][0]-1][HR[f][1]-1] != HR[f][2]) good = 0;
-    check(good == 1, "T238 griglia valida (righe/colonne/blocchi/givens)");
+    check(good == 1, "T238 valid grid (rows/columns/blocks/givens)");
     check(g[0][0] == 1 && g[1][0] == 3 && g[3][3] == 1,
-          "T238 givens ancorano la griglia");
+          "T238 givens anchor the grid");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -18116,14 +18124,14 @@ static void test_t239(void) {
     PRIMAL_putconbound(t, row, PRIMAL_BK_FX, 1.0, 1.0); row++;
     PRIMAL_putarow(t, row, 1, (int[]){V239(NS)}, (double[]){1.0});
     PRIMAL_putconbound(t, row, PRIMAL_BK_FX, 0.0, 0.0); row++;
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T239 MPC QP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T239 MPC QP solved");
     double obj = 0, x[16] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     check(fabs(obj - 2.0) < 1e-6 && fabs(x[U239(0)] - 1.0) < 1e-6 && fabs(x[U239(1)] + 1.0) < 1e-6,
-          "T239 obj=2, u=(1,-1) (minimo energia, N=2)");
+          "T239 obj=2, u=(1,-1) (min energy, N=2)");
     check(fabs(x[P239(NS)] - 1.0) < 1e-6 && fabs(x[V239(NS)]) < 1e-6,
-          "T239 stato terminale x_N=(1,0) raggiunto (p e v)");
+          "T239 terminal state x_N=(1,0) reached (p and v)");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 #undef P239
 #undef V239
@@ -18151,19 +18159,19 @@ static void test_t240(void) {
     }
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){PB, U, U + 1});
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){Q, W, W + 1});
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T240 SOCP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T240 SOCP solved");
     double obj = 0, w[6] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, w);
     /* objective accurate to 1e-7; w only to ~1e-4 because the optimum is
        degenerate (the objective gradient is radial on the power circle). */
     check(fabs(obj - sqrt(2.0)) < 1e-6 && fabs(obj * obj - 2.0) < 1e-6,
-          "T240 a'w = sqrt(2), guadagno di beampattern = 2");
+          "T240 a'w = sqrt(2), beampattern gain = 2");
     check(fabs(w[W] - 1.0) < 1e-3 && fabs(w[W + 1] - 1.0) < 1e-3,
-          "T240 w = (1,1) (a ~1e-4, ottimo degenere)");
+          "T240 w = (1,1) (a ~1e-4, degenerate optimum)");
     check(w[W] * w[W] + w[W + 1] * w[W + 1] <= P + 1e-6 &&
           w[W] + 1e-6 >= sg * sqrt(w[W] * w[W] + w[W + 1] * w[W + 1]),
-          "T240 vincoli SINR e potenza soddisfatti");
+          "T240 SINR and power constraints satisfied");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -18195,14 +18203,14 @@ static void test_t241(void) {
         PRIMAL_putarow(t, i, 3, s, v);
         PRIMAL_putconbound(t, i, PRIMAL_BK_UP, -INFINITY, b[i]);
     }
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T241 QP risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T241 QP solved");
     double po = 0, dobj = 0, dinf = -1, pinf = -1;
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dobj);
     PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf);
     PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);
-    check(fabs(po - dobj) < 1e-6 * (1 + fabs(po)), "T241 pobj = dobj (duale esatto)");
-    check(dinf <= 1e-6, "T241 getdualinfeas <= 1e-6 (porta Qx, non 3.2)");
+    check(fabs(po - dobj) < 1e-6 * (1 + fabs(po)), "T241 pobj = dobj (exact dual)");
+    check(dinf <= 1e-6, "T241 getdualinfeas <= 1e-6 (carries Qx, not 3.2)");
     check(pinf <= 1e-6, "T241 getprimalinfeas <= 1e-6");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
@@ -18240,17 +18248,17 @@ static void test_t242(void) {
         PRIMAL_putarow(t, i, 3, s, v);
         PRIMAL_putconbound(t, i, PRIMAL_BK_UP, -INFINITY, b[i]);
     }
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T242 risolto (rotta encoder)");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T242 solved (encoder route)");
     double po = 0, dobj = 0, dinf = -1, y[4] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dobj);
     PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &dinf);
     PRIMAL_gety(t, PRIMAL_SOL_ITR, y);
     check(fabs(po - dobj) < 1e-6 * (1 + fabs(po)) && fabs(po - 0.5351106057) < 1e-6,
-          "T242 pobj = dobj = 0.5351106 (duale esatto)");
-    check(dinf <= 1e-6, "T242 getdualinfeas <= 1e-6 (porta Qx)");
+          "T242 pobj = dobj = 0.5351106 (exact dual)");
+    check(dinf <= 1e-6, "T242 getdualinfeas <= 1e-6 (carries Qx)");
     check(fabs(y[2] - 1.44940) < 1e-3 && fabs(y[3] - 0.09540) < 1e-3,
-          "T242 y = (0,0,1.4494,0.0954) come il KKT a mano");
+          "T242 y = (0,0,1.4494,0.0954) like the hand KKT");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -18277,14 +18285,14 @@ static void test_t243(void) {
     PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, f[1], f[1]);
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, (int[]){TT, DX});
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){SG, E0, E1});
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T243 TV risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T243 TV solved");
     double obj = 0, u[7] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, u);
     const double tv = 1.0 - 1.0 / sqrt(2.0), a0 = 1.0 / (2.0 * sqrt(2.0));
     check(fabs(obj - tv) < 1e-6, "T243 TV* = 1 - 1/sqrt2");
     check(fabs(u[U] - a0) < 1e-6 && fabs(u[U + 1] - (1.0 - a0)) < 1e-6,
-          "T243 u = (1/(2sqrt2), 1-1/(2sqrt2)) sulla palla di fedelta'");
+          "T243 u = (1/(2sqrt2), 1-1/(2sqrt2)) on the fidelity ball");
     check(u[U] * u[U] + (1.0 - u[U + 1]) * (1.0 - u[U + 1]) <= sigma * sigma + 1e-9,
           "T243 ||f-u|| <= sigma");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
@@ -18342,15 +18350,15 @@ static void lownerjohn_test(int all_free) {
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){EE, X01, X11});
     if (all_free) for (int j = 0; j < NV; j++)
         PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "Lowner-John risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "Lowner-John solved");
     double po = 0, x[16] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
     check(fabs(po - 0.5) < 1e-5, "t* = sqrt(det C) = 1/2");
     check(fabs(x[X00] - 0.5) < 1e-4 && fabs(x[X11] - 0.5) < 1e-4 && fabs(x[X01]) < 1e-4,
-          "C = (1/2) I (l'ellisse e' il cerchio)");
+          "C = (1/2) I (the ellipse is the circle)");
     check(fabs(x[D0] - 0.5) < 1e-4 && fabs(x[D1] - 0.5) < 1e-4,
-          "d = (1/2, 1/2) (centro del quadrato)");
+          "d = (1/2, 1/2) (center of the square)");
     if (all_free) {
         double pv[5] = {0}, dv[5] = {0}, pi = 0, di = 0;
         int ids[5] = {0,1,2,3,4};
@@ -18438,7 +18446,7 @@ static void test_t247(void) {
         PRIMAL_putarow(t, row, N, s, v); PRIMAL_putconbound(t, row, PRIMAL_BK_FX, 1.0, 1.0); row++; }
     int it = 0, succ[N];
     for (;;) {
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T247 TSP risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T247 TSP solved");
         double x[N * N] = {0};
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         for (int i = 0; i < N; i++) { succ[i] = -1;
@@ -18455,10 +18463,10 @@ static void test_t247(void) {
         PRIMAL_putconbound(t, ncon - 1, PRIMAL_BK_UP, -INFINITY, (double)(len - 1));
     }
     double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-    check(fabs(po - 4.0) < 1e-6, "T247 costo ottimo 4");
+    check(fabs(po - 4.0) < 1e-6, "T247 optimal cost 4");
     check(succ[0] == 1 && succ[1] == 2 && succ[2] == 3 && succ[3] == 0,
-          "T247 giro 0->1->2->3->0");
-    check(it >= 2, "T247 i subtour sono stati eliminati (>=2 iterazioni)");
+          "T247 tour 0->1->2->3->0");
+    check(it >= 2, "T247 the subtours were eliminated (>=2 iterations)");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 #undef TSPI
 }
@@ -18500,13 +18508,13 @@ static void test_t248(void) {
     warm[TT] = (double)lpt;
     PRIMAL_putxx(t, PRIMAL_SOL_ITR, warm);
     PRIMAL_putdouparam(t, PRIMAL_DPAR_MIP_TOL_REL_GAP, 1e-4);
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T248 scheduling risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T248 scheduling solved");
     double obj = 0, x[M * NT + 1] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
-    check(lpt == 7, "T248 LPT iniziale = 7 (subottimo)");
+    check(lpt == 7, "T248 initial LPT = 7 (suboptimal)");
     check(fabs(obj - 6.0) < 1e-6 && fabs(x[TT] - 6.0) < 1e-6,
-          "T248 il MIP migliora l'LPT: makespan 6");
+          "T248 the MIP improves the LPT: makespan 6");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -18542,13 +18550,13 @@ static void test_t249(void) {
     PRIMAL_putbaraij(t, r, 0, 1, &E22, (double[]){1.0}); PRIMAL_putconbound(t, r, PRIMAL_BK_FX, 1.0, 1.0); r++;
     PRIMAL_putarow(t, r, 2, (int[]){X00, X0}, (double[]){1.0, -1.0}); PRIMAL_putconbound(t, r, PRIMAL_BK_LO, 0.0, INFINITY); r++;
     PRIMAL_putarow(t, r, 2, (int[]){X11, X1}, (double[]){1.0, -1.0}); PRIMAL_putconbound(t, r, PRIMAL_BK_LO, 0.0, INFINITY); r++;
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T249 rilassamento SDO risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T249 SDO relaxation solved");
     double relax = 0, x[8] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &relax);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
-    check(fabs(relax + 0.2) < 1e-6, "T249 relax = -1/5 (diag(X)>=x taglia x=c)");
+    check(fabs(relax + 0.2) < 1e-6, "T249 relax = -1/5 (diag(X)>=x cuts x=c)");
     check(fabs(x[X0]) < 1e-6 && fabs(x[X1] - 1.0) < 1e-6,
-          "T249 il punto di rilassamento e' gia' l'intero (0,1)");
+          "T249 the relaxation point is already the integer (0,1)");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 
     /* the integer least-squares min |x-c| over integer x */
@@ -18563,12 +18571,12 @@ static void test_t249(void) {
     PRIMAL_putarow(t, 0, 2, (int[]){F0, Y0}, (double[]){1.0, -1.0}); PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, -c0, -c0);
     PRIMAL_putarow(t, 1, 2, (int[]){F1, Y1}, (double[]){1.0, -1.0}); PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, -c1, -c1);
     PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){TT, F0, F1});
-    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T249 integer LS risolto");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T249 integer LS solved");
     double ils = 0, y[5] = {0};
     PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &ils);
     PRIMAL_getxx(t, PRIMAL_SOL_ITR, y);
     check(fabs(ils - sqrt(8.0) / 5.0) < 1e-6, "T249 int_ls = sqrt8/5");
-    check(fabs(y[Y0]) < 1e-6 && fabs(y[Y1] - 1.0) < 1e-6, "T249 x* intero = (0,1)");
+    check(fabs(y[Y0]) < 1e-6 && fabs(y[Y1] - 1.0) < 1e-6, "T249 integer x* = (0,1)");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
@@ -18604,13 +18612,13 @@ static void test_t250(void) {
             s[0] = TT; v[0] = 1.0;
             for (int j = 0; j < NT; j++) { s[j + 1] = i * NT + j; v[j + 1] = -T[j]; }
             PRIMAL_putarow(t, row, NT + 1, s, v); PRIMAL_putconbound(t, row, PRIMAL_BK_LO, 0.0, INFINITY); row++; }
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, cut ? "T250 (no cuts) risolto" : "T250 risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, cut ? "T250 (no cuts) solved" : "T250 solved");
         double obj = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
         PRIMALboundkeye bk; double lo = 0, up = 0;
         PRIMAL_getvarbound(t, TT, &bk, &lo, &up);
-        check(fabs(obj - 10.0) < 1e-6, cut ? "T250 (no cuts) ottimo 10" : "T250 ottimo intero 10");
-        if (cut) check(lo <= 1e-9, "T250 controllo negativo: senza tagli la box NON e' alzata");
-        else     check(fabs(lo - 10.0) < 1e-6, "T250 il taglio alza la box dell'obiettivo a max T_j = 10");
+        check(fabs(obj - 10.0) < 1e-6, cut ? "T250 (no cuts) optimum 10" : "T250 integer optimum 10");
+        if (cut) check(lo <= 1e-9, "T250 negative check: without cuts the box is NOT raised");
+        else     check(fabs(lo - 10.0) < 1e-6, "T250 the cut raises the objective box to max T_j = 10");
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
         unsetenv("GMB_NO_MIP_CUTS");
     }
@@ -18643,7 +18651,7 @@ static void t251_logcb(void *handle, const char *msg) {
 }
 /* T251: pairwise-probing conflict cut; validity measured on the model, not the gate. */
 static void test_t251(void) {
-    cur_name = "T251 conflict cut da probing a coppie";
+    cur_name = "T251 conflict cut from pairwise probing";
     for (int off = 0; off <= 1; off++) {
         if (off) setenv("GMB_MIP_CONFLICT", "1", 1); else unsetenv("GMB_MIP_CONFLICT");
         PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
@@ -18665,14 +18673,14 @@ static void test_t251(void) {
         t251_cf = -1;
         PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
         PRIMAL_setlogcb(t, t251_logcb, NULL);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, off ? "T251 risolto" : "T251 (no gate) risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, off ? "T251 solved" : "T251 (no gate) solved");
         double z = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &z);
-        check(fabs(z - 2.0) < 1e-6, off ? "T251 ottimo 2" : "T251 (no gate) ottimo 2");
-        if (off) check(t251_cf == 1, "T251 un conflict cut generato");
-        else check(t251_cf <= 0, "T251 (no gate) nessun conflict cut");
+        check(fabs(z - 2.0) < 1e-6, off ? "T251 optimum 2" : "T251 (no gate) optimum 2");
+        if (off) check(t251_cf == 1, "T251 one conflict cut generated");
+        else check(t251_cf <= 0, "T251 (no gate) no conflict cut");
         int nc = -1; PRIMAL_getnumcon(t, &nc);
-        check(nc == 2, off ? "T251 modello invariato" : "T251 (no gate) modello invariato");
+        check(nc == 2, off ? "T251 model unchanged" : "T251 (no gate) model unchanged");
         PRIMAL_deletetask(&t);
         PRIMAL_deleteenv(&env);
         unsetenv("GMB_MIP_CONFLICT");
@@ -18695,7 +18703,7 @@ static void test_t251(void) {
         PRIMAL_putarow(t, 1, 2, (int[]){0, 2}, (double[]){1.0, 1.0});
         PRIMAL_putconbound(t, 1, PRIMAL_BK_UP, -INFINITY, 1.0);
         check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE,
-                 "T251 x1=x2=1 e' un conflitto misurato sul modello");
+                 "T251 x1=x2=1 is a conflict measured on the model");
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     }
 }
@@ -18751,14 +18759,14 @@ static void test_t252(void) {
         t252_dive = 0;
         PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
         PRIMAL_setlogcb(t, t252_logcb, NULL);
-        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, off ? "T252 (no dive) risolto" : "T252 risolto");
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, off ? "T252 (no dive) solved" : "T252 solved");
         double z = 0.0;
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &z);
-        check(fabs(z - 1.0) < 1e-6, off ? "T252 (no dive) ottimo 1" : "T252 ottimo 1");
-        if (off) check(t252_dive == 0, "T252 (kill-switch) nessun diving");
-        else check(t252_dive >= 1, "T252 il diving (default on) ha aggiornato l'incumbent");
+        check(fabs(z - 1.0) < 1e-6, off ? "T252 (no dive) optimum 1" : "T252 optimum 1");
+        if (off) check(t252_dive == 0, "T252 (kill-switch) no diving");
+        else check(t252_dive >= 1, "T252 the diving (default on) updated the incumbent");
         int nc = -1; PRIMAL_getnumcon(t, &nc);
-        check(nc == 2, off ? "T252 (no dive) modello invariato" : "T252 modello invariato");
+        check(nc == 2, off ? "T252 (no dive) model unchanged" : "T252 model unchanged");
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
         unsetenv("GMB_NO_MIP_DIVING");
     }
@@ -18769,11 +18777,11 @@ static void test_t252(void) {
         unsetenv("GMB_NO_MIP_DIVING");
         PRIMALrescodee rc; double po, x, pi;
         t84_mip(0.0, 1e-9, 1e-3, 1e-6, 100000, 3.99996, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_OK, "T252 (T84 C5 + diving) feas=1e-6 chiude");
+        check_rc(rc, PRIMAL_RES_OK, "T252 (T84 C5 + diving) feas=1e-6 closes");
         close_enough_tol(x, 3.0, 1e-9, "T252 (T84 C5 + diving) x = 3");
         close_enough_tol(po, -3.0, 1e-9, "T252 (T84 C5 + diving) pobj = -3");
         t84_mip(0.0, 1e-9, 1e-3, 1e-3, 100000, 3.99996, 0, &rc, &po, &x, &pi);
-        check_rc(rc, PRIMAL_RES_OK, "T252 (T84 C5 + diving) feas=1e-3 chiude");
+        check_rc(rc, PRIMAL_RES_OK, "T252 (T84 C5 + diving) feas=1e-3 closes");
         close_enough_tol(x, 4.0, 1e-9, "T252 (T84 C5 + diving) x = 4");
         close_enough_tol(po, -4.0, 1e-9, "T252 (T84 C5 + diving) pobj = -4");
         close_enough_tol(pi, 4e-5, 1e-4, "T252 (T84 C5 + diving) pinf = 4e-5");
@@ -18798,11 +18806,11 @@ static void test_t253(void) {
         int Ki[7] = {0,1,2, 1,3, 2, 3};
         double Kx[7] = {2,1,1, 3,1, -1, -2};
         SpLdl *L = spldl_factor(4, Kp, Ki, Kx);
-        check(L != NULL, "T253 A fattorizza");
+        check(L != NULL, "T253 A factorizes");
         if (L) {
             double rhs[4] = {1,2,3,4}, x[4];
             for (int i=0;i<4;i++) x[i]=rhs[i];
-            check(spldl_solve(L,x)==0, "T253 A risolve");
+            check(spldl_solve(L,x)==0, "T253 A solves");
             /* K x must reproduce rhs (residual), and D must have mixed sign */
             double r[4]={0,0,0,0};
             r[0]=2*x[0]+1*x[1]+1*x[2];
@@ -18810,9 +18818,9 @@ static void test_t253(void) {
             r[2]=1*x[0]-1*x[2];
             r[3]=1*x[1]-2*x[3];
             double e=0; for(int i=0;i<4;i++){double d=fabs(r[i]-rhs[i]); if(d>e)e=d;}
-            check(e < 1e-10, "T253 A il residuo Kx-b e' nullo");
+            check(e < 1e-10, "T253 A the residual Kx-b is zero");
             int pos=0,neg=0; for(int i=0;i<4;i++){ if(L->D[i]>0)pos++; else neg++; }
-            check(pos>0 && neg>0, "T253 A D ha segno misto (quasi-definita)");
+            check(pos>0 && neg>0, "T253 A D has mixed sign (quasi-definite)");
             spldl_free(L);
         }
     }
@@ -18828,11 +18836,11 @@ static void test_t253(void) {
         }
         Kp[n]=nnz;
         SpLdl *L=spldl_factor(n,Kp,Ki,Kx);
-        check(L!=NULL, "T253 B fattorizza 60x60");
+        check(L!=NULL, "T253 B factorizes 60x60");
         if (L) {
             double *rhs=malloc((size_t)n*sizeof(double)), *x=malloc((size_t)n*sizeof(double));
             for (int i=0;i<n;i++){ rhs[i]=(double)(i%5)-2.0; x[i]=rhs[i]; }
-            check(spldl_solve(L,x)==0, "T253 B risolve");
+            check(spldl_solve(L,x)==0, "T253 B solves");
             double e=0;
             for (int i=0;i<n;i++){
                 double r = (i<2?3.0:-1.0)*x[i];
@@ -18840,7 +18848,7 @@ static void test_t253(void) {
                 if (i==1) r += 1.0*x[0];
                 double d=fabs(r-rhs[i]); if (d>e) e=d;
             }
-            check(e < 1e-9, "T253 B residuo nullo su 60x60");
+            check(e < 1e-9, "T253 B zero residual on 60x60");
             free(rhs); free(x); spldl_free(L);
         }
         free(Kp); free(Ki); free(Kx);
@@ -18848,7 +18856,7 @@ static void test_t253(void) {
     {   /* C: zero diagonal -> rejection */
         int Kp[2]={0,1}, Ki[1]={0}; double Kx[1]={0.0};
         SpLdl *L=spldl_factor(1,Kp,Ki,Kx);
-        check(L==NULL, "T253 C rifiuta una diagonale nulla");
+        check(L==NULL, "T253 C rejects a zero diagonal");
         if (L) spldl_free(L);
     }
     {   /* D: KKT with zero-diagonal equality rows K=[[H,B'],[B,0]], H=diag(2,3),
@@ -18858,32 +18866,32 @@ static void test_t253(void) {
         int Ki[6] = {0,2, 1,3, 2, 3};
         double Kx[6] = {2,1, 3,1, 0,0};
         SpLdl *L=spldl_factor(4,Kp,Ki,Kx);
-        check(L!=NULL, "T253 D KKT con diagonale nulla fattorizza");
+        check(L!=NULL, "T253 D KKT with zero diagonal factorizes");
         if (L) {
             int nblk=0; for(int i=0;i<4;i++) if(L->piv2[i]) nblk++;
-            check(nblk>=1, "T253 D usa almeno un pivot 2x2");
+            check(nblk>=1, "T253 D uses at least one 2x2 pivot");
             double b[4]={1,2,3,4}, x[4];
             for(int i=0;i<4;i++) x[i]=b[i];
-            check(spldl_solve(L,x)==0, "T253 D risolve");
+            check(spldl_solve(L,x)==0, "T253 D solves");
             double r[4];
             r[0]=2*x[0]+1*x[2];
             r[1]=3*x[1]+1*x[3];
             r[2]=1*x[0];
             r[3]=1*x[1];
             double e=0; for(int i=0;i<4;i++){double dd=fabs(r[i]-b[i]); if(dd>e)e=dd;}
-            check(e<1e-10, "T253 D residuo Kx-b nullo");
+            check(e<1e-10, "T253 D zero residual Kx-b");
             spldl_free(L);
         }
     }
     {   /* E: pure 2x2 block, K=[[0,1],[1,0]] -> x=K^{-1}(1,2)=(2,1) */
         int Kp[3]={0,2,3}, Ki[3]={0,1,1}; double Kx[3]={0,1,0};
         SpLdl *L=spldl_factor(2,Kp,Ki,Kx);
-        check(L!=NULL, "T253 E blocco 2x2 puro fattorizza");
+        check(L!=NULL, "T253 E pure 2x2 block factorizes");
         if (L) {
             double x[2]={1,2};                 /* rhs */
-            check(spldl_solve(L,x)==0, "T253 E risolve");
+            check(spldl_solve(L,x)==0, "T253 E solves");
             double e = fabs(x[0]-2.0)+fabs(x[1]-1.0);
-            check(e<1e-12, "T253 E soluzione (2,1)");
+            check(e<1e-12, "T253 E solution (2,1)");
             spldl_free(L);
         }
     }
@@ -18898,25 +18906,25 @@ static void test_t254(void) {
     {   /* A: purely 2x2 pivot, K=[[0,1],[1,0]] */
         double K[4] = {0,1, 1,0};
         SpBK *F = dmat_ldl_bk(2, K);
-        check(F != NULL, "T254 A fattorizza [[0,1],[1,0]]");
+        check(F != NULL, "T254 A factorizes [[0,1],[1,0]]");
         if (F) {
             double b[2] = {-1,0}, x[2]; for (int i=0;i<2;i++) x[i]=b[i];
-            check(dmat_ldl_bk_solve(F,x)==0, "T254 A risolve");
+            check(dmat_ldl_bk_solve(F,x)==0, "T254 A solves");
             check(fabs((K[0]*x[0]+K[1]*x[1])-b[0]) < 1e-12 &&
-                  fabs((K[2]*x[0]+K[3]*x[1])-b[1]) < 1e-12, "T254 A residuo nullo (2x2)");
+                  fabs((K[2]*x[0]+K[3]*x[1])-b[1]) < 1e-12, "T254 A zero residual (2x2)");
             dmat_ldl_bk_free(F);
         }
     }
     {   /* B: 4x4 mixed 1x1/2x2, K=[[2,1,0,0],[1,0,1,0],[0,1,0,1],[0,0,1,2]] */
         double K[16] = {2,1,0,0, 1,0,1,0, 0,1,0,1, 0,0,1,2};
         SpBK *F = dmat_ldl_bk(4, K);
-        check(F != NULL, "T254 B fattorizza 4x4 misto");
+        check(F != NULL, "T254 B factorizes mixed 4x4");
         if (F) {
             double b[4] = {-1,0,1,0}, x[4]; for (int i=0;i<4;i++) x[i]=b[i];
-            check(dmat_ldl_bk_solve(F,x)==0, "T254 B risolve");
+            check(dmat_ldl_bk_solve(F,x)==0, "T254 B solves");
             double e=0;
             for (int i=0;i<4;i++){ double s=0; for(int j=0;j<4;j++) s+=K[i*4+j]*x[j]; double d=fabs(s-b[i]); if(d>e)e=d; }
-            check(e < 1e-11, "T254 B residuo nullo");
+            check(e < 1e-11, "T254 B zero residual");
             dmat_ldl_bk_free(F);
         }
     }
@@ -18934,12 +18942,12 @@ static int cb_count(int code) { int n = 0; for (int i = 0; i < g_cbn; i++) if (g
 
 /* T255: phase callbacks (simplex/intpnt/mio/conic) are emitted by the route. */
 static void test_t255(void) {
-    cur_name = "T255 callback di fase (rotta)";
+    cur_name = "T255 phase callback (route)";
     char nm[64];
-    check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_BEGIN_SIMPLEX, nm), PRIMAL_RES_OK, "A nome BEGIN_SIMPLEX");
-    check(strcmp(nm, "MSK_CALLBACK_BEGIN_SIMPLEX") == 0, "A testo BEGIN_SIMPLEX");
-    check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_END_CONIC, nm), PRIMAL_RES_OK, "A nome END_CONIC");
-    check(strcmp(nm, "MSK_CALLBACK_END_CONIC") == 0, "A testo END_CONIC");
+    check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_BEGIN_SIMPLEX, nm), PRIMAL_RES_OK, "A name BEGIN_SIMPLEX");
+    check(strcmp(nm, "MSK_CALLBACK_BEGIN_SIMPLEX") == 0, "A text BEGIN_SIMPLEX");
+    check_rc(PRIMAL_callbackcodetostr(PRIMAL_CALLBACK_END_CONIC, nm), PRIMAL_RES_OK, "A name END_CONIC");
+    check(strcmp(nm, "MSK_CALLBACK_END_CONIC") == 0, "A text END_CONIC");
     {   /* B: LP -> OPTIMIZER + (SIMPLEX or INTPNT), nested and balanced */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
@@ -18952,11 +18960,11 @@ static void test_t255(void) {
               "B BEGIN/END optimizer");
         check((cb_seen(PRIMAL_CALLBACK_BEGIN_SIMPLEX) && cb_seen(PRIMAL_CALLBACK_END_SIMPLEX)) ||
               (cb_seen(PRIMAL_CALLBACK_BEGIN_INTPNT) && cb_seen(PRIMAL_CALLBACK_END_INTPNT)),
-              "B la rotta LP emette SIMPLEX o INTPNT");
+              "B the LP route emits SIMPLEX or INTPNT");
         check(cb_count(PRIMAL_CALLBACK_BEGIN_SIMPLEX) == cb_count(PRIMAL_CALLBACK_END_SIMPLEX),
-              "B SIMPLEX bilanciato");
+              "B SIMPLEX balanced");
         check(cb_count(PRIMAL_CALLBACK_BEGIN_INTPNT) == cb_count(PRIMAL_CALLBACK_END_INTPNT),
-              "B INTPNT bilanciato");
+              "B INTPNT balanced");
         pend(&p);
     }
     {   /* C: SOCP (one QUAD cone) -> CONIC */
@@ -18973,7 +18981,7 @@ static void test_t255(void) {
         check(cb_seen(PRIMAL_CALLBACK_BEGIN_CONIC) && cb_seen(PRIMAL_CALLBACK_END_CONIC),
               "C BEGIN/END conic");
         check(cb_count(PRIMAL_CALLBACK_BEGIN_CONIC) == cb_count(PRIMAL_CALLBACK_END_CONIC),
-              "C CONIC bilanciato");
+              "C CONIC balanced");
         pend(&p);
     }
     {   /* D: MIP -> MIO (and SIMPLEX/INTPNT for the relaxations) */
@@ -18986,9 +18994,9 @@ static void test_t255(void) {
         g_cbn = 0;
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "D MIP optimize");
         check(cb_seen(PRIMAL_CALLBACK_BEGIN_MIO) && cb_seen(PRIMAL_CALLBACK_END_MIO),
-              "D BEGIN/END mio");
+              "D BEGIN/END my");
         check(cb_count(PRIMAL_CALLBACK_BEGIN_MIO) == cb_count(PRIMAL_CALLBACK_END_MIO),
-              "D MIO bilanciato");
+              "D MIO balanced");
         pend(&p);
     }
 }
@@ -19056,7 +19064,7 @@ static double opf_roundtrip(const char *txt, const char *path, PRIMALrescodee *r
 
 /* T256: OPF reader/writer round-trips for linear, quadratic, conic and integer. */
 static void test_t256(void) {
-    cur_name = "T256 lettore/scrittore OPF";
+    cur_name = "T256 OPF reader/writer";
     PRIMALrescodee rc; int nv = 0, nc = 0; double o;
     /* A: linear, hand optimum 250/3 = 83.3333 (x2=15, x3=25/3, x0=x1=0) */
     o = opf_solve_obj(T256_LIN, &rc, &nv, &nc);
@@ -19083,7 +19091,7 @@ static void test_t256(void) {
         rc = PRIMAL_readopfstring(p.task,
             "[objective minimize 'o']\n0.0\n[/objective]\n"
             "[constraints]\n[con 'c'] x0^2 + x0 = 1 [/con]\n[/constraints]\n");
-        check(rc != PRIMAL_RES_OK, "E uguaglianza quadratica rifiutata");
+        check(rc != PRIMAL_RES_OK, "E quadratic equality rejected");
         pend(&p);
     }
     /* F: round-trip on a .opf file (dispatch by extension), linear/conic/integer */
@@ -19142,7 +19150,7 @@ static void test_t257(void) {
         g_cbn = 0;
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A LP optimize");
         check(cb_seen(PRIMAL_CALLBACK_PRIMAL_SIMPLEX) || cb_seen(PRIMAL_CALLBACK_INTPNT),
-              "A LP emette il middle");
+              "A LP emits the middle");
         pend(&p);
     }
     {   /* B: a PEXP min t -> t=e, with cuts forced emits CONIC per round */
@@ -19158,7 +19166,7 @@ static void test_t257(void) {
         PRIMALrescodee rc = PRIMAL_optimize(p.task);
         unsetenv("GMB_NO_EXP_IPM");
         check_rc(rc, PRIMAL_RES_OK, "B PEXP cuts optimize");
-        check(cb_seen(PRIMAL_CALLBACK_CONIC), "B i tagli emettono CONIC");
+        check(cb_seen(PRIMAL_CALLBACK_CONIC), "B the cuts emit CONIC");
         pend(&p);
     }
 }
@@ -19169,7 +19177,7 @@ static void test_t257(void) {
  * update points.  The flag `primal_cb_iter_on` makes the call a
  * load+branch when no callback is registered. */
 static void test_t258(void) {
-    cur_name = "T258 callback per-iterazione (hook)";
+    cur_name = "T258 per-iteration callback (hook)";
     {   /* A: an LP emits an inner iteration (simplex 93 or ipm 90) */
         P p; pbegin(&p);
         PRIMAL_putcallbackfunc(p.task, test_cb, NULL);
@@ -19183,7 +19191,7 @@ static void test_t258(void) {
         g_cbn = 0;
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A LP optimize");
         check(cb_count(PRIMAL_CALLBACK_PRIMAL_SIMPLEX) + cb_count(PRIMAL_CALLBACK_INTPNT) >= 2,
-              "A almeno 2 iterazioni interne");
+              "A at least 2 inner iterations");
         pend(&p);
     }
     {   /* B: an SOCP emits CONIC at every iteration */
@@ -19197,7 +19205,7 @@ static void test_t258(void) {
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 1.0, 1.0);
         g_cbn = 0;
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B SOCP optimize");
-        check(cb_count(PRIMAL_CALLBACK_CONIC) >= 2, "B almeno 2 iterazioni CONIC");
+        check(cb_count(PRIMAL_CALLBACK_CONIC) >= 2, "B at least 2 CONIC iterations");
         pend(&p);
     }
 }
@@ -19206,7 +19214,7 @@ static void test_t258(void) {
  * Convex UP -> UP convention; LO rewritten as -q(x) <= -b; quadratic
  * equality or ranged are rejected (nonconvex / not representable). */
 static void test_t259(void) {
-    cur_name = "T259 OPF vincolo quadratico";
+    cur_name = "T259 OPF quadratic constraint";
     PRIMALrescodee rc; int nv = 0, nc = 0; double o;
     o = opf_solve_obj("[objective maximize 'o']\nx0 + x1\n[/objective]\n"
                       "[constraints]\n[con 'c'] x0^2 + x1^2 <= 2 [/con]\n[/constraints]\n"
@@ -19223,7 +19231,7 @@ static void test_t259(void) {
         rc = PRIMAL_readopfstring(p.task,
             "[objective minimize 'o']\nx0\n[/objective]\n"
             "[constraints]\n[con 'c'] x0^2 + x1^2 = 2 [/con]\n[/constraints]\n");
-        check(rc != PRIMAL_RES_OK, "C uguaglianza quadratica rifiutata");
+        check(rc != PRIMAL_RES_OK, "C quadratic equality rejected");
         pend(&p);
     }
     {
@@ -19231,7 +19239,7 @@ static void test_t259(void) {
         rc = PRIMAL_readopfstring(p.task,
             "[objective minimize 'o']\nx0\n[/objective]\n"
             "[constraints]\n[con 'c'] 1 <= x0^2 + x1^2 <= 3 [/con]\n[/constraints]\n");
-        check(rc != PRIMAL_RES_OK, "D ranged quadratico rifiutato");
+        check(rc != PRIMAL_RES_OK, "D ranged quadratic rejected");
         pend(&p);
     }
     /* E: round-trip of the quadratic constraint (the OPF writer emits the Q part) */
@@ -19261,7 +19269,7 @@ static void test_t260(void) {
         PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 1.0, 1.0);
         g_cbn = 0;
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A SOCP optimize");
-        check(cb_seen(PRIMAL_CALLBACK_IM_LU), "A IM_LU emesso");
+        check(cb_seen(PRIMAL_CALLBACK_IM_LU), "A IM_LU emitted");
         pend(&p);
     }
     {   /* B: the sparse path uses sym_amd -> IM_ORDER */
@@ -19278,7 +19286,7 @@ static void test_t260(void) {
         PRIMALrescodee rc = PRIMAL_optimize(p.task);
         unsetenv("GMB_SOCP_SPARSE");
         check_rc(rc, PRIMAL_RES_OK, "B SOCP sparse optimize");
-        check(cb_seen(PRIMAL_CALLBACK_IM_ORDER), "B IM_ORDER emesso");
+        check(cb_seen(PRIMAL_CALLBACK_IM_ORDER), "B IM_ORDER emitted");
         pend(&p);
     }
 }
@@ -19296,7 +19304,7 @@ static void test_t261(void) {
                        "QCMATRIX c1\n x0 x0 2\n x1 x1 2\nENDATA\n", f); fclose(f); }
         P p; pbegin(&p);
         PRIMALrescodee rc = PRIMAL_readdata(p.task, "/tmp/t261.mps");
-        check_rc(rc, PRIMAL_RES_OK, "A read QCMATRIX (riga L)");
+        check_rc(rc, PRIMAL_RES_OK, "A read QCMATRIX (row L)");
         if (rc == PRIMAL_RES_OK) {
             check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A solve");
             double obj = 0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj);
@@ -19311,7 +19319,7 @@ static void test_t261(void) {
                        "QCMATRIX c1\n x0 x0 -2\n x1 x1 -2\nENDATA\n", f); fclose(f); }
         P p; pbegin(&p);
         PRIMALrescodee rc = PRIMAL_readdata(p.task, "/tmp/t261g.mps");
-        check(rc != PRIMAL_RES_OK, "B riga G con QCMATRIX rifiutata");
+        check(rc != PRIMAL_RES_OK, "B row G with QCMATRIX rejected");
         pend(&p);
     }
 }
@@ -19321,20 +19329,20 @@ static void test_t261(void) {
  * the linear part: it rejects instead of writing a file that lost it
  * (OPF and MPS emit it). */
 static void test_t262(void) {
-    cur_name = "T262 LP writer rifiuta il quadratico";
+    cur_name = "T262 LP writer rejects the quadratic";
     P p; pbegin(&p);
     PRIMAL_appendvars(p.task, 2);
     PRIMAL_putvarbound(p.task, 0, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putvarbound(p.task, 1, PRIMAL_BK_LO, 0.0, INFINITY);
     PRIMAL_putqobj(p.task, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){2.0, 2.0});
-    check(PRIMAL_writedata(p.task, "/tmp/t262.lp") != PRIMAL_RES_OK, "A QP -> .lp rifiutato");
-    check_rc(PRIMAL_writedata(p.task, "/tmp/t262.opf"), PRIMAL_RES_OK, "B QP -> .opf scritto");
+    check(PRIMAL_writedata(p.task, "/tmp/t262.lp") != PRIMAL_RES_OK, "A QP -> .lp rejected");
+    check_rc(PRIMAL_writedata(p.task, "/tmp/t262.opf"), PRIMAL_RES_OK, "B QP -> .opf written");
     pend(&p);
     {   /* C: the LP reader rejects the quadratic ([ ... ]/2) instead of creating a
          * garbage variable "[" (the LP format is linear-only here). */
         P q; pbegin(&q);
         const char *lp = "minimize\nobj: [ x0^2 ]/2 + x0\nsubject to\nc0: x0 >= 1\nend\n";
-        check(PRIMAL_readlpstring(q.task, lp) != PRIMAL_RES_OK, "C LP quadratico rifiutato");
+        check(PRIMAL_readlpstring(q.task, lp) != PRIMAL_RES_OK, "C LP quadratic rejected");
         pend(&q);
     }
 }
@@ -19353,7 +19361,7 @@ static void test_t263(void) {
         PRIMALrescodee rc = PRIMAL_readdata(p.task, "/tmp/t263.mps");
         check_rc(rc, PRIMAL_RES_OK, "A read CSECTION");
         int nc = 0; PRIMAL_getnumcone(p.task, &nc);
-        check(nc == 1, "A un cono");
+        check(nc == 1, "A cone");
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A solve");
         double obj = 0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj);
         check(fabs(obj - 1.0) < 1e-6, "A obj=1");
@@ -19366,7 +19374,7 @@ static void test_t263(void) {
         P q; pbegin(&q);
         check_rc(PRIMAL_readdata(q.task, "/tmp/t263b.mps"), PRIMAL_RES_OK, "C re-read");
         int qc = 0; PRIMAL_getnumcone(q.task, &qc);
-        check(qc == 1, "C round-trip cono conservato");
+        check(qc == 1, "C round-trip cone preserved");
         check_rc(PRIMAL_optimize(q.task), PRIMAL_RES_OK, "C solve");
         double o2 = 0; PRIMAL_getprimalobj(q.task, PRIMAL_SOL_ITR, &o2);
         check(fabs(o2 - 1.0) < 1e-6, "C round-trip obj=1");
@@ -19379,7 +19387,7 @@ static void test_t263(void) {
                        "CSECTION k1 0.0 ZERO x\nENDATA\n", f); fclose(f); }
         P p; pbegin(&p);
         PRIMALrescodee rc = PRIMAL_readdata(p.task, "/tmp/t263z.mps");
-        check(rc != PRIMAL_RES_OK, "B cono ZERO rifiutato");
+        check(rc != PRIMAL_RES_OK, "B ZERO cone rejected");
         pend(&p);
     }
 }
@@ -19388,7 +19396,7 @@ static void test_t263(void) {
  * It used to be a dense fallback with identity perm.  Now it uses spchol_factor_ord:
  * checks L L' = P A P' and that perm is a valid permutation. */
 static void test_t264(void) {
-    cur_name = "T264 computesparsecholesky sparso (AMD)";
+    cur_name = "T264 computesparsecholesky sparse (AMD)";
     int n = 5;
     /* A = tridiagonal(2,-1), LOWER triangle in CSC */
     int anzc[5] = {2, 2, 2, 2, 1};
@@ -19401,7 +19409,7 @@ static void test_t264(void) {
     PRIMALrescodee rc = PRIMAL_computesparsecholesky(NULL, 1, 1, 1e-14, n, anzc, aptrc,
                                                      asubc, avalc, &perm, &diag, &lnzc, &lptrc,
                                                      &lens, &lsubc, &lvalc);
-    check_rc(rc, PRIMAL_RES_OK, "A fattorizza (sparso)");
+    check_rc(rc, PRIMAL_RES_OK, "A factorizes (sparse)");
     if (rc == PRIMAL_RES_OK) {
         double *L = (double *)calloc((size_t)n * n, sizeof(double));
         double *LLt = (double *)calloc((size_t)n * n, sizeof(double));
@@ -19420,7 +19428,7 @@ static void test_t264(void) {
             int *seen = (int *)calloc((size_t)n, sizeof(int));
             int okp = seen != NULL;
             for (int k = 0; okp && k < n; k++) { if (perm[k] < 0 || perm[k] >= n || seen[perm[k]]) okp = 0; else seen[perm[k]] = 1; }
-            check(okp, "A perm valida");
+            check(okp, "A valid perm");
             free(seen);
         }
         free(L); free(LLt); free(A);
@@ -19433,10 +19441,17 @@ static void test_t265(void) {
     cur_name = "T265 utf8towchar/wchartoutf8";
     {
         const char *s = "caf\xC3\xA9";   /* "cafe'" with accented e (U+00E9) */
-        PRIMALwchart w[16]; size_t len = 0, conv = 0;
+        /* The buffer is poisoned on purpose: PRIMAL_wchartoutf8 scans its input
+         * up to a NUL, so if utf8towchar did not terminate, the round trip read
+         * whatever followed here. With a zeroed buffer the test passed for a
+         * reason that had nothing to do with the code under test. */
+        PRIMALwchart w[16];
+        for (int i = 0; i < 16; i++) w[i] = (PRIMALwchart)0x5A5A;
+        size_t len = 0, conv = 0;
         check_rc(PRIMAL_utf8towchar(16, &len, &conv, w, s), PRIMAL_RES_OK, "A utf8towchar");
         check(len == 4 && conv == 5, "A len=4 conv=5");
         check(w[3] == (PRIMALwchart)0xE9, "A w[3]=U+00E9");
+        check(w[4] == 0, "A NUL terminator after the output: wchartoutf8 stops there");
         char o[16]; size_t l2 = 0, c2 = 0;
         check_rc(PRIMAL_wchartoutf8(16, &l2, &c2, o, w), PRIMAL_RES_OK, "A wchartoutf8");
         check(strcmp(o, s) == 0 && l2 == 5 && c2 == 4, "A round-trip");
@@ -19444,18 +19459,18 @@ static void test_t265(void) {
     {
         PRIMALwchart w[8]; size_t len = 0, conv = 0;
         check(PRIMAL_utf8towchar(8, &len, &conv, w, "\xFF\xFE") != PRIMAL_RES_OK,
-              "B sequenza invalida rifiutata");
+              "B invalid sequence rejected");
     }
 }
 
 /* ---------------- T266: readdataautoformat detects the content ------------- */
 static void test_t266(void) {
-    cur_name = "T266 readdataautoformat (rileva OPF dal contenuto)";
+    cur_name = "T266 readdataautoformat (detects OPF from content)";
     {   /* an OPF in a .txt file: the content starts with '[' */
         FILE *f = fopen("/tmp/t266.txt", "w");
         if (f) { fputs(T256_LIN, f); fclose(f); }
         P p; pbegin(&p);
-        check_rc(PRIMAL_readdataautoformat(p.task, "/tmp/t266.txt"), PRIMAL_RES_OK, "A OPF senza estensione");
+        check_rc(PRIMAL_readdataautoformat(p.task, "/tmp/t266.txt"), PRIMAL_RES_OK, "A OPF without extension");
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A solve");
         double o = 0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &o);
         check(fabs(o - 250.0/3.0) < 1e-5, "A obj=250/3");
@@ -19482,7 +19497,7 @@ static void t267_cp(const char *src, const char *dst) {
 
 /* T267: readdataformat honors the declared format/compression rather than the extension. */
 static void test_t267(void) {
-    cur_name = "T267 readdataformat (formato dichiarato)";
+    cur_name = "T267 readdataformat (declared format)";
     /* model min x0+x1 s.t. x0+x1 >= 3, optimum 3, written in the two formats with
      * the real extension, then copied with a neutral .txt extension */
     {
@@ -19505,7 +19520,7 @@ static void test_t267(void) {
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_MPS,
-                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_OK, "A MPS forzato");
+                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_OK, "A MPS forced");
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "A solve");
         double o = 0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &o);
         close_enough_tol(o, 3.0, 1e-7, "A obj=3");
@@ -19515,7 +19530,7 @@ static void test_t267(void) {
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267a.txt", PRIMAL_DATA_FORMAT_LP,
-                                       PRIMAL_COMPRESS_FREE), PRIMAL_RES_OK, "B LP forzato");
+                                       PRIMAL_COMPRESS_FREE), PRIMAL_RES_OK, "B LP forced");
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B solve");
         double o = 0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &o);
         close_enough_tol(o, 3.0, 1e-7, "B obj=3");
@@ -19525,14 +19540,14 @@ static void test_t267(void) {
         P p; pbegin(&p);
         PRIMALrescodee rc = PRIMAL_readdataformat(p.task, "/tmp/t267a.txt",
                                                   PRIMAL_DATA_FORMAT_EXTENSION, PRIMAL_COMPRESS_NONE);
-        check(rc != PRIMAL_RES_OK, "B' estensione .txt su un LP fallisce (MPS)");
+        check(rc != PRIMAL_RES_OK, "B' .txt extension on an LP fails (MPS)");
         pend(&p);
     }
     /* C: OPF forced on a .txt */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267b.txt", PRIMAL_DATA_FORMAT_OP,
-                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_OK, "C OPF forzato");
+                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_OK, "C OPF forced");
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "C solve");
         double o = 0; PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &o);
         close_enough_tol(o, 250.0/3.0, 1e-5, "C obj=250/3");
@@ -19542,43 +19557,43 @@ static void test_t267(void) {
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_TASK,
-                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D TASK rifiutato");
+                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D TASK rejected");
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_PTF,
-                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D PTF rifiutato");
+                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D PTF rejected");
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_JSON_TASK,
-                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D JSON rifiutato");
+                                       PRIMAL_COMPRESS_NONE), PRIMAL_RES_ERR_ARG, "D JSON rejected");
         pend(&p);
     }
     /* E: compression not linked */
     {
         P p; pbegin(&p);
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_MPS,
-                                       PRIMAL_COMPRESS_GZIP), PRIMAL_RES_ERR_ARG, "E GZIP rifiutato");
+                                       PRIMAL_COMPRESS_GZIP), PRIMAL_RES_ERR_ARG, "E GZIP rejected");
         check_rc(PRIMAL_readdataformat(p.task, "/tmp/t267c.txt", PRIMAL_DATA_FORMAT_MPS,
-                                       PRIMAL_COMPRESS_ZSTD), PRIMAL_RES_ERR_ARG, "E ZSTD rifiutato");
+                                       PRIMAL_COMPRESS_ZSTD), PRIMAL_RES_ERR_ARG, "E ZSTD rejected");
         pend(&p);
     }
 }
 
 /* ---------------- T268: env/task memory and global env ---------------- */
 static void test_t268(void) {
-    cur_name = "T268 memoria dell'env/task e global env";
+    cur_name = "T268 env/task memory and global env";
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t task; PRIMAL_maketask(env, 0, 0, &task);
     double *a = (double *)PRIMAL_callocenv(env, 4, sizeof(double));
-    check(a != NULL, "T268 callocenv non NULL");
+    check(a != NULL, "T268 callocenv not NULL");
     if (a) { for (int i = 0; i < 4; i++) a[i] = (double)i;
-             check(a[2] == 2.0, "T268 callocenv scrivibile"); }
+             check(a[2] == 2.0, "T268 callocenv writable"); }
     PRIMAL_freeenv(env, a);
     double *b = (double *)PRIMAL_calloctask(task, 4, sizeof(double));
-    check(b != NULL, "T268 calloctask non NULL");
-    if (b) check(b[3] == 0.0, "T268 calloctask azzera");
+    check(b != NULL, "T268 calloctask not NULL");
+    if (b) check(b[3] == 0.0, "T268 calloctask zeroes");
     PRIMAL_freetask(task, b);
     double *c = (double *)PRIMAL_callocdbgenv(env, 2, sizeof(double), __FILE__, 1);
-    check(c != NULL, "T268 callocdbgenv non NULL");
+    check(c != NULL, "T268 callocdbgenv not NULL");
     PRIMAL_freedbgenv(env, c, __FILE__, 1);
     double *d = (double *)PRIMAL_callocdbgtask(task, 2, sizeof(double), __FILE__, 2);
-    check(d != NULL, "T268 callocdbgtask non NULL");
+    check(d != NULL, "T268 callocdbgtask not NULL");
     PRIMAL_freedbgtask(task, d, __FILE__, 2);
     check_rc(PRIMAL_globalenvinitialize(-1, NULL), PRIMAL_RES_OK, "T268 globalenvinitialize");
     check_rc(PRIMAL_globalenvfinalize(), PRIMAL_RES_OK, "T268 globalenvfinalize");
@@ -19588,8 +19603,127 @@ static void test_t268(void) {
     PRIMAL_deleteenv(&env);
 }
 
+/* ---------------- T269: i due doppi free segnalati da -Wuse-after-free (issue #4)
+ *
+ * GCC (Linux) segnala `-Wuse-after-free` in due punti che clang non ha, e
+ * l'avviso qui e' la forma conservativa di un DIFETTO REALE, non cosmetico.
+ *
+ *  A) stdform.c stdform_build(): la riga di successo libera csr_*, lc3, uc3
+ *     PRIMA del blocco Q, e le label di errore `a_fail` e `qfail` li liberavano
+ *     di nuovo. Ogni `goto qfail` e' a valle di quella free, quindi il
+ *     `qfail: free(lc3); free(uc3);` era un doppio free sui quattro siti
+ *     (tri_add o tri_to_csc falliti con hasQ). Lo stesso vale per `a_fail`,
+ *     che puo essere raggiunto sia prima sia dopo la free di successo.
+ *  B) primal_optimize.c (bound tightening LP/QP): `free(bt_lx); free(bt_ux);`
+ *     compariva due volte di fila nel ramo di allocazione fallita.
+ *
+ * PERCHE' IL TEST NON PUO' RIPRODURRE IL FREE DOPPIO
+ * Nessun hook di fallimento di allocazione esiste in questa libreria: per
+ * arrivare a `qfail` serve che una malloc/realloc dentro tri_add o tri_to_csc
+ * restituisca NULL, e senza un allocator sostituibile l'unico modo sarebbe
+ * esaurire la memoria del processo. Percio' questo test non asserisce "il doppio
+ * free non accade" -- asserisce la **forma della sorgente**, che e' cio' che
+ * rende il difetto impossibile: ogni buffer liberato dal percorso di successo
+ * non compare piu' nelle label a valle. Il difetto e' nel testo del programma,
+ * non in un comportamento raggiungibile, quindi e' li' che va misurato. Il
+ * percorso nominale resta asserito subito sotto, ed e' quello che la free di
+ * successo attraversa.
+ */
+static void t269_count_frees(const char *file, int after_line,
+                             const char *const *names, int nnames, int *out) {
+    FILE *fp = fopen(file, "r");
+    if (!fp) { for (int k = 0; k < nnames; k++) out[k] = -1; return; }
+    for (int k = 0; k < nnames; k++) out[k] = 0;      /* out[k]++ below: must start at 0 */
+    char ln[512]; int lineno = 0;
+    while (fgets(ln, sizeof ln, fp)) {
+        lineno++;
+        if (after_line > 0 && lineno <= after_line) continue;
+        for (int k = 0; k < nnames; k++) {
+            char pat[64]; snprintf(pat, sizeof pat, "free(%s)", names[k]);
+            const char *p = ln;
+            while ((p = strstr(p, pat)) != NULL) { out[k]++; p += strlen(pat); }
+        }
+    }
+    fclose(fp);
+}
+
+static void test_t269(void) {
+    cur_name = "T269 double frees (issue #4): no buffer freed twice";
+    const char *sf_names[] = {"lc3", "uc3", "csr_ptr", "csr_j", "csr_v"};
+    int n_sf[5];
+
+    /* stdform.c: dalla free di successo in giu, ogni buffer deve comparire
+     * esattamente UNA volta nelle label a valle (a_fail lo riprende, qfail no).
+     * Prima della correzione erano 2: qfail li liberava una seconda volta. */
+    t269_count_frees("stdform.c", 313, sf_names, 5, n_sf);
+    check(n_sf[0] == 1, "T269 stdform lc3 freed once after the success path");
+    check(n_sf[1] == 1, "T269 stdform uc3 freed once after the success path");
+    check(n_sf[2] == 1, "T269 stdform csr_ptr freed once after success");
+    check(n_sf[3] == 1, "T269 stdform csr_j freed once after success");
+    check(n_sf[4] == 1, "T269 stdform csr_v freed once after success");
+
+    /* primal_optimize.c: bt_lx/bt_ux sono liberati in quattro rami distinti
+     * (allocazione fallita, due uscite intermedie, uscita di successo). Prima
+     * della correzione il primo ramo li liberava due volte di fila: era 5. */
+    const char *opt_names[] = {"bt_lx", "bt_ux"};
+    int n_opt[2];
+    t269_count_frees("primal_optimize.c", 0, opt_names, 2, n_opt);
+    check(n_opt[0] == 4, "T269 primal_optimize bt_lx freed in the 4 branches, no double");
+    check(n_opt[1] == 4, "T269 primal_optimize bt_ux freed in the 4 branches, no double");
+
+    /* Il percorso NOMINALE resta misurabile e non solo la forma: un modello con
+     * parte quadratica e' quello che attraversa il blocco Q e la free di successo
+     * che il difetto rendeva duplicata. */
+    PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
+    PRIMALtask_t task; PRIMAL_maketask(env, 1, 2, &task);
+    PRIMAL_putcj(task, 0, -1.0);
+    PRIMAL_putcj(task, 1, -1.0);
+    PRIMAL_putvarbound(task, 0, PRIMAL_BK_LO, 0.0, 10.0);
+    PRIMAL_putvarbound(task, 1, PRIMAL_BK_LO, 0.0, 10.0);
+    PRIMAL_putarow(task, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
+    PRIMAL_putconbound(task, 0, PRIMAL_BK_UP, 1.0, INFINITY);
+    PRIMAL_putqobj(task, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){1.0, 1.0});
+    PRIMAL_putobjsense(task, PRIMAL_OPTIMIZE_MINIMIZE);
+    PRIMALrescodee rc = PRIMAL_optimize(task);
+    check(rc == PRIMAL_RES_OK, "T269 QP: solve with quadratic part OK");
+    if (rc == PRIMAL_RES_OK) {
+        double x[2], pobj, dobj;
+        PRIMAL_getxx(task, PRIMAL_SOL_BAS, x);
+        PRIMAL_getprimalobj(task, PRIMAL_SOL_BAS, &pobj);
+        PRIMAL_getdualobj(task, PRIMAL_SOL_BAS, &dobj);
+        /* f(t) = -(x0+x1) + 0.5*(x0^2+x1^2) on the symmetric ray x0=x1=t is
+         * -2t + t^2, whose unconstrained minimum is t = 1 with f = -1, NOT the
+         * binding point t = 0.5 (which gives -0.75). The quadratic term is what
+         * moves the optimum off the row, which is the point of using Q here. */
+        check(fabs(x[0] - 1.0) < 1e-6 && fabs(x[1] - 1.0) < 1e-6, "T269 QP: x = (1,1)");
+        check(fabs(pobj + 1.0) < 1e-6, "T269 QP: pobj = -1");
+        check(fabs(pobj - dobj) < 1e-6, "T269 QP: dualita forte");
+    }
+    PRIMAL_deletetask(&task);
+
+    /* cbf.c: strdup deve essere dichiarato, non dichiarato implicitamente come
+     * int (che su x86-64 tronca il puntatore a 32 bit). La feature macro deve
+     * precedere il primo include, altrimenti non dichiara nulla. */
+    FILE *cf = fopen("cbf.c", "r");
+    check(cf != NULL, "T269 cbf.c leggibile");
+    if (cf) {
+        char ln[512]; int at_macro = 0, at_first_include = 0, lineno = 0, seen = 0;
+        while (fgets(ln, sizeof ln, cf)) {
+            lineno++;
+            if (!seen && strstr(ln, "_POSIX_C_SOURCE")) { at_macro = lineno; seen = 1; }
+            if (strstr(ln, "#include")) { at_first_include = lineno; break; }
+        }
+        fclose(cf);
+        check(at_macro > 0, "T269 cbf.c: _POSIX_C_SOURCE presente");
+        check(at_macro < at_first_include,
+              "T269 cbf.c: _POSIX_C_SOURCE before the first include (declares strdup)");
+    }
+    PRIMAL_deleteenv(&env);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t269();
     test_t268();
     test_t267();
     test_t266();
