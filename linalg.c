@@ -425,7 +425,8 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
      * need -- while letting the sweep stop as soon as it truly converges. */
     double fnorm2 = 0.0;
     for (int i = 0; i < n * n; i++) fnorm2 += A[i] * A[i];
-    double tol = 1e-28 * fnorm2;
+    /* An overflowing squared norm must not make every iterate converged. */
+    double tol = isfinite(fnorm2) ? 1e-28 * fnorm2 : 1e-30;
     for (int sweep = 0; sweep < 100; sweep++) {
         double off = 0.0;
         for (int p = 0; p < n; p++)

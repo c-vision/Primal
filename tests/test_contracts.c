@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "primal.h"
+#include "linalg.h"
 #ifdef _WIN32
 #define setenv(n, v, o) _putenv_s((n), (v))
 #define unsetenv(n) _putenv_s((n), "")
@@ -183,7 +184,27 @@ static void mutation_and_availability(void) {
     OK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&p)); CHECK(fabs(p+0.5)<1e-7);
     OK(PRIMAL_deletetask(&t));
 }
+static void eigenvalue_scales(void) {
+    /* This matrix has eigenvalues scale and 3*scale. Squaring its largest
+     * entries overflows even though its eigenvalues remain representable. */
+    const double scales[]={1e-12,1,1e12,1e160};
+    for (int k=0;k<4;k++) {
+        double s=scales[k], A[]={2*s,s,s,2*s}, values[2], vectors[4];
+        dmat_eig_jacobi(2,A,values,vectors);
+        CHECK(fabs(fmin(values[0],values[1])/s-1)<1e-12);
+        CHECK(fabs(fmax(values[0],values[1])/s-3)<1e-12);
+        for (int j=0;j<2;j++) {
+            CHECK(fabs(vectors[j]*vectors[j]+vectors[2+j]*vectors[2+j]-1)<1e-12);
+            for (int i=0;i<2;i++) {
+                double av=2*vectors[2*i+j]+vectors[2*(1-i)+j];
+                CHECK(fabs(av-values[j]/s*vectors[2*i+j])<1e-12);
+            }
+        }
+    }
+}
+
 int main(void) {
+    eigenvalue_scales();
     OK(PRIMAL_makeenv(&env,NULL));
     exp_faces(PRIMAL_CT_PEXP); exp_faces(PRIMAL_CT_DEXP);
     dexp_optimum(0,0); dexp_optimum(1,0); dexp_optimum(0,1); dexp_optimum(1,1); quadratic_rows(); bounded_qp(); mutation_and_availability();
