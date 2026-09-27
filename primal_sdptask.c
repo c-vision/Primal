@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_sdptask.c - conic/SDP conversion, unified IPM leg, SDP outer approximation.
- * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 

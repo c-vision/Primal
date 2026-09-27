@@ -1,4 +1,4 @@
-/* Original-model regressions for the September 2026 repository review.
+/* Regression checks for original-model feasibility and result handling.
  * SPDX-License-Identifier: Apache-2.0 */
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>

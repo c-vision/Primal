@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_std.c - standard-form solvers, LP/QP route helpers, Farkas vectors on stdform.
- * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 

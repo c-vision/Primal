@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_misc.c - newsolution setters, basis solve, cholesky, clonetask, dual/infeasible problems.
- * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 
@@ -1257,8 +1257,7 @@ static int inf_vartype_count(PRIMALtask_t t, PRIMALvariabletypee vt) {
     return c;
 }
 
-/* Return the value of a double info item; items this solver does not measure
- * answer 0. */
+/* Return a measured double info item; unavailable items return ERR_ARG. */
 PRIMALrescodee PRIMAL_getdouinf(PRIMALtask_t t, PRIMALdinfiteme which, PRIMALrealt *output) {
     if (!t || !output) return PRIMAL_RES_ERR_NULL;
     PRIMALrealt measured = 0, *value = &measured;

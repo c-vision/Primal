@@ -16,8 +16,6 @@
  * under the License.
  */
 
-/* Modified 2026-09-26: retain scalar Newton increments in mixed PSD/SOC solves. */
-
 /* sdp.c - primal-dual interior point for conic problems (standard form)
  *
  *   min  c'x + sum_j <C_j, X_j> + sum_i <c_i, z_i>

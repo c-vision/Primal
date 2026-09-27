@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_verdict.c - conic verdicts, cone gate, PRIMAL_optimize dispatcher entry.
- * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 

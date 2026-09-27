@@ -1,4 +1,3 @@
-/* Modified 2026-09-27: numerical and result-contract corrections. */
 /*
  * PrimalSolver - a convex optimization solver in C99 (LP/QP/SOCP/SDP/exp-power/MIP).
  * Copyright 2026 Gaetano Minardi

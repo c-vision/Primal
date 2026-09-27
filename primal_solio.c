@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_solio.c - solution I/O (text/binary/JSON) and basis setters.
- * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
+ * Shares primal_priv.h.
  */
 #include "primal_priv.h"
 #include <ctype.h>
