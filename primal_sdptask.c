@@ -991,6 +991,20 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
         double tolv = 1e-9 * (1.0 + (double)maxdim);
         int solved = 0, status = 0;
         double pobj = t->cfix;
+        /* Stagnation of the cut loop. A tangent cut is a FIRST-ORDER separator:
+         * when the iterate sits on a face where -lambda_min has no descent
+         * direction, every new cut is nearly parallel to the last one and the
+         * violation stops shrinking. Measured on lyapunov_roa (28 rows, two
+         * bars): the FEASIBLE levels finish at round 0 in 0.02 s, and every
+         * INFEASIBLE one burns all 200 rounds in ~20 s without ever getting
+         * close -- half the bisection steps were spent proving a negative that
+         * the cuts cannot reach. So the loop also watches the violation: when
+         * it fails to improve for a number of consecutive rounds, the cuts are
+         * not converging and spending the remaining budget is arithmetic, not
+         * progress. Same verdict as running out of rounds (TRM_MAX_ITER, no
+         * solution claimed), two orders of magnitude earlier. */
+        double viol_prev = 1e300;
+        int viol_stall = 0;
 
         if (!eval || !evec || !Xf || !zsol || !yb) { rc = PRIMAL_RES_ERR_ALLOC; }
         else {
@@ -1122,6 +1136,7 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
 
                 /* ---------- PSD violation ---------- */
                 int anycut = 0;
+                double viol = 0.0;
                 for (int j = 0; j < nb; j++) {
                     int d = t->barDim[j];
                     for (int p = 0; p < d; p++)
@@ -1131,6 +1146,7 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                     int imin = 0;
                     for (int k = 1; k < d; k++) if (eval[k] < eval[imin]) imin = k;
                     double lam = eval[imin];
+                    { double vj = tolv - lam; if (vj > viol) viol = vj; }
                     if (lam < -tolv) {
                         /* tangent cut: <UU', X> >= <UU', X0> - lam */
                         if (ncuts >= cutcap) {
@@ -1156,6 +1172,23 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                         cw->rhs = proj0 - lam;
                         ncuts++;
                         anycut = 1;
+                    }
+                }
+
+                /* ---------- does the cut loop still make progress? ----------
+                 * viol is the worst (tolv - lambda_min); a tangent cut that
+                 * does not move it measurably is not separating the iterate.
+                 * Count the rounds without a real improvement and leave early:
+                 * the verdict is the same one running out of rounds produces
+                 * (TRM_MAX_ITER, no solution claimed), reached in a fraction of
+                 * the budget. */
+                if (anycut) {
+                    if (viol < 0.9 * viol_prev) { viol_prev = viol; viol_stall = 0; }
+                    else if (++viol_stall >= 8) {
+                        if (getenv("GMB_DBG")) fprintf(stderr,
+                            "  [cutstall] round=%d viol=%.3g no progress for %d rounds\n",
+                            round, viol, viol_stall);
+                        anycut = 0;   /* nothing more to separate: stop adding */
                     }
                 }
 
