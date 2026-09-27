@@ -946,7 +946,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     Tri3 stri={0};
     Tri3 tri={0};
     int memok=off&&xs&&ys&&s&&lm&&rd&&rp&&rg&&Asc&&Alr&&rhs&&dx&&dy&&ds&&dlm&&dxa&&dya&&dsa&&dlma&&t1&&wacc&&wst&&wtouch&&Qwi&&sinv&&wnt&&Znt&&nb1&&nb2;
-    int status=OPT_MAXITER, stamp=1;
+    int status=OPT_MAXITER, stamp=1; int *luperm=NULL;
     if(!memok){status=OPT_MEMORY;goto done;}
     {int o=0;for(int k=0;k<ncones;k++){off[k]=o;o+=cones[k].nmem;}}
     {int o=0;for(int k=0;k<ncones;k++){if(cones[k].type==0)for(int i=0;i<cones[k].nmem;i++){s[o+i]=1.0;lm[o+i]=1.0;}
@@ -1088,7 +1088,8 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             for(int k2=0;k2<K;k2++) for(int q=SG.rp[k2];q<SG.rp[k2+1];q++){ int j=SG.ri[q];
                 if(tri3_add(&tri,K+p+j,n+p+k2,-SG.rv[q])){status=OPT_MEMORY;goto done;} }
             if(tri3_to_csc(N,&tri,&Mp,&Mi,&Mv)){status=OPT_MEMORY;goto done;}
-            f=splu_factor(N,Mp,Mi,Mv);
+            if(!luperm) luperm=sym_amd_order(N,Mp,Mi);
+            f=splu_factor_ord(N,Mp,Mi,Mv,luperm);
             double reg=0.0;
             if(!f){ static const double regs[]={1e-10,1e-8,1e-7,1e-6,1e-5};
                 for(size_t ri=0;ri<sizeof regs/sizeof regs[0]&&!f;ri++){
@@ -1096,7 +1097,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
                     reg=regs[ri];
                     free(Mp);free(Mi);free(Mv);
                     if(tri3_to_csc(N,&tri,&Mp,&Mi,&Mv)){status=OPT_MEMORY;goto done;}
-                    f=splu_factor(N,Mp,Mi,Mv); } }
+                    f=splu_factor_ord(N,Mp,Mi,Mv,luperm); } }
             if(!f){free(Mp);free(Mi);free(Mv);status=OPT_SINGULAR;goto done;}
         }
         DirCtx dctx; memset(&dctx,0,sizeof(dctx));
@@ -1137,6 +1138,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     }
     if(status==OPT_OK){for(int j=0;j<n;j++)x[j]=xs[j];for(int i=0;i<p;i++)y[i]=ys[i];for(int k=0;k<K;k++)lam[k]=lm[k];}
 done:
+    free(luperm);
     free(off);free(xs);free(ys);free(s);free(lm);free(rd);free(rp);free(rg);free(Asc);free(Alr);free(rhs);
     free(dx);free(dy);free(ds);free(dlm);free(dxa);free(dya);free(dsa);free(dlma);free(t1);
     free(wacc);free(wst);free(wtouch); free(tri.r);free(tri.c);free(tri.v);

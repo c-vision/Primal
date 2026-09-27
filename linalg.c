@@ -817,6 +817,20 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
     return perm;
 }
 
+/* Public wrapper: the fill-reducing ordering alone, so a caller with a fixed
+ * pattern (the sparse conic IPM, which rebuilds only the values each iteration)
+ * computes it once and reuses it via splu_factor_ord. */
+int *sym_amd_order(int n, const int *Ap, const int *Ai) { return sym_amd(n, Ap, Ai); }
+
+/* History-friendly entry point: ordering computed here, then factored. */
+SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
+    int *q = sym_amd(n, Ap, Ai);
+    SpluFact *F = splu_factor_ord(n, Ap, Ai, Ax, q);
+    free(q);
+    return F;
+}
+
+
 /* Factor A in CSC with partial (row) pivoting and a fill-reducing COLUMN
  * ordering.  The ordering is applied while the rows are scattered, not as a
  * later renumbering: the working matrix is already A with its columns
@@ -833,7 +847,7 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
  * is published on that path.  On success the rows are scanned once more to
  * split the factor into L (CSC, unit diagonal implicit) and U (CSR by
  * position row), and from there the struct owns every array. */
-SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
+SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm_in) {
     if (n < 0 || !Ap) return NULL;
     if (primal_cb_iter_on) primal_cb_iter(79);
     SpluFact *F = (SpluFact *)calloc(1, sizeof(SpluFact));
@@ -841,16 +855,13 @@ SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
     int *rc = (int *)calloc((size_t)(n > 0 ? n : 1), sizeof(int));
     if (!F || !rows || !rc) { free(F); free(rows); free(rc); return NULL; }
     F->n = n;
-    /* fill-reducing column ordering (falls back to the natural order) */
-    int *qperm = sym_amd(n, Ap, Ai);
+    /* column ordering: the caller's (fill-reducing, reused across calls) or the
+     * natural one. Any permutation is valid; a stale one only costs fill, so a
+     * cached ordering from a fixed pattern is safe. */
+    int *qperm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
     int *iperm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
-    if (!iperm) { free(qperm); free(F); free(rows); free(rc); return NULL; }
-    if (qperm) { for (int k = 0; k < n; k++) iperm[qperm[k]] = k; }
-    else {
-        qperm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
-        if (!qperm) { free(iperm); free(F); free(rows); free(rc); return NULL; }
-        for (int k = 0; k < n; k++) { qperm[k] = k; iperm[k] = k; }
-    }
+    if (!qperm || !iperm) { free(qperm); free(iperm); free(F); free(rows); free(rc); return NULL; }
+    for (int k = 0; k < n; k++) { qperm[k] = qperm_in ? qperm_in[k] : k; iperm[qperm[k]] = k; }
     F->qperm = qperm;
     for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) rc[Ai[p]]++;
     for (int i = 0; i < n; i++) {
