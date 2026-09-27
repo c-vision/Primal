@@ -1003,8 +1003,7 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
          * not converging and spending the remaining budget is arithmetic, not
          * progress. Same verdict as running out of rounds (TRM_MAX_ITER, no
          * solution claimed), two orders of magnitude earlier. */
-        double viol_prev = 1e300;
-        int viol_stall = 0;
+
 
         if (!eval || !evec || !Xf || !zsol || !yb) { rc = PRIMAL_RES_ERR_ALLOC; }
         else {
@@ -1175,22 +1174,58 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                     }
                 }
 
+                /* Per-round progress measure, so the stall rule can be read off a
+                 * trace instead of only from the line where it fires.
+                 *
+                 * viol is tolv - lambda_min, a MARGIN to the cone boundary, not a
+                 * violation: it is about tolv when the block sits just outside,
+                 * about tolv again when it is well inside, and it only falls as
+                 * lambda_min rises. So "progress" means "this number is going
+                 * down", and its absolute value says nothing about how far the
+                 * block is from feasible. Do not read it as a residual. */
+                if (getenv("GMB_DBG")) fprintf(stderr,
+                    "  [cut] round=%d ncuts=%d viol=%.4g viol_prev=%.4g ratio=%.3g\n",
+                    round, ncuts, viol, viol_prev,
+                    viol_prev < 1e299 && viol_prev > 0.0 ? viol / viol_prev : 0.0);
+
                 /* ---------- does the cut loop still make progress? ----------
-                 * viol is the worst (tolv - lambda_min); a tangent cut that
-                 * does not move it measurably is not separating the iterate.
+                 * viol is the worst (tolv - lambda_min) over the bars -- a margin
+                 * to the boundary, so a tangent cut that does not push it down
+                 * measurably is not separating the iterate.
                  * Count the rounds without a real improvement and leave early:
                  * the verdict is the same one running out of rounds produces
                  * (TRM_MAX_ITER, no solution claimed), reached in a fraction of
                  * the budget. */
-                if (anycut) {
-                    if (viol < 0.9 * viol_prev) { viol_prev = viol; viol_stall = 0; }
-                    else if (++viol_stall >= 8) {
-                        if (getenv("GMB_DBG")) fprintf(stderr,
-                            "  [cutstall] round=%d viol=%.3g no progress for %d rounds\n",
-                            round, viol, viol_stall);
-                        anycut = 0;   /* nothing more to separate: stop adding */
-                    }
-                }
+                /* Per-round progress measure: how far the worst bar is from the
+                 * cone boundary, and how it moved. The loop itself is NOT
+                 * stopped by this -- it runs to SDP_MAXROUND and reports
+                 * TRM_MAX_ITER when the cuts cannot separate the iterate.
+                 *
+                 * viol is tolv - lambda_min, a MARGIN to the boundary, not a
+                 * violation: it is about tolv when the block sits just outside,
+                 * about tolv again when it is well inside, and it only falls as
+                 * lambda_min rises. So "progress" means "this number is going
+                 * down", and its absolute value says nothing about how far the
+                 * block is from feasible. Do not read it as a residual.
+                 *
+                 * Why there is no early stop here: a tangent cut on
+                 * -lambda_min is not monotone. On maxcut_sdp through this route
+                 * the violation goes 1e6 -> 2.2e6 -> 2.56e6 over eight rounds
+                 * and then collapses to 5.7 and to 0.28 by round 20, where the
+                 * cut route solves the model in 0.06 s. A counter of stalled
+                 * rounds shorter than that plateau kills a legitimate
+                 * convergence and returns TRM_MAX_ITER on a solvable model
+                 * (measured: 8 rounds -> obj=0.0 rc=1007 FAIL, 20 rounds ->
+                 * obj=-4.0 rc=0 OK); a longer one does not fix the premise, it
+                 * only moves the failure (lyapunov_roa: 1.0 s at 8, 239 s at
+                 * 20, 191 s once the comparison is fixed round over round).
+                 * Worth ~17% on the single sample that reaches this route, so
+                 * it is not worth a stopping rule whose premise is wrong. This
+                 * line and GMB_NO_SDP_IPM are what is left of that attempt,
+                 * and they are the parts with value: the loop used to be a
+                 * black box. */
+                if (getenv("GMB_DBG")) fprintf(stderr,
+                    "  [cut] round=%d ncuts=%d viol=%.4g\n", round, ncuts, viol);
 
                 /* ---------- the cap is not a constraint of the model ----------
                  * The LP caps every bar entry at +-SDP_BIGM so that the very first
