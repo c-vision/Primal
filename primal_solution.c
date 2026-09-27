@@ -21,6 +21,7 @@
 #include "primal_priv.h"
 
 static double quadratic_row_gradient(PRIMALtask_t t, int j) {
+    if (!t->qcon) return 0.0;
     double g = 0.0;
     for (int i = 0; i < t->numcon; i++) if (t->qcon && t->qcon[i]) {
         double a = 0.0;
@@ -1363,7 +1364,6 @@ PRIMALrescodee PRIMAL_putsucslice(PRIMALtask_t t, PRIMALsolt which, int first, i
 /* Set the same variable bound on every listed index. */
 PRIMALrescodee PRIMAL_putvarboundlistconst(PRIMALtask_t t, int num, const int *sub,
         PRIMALboundkeye bkx, PRIMALrealt blx, PRIMALrealt bux) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !sub)) return PRIMAL_RES_ERR_NULL;
     for (int k = 0; k < num; k++)
@@ -1377,7 +1377,6 @@ PRIMALrescodee PRIMAL_putvarboundlistconst(PRIMALtask_t t, int num, const int *s
 /* Set the same constraint bound on every listed index. */
 PRIMALrescodee PRIMAL_putconboundlistconst(PRIMALtask_t t, int num, const int *sub,
         PRIMALboundkeye bkc, PRIMALrealt blc, PRIMALrealt buc) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !sub)) return PRIMAL_RES_ERR_NULL;
     for (int k = 0; k < num; k++)
@@ -1635,7 +1634,8 @@ PRIMALrescodee PRIMAL_getsolution(PRIMALtask_t t, PRIMALsolt which,
 PRIMALrescodee PRIMAL_writedata(PRIMALtask_t t, const char *filename) {
     if (!t || !filename) return PRIMAL_RES_ERR_NULL;
     cb_fire(t, PRIMAL_CALLBACK_BEGIN_WRITE);
-    PRIMALrescodee rc = primalio_write(t, filename);
+    PRIMALrescodee rc = derived_sync(t);
+    if (rc == PRIMAL_RES_OK) rc = primalio_write(t, filename);
     cb_fire(t, PRIMAL_CALLBACK_END_WRITE);
     t->last_rc = rc;
     return rc;

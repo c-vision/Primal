@@ -209,10 +209,9 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
         const PRIMALint64t *termsizelist, int create) {
     int ndis = (int)numterms;
     int *rpd = (int *)calloc((size_t)ndis, sizeof(int));
-    int *disj_start = (int *)malloc((size_t)ndis * sizeof(int));
-    if (!rpd || !disj_start) { free(rpd); free(disj_start); return PRIMAL_RES_ERR_ALLOC; }
+    if (!rpd) return PRIMAL_RES_ERR_ALLOC;
     /* first pass: how many rows per term and how many coefficients in total */
-    int afe_cur = 0, dom_cur = 0, nrow_all = 0, nz_all = 0, st = 0;
+    int afe_cur = 0, dom_cur = 0, nrow_all = 0, nz_all = 0;
     for (int i = 0; i < ndis; i++) {
         int nrows = 0;
         for (int q = 0; q < (int)termsizelist[i]; q++) {
@@ -224,21 +223,21 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
                 int nz = t->afe_nz[a];
                 int mult = ty == PRIMAL_DOMAIN_RZERO ? 2 : ty == PRIMAL_DOMAIN_R ? 0 : 1;
                 if (mult && nz > (INT_MAX-nz_all)/mult) {
-                    free(rpd); free(disj_start); return PRIMAL_RES_ERR_ARG;
+                    free(rpd); return PRIMAL_RES_ERR_ARG;
                 }
                 if (ty == PRIMAL_DOMAIN_R) continue;
                 if (ty == PRIMAL_DOMAIN_RZERO) { nrows += 2; nz_all += 2 * nz; }
                 else { nrows += 1; nz_all += nz; }
             }
         }
-        disj_start[i] = st; rpd[i] = nrows; st += nrows; nrow_all += nrows;
+        rpd[i] = nrows; nrow_all += nrows;
     }
     int *ncoef = (int *)malloc((size_t)(nrow_all > 0 ? nrow_all : 1) * sizeof(int));
     double *rhs = (double *)malloc((size_t)(nrow_all > 0 ? nrow_all : 1) * sizeof(double));
     int *varidx = (int *)malloc((size_t)(nz_all > 0 ? nz_all : 1) * sizeof(int));
     double *rowcoefs = (double *)malloc((size_t)(nz_all > 0 ? nz_all : 1) * sizeof(double));
     if (!ncoef || !rhs || !varidx || !rowcoefs) {
-        free(rpd); free(disj_start); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
+        free(rpd); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
         return PRIMAL_RES_ERR_ALLOC;
     }
     /* second pass: fill. expr = F x + g - bv; RPLUS -> -expr <= 0,
@@ -303,7 +302,7 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
             } else { free(md); free(ma); free(mb); free(mt); }
         }
     } else rc = djc_encode(t,(int)djcidx,ndis,rpd,ncoef,varidx,rowcoefs,rhs,0);
-    free(rpd); free(disj_start); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
+    free(rpd); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
     return rc;
 }
 
@@ -344,7 +343,6 @@ PRIMALrescodee djc_copy(PRIMALtask_t s, PRIMALtask_t d) {
 
 /* Append `num` empty DJC slots for later putdjc calls. */
 PRIMALrescodee PRIMAL_appenddjcs(PRIMALtask_t t, PRIMALint64t num) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || num > INT_MAX-t->numdjc) return PRIMAL_RES_ERR_ARG;
     if (num == 0) return PRIMAL_RES_OK;
@@ -379,6 +377,7 @@ PRIMALrescodee PRIMAL_appenddjcs(PRIMALtask_t t, PRIMALint64t num) {
         t->djcname = n8; t->djccap = nc;
         t->djc_rowbase = n9; t->djc_varbase = n10; t->djc_nrow = n11;
     }
+    model_changed(t);
     for (int i = t->numdjc; i < want; i++) {
         t->djc_ndom[i] = 0; t->djc_nafe[i] = 0; t->djc_numterm[i] = 0;
         t->djc_dom[i] = NULL; t->djc_afe[i] = NULL; t->djc_b[i] = NULL;
@@ -395,7 +394,6 @@ PRIMALrescodee PRIMAL_putdjc(PRIMALtask_t t, PRIMALint64t djcidx,
         PRIMALint64t numafeidx, const PRIMALint64t *afeidxlist,
         const PRIMALrealt *b, PRIMALint64t numterms,
         const PRIMALint64t *termsizelist) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (djcidx < 0 || djcidx >= t->numdjc) return PRIMAL_RES_ERR_ARG;
     if (t->djc_numterm[djcidx] != 0) return PRIMAL_RES_ERR_ARG;   /* already written */
@@ -416,7 +414,6 @@ PRIMALrescodee PRIMAL_putdjcslice(PRIMALtask_t t, PRIMALint64t idxfirst,
         const PRIMALint64t *afeidxlist, const PRIMALrealt *b,
         PRIMALint64t numterms, const PRIMALint64t *termsizelist,
         const PRIMALint64t *termsindjc) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (idxfirst < 0 || idxlast < idxfirst || idxlast > t->numdjc) return PRIMAL_RES_ERR_ARG;
     PRIMALint64t L = idxlast - idxfirst;

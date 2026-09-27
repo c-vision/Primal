@@ -156,6 +156,15 @@ int mip_relax_conic(PRIMALtask_t t, int s, PRIMALenv_t env2,
             rc = (sh->numcones == 0) ? optimize_sdp(sh, s) : optimize_conic(sh, s);
     } else
         rc = optimize_conic(sh, s);
+    /* A failed conic iteration is not an infeasibility proof. The linear
+     * consequences of the node's bounds and cones can still prove the node
+     * infeasible, as they do for contradictory disjunction selections. */
+    if (rc == PRIMAL_RES_TRM_MAX_ITER && !sh->numbarvar &&
+        !sh->has_qcon && !sh->has_qobj) {
+        int infeasible = model_lp_witness(sh, s, NULL, 1, "MIP cone faces", NULL, NULL);
+        if (infeasible > 0) rc = PRIMAL_RES_ERR_INFEASIBLE;
+        else if (infeasible < 0) rc = PRIMAL_RES_ERR_ALLOC;
+    }
     int status;
     if (rc == PRIMAL_RES_OK && sh->has_sol && sh->solsta == PRIMAL_SOL_STA_OPTIMAL) {
         memcpy(xout, sh->x, (size_t)t->numvar * sizeof(double));
@@ -180,10 +189,8 @@ int mip_relax_conic(PRIMALtask_t t, int s, PRIMALenv_t env2,
 
 /* Forward declaration: the cone slack lives with the conic reporting helpers. */
 
-/* The value of a putqconk row at w, in the user's own form and with the sign
- * convention quad_encode_task uses: a'w + sgn*1/2 w'Qw, sgn = +1 on UP and -1
- * on LO. Shared by the incumbent test and by the [cones] publication measure so
- * the two cannot drift apart. */
+/* Evaluate the original quadratic row, independently of its bound direction.
+ * The encoder negates a lower-bounded row only in its internal representation. */
 double quad_row_value(const PRIMALtask_t t, int i, const double *w) {
     int n = t->numvar;
     double lin = 0.0, q = 0.0;
@@ -192,7 +199,7 @@ double quad_row_value(const PRIMALtask_t t, int i, const double *w) {
             if (t->cols[j].sub[k] == i) lin += t->cols[j].val[k] * w[j];
     for (int a = 0; a < n; a++)
         for (int b = 0; b < n; b++) q += w[a] * t->qcon[i][(size_t)a * n + b] * w[b];
-    return lin + (t->bkc[i] == PRIMAL_BK_UP ? 0.5 : -0.5) * q;
+    return lin + 0.5 * q;
 }
 
 /* Shared SOS predicate and valid branching separator. Input order is arbitrary;
@@ -1056,4 +1063,3 @@ void *mip_kid_run(void *arg) {
     jb->rc = optimize_mip(jb->t, jb->s);
     return NULL;
 }
-

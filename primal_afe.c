@@ -25,7 +25,6 @@
  * storage the affine conic constraints (ACC) and disjunctive constraints (DJC)
  * build on. */
 PRIMALrescodee PRIMAL_appendafes(PRIMALtask_t t, PRIMALint64t num) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || num > INT_MAX-t->numafe) return PRIMAL_RES_ERR_ARG;
     int need = t->numafe + (int)num;
@@ -66,6 +65,7 @@ PRIMALrescodee PRIMAL_appendafes(PRIMALtask_t t, PRIMALint64t num) {
         t->afe_barcoef = n9;
         t->afecap = nc;
     }
+    if (num) model_changed(t);
     for (int k = t->numafe; k < need; k++) {
         t->afe_nz[k] = 0; t->afe_cap[k] = 0;
         t->afe_sub[k] = NULL; t->afe_val[k] = NULL; t->afeg[k] = 0.0;
@@ -85,11 +85,11 @@ PRIMALrescodee PRIMAL_getnumafe(PRIMALtask_t t, PRIMALint64t *numafe) {
 
 /* replace F[i][j]; v == 0 removes the entry */
 PRIMALrescodee PRIMAL_putafefentry(PRIMALtask_t t, PRIMALint64t i, int j, PRIMALrealt v) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (i < 0 || i >= t->numafe || j < 0 || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     if (v != v) return PRIMAL_RES_ERR_ARG;
     int k = (int)i;
+    model_changed(t);
     int w = 0;
     for (int e = 0; e < t->afe_nz[k]; e++)
         if (t->afe_sub[k][e] != j) { t->afe_sub[k][w] = t->afe_sub[k][e]; t->afe_val[k][w] = t->afe_val[k][e]; w++; }
@@ -112,7 +112,6 @@ PRIMALrescodee PRIMAL_putafefentry(PRIMALtask_t t, PRIMALint64t i, int j, PRIMAL
 /* Replace row i of F from (varidx,val); duplicates collapse, zeros are skipped. */
 PRIMALrescodee PRIMAL_putafefrow(PRIMALtask_t t, PRIMALint64t i, int numnz,
                                  const int *varidx, const PRIMALrealt *val) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (i < 0 || i >= t->numafe || numnz < 0 || (numnz > 0 && (!varidx || !val)))
         return PRIMAL_RES_ERR_ARG;
@@ -129,6 +128,7 @@ PRIMALrescodee PRIMAL_putafefrow(PRIMALtask_t t, PRIMALint64t i, int numnz,
         if (!v) return PRIMAL_RES_ERR_ALLOC;
         t->afe_val[k] = v; t->afe_cap[k] = numnz;
     }
+    model_changed(t);
     t->afe_nz[k] = 0;
     for (int e = 0; e < numnz; e++) {
         int j = varidx[e]; double v = val[e];
@@ -143,10 +143,10 @@ PRIMALrescodee PRIMAL_putafefrow(PRIMALtask_t t, PRIMALint64t i, int numnz,
 
 /* Set g[i] (NaN is refused). */
 PRIMALrescodee PRIMAL_putafeg(PRIMALtask_t t, PRIMALint64t i, PRIMALrealt g) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (i < 0 || i >= t->numafe) return PRIMAL_RES_ERR_ARG;
     if (g != g) return PRIMAL_RES_ERR_ARG;
+    model_changed(t);
     t->afeg[i] = g;
     return PRIMAL_RES_OK;
 }
@@ -191,18 +191,18 @@ PRIMALrescodee PRIMAL_getafefrow(PRIMALtask_t t, PRIMALint64t i, int *numnz,
  * `getafefrownumnz`, so it delegates instead of recounting. */
 
 PRIMALrescodee PRIMAL_emptyafefrow(PRIMALtask_t t, PRIMALint64t afeidx) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (afeidx < 0 || afeidx >= t->numafe) return PRIMAL_RES_ERR_ARG;
+    model_changed(t);
     t->afe_nz[afeidx] = 0;
     return PRIMAL_RES_OK;
 }
 
 /* Remove column varidx from every row of F. */
 PRIMALrescodee PRIMAL_emptyafefcol(PRIMALtask_t t, int varidx) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (varidx < 0 || varidx >= t->numvar) return PRIMAL_RES_ERR_ARG;
+    model_changed(t);
     for (int i = 0; i < t->numafe; i++) {
         int w = 0;
         for (int e = 0; e < t->afe_nz[i]; e++)
@@ -219,7 +219,6 @@ PRIMALrescodee PRIMAL_emptyafefcol(PRIMALtask_t t, int varidx) {
 /* Set g at each listed AFE index. */
 PRIMALrescodee PRIMAL_putafeglist(PRIMALtask_t t, PRIMALint64t numafeidx,
                                   const PRIMALint64t *afeidx, const PRIMALrealt *g) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numafeidx < 0 || (numafeidx > 0 && (!afeidx || !g))) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t k = 0; k < numafeidx; k++) {
@@ -232,12 +231,12 @@ PRIMALrescodee PRIMAL_putafeglist(PRIMALtask_t t, PRIMALint64t numafeidx,
 /* Set g over the slice [first,last). */
 PRIMALrescodee PRIMAL_putafegslice(PRIMALtask_t t, PRIMALint64t first,
                                    PRIMALint64t last, const PRIMALrealt *slice) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (first < 0 || last < first || last > t->numafe) return PRIMAL_RES_ERR_ARG;
     if (last > first && !slice) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t i = first; i < last; i++) {
         if (slice[i - first] != slice[i - first]) return PRIMAL_RES_ERR_ARG;
+        model_changed(t);
         t->afeg[i] = slice[i - first];
     }
     return PRIMAL_RES_OK;
@@ -256,7 +255,6 @@ PRIMALrescodee PRIMAL_getafegslice(PRIMALtask_t t, PRIMALint64t first,
 PRIMALrescodee PRIMAL_putafefentrylist(PRIMALtask_t t, PRIMALint64t numentr,
                                        const PRIMALint64t *afeidx,
                                        const int *varidx, const PRIMALrealt *val) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numentr < 0 || (numentr > 0 && (!afeidx || !varidx || !val)))
         return PRIMAL_RES_ERR_NULL;
@@ -314,7 +312,6 @@ static PRIMALrescodee afe_bar_reserve(PRIMALtask_t t, int k, int extra) {
 /* Replace the bar terms of Fbar[i][j] with the given combination. */
 PRIMALrescodee PRIMAL_putafebarfentry(PRIMALtask_t t, PRIMALint64t afeidx, int barvaridx,
         PRIMALint64t numterm, const PRIMALint64t *termidx, const PRIMALrealt *termweight) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (afeidx < 0 || afeidx >= t->numafe || barvaridx < 0 || barvaridx >= t->numbarvar)
         return PRIMAL_RES_ERR_ARG;
@@ -328,6 +325,7 @@ PRIMALrescodee PRIMAL_putafebarfentry(PRIMALtask_t t, PRIMALint64t afeidx, int b
     PRIMALrescodee rc = afe_bar_reserve(t, k, (int)numterm);
     if (rc != PRIMAL_RES_OK) return rc;
     /* remove the terms with the same barvaridx (writing replaces) */
+    model_changed(t);
     int w = 0;
     for (int e = 0; e < t->afe_barnz[k]; e++)
         if (t->afe_baridx[k][e] != barvaridx) {
@@ -347,16 +345,15 @@ PRIMALrescodee PRIMAL_putafebarfentry(PRIMALtask_t t, PRIMALint64t afeidx, int b
 }
 /* Clear all bar terms of AFE afeidx. */
 PRIMALrescodee PRIMAL_emptyafebarfrow(PRIMALtask_t t, PRIMALint64t afeidx) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (afeidx < 0 || afeidx >= t->numafe) return PRIMAL_RES_ERR_ARG;
+    model_changed(t);
     t->afe_barnz[afeidx] = 0;
     return PRIMAL_RES_OK;
 }
 /* Clear the bar terms of every listed AFE. */
 PRIMALrescodee PRIMAL_emptyafebarfrowlist(PRIMALtask_t t, PRIMALint64t numafeidx,
                                           const PRIMALint64t *afeidxlist) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numafeidx < 0 || (numafeidx > 0 && !afeidxlist)) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t k = 0; k < numafeidx; k++) {
@@ -454,7 +451,6 @@ PRIMALrescodee PRIMAL_getafebarfblocktriplet(PRIMALtask_t t, PRIMALint64t maxnum
 PRIMALrescodee PRIMAL_putafebarfblocktriplet(PRIMALtask_t t, PRIMALint64t numtrip,
         const PRIMALint64t *afeidx, const int *barvaridx, const int *subk,
         const int *subl, const PRIMALrealt *valkl) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numtrip < 0 || (numtrip > 0 && (!afeidx || !barvaridx || !subk || !subl || !valkl)))
         return PRIMAL_RES_ERR_NULL;
@@ -467,6 +463,7 @@ PRIMALrescodee PRIMAL_putafebarfblocktriplet(PRIMALtask_t t, PRIMALint64t numtri
             return PRIMAL_RES_ERR_ARG;
     }
     /* empty Fbar and rebuild it per pair (i,j) */
+    model_changed(t);
     for (int i = 0; i < t->numafe; i++) t->afe_barnz[i] = 0;
     PRIMALint64t *syms = (PRIMALint64t *)malloc((size_t)(numtrip > 0 ? numtrip : 1) * sizeof(PRIMALint64t));
     double *ones = (double *)malloc((size_t)(numtrip > 0 ? numtrip : 1) * sizeof(double));
@@ -500,7 +497,6 @@ PRIMALrescodee PRIMAL_putafebarfentrylist(PRIMALtask_t t, PRIMALint64t numafeidx
         const PRIMALint64t *afeidx, const int *barvaridx, const PRIMALint64t *numterm,
         const PRIMALint64t *ptrterm, PRIMALint64t lenterm, const PRIMALint64t *termidx,
         const PRIMALrealt *termweight) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     (void)lenterm;
     if (numafeidx < 0 || (numafeidx > 0 && (!afeidx || !barvaridx || !numterm || !ptrterm)))
@@ -517,7 +513,6 @@ PRIMALrescodee PRIMAL_putafebarfentrylist(PRIMALtask_t t, PRIMALint64t numafeidx
 PRIMALrescodee PRIMAL_putafebarfrow(PRIMALtask_t t, PRIMALint64t afeidx, int numentr,
         const int *barvaridx, const PRIMALint64t *numterm, const PRIMALint64t *ptrterm,
         PRIMALint64t lenterm, const PRIMALint64t *termidx, const PRIMALrealt *termweight) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     (void)lenterm;
     if (afeidx < 0 || afeidx >= t->numafe) return PRIMAL_RES_ERR_ARG;
@@ -592,7 +587,6 @@ static PRIMALrescodee afe_add_bar_terms(PRIMALtask_t t, int row, int afe, double
 /* Clear row i of F for every listed AFE. */
 PRIMALrescodee PRIMAL_emptyafefrowlist(PRIMALtask_t t, PRIMALint64t numafeidx,
                                        const PRIMALint64t *afeidx) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numafeidx < 0 || (numafeidx > 0 && !afeidx)) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t k = 0; k < numafeidx; k++) {
@@ -604,7 +598,6 @@ PRIMALrescodee PRIMAL_emptyafefrowlist(PRIMALtask_t t, PRIMALint64t numafeidx,
 /* Clear column varidx of F for every listed variable. */
 PRIMALrescodee PRIMAL_emptyafefcollist(PRIMALtask_t t, PRIMALint64t numvaridx,
                                        const int *varidx) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numvaridx < 0 || (numvaridx > 0 && !varidx)) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t k = 0; k < numvaridx; k++) {
@@ -616,7 +609,6 @@ PRIMALrescodee PRIMAL_emptyafefcollist(PRIMALtask_t t, PRIMALint64t numvaridx,
 /* putafefcol: clears column varidx of F and writes the given entries into it. */
 PRIMALrescodee PRIMAL_putafefcol(PRIMALtask_t t, int varidx, PRIMALint64t numnz,
                                  const PRIMALint64t *afeidx, const PRIMALrealt *val) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (varidx < 0 || varidx >= t->numvar) return PRIMAL_RES_ERR_ARG;
     if (numnz < 0 || (numnz > 0 && (!afeidx || !val))) return PRIMAL_RES_ERR_NULL;
@@ -790,7 +782,6 @@ PRIMALrescodee PRIMAL_putmaxnumdomain(PRIMALtask_t t, PRIMALint64t maxnumdomain)
 /* Append a cone with the given type, parameter and members; validates type and
  * sizes. */
 PRIMALrescodee PRIMAL_appendcone(PRIMALtask_t t, PRIMALconetypee ct, PRIMALrealt coneparam, int nummem, const int *submem) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (!submem || nummem <= 0) return PRIMAL_RES_ERR_ARG;
     if (ct != PRIMAL_CT_QUAD && ct != PRIMAL_CT_RQUAD &&
@@ -826,6 +817,7 @@ PRIMALrescodee PRIMAL_appendcone(PRIMALtask_t t, PRIMALconetypee ct, PRIMALrealt
     int *mem = (int *)malloc((size_t)nummem * sizeof(int));
     if (!mem) return PRIMAL_RES_ERR_ALLOC;
     for (int i = 0; i < nummem; i++) mem[i] = submem[i];
+    model_changed(t);
     int k = t->numcones++;
     t->cone_type[k] = (int)ct;
     t->cone_param[k] = (ct == PRIMAL_CT_PPOW || ct == PRIMAL_CT_RPOW) ? coneparam : 0.0;
@@ -838,7 +830,6 @@ PRIMALrescodee PRIMAL_appendcone(PRIMALtask_t t, PRIMALconetypee ct, PRIMALrealt
  * CONTIGUOUS variables j..j+nummem-1 (one cone, or several). */
 PRIMALrescodee PRIMAL_appendconeseq(PRIMALtask_t t, PRIMALconetypee ct, PRIMALrealt conepar,
                                     int nummem, int j) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (nummem < 0) return PRIMAL_RES_ERR_ARG;
     if (nummem == 0) return PRIMAL_appendcone(t, ct, conepar, 0, NULL);
@@ -854,7 +845,6 @@ PRIMALrescodee PRIMAL_appendconeseq(PRIMALtask_t t, PRIMALconetypee ct, PRIMALre
 /* Append several cones whose members are contiguous variables. */
 PRIMALrescodee PRIMAL_appendconesseq(PRIMALtask_t t, int num, const PRIMALconetypee *ct,
     const PRIMALrealt *conepar, const int *nummem, const int *j) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && (!ct || !conepar || !nummem || !j))) return PRIMAL_RES_ERR_ARG;
     for (int k = 0; k < num; k++) {
@@ -880,7 +870,6 @@ PRIMALrescodee PRIMAL_getnumcone(PRIMALtask_t t, int *numcone) {
  * (rows/columns of removed variables dropped, stride rebuilt); the qobj triplets
  * and the cone member lists are remapped (a cone left empty is removed). */
 PRIMALrescodee PRIMAL_removevars(PRIMALtask_t t, int num, const int *subset) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !subset)) return PRIMAL_RES_ERR_ARG;
     for (int a = 0; a < num; a++) {
@@ -900,6 +889,7 @@ PRIMALrescodee PRIMAL_removevars(PRIMALtask_t t, int num, const int *subset) {
     int *remap = (int *)malloc((size_t)(oldn > 0 ? oldn : 1) * sizeof(int));
     if (!del || !remap) { free(del); free(remap); return PRIMAL_RES_ERR_ALLOC; }
     for (int a = 0; a < num; a++) del[subset[a]] = 1;
+    if (num) model_changed(t);
     int w = 0;
     for (int j = 0; j < oldn; j++) {
         if (del[j]) {
@@ -1017,7 +1007,6 @@ PRIMALrescodee PRIMAL_removevars(PRIMALtask_t t, int num, const int *subset) {
  * The A entries of removed rows are dropped from every column and the remaining
  * row indices are remapped; the qcon blocks follow the same remap. */
 PRIMALrescodee PRIMAL_removecons(PRIMALtask_t t, int num, const int *subset) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !subset)) return PRIMAL_RES_ERR_ARG;
     for (int a = 0; a < num; a++) {
@@ -1036,6 +1025,7 @@ PRIMALrescodee PRIMAL_removecons(PRIMALtask_t t, int num, const int *subset) {
     int *remap = (int *)malloc((size_t)(oldn > 0 ? oldn : 1) * sizeof(int));
     if (!del || !remap) { free(del); free(remap); return PRIMAL_RES_ERR_ALLOC; }
     for (int a = 0; a < num; a++) del[subset[a]] = 1;
+    if (num) model_changed(t);
     int w = 0;
     for (int i = 0; i < oldn; i++) {
         if (del[i]) { remap[i] = -1; free(t->conname[i]); continue; }
@@ -1103,7 +1093,6 @@ PRIMALrescodee PRIMAL_removecons(PRIMALtask_t t, int num, const int *subset) {
 
 /* Reference removecones: remove the cones at the given indices and compact. */
 PRIMALrescodee PRIMAL_removecones(PRIMALtask_t t, int num, const int *subset) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !subset)) return PRIMAL_RES_ERR_ARG;
     for (int a = 0; a < num; a++) {
@@ -1119,6 +1108,7 @@ PRIMALrescodee PRIMAL_removecones(PRIMALtask_t t, int num, const int *subset) {
     char *del = (char *)calloc((size_t)(t->numcones > 0 ? t->numcones : 1), 1);
     if (!del) return PRIMAL_RES_ERR_ALLOC;
     for (int a = 0; a < num; a++) del[subset[a]] = 1;
+    if (num) model_changed(t);
     int oldn = t->numcones, w = 0;
     for (int k = 0; k < oldn; k++) {
         if (del[k]) { free(t->cone_mem[k]); free(t->conename[k]); continue; }
@@ -1264,12 +1254,28 @@ PRIMALrescodee acc_store(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t numaf
         t->acc_dom = a1; t->acc_nafe = a2; t->acc_afe = a3; t->acc_b = a4;
         t->accname = a5; t->acc_rowbase = a6; t->acc_varbase = a7; t->acccap = nc;
     }
+    model_changed(t);
     int k = t->numacc++;
     t->acc_dom[k] = domidx; t->acc_nafe[k] = numafeidx;
     t->acc_rowbase[k] = rowbase; t->acc_varbase[k] = varbase;
     t->accname[k] = NULL; t->acc_afe[k] = afes; t->acc_b[k] = offsets;
     return PRIMAL_RES_OK;
 }
+
+/* The internal cone type of a domain, or -1 if not representable as a cone
+ * (R and the linear domains are handled by the caller; dual-power/geo-mean/PSD
+ * have no internal cone). */
+static int domain_cone_kind(int domtype) {
+    switch (domtype) {
+    case PRIMAL_DOMAIN_QUADRATIC_CONE:    return PRIMAL_CT_QUAD;
+    case PRIMAL_DOMAIN_RQUADRATIC_CONE:   return PRIMAL_CT_RQUAD;
+    case PRIMAL_DOMAIN_PRIMAL_EXP_CONE:   return PRIMAL_CT_PEXP;
+    case PRIMAL_DOMAIN_DUAL_EXP_CONE:     return PRIMAL_CT_DEXP;
+    case PRIMAL_DOMAIN_PRIMAL_POWER_CONE: return PRIMAL_CT_PPOW;
+    default: return -1;
+    }
+}
+
 
 /* The AFE store and ACC offsets are authoritative. Generated rows are rebuilt
  * after edits; allocations may fail, but no solve can use a partial refresh. */
@@ -1280,15 +1286,8 @@ PRIMALrescodee acc_sync(PRIMALtask_t t) {
         if (rowbase < 0 || n > t->numcon-rowbase ||
             (varbase >= 0 && n > t->numvar-varbase)) return PRIMAL_RES_ERR_ARG;
         if (varbase >= 0) {
-            int expected;
-            switch (type) {
-            case PRIMAL_DOMAIN_QUADRATIC_CONE: expected = PRIMAL_CT_QUAD; break;
-            case PRIMAL_DOMAIN_RQUADRATIC_CONE: expected = PRIMAL_CT_RQUAD; break;
-            case PRIMAL_DOMAIN_PRIMAL_EXP_CONE: expected = PRIMAL_CT_PEXP; break;
-            case PRIMAL_DOMAIN_DUAL_EXP_CONE: expected = PRIMAL_CT_DEXP; break;
-            case PRIMAL_DOMAIN_PRIMAL_POWER_CONE: expected = PRIMAL_CT_PPOW; break;
-            default: return PRIMAL_RES_ERR_ARG;
-            }
+            int expected = domain_cone_kind(type);
+            if (expected < 0) return PRIMAL_RES_ERR_ARG;
             int found = 0;
             for (int k = 0; k < t->numcones; k++) if (t->cone_nmem[k] == n &&
                 t->cone_type[k] == expected && t->cone_param[k] == t->dom_param[t->acc_dom[a]]) {
@@ -1355,7 +1354,6 @@ PRIMALrescodee derived_sync(PRIMALtask_t t) {
 /* Append an affine conic constraint: the listed AFEs must lie in domain domidx. */
 PRIMALrescodee PRIMAL_appendacc(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t numafeidx,
                                 const PRIMALint64t *afeidxlist, const PRIMALrealt *b) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (domidx < 0 || domidx >= t->numdomain) return PRIMAL_RES_ERR_ARG;
     if (numafeidx < 0 || numafeidx > INT_MAX) return PRIMAL_RES_ERR_ARG;
@@ -1473,7 +1471,6 @@ PRIMALrescodee PRIMAL_getaccb(PRIMALtask_t t, PRIMALint64t accidx, PRIMALrealt *
 PRIMALrescodee PRIMAL_appendaccs(PRIMALtask_t t, PRIMALint64t numaccs,
         const PRIMALint64t *domidxs, PRIMALint64t numafeidx,
         const PRIMALint64t *afeidxlist, const PRIMALrealt *b) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numaccs < 0 || numafeidx < 0) return PRIMAL_RES_ERR_ARG;
     if (numaccs == 0) return PRIMAL_RES_OK;
@@ -1557,13 +1554,13 @@ PRIMALrescodee PRIMAL_putaccdoty(PRIMALtask_t t, PRIMALsolt which, PRIMALint64t 
 /* Rewrite the b vector of ACC accidx. */
 PRIMALrescodee PRIMAL_putaccb(PRIMALtask_t t, PRIMALint64t accidx,
                               PRIMALint64t lengthb, const PRIMALrealt *b) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (accidx < 0 || accidx >= t->numacc) return PRIMAL_RES_ERR_ARG;
     if (lengthb != t->acc_nafe[accidx]) return PRIMAL_RES_ERR_ARG;
     if (lengthb > 0 && !b) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t e = 0; e < lengthb; e++) {
         if (b[e] != b[e]) return PRIMAL_RES_ERR_ARG;
+        model_changed(t);
         t->acc_b[accidx][e] = b[e];
     }
     return PRIMAL_RES_OK;
@@ -1605,7 +1602,6 @@ PRIMALrescodee PRIMAL_getaccname(PRIMALtask_t t, PRIMALint64t accidx,
 PRIMALrescodee PRIMAL_appendaccseq(PRIMALtask_t t, PRIMALint64t domidx,
                                    PRIMALint64t numafeidx, PRIMALint64t afeidxfirst,
                                    const PRIMALrealt *b) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numafeidx < 0 || afeidxfirst < 0) return PRIMAL_RES_ERR_ARG;
     PRIMALint64t *list = (PRIMALint64t *)malloc((size_t)(numafeidx > 0 ? numafeidx : 1) * sizeof(PRIMALint64t));
@@ -1619,7 +1615,6 @@ PRIMALrescodee PRIMAL_appendaccseq(PRIMALtask_t t, PRIMALint64t domidx,
 PRIMALrescodee PRIMAL_appendaccsseq(PRIMALtask_t t, PRIMALint64t numaccs,
         const PRIMALint64t *domidxs, PRIMALint64t numafeidx,
         PRIMALint64t afeidxfirst, const PRIMALrealt *b) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numaccs < 0 || numafeidx < 0 || afeidxfirst < 0) return PRIMAL_RES_ERR_ARG;
     if (numaccs == 0) return PRIMAL_RES_OK;
@@ -1691,28 +1686,15 @@ PRIMALrescodee PRIMAL_putmaxnumdjc(PRIMALtask_t t, PRIMALint64t maxnumdjc) {
 
 /* One component of the b vector of an existing ACC. */
 PRIMALrescodee PRIMAL_putaccbj(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t j, PRIMALrealt bj) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (accidx < 0 || accidx >= t->numacc) return PRIMAL_RES_ERR_ARG;
     if (j < 0 || j >= t->acc_nafe[accidx]) return PRIMAL_RES_ERR_ARG;
     if (bj != bj) return PRIMAL_RES_ERR_ARG;
+    model_changed(t);
     t->acc_b[accidx][j] = bj;
     return PRIMAL_RES_OK;
 }
 
-/* The internal cone type of a domain, or -1 if not representable as a cone
- * (R and the linear domains are handled by the caller; dual-power/geo-mean/PSD
- * have no internal cone). */
-static int domain_cone_kind(int domtype) {
-    switch (domtype) {
-    case PRIMAL_DOMAIN_QUADRATIC_CONE:    return PRIMAL_CT_QUAD;
-    case PRIMAL_DOMAIN_RQUADRATIC_CONE:   return PRIMAL_CT_RQUAD;
-    case PRIMAL_DOMAIN_PRIMAL_EXP_CONE:   return PRIMAL_CT_PEXP;
-    case PRIMAL_DOMAIN_DUAL_EXP_CONE:     return PRIMAL_CT_DEXP;
-    case PRIMAL_DOMAIN_PRIMAL_POWER_CONE: return PRIMAL_CT_PPOW;
-    default: return -1;
-    }
-}
 
 /* Primal violation of a set of ACCs (reference getpviolacc): the activity
  * v = F x + g - b must lie in the domain; for a linear domain the violation is

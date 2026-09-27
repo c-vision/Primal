@@ -99,6 +99,9 @@ is separate from the certificate rule: a verdict about the model lives in
 `prosta`/`solsta`, and a point lives in the solution buffers. One flag answers
 "is there a point", never "was a verdict reached".
 
+Information getters return `ERR_ARG` without changing the output when an item
+is unmeasured or its required result is unavailable; they do not substitute zero.
+
 ## Violation getters
 
 `getprimalinfeas` / `getdualinfeas` measure the published point **against the

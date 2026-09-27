@@ -89,7 +89,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
      *   QUAD  z_a = x_{mem[a]};
      *   RQUAD z_0=(u+v)/sqrt2, z_1=(u-v)/sqrt2, z_{2+j}=w_j;
      *   PEXP/PPOW/RPOW  z_a = x_{mem[a]}  (barrier block, expcone.c);
-     *   DEXP            z_a = -x_{mem[a]} (DEXP = -PEXP). ---- */
+     *   DEXP            z = (e*x_{mem[0]}, -x_{mem[2]}, -x_{mem[1]}). ---- */
     int nsoc = 0, nSocVar = 0, nep = 0;
     int *socdim = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
     int *socOf  = (int *)malloc((size_t)(t->numcones > 0 ? t->numcones : 1) * sizeof(int));
@@ -301,8 +301,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             }
         }
     }
-    /* ---- exp/power linking rows: z_a = sg * x_{mem[a]}, sg = -1 for DEXP
-     * (DEXP = -PEXP) and +1 for PEXP/PPOW/RPOW ---- */
+    /* Link the exponential/power triples, mapping DEXP to PEXP coordinates. */
     for (int i = 0; i < nep; i++) {
         const int *mem = t->cone_mem[eOf[i]];
         int ct = t->cone_type[eOf[i]];
@@ -1226,7 +1225,7 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                 free(c); free(lx); free(ux); free(lc); free(uc);
                 free(Arow); free(ptr); free(sub); free(val);
                 if (caprc != PRIMAL_RES_OK) { rc = caprc; break; }
-                if (rc != PRIMAL_RES_OK || stalled) break;
+                if (rc != PRIMAL_RES_OK) break;
 
                 if (anycut) continue;
 
@@ -1462,4 +1461,3 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
     free(xt); free(ystd); free(zst); stdform_free(sf); free(ci); free(ds);
     return status;
 }
-

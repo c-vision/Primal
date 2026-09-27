@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: make -j2 all lib bench
       - run: make test fuzz
+      - run: make -j2 samples && make run-samples
       - run: make sanitize sanitize-fuzz
       - run: make sanitize-samples
       - run: make OUT=out/fault-san CFLAGS='-std=c99 -Wall -Wextra -pedantic -O1 -g -fno-omit-frame-pointer -pthread -fsanitize=address,undefined' fault-test

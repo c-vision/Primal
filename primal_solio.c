@@ -374,7 +374,16 @@ PRIMALrescodee PRIMAL_readjsonstring(PRIMALtask_t t, const char *data) {
         p++;
     }
     sol_json_space(&p);
-    if (*p || seen != (1u << SF_COUNT)-1) goto done;
+    if (*p) goto done;
+    const unsigned legacy = (1u << SF_SOLSTA) | (1u << SF_PROSTA) |
+        (1u << SF_POBJ) | (1u << SF_DOBJ) | (1u << SF_X) | (1u << SF_Y) |
+        (1u << SF_SLC) | (1u << SF_SUC) | (1u << SF_SLX) | (1u << SF_SUX);
+    if (seen == legacy && t->numbarvar == 0) {
+        /* The original scalar JSON format has no dimensions or basis keys.
+         * Array lengths have already been checked against the task. */
+        s.v[SF_DIMS][0] = t->numvar;
+        s.v[SF_DIMS][1] = t->numcon;
+    } else if (seen != (1u << SF_COUNT)-1) goto done;
     rc = sol_image_validate(t, &s);
     if (rc == PRIMAL_RES_OK) sol_image_commit(t, &s);
 done:

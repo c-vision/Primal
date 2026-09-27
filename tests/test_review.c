@@ -429,6 +429,157 @@ static void psd_stall_test(void) {
     OK(PRIMAL_deletetask(&t));
 }
 
+static void rejected_edit_tests(void) {
+    PRIMALtask_t t = model(1);
+    OK(PRIMAL_putvarbound(t,0,PRIMAL_BK_FX,1,1));
+    OK(PRIMAL_putcj(t,0,1)); OK(PRIMAL_optimize(t));
+#define REJECT(call) do { OK(PRIMAL_optimize(t)); CHECK((call) == PRIMAL_RES_ERR_ARG); unchanged_result(t); } while (0)
+    REJECT(PRIMAL_putcj(t,99,1));
+    REJECT(PRIMAL_putclist(t,1,(int[]){99},(double[]){1}));
+    REJECT(PRIMAL_putcslice(t,0,2,(double[]){1,2}));
+    REJECT(PRIMAL_putobjsense(t,(PRIMALobjsensee)99));
+    REJECT(PRIMAL_putvarbound(t,0,PRIMAL_BK_RA,2,1));
+    REJECT(PRIMAL_putconbound(t,0,PRIMAL_BK_FX,1,1));
+    REJECT(PRIMAL_putvarboundlist(t,1,(int[]){99},(PRIMALboundkeye[]){PRIMAL_BK_FX},(double[]){1},(double[]){1}));
+    REJECT(PRIMAL_putacol(t,99,0,NULL,NULL));
+    REJECT(PRIMAL_putarow(t,99,0,NULL,NULL));
+    REJECT(PRIMAL_putaij(t,99,0,1));
+    REJECT(PRIMAL_putqobj(t,1,(int[]){99},(int[]){0},(double[]){1}));
+    REJECT(PRIMAL_putqobjij(t,0,0,NAN));
+    REJECT(PRIMAL_putqconk(t,99,0,NULL,NULL,NULL));
+    REJECT(PRIMAL_putqcon(t,1,(int[]){99},(int[]){0},(int[]){0},(double[]){1}));
+    REJECT(PRIMAL_putvartype(t,0,(PRIMALvariabletypee)99));
+    REJECT(PRIMAL_putvartypelist(t,1,(int[]){99},(PRIMALvariabletypee[]){PRIMAL_VAR_TYPE_INT}));
+    REJECT(PRIMAL_appendvars(t,-1)); REJECT(PRIMAL_appendcons(t,-1));
+    REJECT(PRIMAL_appendafes(t,-1)); REJECT(PRIMAL_appenddjcs(t,-1));
+    REJECT(PRIMAL_appendbarvars(t,1,(int[]){0}));
+    REJECT(PRIMAL_putafeg(t,99,1));
+    REJECT(PRIMAL_putafefentry(t,99,0,1));
+    REJECT(PRIMAL_putafefrow(t,99,0,NULL,NULL));
+    REJECT(PRIMAL_putafefcol(t,99,0,NULL,NULL));
+    REJECT(PRIMAL_emptyafefrow(t,99)); REJECT(PRIMAL_emptyafefcol(t,99));
+    REJECT(PRIMAL_emptyafebarfrow(t,99));
+    REJECT(PRIMAL_appendcone(t,(PRIMALconetypee)99,0,1,(int[]){0}));
+    REJECT(PRIMAL_appendsos1(t,2,(int[]){0,0},(double[]){0,1}));
+    REJECT(PRIMAL_appendsos2(t,1,(int[]){99},(double[]){0}));
+    REJECT(PRIMAL_appendacc(t,99,0,NULL,NULL));
+    REJECT(PRIMAL_putaccbj(t,99,0,1));
+    REJECT(PRIMAL_putaccb(t,99,0,NULL));
+    REJECT(PRIMAL_putbaraij(t,99,0,0,NULL,NULL));
+    REJECT(PRIMAL_putbarablockij(t,99,0,0,NULL,NULL));
+    REJECT(PRIMAL_putbarcj(t,99,0,NULL,NULL));
+    REJECT(PRIMAL_removevars(t,1,(int[]){99}));
+    REJECT(PRIMAL_removecons(t,1,(int[]){99}));
+    REJECT(PRIMAL_removecones(t,1,(int[]){99}));
+    REJECT(PRIMAL_removebarvars(t,1,(int[]){99}));
+#undef REJECT
+    OK(PRIMAL_appendvars(t,0)); OK(PRIMAL_appendcons(t,0)); unchanged_result(t);
+    OK(PRIMAL_putcj(t,0,2));
+    double objective=123;
+    CHECK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&objective)==PRIMAL_RES_ERR_ARG && objective==123);
+    OK(PRIMAL_optimize(t)); OK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&objective)); CHECK(objective==2);
+    OK(PRIMAL_deletetask(&t));
+}
+
+static void legacy_json_and_mip_write_tests(void) {
+    char path[]="/tmp/primal-sol-XXXXXX";
+    int fd=mkstemp(path); if(fd<0) exit(2); close(fd);
+    PRIMALtask_t t=model(1);
+    /* Exact ten-key schema emitted by the original JSON writer. */
+    const char *legacy="{\"pobj\":1,\"dobj\":1,\"solsta\":1,\"prosta\":1,"
+        "\"xx\":[1],\"y\":[],\"slc\":[],\"suc\":[],\"slx\":[-1],\"sux\":[0]}";
+    write_bytes(path,legacy,strlen(legacy));
+    OK(PRIMAL_readjsonsol(t,path));
+    double x=0, objective=123;
+    OK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,&x)); CHECK(x==1);
+    CHECK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&objective)==PRIMAL_RES_ERR_ARG && objective==123);
+    PRIMALsolstae ss; OK(PRIMAL_getsolsta(t,PRIMAL_SOL_ITR,&ss)); CHECK(ss==PRIMAL_SOL_STA_UNKNOWN);
+    const char *short_array="{\"pobj\":1,\"dobj\":1,\"solsta\":1,\"prosta\":1,"
+        "\"xx\":[],\"y\":[],\"slc\":[],\"suc\":[],\"slx\":[-1],\"sux\":[0]}";
+    CHECK(PRIMAL_readjsonstring(t,short_array)==PRIMAL_RES_ERR_FILE);
+    OK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,&x)); CHECK(x==1);
+    OK(PRIMAL_putvarbound(t,0,PRIMAL_BK_RA,0,10));
+    OK(PRIMAL_putvartype(t,0,PRIMAL_VAR_TYPE_INT)); OK(PRIMAL_putcj(t,0,1));
+    OK(PRIMAL_putxx(t,PRIMAL_SOL_ITR,(double[]){5}));
+    OK(PRIMAL_putdouparam(t,PRIMAL_DPAR_MIO_MAX_TIME,0));
+    CHECK(PRIMAL_optimize(t)==PRIMAL_RES_TRM_MAX_TIME);
+    OK(PRIMAL_getxx(t,PRIMAL_SOL_ITG,&x)); CHECK(x==5);
+    int defined=-1; OK(PRIMAL_getintinf(t,PRIMAL_IINF_MIO_OBJ_BOUND_DEFINED,&defined)); CHECK(!defined);
+    CHECK(PRIMAL_getdualobj(t,PRIMAL_SOL_ITG,&objective)==PRIMAL_RES_ERR_ARG && objective==123);
+    for(int format=0;format<3;format++) {
+        PRIMALtask_t copy=model(1);
+        if(format==0) { OK(PRIMAL_writesolution(t,PRIMAL_SOL_ITG,path)); OK(PRIMAL_readsolution(copy,PRIMAL_SOL_ITR,path)); }
+        if(format==1) { OK(PRIMAL_writebsolution(t,path,0)); OK(PRIMAL_readbsolution(copy,path,0)); }
+        if(format==2) { OK(PRIMAL_writejsonsol(t,path)); OK(PRIMAL_readjsonsol(copy,path)); }
+        x=0; OK(PRIMAL_getxx(copy,PRIMAL_SOL_ITR,&x)); CHECK(x==5);
+        OK(PRIMAL_deletetask(&copy));
+    }
+    /* The summaries must not turn an unavailable dual into a numeric zero. */
+    FILE *capture=tmpfile(); if(!capture) exit(2);
+    fflush(stdout); int saved=dup(STDOUT_FILENO); CHECK(saved>=0);
+    CHECK(dup2(fileno(capture),STDOUT_FILENO)>=0);
+    OK(PRIMAL_solutionsummary(t,0)); OK(PRIMAL_analyzesolution(t,0,PRIMAL_SOL_ITG));
+    fflush(stdout); CHECK(dup2(saved,STDOUT_FILENO)>=0); close(saved);
+    rewind(capture); char text[1024]={0}; size_t count=fread(text,1,sizeof text-1,capture); text[count]=0; fclose(capture);
+    CHECK(strstr(text,"Dual objective: unavailable")!=NULL && strstr(text,"dobj=unavailable")!=NULL);
+    OK(PRIMAL_deletetask(&t)); CHECK(remove(path)==0);
+}
+
+static void quadratic_lower_activity_test(void) {
+    PRIMALtask_t t=model(2); OK(PRIMAL_appendcons(t,1));
+    OK(PRIMAL_putvarbound(t,0,PRIMAL_BK_RA,0,2)); OK(PRIMAL_putvarbound(t,1,PRIMAL_BK_FX,1,1));
+    OK(PRIMAL_putcj(t,0,1)); OK(PRIMAL_putaij(t,0,0,1));
+    OK(PRIMAL_putconbound(t,0,PRIMAL_BK_LO,0,0));
+    OK(PRIMAL_putqconk(t,0,1,(int[]){1},(int[]){1},(double[]){-2}));
+    OK(PRIMAL_optimize(t));
+    double x[2], activity=123, violation=123;
+    OK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,x)); CHECK(fabs(x[0]-1)<1e-6 && fabs(x[1]-1)<1e-6);
+    OK(PRIMAL_getxc(t,PRIMAL_SOL_ITR,&activity)); CHECK(fabs(activity-(x[0]-x[1]*x[1]))<1e-9);
+    OK(PRIMAL_putxxslice(t,PRIMAL_SOL_ITR,0,2,(double[]){0,1}));
+    OK(PRIMAL_getxc(t,PRIMAL_SOL_ITR,&activity)); CHECK(fabs(activity+1)<1e-9);
+    OK(PRIMAL_getpviolcon(t,PRIMAL_SOL_ITR,1,(int[]){0},&violation)); CHECK(fabs(violation-1)<1e-9);
+    OK(PRIMAL_deletetask(&t));
+}
+
+static void disjunction_export_clone_tests(void) {
+    PRIMALtask_t t=disjunction(4e6,0), copy=NULL;
+    char temporary[]="/tmp/primal-export-XXXXXX";
+    int fd=mkstemp(temporary); if(fd<0) exit(2); close(fd);
+    char path[128]; snprintf(path,sizeof path,"%s.lp",temporary);
+    CHECK(rename(temporary,path)==0);
+    OK(PRIMAL_writedata(t,path));
+    copy=model(0); OK(PRIMAL_readdata(copy,path));
+    /* The LP expansion must retain x<=0 OR x>=3e6 before any optimize call. */
+    OK(PRIMAL_putobjsense(copy,PRIMAL_OPTIMIZE_MINIMIZE));
+    OK(PRIMAL_putvarbound(copy,0,PRIMAL_BK_LO,1,0)); solve_x(copy,3e6);
+    OK(PRIMAL_deletetask(&copy));
+    solve_x(t,4e6); OK(PRIMAL_putvarbound(t,0,PRIMAL_BK_FR,0,0));
+    double before[3], after[3]; OK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,before));
+    OK(PRIMAL_clonetask(t,&copy));
+    OK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,after)); CHECK(memcmp(before,after,sizeof before)==0);
+    OK(PRIMAL_putvarbound(copy,0,PRIMAL_BK_RA,0,5e6)); solve_x(copy,5e6);
+    OK(PRIMAL_deletetask(&copy)); OK(PRIMAL_deletetask(&t));
+    CHECK(remove(path)==0);
+}
+
+static void node_witness_test(void) {
+    for (int infeasible=0; infeasible<2; infeasible++) {
+        PRIMALtask_t t=model(3);
+        /* (x0,1,1) in QUAD needs x0>=sqrt(2). The linear cone faces
+         * prove x0<=0.5 impossible; x0<=3 leaves a feasible problem. */
+        double lo[3]={0,1,1}, up[3]={infeasible ? 0.5 : 3,1,1};
+        for (int j=0;j<3;j++) OK(PRIMAL_putvarbound(t,j,PRIMAL_BK_RA,lo[j],up[j]));
+        OK(PRIMAL_putcj(t,0,1));
+        OK(PRIMAL_appendcone(t,PRIMAL_CT_QUAD,0,3,(int[]){0,1,2}));
+        OK(PRIMAL_putintparam(t,PRIMAL_IPAR_INTPNT_MAX_ITERATIONS,1));
+        double x[3]={123,123,123}, objective=123;
+        int status=mip_relax_conic(t,1,env,lo,up,NULL,NULL,x,&objective,NULL);
+        CHECK(status==(infeasible ? 1 : 3));
+        CHECK(x[0]==123 && x[1]==123 && x[2]==123 && objective==123);
+        OK(PRIMAL_deletetask(&t));
+    }
+}
+
 int main(void) {
     OK(PRIMAL_makeenv(&env, NULL));
     sos_tests();
@@ -437,6 +588,11 @@ int main(void) {
     affine_mutation_tests();
     affine_removal_tests();
     disjunction_tests();
+    rejected_edit_tests();
+    legacy_json_and_mip_write_tests();
+    quadratic_lower_activity_test();
+    disjunction_export_clone_tests();
+    node_witness_test();
     psd_stall_test();
     OK(PRIMAL_deleteenv(&env));
     printf("Review checks: %d, failures: %d\n", checks, failures);

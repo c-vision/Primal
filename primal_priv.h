@@ -468,6 +468,7 @@ int exp_member(int ct, int i);
 double exp_factor(int ct, int i);
 
 void model_changed(PRIMALtask_t t);
+void result_changed(PRIMALtask_t t);
 
 double row_activity(PRIMALtask_t t, int i, const double *x);
 

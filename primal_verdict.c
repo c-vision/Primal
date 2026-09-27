@@ -69,8 +69,8 @@ double cone_signed_slack(int ct, double a, const double *v, int nk) {
  * inequalities expcone_dual_in tests, written as a QUANTITY because the caller
  * answers with a number, and their domain bounds (s0 > 0 and s2 < 0 for PEXP)
  * enter the minimum: outside them the cone has no value to compare against.
- * DEXP is -PEXP -- every member negated -- and its dual cone is that same
- * negation, so its slack is the PEXP expression read at -s. Anything else is
+ * DEXP is the mathematical dual of PEXP, so its dual slack is the primal
+ * PEXP expression. Anything else is
  * untestable and returns a positive slack, which reads as "no violation
  * measured", never as a proof. */
 double cone_dual_signed_slack(int ct, double a, const double *v, int nk) {

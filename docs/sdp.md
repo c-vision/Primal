@@ -73,8 +73,6 @@ at `d = 8` is the dense LU of the KKT and is a real scaling limit.
 
 ## Limits
 
-- Stalled PSD cuts return an iteration limit without publishing an infeasible
-  matrix as optimal. The existing stall threshold remains heuristic.
 - Experimental HSD can fail to converge on the degree-three M1 test on
   GCC/x86-64 Linux; an iteration limit is not a successful solution.
 

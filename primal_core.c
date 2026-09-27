@@ -20,15 +20,19 @@
  */
 #include "primal_priv.h"
 
-void model_changed(PRIMALtask_t t) {
+void result_changed(PRIMALtask_t t) {
     if (!t || t->derived_syncing) return;
-    t->derived_dirty = 1;
     t->result_stale = 1;
     t->solsta = PRIMAL_SOL_STA_UNKNOWN; t->prosta = PRIMAL_PRO_STA_UNKNOWN;
     t->has_pray = t->has_dray = 0;
     t->mip_bound_defined = 0; t->mip_result = 0;
 }
 
+void model_changed(PRIMALtask_t t) {
+    if (!t || t->derived_syncing) return;
+    t->derived_dirty = 1;
+    result_changed(t);
+}
 
 /* ---------------- declarative parameter table ----------------
  * One row per accepted parameter: kind, where it lives in the task, its
@@ -1302,7 +1306,6 @@ static PRIMALrescodee qcon_reshape(PRIMALtask_t t, int on, int nn) {
  * // Variables 0-9 now exist with default bounds
  */
 PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
-    if (num != 0) model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || num > INT_MAX-t->numvar) return PRIMAL_RES_ERR_ARG;
     int nv = t->numvar;
@@ -1349,6 +1352,7 @@ PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
         if (t->varname) memcpy(nm2, t->varname, (size_t)nv * sizeof(char *));
         for (int j = 0; j < nv; j++) { c2[j] = t->c[j]; }
         for (int j = nv; j < nn; j++) { k2[j] = PRIMAL_BK_FR; l2[j] = -INF; u2[j] = INF; }
+        model_changed(t);
         free(t->c); free(t->bkx); free(t->blx); free(t->bux); free(t->cols); free(t->vartype);
         free(t->varname);
         t->c = c2; t->bkx = k2; t->blx = l2; t->bux = u2; t->cols = co2; t->vartype = vt2;
@@ -1403,7 +1407,6 @@ PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
  * // Constraints 0-2 now exist with default bounds
  */
 PRIMALrescodee PRIMAL_appendcons(PRIMALtask_t t, int num) {
-    if (num != 0) model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || num > INT_MAX-t->numcon) return PRIMAL_RES_ERR_ARG;
     int nc = t->numcon, nn = nc + num;
@@ -1441,6 +1444,7 @@ PRIMALrescodee PRIMAL_appendcons(PRIMALtask_t t, int num) {
         if (nc) memcpy(u2, t->buc, (size_t)nc * sizeof(double));
         if (t->conname) memcpy(nm2, t->conname, (size_t)nc * sizeof(char *));
         for (int i = nc; i < nn; i++) { k2[i] = PRIMAL_BK_FR; l2[i] = -INF; u2[i] = INF; }
+        model_changed(t);
         free(t->bkc); free(t->blc); free(t->buc);
         free(t->conname);
         t->bkc = k2; t->blc = l2; t->buc = u2;

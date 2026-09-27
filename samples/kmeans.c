@@ -60,8 +60,10 @@ int main(void) {
      * mean of the points it owns, hence always inside their convex hull).
      * DECLARED DEVIATION: the notebook leaves the centroids unbounded. */
     for (int j = 0; j < NK; j++) PRIMAL_putvarbound(t, C + j, PRIMAL_BK_RA, 0.0, 3.0);
-    for (int i = 0; i < NPTS; i++) PRIMAL_putvarbound(t, DIST + i, PRIMAL_BK_LO, 0.0, INFINITY);
-    for (int q = 0; q < nAux; q++) PRIMAL_putvarbound(t, AUX + q, PRIMAL_BK_LO, 0.0, INFINITY);
+    /* Squared distances on [0,3] are at most 9. The epigraph variables can
+     * take those distances without excluding an optimal clustering. */
+    for (int i = 0; i < NPTS; i++) PRIMAL_putvarbound(t, DIST + i, PRIMAL_BK_RA, 0.0, 9.0);
+    for (int q = 0; q < nAux; q++) PRIMAL_putvarbound(t, AUX + q, PRIMAL_BK_RA, 0.0, 9.0);
     for (int q = 0; q < nAux; q++) PRIMAL_putvarbound(t, D3 + q, PRIMAL_BK_FR, -INFINITY, INFINITY);
     for (int i = 0; i < NPTS; i++) {
         PRIMAL_putvarbound(t, Y + i, PRIMAL_BK_RA, 0.0, (double)(NK - 1));

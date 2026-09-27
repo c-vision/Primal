@@ -64,10 +64,10 @@ static int vartype_ok(PRIMALvariabletypee vt) {
  * PRIMAL_putvartype(task, 3, PRIMAL_VAR_TYPE_SEMI_CONT);
  */
 PRIMALrescodee PRIMAL_putvartype(PRIMALtask_t t, int j, PRIMALvariabletypee vt) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (j < 0 || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     if (!vartype_ok(vt)) return PRIMAL_RES_ERR_ARG;
+    model_changed(t);
     t->vartype[j] = vt;
     return PRIMAL_RES_OK;
 }
@@ -96,13 +96,13 @@ PRIMALrescodee PRIMAL_putvartype(PRIMALtask_t t, int j, PRIMALvariabletypee vt) 
  */
 PRIMALrescodee PRIMAL_putvartypelist(PRIMALtask_t t, int num,
                                      const int *subj, const PRIMALvariabletypee *vartype) {
-    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && (!subj || !vartype))) return PRIMAL_RES_ERR_ARG;
     for (int k = 0; k < num; k++) {
         if (subj[k] < 0 || subj[k] >= t->numvar) return PRIMAL_RES_ERR_ARG;
         if (!vartype_ok(vartype[k])) return PRIMAL_RES_ERR_ARG;
     }
+    if (num) model_changed(t);
     for (int k = 0; k < num; k++) t->vartype[subj[k]] = vartype[k];
     return PRIMAL_RES_OK;
 }
@@ -238,6 +238,7 @@ static PRIMALrescodee appendsos(PRIMALtask_t t, int sostype, int num,
         t->sos_type = a1; t->sos_n = a2; t->sos_mem = a3; t->sos_w = a4;
         t->soscap = nc;
     }
+    model_changed(t);
     int k = t->numsos++;
     t->sos_type[k] = sostype;
     t->sos_n[k] = num;
@@ -272,7 +273,6 @@ static PRIMALrescodee appendsos(PRIMALtask_t t, int sostype, int num,
  * PRIMAL_appendsos1(task, 3, idx, w);
  */
 PRIMALrescodee PRIMAL_appendsos1(PRIMALtask_t t, int num, const int *submem, const double *weight) {
-    model_changed(t);
     return appendsos(t, 1, num, submem, weight);
 }
 
@@ -301,7 +301,6 @@ PRIMALrescodee PRIMAL_appendsos1(PRIMALtask_t t, int num, const int *submem, con
  * PRIMAL_appendsos2(task, 5, idx, w);
  */
 PRIMALrescodee PRIMAL_appendsos2(PRIMALtask_t t, int num, const int *submem, const double *weight) {
-    model_changed(t);
     return appendsos(t, 2, num, submem, weight);
 }
 

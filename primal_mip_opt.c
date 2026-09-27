@@ -325,7 +325,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 t->pobj = bside >= 0 ? kids[bside]->pobj : s * best;
                 t->solsta = complete ? PRIMAL_SOL_STA_INTEGER_OPTIMAL : PRIMAL_SOL_STA_PRIM_FEAS;
                 t->prosta = PRIMAL_PRO_STA_PRIM_FEAS;
-                t->has_sol = 1; t->dobj = t->mip_bound_defined ? t->mip_bound : NAN;
+                t->has_sol = 1; t->dobj = t->mip_bound_defined ? t->mip_bound : 0.0;
                 prc = complete ? PRIMAL_RES_OK : PRIMAL_RES_TRM_MAX_ITER;
             } else {
                 int inf = 1;
@@ -954,7 +954,6 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
     else if (nodes >= t->mip_max_nodes && sp > 0)  rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (nodes >= t->mip_max_nodes && sp == 0 && best == INF) rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (best < INF)       rc = PRIMAL_RES_OK;
-    else if (root_status == 3) rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (nodes >= t->mip_max_nodes) rc = PRIMAL_RES_TRM_MAX_ITER;
     else                       rc = PRIMAL_RES_ERR_INFEASIBLE;  /* exhausted w/o incumbent */
 
@@ -974,7 +973,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         if (t->has_qobj) po += 0.5 * task_xQx(t, t->x);
         if (t->numbarvar > 0 && bestX) po += barC_dot(t, bestX);
         t->pobj = po;
-        t->dobj = t->mip_bound_defined ? t->mip_bound : NAN;      /* MIP: no duals; dobj = pobj */
+        t->dobj = t->mip_bound_defined ? t->mip_bound : 0.0;      /* Integer dual objectives are unavailable through the public getter. */
         t->solsta = PRIMAL_SOL_STA_INTEGER_OPTIMAL;
         tlog(t, "integer optimal solution found\n");
     } else if (rc == PRIMAL_RES_ERR_INFEASIBLE) {
@@ -986,13 +985,6 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         t->solsta = PRIMAL_SOL_STA_UNKNOWN;
         t->prosta = PRIMAL_PRO_STA_PRIM_INFEAS;
         tlog(t, "MIP infeasible\n");
-    } else if (rc == PRIMAL_RES_ERR_UNBOUNDED) {
-        /* Table 7.3 pairs an unbounded integer problem with DUAL_INFEAS, but
-         * the certificate member is not published: the relaxation's ray is not
-         * lifted into the integer model and no vector goes to the user. */
-        t->solsta = PRIMAL_SOL_STA_UNKNOWN;
-        t->prosta = PRIMAL_PRO_STA_DUAL_INFEAS;
-        tlog(t, "MIP unbounded relaxation\n");
     } else {
         /* max nodes: keep the incumbent if there is one. With none there is no
          * point to publish at all, and the all-zero buffer opt_prepare left is
@@ -1015,7 +1007,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             if (t->has_qobj) t->pobj += 0.5 * task_xQx(t, t->x);
             if (t->numbarvar > 0 && bestX) t->pobj += barC_dot(t, bestX);
         }
-        t->dobj = t->mip_bound_defined ? t->mip_bound : NAN;
+        t->dobj = t->mip_bound_defined ? t->mip_bound : 0.0;
         /* Table 7.3: an integer-feasible point that is not proven optimal is
          * PRIM_FEAS, not UNKNOWN -- the incumbent is worth publishing. With no
          * incumbent there is no conclusion, and the derived problem status is

@@ -51,7 +51,7 @@ enum { CR_ROWLO = 0, CR_ROWUP = 1, CR_VARLO = 2, CR_VARUP = 3,
  * approximation of a convex set).
  * Conventions:
  *   PEXP(m0,m1,m2): m0 >= m1*exp(m2/m1), m1 >= 0
- *   DEXP(m0,m1,m2): (−m0,−m1,−m2) ∈ PEXP  (dual: m0 <= m1*exp(m2/m1), m1<=0)
+ *   DEXP(m0,m1,m2): (e*m0,-m2,-m1) ∈ PEXP
  *   PPOW(m0,m1,m2;a): m0^a*m1^(1-a) >= |m2|, m0,m1 >= 0, a=coneparam
  *   RPOW(m0,m1,m2;a): sqrt2*m0^a*m1^(1-a) >= |m2|  (a=1/2 -> 2*m0*m1 >= m2^2,
  *                      coincides with RQUAD) */
@@ -64,7 +64,7 @@ static double expp_fval(int type, double alpha, double u, double v) {
             if (u > 1e-12) { double w = v / u; if (w > EXPP_WCAP) w = EXPP_WCAP; return u * exp(w); }
             return (v <= 0.0) ? 0.0 : INFINITY;
         }
-        case PRIMAL_CT_DEXP: {  /* (−m0,−m1,−m2) ∈ PEXP: t=−m0, u=−m1, v=−m2 */
+        case PRIMAL_CT_DEXP: {  /* The caller maps DEXP to PEXP coordinates. */
             if (u > 1e-12) { double w = v / u; if (w > EXPP_WCAP) w = EXPP_WCAP; return u * exp(w); }
             return (v <= 0.0) ? 0.0 : INFINITY;
         }

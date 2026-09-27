@@ -181,11 +181,13 @@ PRIMALrescodee PRIMAL_solutionsummary(PRIMALtask_t t, int whichstream) {
     int sta = -1;
     PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *)&sta);
     double po = 0.0, dob = 0.0;
-    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-    PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
+    PRIMALrescodee prc = PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    PRIMALrescodee drc = PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
     printf("Solution status: %d\n", sta);
-    printf("Primal objective: %.10g\n", po);
-    printf("Dual objective: %.10g\n", dob);
+    if (prc == PRIMAL_RES_OK) printf("Primal objective: %.10g\n", po);
+    else printf("Primal objective: unavailable\n");
+    if (drc == PRIMAL_RES_OK) printf("Dual objective: %.10g\n", dob);
+    else printf("Dual objective: unavailable\n");
     return PRIMAL_RES_OK;
 }
 /* Prints one solution summary (status and objectives) to stdout. */
@@ -221,11 +223,14 @@ PRIMALrescodee PRIMAL_analyzesolution(PRIMALtask_t t, int whichstream, PRIMALsol
     (void)whichstream; (void)whichsol;
     if (!t->has_sol) { printf("No solution.\n"); return PRIMAL_RES_OK; }
     double po = 0, dob = 0, pi = 0, di = 0;
-    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
-    PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
-    PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pi);
-    PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &di);
-    printf("pobj=%.10g dobj=%.10g primal_infeas=%.3g dual_infeas=%.3g\n", po, dob, pi, di);
+    if (PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po) == PRIMAL_RES_OK) printf("pobj=%.10g", po);
+    else printf("pobj=unavailable");
+    if (PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob) == PRIMAL_RES_OK) printf(" dobj=%.10g", dob);
+    else printf(" dobj=unavailable");
+    if (PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pi) == PRIMAL_RES_OK) printf(" primal_infeas=%.3g", pi);
+    else printf(" primal_infeas=unavailable");
+    if (PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &di) == PRIMAL_RES_OK) printf(" dual_infeas=%.3g\n", di);
+    else printf(" dual_infeas=unavailable\n");
     return PRIMAL_RES_OK;
 }
 /* Prints the primal and dual infeasibility figures to stdout. */
@@ -867,4 +872,3 @@ PRIMALrescodee PRIMAL_resetstrparam(PRIMALtask_t t, int param) {
     (void)param;
     return PRIMAL_RES_ERR_ARG;
 }
-
