@@ -31,8 +31,14 @@
  *   strong duality: |pobj_min - dobj_min| small.
  */
 /* setenv/unsetenv are POSIX, not ISO C99: under -std=c99 glibc does not declare
- * them, so calling them without a prototype truncates the int return. */
+ * them, so calling them without a prototype truncates the int return. Windows
+ * (MinGW and MSVC) has no setenv at all, so map it onto the CRT's _putenv_s. */
+#ifdef _WIN32
+#define setenv(n, v, o) _putenv_s((n), (v))
+#define unsetenv(n)     _putenv_s((n), "")
+#else
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
