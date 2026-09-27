@@ -64,7 +64,14 @@ PRIMALrescodee opt_routes(PRIMALtask_t t) {
          * while both routes below would answer on a model without them. */
         if (t->has_qcon > 0 || t->has_qobj)
             return optimize_quad(t, s);
-        PRIMALrescodee r = optimize_sdp_ipm(t, s);
+        /* GMB_NO_SDP_IPM forces the tangent-cut route, like GMB_NO_EXP_IPM does for
+         * the exp/power cones. Development-only, and it is the only way to put a
+         * model of one's choosing through the cut loop: without it the native IPM
+         * answers every SDP in the sample set at round 0, and the cut loop's own
+         * stopping rule (8 stalled rounds, 0.9x) cannot be measured on anything
+         * but the one sample that lands there by itself. */
+        PRIMALrescodee r = getenv("GMB_NO_SDP_IPM") ? PRIMAL_RES_TRM_MAX_ITER
+                                                  : optimize_sdp_ipm(t, s);
         if (r == PRIMAL_RES_OK || r == PRIMAL_RES_ERR_INFEASIBLE || r == PRIMAL_RES_ERR_UNBOUNDED)
             return r;
         int nat_ok = (t->has_sol && t->solsta == PRIMAL_SOL_STA_OPTIMAL);
@@ -81,16 +88,15 @@ PRIMALrescodee opt_routes(PRIMALtask_t t) {
      * a conic shadow task; pure conic problems go straight to socp.c */
     if (t->has_qcon > 0 || (t->has_qobj && t->numcones > 0))
         return optimize_quad(t, s);
-    /* A PURE QP goes through the RQUAD encoder + conic IPM as well: its dual is
-     * exact there (pobj == dobj, y = the KKT multipliers), while the dense QP
-     * route publishes an inaccurate y.  Two exceptions keep the dense route:
-     * a wall-clock cap or an objective cut (the conic route does not read the
-     * ipm.c deadline / cut globals), and a failed encode/solve (T230).  A third
-     * is size: the RQUAD shadow is dense, so a large QP pays O(n^2) memory and
-     * a bigger factorization for nothing (measured on the n=2000 qp_sparse:
-     * >400s conic vs ~120s dense), while the dual inaccuracy the reroute fixes
-     * was measured on small models.  Large pure QPs stay dense. */
-    if (t->has_qobj && t->numvar <= 400) {
+    /* A PURE QP goes through the dense route by default (fast). The RQUAD
+     * encoder gives an exact dual (pobj == dobj, y = the KKT multipliers) but
+     * it is 40-180x slower: measured on the qp_* benchmark, n=50 0.0016 s dense
+     * vs 0.061 s conic, n=200 0.26 s vs >20 s. The dense route's dual postsolve
+     * is inaccurate only for ranged/upper bounds (a known open item, counted as
+     * a fuzz warning), so the encoder is opt-in: GMB_QP_CONIC forces it. A
+     * wall-clock cap or an objective cut also keeps the dense route (the conic
+     * route does not read the ipm.c deadline / cut globals). */
+    if (t->has_qobj && t->numvar <= 400 && getenv("GMB_QP_CONIC")) {
         int capped = (t->optimizer_max_time >= 0.0) ||
                      (t->lower_obj_cut > -0.5 * DBL_MAX) || (t->upper_obj_cut < 0.5 * DBL_MAX);
         if (!capped) {
