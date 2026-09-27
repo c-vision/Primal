@@ -123,8 +123,8 @@ int main(void) {
     }
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     int good = ok && fabs(obj - 3.0) < 1e-6 && legal;
-    printf("nesting_dotted_board (2 quadrati, board 2x2, griglia fine)\n");
-    printf("  z = %.6f (atteso 3)  dot scelti = (%d,%d) / (%d,%d)  legale=%d  %s\n",
+    printf("nesting_dotted_board (2 squares, board 2x2, fine grid)\n");
+    printf("  z = %.6f (expected 3)  chosen dots = (%d,%d) / (%d,%d)  legal=%d  %s\n",
            obj, chosen[0]>=0?chosen[0]/NG:-1, chosen[0]>=0?chosen[0]%NG:-1,
            chosen[1]>=0?chosen[1]/NG:-1, chosen[1]>=0?chosen[1]%NG:-1, legal, good ? "OK" : "FAIL");
     return good ? 0 : 1;

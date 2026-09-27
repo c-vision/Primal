@@ -123,7 +123,7 @@ int main(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     int okall = ok && fabs(obj - 1.0) < 1e-6;
     printf("kmeans  n=%d K=%d\n", NPTS, NK);
-    printf("  obiettivo (inerzia) = %.8f (atteso 1.0)   centri = (%.4f, %.4f)\n", obj, cen[0], cen[1]);
+    printf("  objective (inertia) = %.8f (expected 1.0)   centers = (%.4f, %.4f)\n", obj, cen[0], cen[1]);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

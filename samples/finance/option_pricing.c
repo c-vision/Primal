@@ -69,8 +69,8 @@ int main(void) {
     double lo = solve(env, 0);
     double hi = solve(env, 1);
     int ok = fabs(lo - 0.0) < 1e-9 && fabs(hi - 0.25) < 1e-9;
-    printf("prezzo call K=1: [%.6f, %.6f] (atteso [0, 0.25])\n", lo, hi);
-    printf("%s (limiti di non-arbitraggio come due LP)\n", ok ? "OK" : "FAIL");
+    printf("call price K=1: [%.6f, %.6f] (expected [0, 0.25])\n", lo, hi);
+    printf("%s (no-arbitrage bounds as two LPs)\n", ok ? "OK" : "FAIL");
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;
 }

@@ -83,7 +83,7 @@ int main(void) {
     if (ok) { PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj); PRIMAL_getxx(t, PRIMAL_SOL_ITR, x); }
     int good = ok && fabs(obj - 6.0) < 1e-6 && fabs(x[TT] - 6.0) < 1e-6 &&
                lpt_makespan == 7;   /* the MIP improved on the LPT warm start */
-    printf("lpt: makespan=%.6f (LPT iniziale=%d)  atteso 6 (LPT=7 subottimo)  %s\n",
+    printf("lpt: makespan=%.6f (LPT initial=%d)  expected 6 (LPT=7 suboptimal)  %s\n",
            x[TT], lpt_makespan, good ? "OK" : "FAIL");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return good ? 0 : 1;

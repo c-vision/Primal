@@ -76,7 +76,7 @@ int main(void) {
     if (nv > 16) nv = 16;
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx);
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj);
-    printf("x = (%.4f, %.4f), obj = %.4f (numvar=%d incl. ausiliarie ACC)\n",
+    printf("x = (%.4f, %.4f), obj = %.4f (numvar=%d incl. ACC auxiliaries)\n",
            xx[0], xx[1], obj, nv);
 
     /* external check: v0 >= |v1| */
@@ -86,8 +86,8 @@ int main(void) {
              fabs(xx[1] + 4.0) < 1e-4 &&
              fabs(obj + 4.0) < 1e-4 &&
              v0 >= fabs(v1) - 1e-6;
-    printf("v0 = %.4f, |v1| = %.4f (ACC soddisfatto)\n", v0, fabs(v1));
-    printf("%s (atteso x=(3,-4), obj=-4)\n", ok ? "OK" : "FAIL");
+    printf("v0 = %.4f, |v1| = %.4f (ACC satisfied)\n", v0, fabs(v1));
+    printf("%s (expected x=(3,-4), obj=-4)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

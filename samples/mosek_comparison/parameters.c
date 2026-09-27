@@ -90,13 +90,13 @@ int main(void) {
     PRIMAL_putconbound(q, 0, PRIMAL_BK_LO, 1.0, INFINITY);
     PRIMAL_putintparam(q, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1);
     PRIMALrescodee rq = PRIMAL_optimize(q);
-    printf("QP con max_iter=1: rc=%d (atteso non-OK: 1007 TRM o 1002)\n", rq);
+    printf("QP with max_iter=1: rc=%d (expected non-OK: 1007 TRM or 1002)\n", rq);
     int rc_trm = (rq != PRIMAL_RES_OK);   /* the limit really interrupts */
     PRIMAL_deletetask(&q);
 
-    printf("conteggio errori parametri: %d\n", rc);
+    printf("parameter error count: %d\n", rc);
     int ok = (rc == 0) && rc_trm;
-    printf("%s (parametri round-trip + limite iterazioni reale)\n",
+    printf("%s (parameters round-trip + real iteration limit)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);

@@ -99,7 +99,7 @@ int main(void) {
         ok = ok && fabs(x[0] - 1.0) < 1e-4 && fabs(x[1] - 1.0) < 1e-4 &&
              fabs(po + 6.0) < 1e-5 &&
              fabs(B[0] - 1.0) < 1e-5 && fabs(B[1]) < 1e-5 && fabs(B[3]) < 1e-5;
-        printf("barqcqp A  obj=%.6f (atteso -6)  x=(%.6f, %.6f)  "
+        printf("barqcqp A  obj=%.6f (expected -6)  x=(%.6f, %.6f)  "
                "B=[[%.4f,%.4f],[%.4f,%.4f]]  %s\n",
                po, x[0], x[1], B[0], B[1], B[2], B[3], ok ? "OK" : "FAIL");
         pass &= ok;
@@ -135,7 +135,7 @@ int main(void) {
         ok = ok && fabs(x[0] - 1.0) < 1e-4 && fabs(x[1] - 1.0) < 1e-4 &&
              fabs(po + 5.0) < 1e-5 &&
              fabs(B[0] - 1.0) < 1e-5 && fabs(B[1]) < 1e-5 && fabs(B[3]) < 1e-5;
-        printf("barqcqp B  obj=%.6f (atteso -5)  x=(%.6f, %.6f)  "
+        printf("barqcqp B  obj=%.6f (expected -5)  x=(%.6f, %.6f)  "
                "B=[[%.4f,%.4f],[%.4f,%.4f]]  %s\n",
                po, x[0], x[1], B[0], B[1], B[2], B[3], ok ? "OK" : "FAIL");
         pass &= ok;
@@ -168,7 +168,7 @@ int main(void) {
         int ok = (rc == (int)PRIMAL_RES_ERR_ARG) &&
                  (PRIMAL_getxx(t, PRIMAL_SOL_ITR, x) == (int)PRIMAL_RES_ERR_ARG) &&
                  (PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po) == (int)PRIMAL_RES_ERR_ARG);
-        printf("barqcqp C  rc=%d (atteso %d = ERR_ARG)  obj non pubblicato  %s\n",
+        printf("barqcqp C  rc=%d (expected %d = ERR_ARG)  obj not published  %s\n",
                rc, (int)PRIMAL_RES_ERR_ARG, ok ? "OK" : "FAIL");
         pass &= ok;
         PRIMAL_deletetask(&t);

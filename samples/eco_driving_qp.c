@@ -144,7 +144,7 @@ int main(void) {
     }
     int good = ok && worst < 1e-6 && fabs(direct - obj) < 1e-6*(1.0+fabs(obj)) &&
                (!consFeas || obj <= cons + 1e-6);
-    printf("eco_driving_qp  N=%d  obj=%.6f  worst_viol=%.2e  costante=%.6f (feasible=%d)\n",
+    printf("eco_driving_qp  N=%d  obj=%.6f  worst_viol=%.2e  constant=%.6f (feasible=%d)\n",
            N, obj, worst, cons, consFeas);
     printf("  a=(%.4f..%.4f)  v=(%.4f..%.4f)  s=(%.4f,%.4f,..,%.4f)  %s\n",
            a[0], a[N-1], v[0], v[N-1], s[0], s[1], s[N-1], good ? "OK" : "FAIL");

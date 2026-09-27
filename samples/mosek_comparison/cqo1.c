@@ -84,7 +84,7 @@ int main(void) {
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
     printf("x = (%.6f, %.6f, %.6f, %.6f, %.6f, %.6f)\n",
            x[0], x[1], x[2], x[3], x[4], x[5]);
-    printf("obj = %.6f (atteso 1/sqrt(2) = %.6f)\n", po, 1.0 / sqrt(2.0));
+    printf("obj = %.6f (expected 1/sqrt(2) = %.6f)\n", po, 1.0 / sqrt(2.0));
 
     /* check: equality, cone membership, objective */
     int ok = fabs(x[0] + x[1] + 2 * x[2] - 1.0) < 1e-6 &&
@@ -92,7 +92,7 @@ int main(void) {
              x[3] * x[3] >= x[0] * x[0] + x[1] * x[1] - 1e-8 &&
              2 * x[4] * x[5] >= x[2] * x[2] - 1e-8 &&
              fabs(x[3] + x[4] + x[5] - po) < 1e-9;
-    printf("%s (uguaglianza + coni QUAD/RQUAD + ottimo)\n", ok ? "OK" : "FAIL");
+    printf("%s (equality + QUAD/RQUAD cones + optimum)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

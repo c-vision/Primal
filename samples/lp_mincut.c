@@ -85,13 +85,13 @@ static double mincut(const int (*cor)[2], int ncor, double *dout) {
 
 /* Solve the plain and correlated min-cut LPs and check both values. */
 int main(void) {
-    printf("lp_mincut (min-cut LP; graph.txt di maxdan94/lp_mincut)\n");
+    printf("lp_mincut (min-cut LP; graph.txt of maxdan94/lp_mincut)\n");
     int all = 1;
     double d[NE], cut = mincut(NULL, 0, d);
     /* independent check: the cut d must be a feasible cut and the value must
      * equal the hand max flow 0.4 + 0.3 = 0.7 */
     int good = cut > 0 && fabs(cut - 0.7) < 1e-7;
-    printf("  min cut = %.8f (atteso 0.7)  d=(%.4f,%.4f,%.4f,%.4f)  %s\n",
+    printf("  min cut = %.8f (expected 0.7)  d=(%.4f,%.4f,%.4f,%.4f)  %s\n",
            cut, d[0], d[1], d[2], d[3], good ? "OK" : "FAIL");
     all &= good;
 
@@ -101,7 +101,7 @@ int main(void) {
     /* the cut may rise (a correlation can only restrict the feasible set);
      * it must be feasible and >= the uncorrelated cut */
     int good2 = cc > 0 && cc >= cut - 1e-9 && fabs(d2[0] - d2[3]) < 1e-7;
-    printf("  correlato d01=d23: cut = %.8f (d01=%.4f=d23=%.4f)  >= 0.7  %s\n",
+    printf("  correlated d01=d23: cut = %.8f (d01=%.4f=d23=%.4f)  >= 0.7  %s\n",
            cc, d2[0], d2[3], good2 ? "OK" : "FAIL");
     all &= good2;
 

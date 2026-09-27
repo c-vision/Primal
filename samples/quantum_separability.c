@@ -220,13 +220,13 @@ int main(void) {
              fabs(t_thr - 1.0) < 1e-8 && fabs(ccnr_t - 1.0) < 1e-8;
 
     printf("quantum_separability  qutrit isotropic  p=%.2f  (p_thr=%.2f)\n", P, PCT);
-    printf("  lambda_min(rho^T) = %.10f   (chiusa %.10f)\n", lmin, lmin_cf);
-    printf("  PPT robustness: SDP t*=%.10f   chiusa 1/(4p)=%.10f   ok=%d\n", t_sdp, t_cf, ok_sdp);
-    printf("  CCNR ||R(rho)||_1 = %.10f   (chiusa (1+8p)/3=%.10f)\n", ccnr, ccnr_cf);
+    printf("  lambda_min(rho^T) = %.10f   (closed form %.10f)\n", lmin, lmin_cf);
+    printf("  PPT robustness: SDP t*=%.10f   closed form 1/(4p)=%.10f   ok=%d\n", t_sdp, t_cf, ok_sdp);
+    printf("  CCNR ||R(rho)||_1 = %.10f   (closed form (1+8p)/3=%.10f)\n", ccnr, ccnr_cf);
     printf("  CCNR robustness t*=%.10f   PPT robustness t*=%.10f\n", t_ccnr, t_cf);
-    printf("  witness W=I-|Phi~><Phi~|: lambda_min(W^T)=%.3e, tr(W rho)=%.10f (chiusa %.10f)\n",
+    printf("  witness W=I-|Phi~><Phi~|: lambda_min(W^T)=%.3e, tr(W rho)=%.10f (closed form %.10f)\n",
            wmin, wtr, wtr_cf);
-    printf("  soglia p=1/4: PPT t*=%.10f, CCNR ||R||=%.10f (entrambi = 1)\n", t_thr, ccnr_t);
+    printf("  threshold p=1/4: PPT t*=%.10f, CCNR ||R||=%.10f (both = 1)\n", t_thr, ccnr_t);
     printf("%s\n", ok ? "OK" : "FAIL");
     return ok ? 0 : 1;
 }

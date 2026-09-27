@@ -76,9 +76,9 @@ int main(void) {
     /* the conic IPM delivers ~1e-5 here; the budgets are the meaningful check */
     int ok = fabs(w0 - 2.0 / 3.0) < 1e-3 && fabs(w1 - 1.0 / 3.0) < 1e-3 &&
              fabs(rc0 - b[0]) < 1e-4 && fabs(rc1 - b[1]) < 1e-4;
-    printf("w = (%.6f, %.6f) (atteso 0.6667, 0.3333)\n", w0, w1);
-    printf("contributi di rischio = (%.6f, %.6f) (attesi 0.8, 0.2)\n", rc0, rc1);
-    printf("%s (risk budgeting, log via cono esponenziale)\n", ok ? "OK" : "FAIL");
+    printf("w = (%.6f, %.6f) (expected 0.6667, 0.3333)\n", w0, w1);
+    printf("risk contributions = (%.6f, %.6f) (expected 0.8, 0.2)\n", rc0, rc1);
+    printf("%s (risk budgeting, log via exponential cone)\n", ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;

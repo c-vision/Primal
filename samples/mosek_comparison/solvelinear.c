@@ -69,14 +69,14 @@ int main(void) {
     double xx[4], po;
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx);
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
-    printf("x = (%.4f, %.4f, %.4f), t = %.6f (atteso (2, 3, -1), t=0)\n",
+    printf("x = (%.4f, %.4f, %.4f), t = %.6f (expected (2, 3, -1), t=0)\n",
            xx[0], xx[1], xx[2], xx[3]);
 
     int ok = fabs(xx[0] - 2.0) < 1e-6 &&
              fabs(xx[1] - 3.0) < 1e-6 &&
              fabs(xx[2] + 1.0) < 1e-6 &&
              fabs(po) < 1e-6;
-    printf("%s (sistema lineare risolto: residuo ~ 0)\n", ok ? "OK" : "FAIL");
+    printf("%s (linear system solved: residual ~ 0)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

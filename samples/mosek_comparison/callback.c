@@ -81,7 +81,7 @@ int main(void) {
 
     int ok = fabs(xx[0] - 0.5) < 1e-6 && fabs(xx[1] - 0.5) < 1e-6 &&
              fabs(obj - 0.25) < 1e-6 && n_calls >= 1;
-    printf("%s (atteso x=(0.5,0.5), obj=0.25, >=1 chiamate)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected x=(0.5,0.5), obj=0.25, >=1 calls)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

@@ -77,14 +77,14 @@ int main(void) {
     PRIMAL_getprimalobj(A, PRIMAL_SOL_ITR, &pA);
     PRIMAL_getprimalobj(B, PRIMAL_SOL_ITR, &pB);
     PRIMAL_getprimalobj(C, PRIMAL_SOL_ITR, &pC);
-    printf("A: rc=%d pobj=%.4f (atteso 4)\n", rA, pA);
-    printf("B: rc=%d pobj=%.4f (atteso 2)\n", rB, pB);
-    printf("C: rc=%d pobj=%.4f (atteso 7)\n", rC, pC);
+    printf("A: rc=%d pobj=%.4f (expected 4)\n", rA, pA);
+    printf("B: rc=%d pobj=%.4f (expected 2)\n", rB, pB);
+    printf("C: rc=%d pobj=%.4f (expected 7)\n", rC, pC);
 
     int ok = (rA == PRIMAL_RES_OK && fabs(pA - 4.0) < 1e-9) &&
              (rB == PRIMAL_RES_OK && fabs(pB - 2.0) < 1e-9) &&
              (rC == PRIMAL_RES_OK && fabs(pC - 7.0) < 1e-9);
-    printf("%s (3 task indipendenti, isolamento verificato)\n",
+    printf("%s (3 independent tasks, isolation verified)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&A);

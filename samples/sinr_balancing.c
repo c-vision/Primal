@@ -106,7 +106,7 @@ int main(void) {
         budget += p[i];
     }
     int ok = fabs(lo - want) < 1e-6 && fabs(gmin - lo) < 1e-6 && budget <= P + 1e-7;
-    printf("sinr_balancing  t*=%.9f (atteso 10/21=%.9f)  min_SINR=%.9f  p=(%.6f,%.6f) %s\n",
+    printf("sinr_balancing  t*=%.9f (expected 10/21=%.9f)  min_SINR=%.9f  p=(%.6f,%.6f) %s\n",
            lo, want, gmin, p[0], p[1], ok ? "OK" : "FAIL");
     return ok ? 0 : 1;
 }

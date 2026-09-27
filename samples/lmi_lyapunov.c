@@ -90,7 +90,7 @@ int main(void) {
     double lmin = trP/2 - disc;
     int good = ok && fabs(obj - 1.5) < 1e-6 && fabs(P[0]-1.0) < 1e-6 &&
                fabs(P[1]+0.5) < 1e-6 && fabs(P[2]+0.5) < 1e-6 && fabs(P[3]-0.5) < 1e-6 && lmin > -1e-9;
-    printf("lmi_lyapunov  obj=%.8f (atteso 1.5 = 3/2)  P=[[%.6f,%.6f],[%.6f,%.6f]]  lmin=%.2e\n",
+    printf("lmi_lyapunov  obj=%.8f (expected 1.5 = 3/2)  P=[[%.6f,%.6f],[%.6f,%.6f]]  lmin=%.2e\n",
            obj, P[0], P[1], P[2], P[3], lmin);
     printf("  trace(P)=%.8f  S (=-(A'P+PA+I)) = [[%.2e,%.2e],[.,%.2e]]  %s\n",
            trP, S[0], S[1], S[2], good ? "OK" : "FAIL");

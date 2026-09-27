@@ -97,10 +97,10 @@ int main(void) {
              fabs(x[0] - 0.6) < 1e-6 && fabs(x[1] - 0.4) < 1e-6 &&
              fabs(x[2] - 0.3) < 1e-6 && fabs(x[3] - 0.7) < 1e-6 &&
              fabs(track0) < 1e-6 && fabs(track1) < 1e-6;
-    printf("w0 = (%.4f, %.4f), w1 = (%.4f, %.4f), obj = %.6f (atteso 0.08)\n",
+    printf("w0 = (%.4f, %.4f), w1 = (%.4f, %.4f), obj = %.6f (expected 0.08)\n",
            x[0], x[1], x[2], x[3], obj);
-    printf("tracking = %.4f poi %.4f (atteso 0.0, 0.0)\n", track0, track1);
-    printf("%s (index tracking su due periodi con costo di turnover)\n",
+    printf("tracking = %.4f then %.4f (expected 0.0, 0.0)\n", track0, track1);
+    printf("%s (index tracking over two periods with turnover cost)\n",
            ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);

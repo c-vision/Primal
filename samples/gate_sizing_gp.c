@@ -129,7 +129,7 @@ int main(void) {
     double want = 10.0*sqrt(10.0)/(sqrt(11.0)+sqrt(10.0));   /* s2* */
     int good = ok && fabs(delay - 3.1976177) < 1e-4 && fabs(area - Amax) < 1e-6 &&
                fabs(s2 - want) < 1e-2 && fabs(y[D] - delay) < 1e-4;
-    printf("gate_sizing_gp  delay=%.8f (atteso 3.19761770)  s1=%.6f s2=%.6f (atteso %.6f)\n",
+    printf("gate_sizing_gp  delay=%.8f (expected 3.19761770)  s1=%.6f s2=%.6f (expected %.6f)\n",
            delay, s1, s2, want);
     printf("  area=%.6f (<= %.0f)  D(var)=%.8f  %s\n", area, Amax, y[D], good ? "OK" : "FAIL");
     return good ? 0 : 1;

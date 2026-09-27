@@ -96,7 +96,7 @@ int main(void) {
         int ok = svm(2, 4, X, y, 1.0, &obj, w, &b) == 0;
         int good = ok && fabs(obj - 0.25) < 1e-7 && fabs(w[0] - 0.5) < 1e-6 &&
                    fabs(w[1] - 0.5) < 1e-6 && fabs(b) < 1e-6;
-        printf("SVM A (separable, c=1): obj=%.8f w=(%.4f,%.4f) b=%.2e  (atteso 0.25, w=(1/2,1/2), b=0)  %s\n",
+        printf("SVM A (separable, c=1): obj=%.8f w=(%.4f,%.4f) b=%.2e  (expected 0.25, w=(1/2,1/2), b=0)  %s\n",
                obj, w[0], w[1], b, good ? "OK" : "FAIL");
         bad |= !good;
     }
@@ -107,7 +107,7 @@ int main(void) {
         double obj = 0, w[2] = {0}, b = 0;
         int ok = svm(1, 2, X, y, 1.0, &obj, w, &b) == 0;
         int good = ok && fabs(obj - 2.0) < 1e-7 && fabs(w[0]) < 1e-6 && fabs(b) < 1e-6;
-        printf("SVM B (soft, c=1):      obj=%.8f w=(%.4f) b=%.2e      (atteso 2, w=0, b=0)          %s\n",
+        printf("SVM B (soft, c=1):      obj=%.8f w=(%.4f) b=%.2e      (expected 2, w=0, b=0)          %s\n",
                obj, w[0], b, good ? "OK" : "FAIL");
         bad |= !good;
     }

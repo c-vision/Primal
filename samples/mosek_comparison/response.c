@@ -76,12 +76,12 @@ int main(void) {
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
     printf("x = (%.6f, %.6f), obj = %.6f\n", x[0], x[1], po);
-    printf("log ricevuto: %d messaggi (primo: \"%s\")\n", msg_count, first_msg);
+    printf("log received: %d messages (first: \"%s\")\n", msg_count, first_msg);
 
     int ok = msg_count > 0 &&
              fabs(x[0] - 3.0) < 1e-6 && fabs(x[1] - 1.0) < 1e-6 &&
              fabs(po + 9.0) < 1e-6;
-    printf("%s (callback stream + ottimo)\n", ok ? "OK" : "FAIL");
+    printf("%s (callback stream + optimum)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

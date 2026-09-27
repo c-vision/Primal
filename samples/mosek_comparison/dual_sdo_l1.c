@@ -118,9 +118,9 @@ int main(void) {
     double X[4], S[4], y;
     double pobj = primal_sdp(X);
     double dobj = dual_sdp(&y, S);
-    printf("primale: pobj = %.6f (atteso 0), X = diag(%.4f, %.4f)\n",
+    printf("primal: pobj = %.6f (expected 0), X = diag(%.4f, %.4f)\n",
            pobj, X[0], X[3]);
-    printf("duale:   dobj = %.6f (atteso 0), y = %.4f, S = diag(%.4f, %.4f)\n",
+    printf("dual:   dobj = %.6f (expected 0), y = %.4f, S = diag(%.4f, %.4f)\n",
            dobj, y, S[0], S[3]);
 
     int ok = fabs(pobj) < 1e-6 && fabs(dobj) < 1e-6 &&

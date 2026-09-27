@@ -113,7 +113,7 @@ int main(void) {
     const double expect_ils = sqrt(8.0) / 5.0;     /* sqrt(8/25) */
     int good = r1 == PRIMAL_RES_OK && r2 == PRIMAL_RES_OK &&
                fabs(relax - expect_relax) < 1e-6 && fabs(ils - expect_ils) < 1e-6;
-    printf("qcqp_sdo_relaxation: relax=%.8f (atteso -1/5=%.8f)  int_ls=%.8f (atteso sqrt8/5=%.8f)  %s\n",
+    printf("qcqp_sdo_relaxation: relax=%.8f (expected -1/5=%.8f)  int_ls=%.8f (expected sqrt8/5=%.8f)  %s\n",
            relax, expect_relax, ils, expect_ils, good ? "OK" : "FAIL");
     return good ? 0 : 1;
 }

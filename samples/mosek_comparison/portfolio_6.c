@@ -139,7 +139,7 @@ int main(void) {
     double exp_obj = 0.0;
     for (int j = 0; j < n; j++) exp_obj += r[j] * xx[j];
     exp_obj -= gamma * risk;
-    printf("rischio diretto = %.6f, obj atteso = %.6f\n", risk, exp_obj);
+    printf("direct risk = %.6f, expected obj = %.6f\n", risk, exp_obj);
 
     int ok = fabs(xx[0] + xx[1] + xx[2] - 1.0) < 1e-5 &&
              obj >= exp_obj - 5e-3 && obj <= exp_obj + 5e-3;
@@ -150,7 +150,7 @@ int main(void) {
         if (xx[j] > xx[VY + j] + 1e-6) ok = 0;
     }
     if (nact > k) ok = 0;
-    printf("%s (fattori+MIP: obj = r'x - gamma*risk, cardinalita' <= %d)\n",
+    printf("%s (factors+MIP: obj = r'x - gamma*risk, cardinality <= %d)\n",
            ok ? "OK" : "FAIL", k);
 
     PRIMAL_deletetask(&task);

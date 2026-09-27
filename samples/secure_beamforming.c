@@ -83,7 +83,7 @@ int main(void) {
     int good = ok && fabs(obj - sqrt(2.0)) < 1e-6 && fabs(w[0] - 1.0) < 1e-3 &&
                fabs(w[1] - 1.0) < 1e-3 &&
                fabs(w[0] * w[0] + w[1] * w[1] - P) < 1e-6;   /* power active */
-    printf("secure_beamforming: a'w=%.8f  w=(%.6f,%.6f)  gain=%.8f  (atteso sqrt2, w=(1,1), gain=2)  %s\n",
+    printf("secure_beamforming: a'w=%.8f  w=(%.6f,%.6f)  gain=%.8f  (expected sqrt2, w=(1,1), gain=2)  %s\n",
            obj, w[0], w[1], obj * obj, good ? "OK" : "FAIL");
     return good ? 0 : 1;
 }

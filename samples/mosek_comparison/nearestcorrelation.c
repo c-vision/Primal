@@ -232,7 +232,7 @@ int main(void) {
         for (int j = 0; j < N; j++) printf(" %8.4f", X[i][j]);
         printf("\n");
     }
-    printf("obj (norma Frobenius) = %.6f\n", po);
+    printf("obj (Frobenius norm) = %.6f\n", po);
 
     /* independent check: Higham alternating projections */
     double Xh[N][N];
@@ -257,8 +257,8 @@ int main(void) {
     for (int i = 0; i < N; i++)
         if (fabs(X[i][i] - 1.0) > 1e-5) diag_ok = 0;
     int ok = psd_ok && diag_ok && fx <= fh + 1e-3;
-    printf("%s (PSD=%s, diag=1=%s, norma ~ Higham)\n",
-           ok ? "OK" : "FAIL", psd_ok ? "si" : "NO", diag_ok ? "si" : "NO");
+    printf("%s (PSD=%s, diag=1=%s, norm ~ Higham)\n",
+           ok ? "OK" : "FAIL", psd_ok ? "yes" : "no", diag_ok ? "yes" : "no");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

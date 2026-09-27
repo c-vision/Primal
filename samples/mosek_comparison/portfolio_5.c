@@ -123,7 +123,7 @@ int main(void) {
     }
     int ok = fabs(xx[0] + xx[1] + xx[2] - 1.0) < 1e-5 && nact <= k &&
              obj <= 0.119066 + 1e-6;
-    printf("%s (bilancio, cardinalita' <= %d, obj <= 0.119066)\n",
+    printf("%s (budget, cardinality <= %d, obj <= 0.119066)\n",
            ok ? "OK" : "FAIL", k);
 
     PRIMAL_deletetask(&task);

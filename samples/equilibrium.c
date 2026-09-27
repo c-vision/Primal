@@ -77,7 +77,7 @@ int main(void) {
     double want = -sqrt(LSTR * LSTR - 1.0);   /* -sqrt(3) */
     int okall = ok && fabs(y - want) < 1e-7 && fabs(x0) < 1e-6;
     printf("equilibrium  l=%.1f\n", LSTR);
-    printf("  massa libera = (%.8f, %.8f)   (atteso (0, -sqrt(3)=%.8f))\n", x0, y, want);
+    printf("  free mass = (%.8f, %.8f)   (expected (0, -sqrt(3)=%.8f))\n", x0, y, want);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

@@ -90,7 +90,7 @@ int main(void) {
     double lmax = tr/2 + sqrt(fmax(0.0, tr*tr/4 - det));
     double gamma = sqrt(g2);
     int good = ok && fabs(gamma - 1.0) < 1e-6 && lmax <= 1e-6;
-    printf("bounded_real_lmi  gamma^2*=%.8f  gamma*=%.8f (atteso 1)  P=%.6f  lmax=%.2e  %s\n",
+    printf("bounded_real_lmi  gamma^2*=%.8f  gamma*=%.8f (expected 1)  P=%.6f  lmax=%.2e  %s\n",
            g2, gamma, P[0], lmax, good ? "OK" : "FAIL");
     return good ? 0 : 1;
 }

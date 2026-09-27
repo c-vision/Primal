@@ -130,7 +130,7 @@ int main(void) {
     }
     int okall = ok && fabs(obj - best) < 2e-3 * (1.0 + fabs(best)) && fabs(x[0] + x[1] - 1.0) < 1e-7;
     printf("dist_robust  m=%d N=%d eps=%.2f\n", M, NS, EPS);
-    printf("  x = (%.8f, %.8f)   obiettivo LP = %.8f\n", x[0], x[1], obj);
+    printf("  x = (%.8f, %.8f)   LP objective = %.8f\n", x[0], x[1], obj);
     printf("  brute force = %.8f\n", best);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;

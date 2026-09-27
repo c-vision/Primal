@@ -71,7 +71,7 @@ int main(void) {
 
     double xx[4];
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx);
-    printf("w = (%.4f, %.4f, %.4f), y = %.4f (atteso 0.75)\n",
+    printf("w = (%.4f, %.4f, %.4f), y = %.4f (expected 0.75)\n",
            xx[0], xx[1], xx[2], xx[3]);
 
     int ok = fabs(xx[3] - 0.75) < 1e-6 &&
@@ -79,7 +79,7 @@ int main(void) {
              fabs(xx[1] + 2.0 * xx[2] - 1.5) < 1e-6;
     /* SOS2: w0 and w2 not both positive (not adjacent) */
     if (xx[0] > 1e-6 && xx[2] > 1e-6) ok = 0;
-    printf("%s (piecewise-linear SOS2: y(1.5)=0.75, adiacenza rispettata)\n",
+    printf("%s (piecewise-linear SOS2: y(1.5)=0.75, adjacency respected)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);

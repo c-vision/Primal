@@ -133,11 +133,11 @@ int main(void) {
         else step *= 0.5;
         if (step < 1e-12) break;
     }
-    printf("gradiente numerico: f* = %.6f in (%.6f, %.6f)\n", fbest, xg[0], xg[1]);
+    printf("numerical gradient: f* = %.6f at (%.6f, %.6f)\n", fbest, xg[0], xg[1]);
 
     int ok = fabs(po - fbest) < 1e-3 &&
              fabs(xx[0] - xg[0]) < 1e-2 && fabs(xx[1] - xg[1]) < 1e-2;
-    printf("%s (conico = gradiente numerico)\n", ok ? "OK" : "FAIL");
+    printf("%s (conic = numerical gradient)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

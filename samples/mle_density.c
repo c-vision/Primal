@@ -96,8 +96,8 @@ int main(void) {
     int okall = ok && fabs(xv[0] - 2.0 / 3.0) < 2e-3 && fabs(xv[1] - 2.0 / 3.0) < 2e-3 &&
                 fabs(xv[2] - 2.0) < 2e-3 && fabs(obj - want) < 1e-6;
     printf("mle_density  n=%d\n", ND);
-    printf("  x = (%.8f, %.8f, %.8f)   (atteso 2/3, 2/3, 2)\n", xv[0], xv[1], xv[2]);
-    printf("  obiettivo = %.10f   (atteso %.10f)\n", obj, want);
+    printf("  x = (%.8f, %.8f, %.8f)   (expected 2/3, 2/3, 2)\n", xv[0], xv[1], xv[2]);
+    printf("  objective = %.10f   (expected %.10f)\n", obj, want);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

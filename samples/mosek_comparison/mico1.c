@@ -79,11 +79,11 @@ int main(void) {
         double o = (double)a;
         if (o > best) best = o;
     }
-    printf("enumerazione: best = %.4f\n", best);
+    printf("enumeration: best = %.4f\n", best);
 
     int ok = fabs(obj - best) < 1e-6 &&
              fabs(xx[1] - floor(xx[1] + 0.5)) < 1e-6;
-    printf("%s (MIP+cono: ottimo per enumerazione)\n", ok ? "OK" : "FAIL");
+    printf("%s (MIP+cone: optimum by enumeration)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

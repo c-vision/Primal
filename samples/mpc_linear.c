@@ -91,7 +91,7 @@ int main(void) {
     int good = ok && fabs(obj - 2.0) < 1e-7 && fabs(u[0] - 1.0) < 1e-6 &&
                fabs(u[1] + 1.0) < 1e-6 &&
                fabs(x[P(NSTEP)] - 1.0) < 1e-6 && fabs(x[V(NSTEP)]) < 1e-6;
-    printf("mpc_linear: obj=%.8f  u=(%.6f, %.6f)  x_N=(%.6f, %.6f)  (atteso 2, u=(1,-1), x_N=(1,0))  %s\n",
+    printf("mpc_linear: obj=%.8f  u=(%.6f, %.6f)  x_N=(%.6f, %.6f)  (expected 2, u=(1,-1), x_N=(1,0))  %s\n",
            obj, u[0], u[1], x[P(NSTEP)], x[V(NSTEP)], good ? "OK" : "FAIL");
     return good ? 0 : 1;
 }

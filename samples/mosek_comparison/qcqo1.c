@@ -68,7 +68,7 @@ int main(void) {
     int ok = fabs(xx[0] - 1.0 / sqrt(2.0)) < 1e-4 &&
              fabs(xx[1] - 1.0 / sqrt(2.0)) < 1e-4 &&
              fabs(obj - sqrt(2.0)) < 1e-4;
-    printf("%s (atteso x=(1,1)/sqrt2, obj=sqrt2)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected x=(1,1)/sqrt2, obj=sqrt2)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

@@ -71,9 +71,9 @@ int main(void) {
     int ok = fabs(obj - 0.5) < 1e-7 && fabs(w[2] - 0.5) < 1e-6 &&
              fabs(w[0] + w[1] - 0.5) < 1e-6 && fabs(w[0] + w[1] + w[2] - 1.0) < 1e-6 &&
              fabs(quad - obj) < 1e-7;
-    printf("w = (%.4f, %.4f, %.4f), obj = %.6f (atteso 0.5)\n", w[0], w[1], w[2], obj);
-    printf("w'Sigma w ricostruito = %.6f, e'w = %.2e\n", quad, w[0] + w[1] + w[2]);
-    printf("%s (Sigma = F F' + diag(D), minimo a w2 = 1/2)\n", ok ? "OK" : "FAIL");
+    printf("w = (%.4f, %.4f, %.4f), obj = %.6f (expected 0.5)\n", w[0], w[1], w[2], obj);
+    printf("w'Sigma w reconstructed = %.6f, e'w = %.2e\n", quad, w[0] + w[1] + w[2]);
+    printf("%s (Sigma = F F' + diag(D), minimum at w2 = 1/2)\n", ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;

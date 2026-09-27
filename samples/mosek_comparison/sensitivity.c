@@ -86,13 +86,13 @@ int main(void) {
     double x[2], obj;
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &obj);
-    printf("soluzione base: x = (%.4f, %.4f), obj = %.4f\n", x[0], x[1], obj);
+    printf("base solution: x = (%.4f, %.4f), obj = %.4f\n", x[0], x[1], obj);
 
     double lc0, uc0, lc1, uc1;
     PRIMAL_costsensitivity(task, 0, &lc0, &uc0);
     PRIMAL_costsensitivity(task, 1, &lc1, &uc1);
     printf("c0 in [%.4f, %s]\n", lc0, uc0 == INFINITY ? "+inf" : "...");
-    printf("c1 in [%.4f, %.4f] (basic: range degenere)\n", lc1, uc1);
+    printf("c1 in [%.4f, %.4f] (basic: degenerate range)\n", lc1, uc1);
 
     /* external check */
     double xa, xb, ya, yb;
@@ -106,7 +106,7 @@ int main(void) {
              fabs(xa) < 1e-9 &&            /* in range: x0 stays 0 */
              fabs(xb) > 1e-9 &&            /* out range: x0 > 0 */
              fabs(p_out - (0.4 * 4.0)) < 1e-6;  /* all on x0: 1.6 */
-    printf("%s (range c0 confermato da re-solve)\n", ok ? "OK" : "FAIL");
+    printf("%s (c0 range confirmed by re-solve)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

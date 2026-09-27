@@ -126,7 +126,7 @@ int main(void) {
     int good = ok && fabs(obj - 0.5) < 1e-5 && fabs(x[X00] - 0.5) < 1e-4 &&
                fabs(x[X11] - 0.5) < 1e-4 && fabs(x[X01]) < 1e-4 &&
                fabs(x[D0] - 0.5) < 1e-4 && fabs(x[D1] - 0.5) < 1e-4;
-    printf("lownerjohn: rc=%d t*=%.8f  C=(%.5f,%.5f,%.5f) d=(%.5f,%.5f)  (atteso 0.5, C=0.5I, d=(0.5,0.5))  %s\n",
+    printf("lownerjohn: rc=%d t*=%.8f  C=(%.5f,%.5f,%.5f) d=(%.5f,%.5f)  (expected 0.5, C=0.5I, d=(0.5,0.5))  %s\n",
            (int)rc, obj, x[X00], x[X01], x[X11], x[D0], x[D1], good ? "OK" : "FAIL");
     return good ? 0 : 1;
 }

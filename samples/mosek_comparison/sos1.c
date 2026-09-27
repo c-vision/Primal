@@ -75,8 +75,8 @@ int main(void) {
     for (int j = 0; j < 3; j++) if (xx[j] > 1e-6) nact++;
     int ok = fabs(obj - best) < 1e-6 && nact <= 1 &&
              fabs(obj - (xx[0] + xx[1] + xx[2])) < 1e-6;
-    printf("enumerazione: best = %.4f, non-nulli = %d\n", best, nact);
-    printf("%s (atteso obj=5/6, un solo membro non nullo)\n", ok ? "OK" : "FAIL");
+    printf("enumeration: best = %.4f, nonzeros = %d\n", best, nact);
+    printf("%s (expected obj=5/6, a single nonzero member)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

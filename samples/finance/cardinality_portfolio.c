@@ -67,9 +67,9 @@ int main(void) {
     double quad = x[0] * x[0] + x[1] * x[1] + x[2] * x[2];
     int ok = fabs(obj - 0.5) < 1e-6 && used <= 2 &&
              fabs(x[0] + x[1] + x[2] - 1.0) < 1e-6 && fabs(quad - obj) < 1e-6;
-    printf("w = (%.4f, %.4f, %.4f), attivi = %d, obj = %.6f (atteso 0.5)\n",
+    printf("w = (%.4f, %.4f, %.4f), active = %d, obj = %.6f (expected 0.5)\n",
            x[0], x[1], x[2], used, obj);
-    printf("%s (MIQP: cardinalita' K=2 su 3 attivi)\n", ok ? "OK" : "FAIL");
+    printf("%s (MIQP: cardinality K=2 over 3 active)\n", ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;

@@ -111,13 +111,13 @@ int main(void) {
     if (rc != PRIMAL_RES_OK) { printf("optimize rc=%d\n", rc); return 1; }
     PRIMALsolstae sta;
     PRIMAL_getsolsta(task, PRIMAL_SOL_ITR, &sta);
-    printf("SDP feasibility di A: solsta = %d (%s)\n", sta,
-           sta == PRIMAL_SOL_STA_OPTIMAL ? "PSD" : "NON PSD");
+    printf("SDP feasibility of A: solsta = %d (%s)\n", sta,
+           sta == PRIMAL_SOL_STA_OPTIMAL ? "PSD" : "NOT PSD");
 
     /* independent check: explicit Cholesky */
     double L[D][D];
     int ok_chol = chol3(A, L);
-    printf("Cholesky diretta: %s\n", ok_chol ? "esiste (A SPD)" : "non esiste");
+    printf("Direct Cholesky: %s\n", ok_chol ? "exists (A SPD)" : "does not exist");
     if (ok_chol) {
         printf("L =\n");
         for (int i = 0; i < D; i++) {
@@ -138,7 +138,7 @@ int main(void) {
     }
 
     int ok = (sta == PRIMAL_SOL_STA_OPTIMAL) && ok_chol;
-    printf("%s (A PSD via SDP = Cholesky esiste)\n", ok ? "OK" : "FAIL");
+    printf("%s (A PSD via SDP = Cholesky exists)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

@@ -106,10 +106,10 @@ int main(void) {
 
     int ok = (a == 1 && na == 3) && (b == 0);
     printf("exact_cover\n");
-    printf("  A) 2x3, domino: %s  bricks=%d (atteso 3)\n",
-           a == 1 ? "ottimo" : (a == 0 ? "infeasible" : "errore"), na);
-    printf("  B) 3x3, 2x2:    %s (atteso infeasible)\n",
-           b == 1 ? "ottimo" : (b == 0 ? "infeasible" : "errore"));
+    printf("  A) 2x3, domino: %s  bricks=%d (expected 3)\n",
+           a == 1 ? "optimal" : (a == 0 ? "infeasible" : "error"), na);
+    printf("  B) 3x3, 2x2:    %s (expected infeasible)\n",
+           b == 1 ? "optimal" : (b == 0 ? "infeasible" : "error"));
     printf("%s\n", ok ? "OK" : "FAIL");
     return ok ? 0 : 1;
 }

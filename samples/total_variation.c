@@ -81,7 +81,7 @@ int main(void) {
     int good = ok && fabs(obj - tv) < 1e-7 && fabs(u[0] - a0) < 1e-6 &&
                fabs(u[1] - (1.0 - a0)) < 1e-6 &&
                u[0] * u[0] + (1.0 - u[1]) * (1.0 - u[1]) <= sigma * sigma + 1e-9;
-    printf("total_variation: TV*=%.8f  u=(%.6f, %.6f)  (atteso 1-1/sqrt2, u=(1/(2sqrt2),1-1/(2sqrt2)))  %s\n",
+    printf("total_variation: TV*=%.8f  u=(%.6f, %.6f)  (expected 1-1/sqrt2, u=(1/(2sqrt2),1-1/(2sqrt2)))  %s\n",
            obj, u[0], u[1], good ? "OK" : "FAIL");
     return good ? 0 : 1;
 }

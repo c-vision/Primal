@@ -135,8 +135,8 @@ int main(void) {
     }
     /* without costs the portfolio dominates: pobj_portfolio1 ~ 0.119066
      * (computed by the portfolio_1 sample with the same data) */
-    printf("%s (bilancio+semi-continuita' verificati, obj <= 0.1191: %s)\n",
-           ok ? "OK" : "FAIL", obj <= 0.1191 ? "si" : "NO");
+    printf("%s (budget+semi-continuity verified, obj <= 0.1191: %s)\n",
+           ok ? "OK" : "FAIL", obj <= 0.1191 ? "yes" : "no");
     if (obj > 0.1191) ok = 0;
 
     PRIMAL_deletetask(&task);

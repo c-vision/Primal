@@ -147,7 +147,7 @@ int main(void) {
         int ok = 0; double v = sr(ws[i], &ok);
         int good = ok && v > -1e-6 && fabs(v - want[i]) < 1e-3;
         if (!good) bad++;
-        printf("  w=%.2f  SR=%.4f  (rif %.4f)  %s\n", ws[i], v, want[i], good ? "OK" : "FAIL");
+        printf("  w=%.2f  SR=%.4f  (ref %.4f)  %s\n", ws[i], v, want[i], good ? "OK" : "FAIL");
     }
     printf("%s\n", bad == 0 ? "OK" : "FAIL");
     return bad == 0 ? 0 : 1;

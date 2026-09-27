@@ -134,7 +134,7 @@ int main(void) {
     int okall = ok && fabs(obj - 1.5) < 1e-6 && onezero &&
                 (fabs(fabs(b0) - 1.5) < 1e-5 || fabs(fabs(b1) - 1.5) < 1e-5);
     printf("rank_one  k=%d\n", KCAP);
-    printf("  b = (%.8f, %.8f)   obiettivo = %.10f (atteso 1.5)\n", b0, b1, obj);
+    printf("  b = (%.8f, %.8f)   objective = %.10f (expected 1.5)\n", b0, b1, obj);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

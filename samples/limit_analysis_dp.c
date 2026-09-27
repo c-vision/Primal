@@ -120,7 +120,7 @@ int main(void) {
     double yf = sqrt(sq/2.0) + 3.0*alpha*m - kk;             /* must be ~ 0 at yield */
     int good = ok && fabs(tstar - want) < 1e-7 && fabs(tstar - 1.128237) < 1e-5 &&
                fabs(yf) < 1e-7;
-    printf("limit_analysis_dp  alpha=%.8f k=%.8f  t*=%.8f (atteso %.8f)\n", alpha, kk, tstar, want);
+    printf("limit_analysis_dp  alpha=%.8f k=%.8f  t*=%.8f (expected %.8f)\n", alpha, kk, tstar, want);
     printf("  sigma_x=%.6f  sqrt(J2)=%.6f  m=%.6f  yf=%.2e  %s\n",
            s0v, sqrt(sq/2.0), m, yf, good ? "OK" : "FAIL");
     return good ? 0 : 1;

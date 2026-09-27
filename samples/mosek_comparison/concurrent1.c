@@ -88,13 +88,13 @@ int main(void) {
         if (po > best) { best = po; bopt = k; }
         PRIMAL_deletetask(&task);
     }
-    printf("migliore: %s con pobj = %.6f (atteso 83.333333 = 250/3)\n",
+    printf("best: %s with pobj = %.6f (expected 83.333333 = 250/3)\n",
            bopt >= 0 ? names[bopt] : "?", best);
 
     int ok = all_ok && fabs(best - 250.0 / 3.0) < 1e-6;
     for (int k = 0; k < 4; k++)
         if (fabs(vals[k] - best) > 1e-6) ok = 0;   /* all agree */
-    printf("%s (4 optimizer, stesso ottimo — concorrenza simulata)\n",
+    printf("%s (4 optimizers, same optimum — simulated concurrency)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deleteenv(&env);

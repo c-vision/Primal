@@ -115,13 +115,13 @@ int main(void) {
     PRIMAL_getxx(task, PRIMAL_SOL_ITR, xx);
     PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
     PRIMAL_getbarxj(task, PRIMAL_SOL_ITR, 0, X);
-    printf("x = (%.4f, %.4f), obj = %.4f (atteso (1,1), 2)\n", xx[0], xx[1], po);
-    printf("X = diag(%.4f, %.4f, %.4f) (atteso (0,0,1))\n", X[0], X[4], X[8]);
+    printf("x = (%.4f, %.4f), obj = %.4f (expected (1,1), 2)\n", xx[0], xx[1], po);
+    printf("X = diag(%.4f, %.4f, %.4f) (expected (0,0,1))\n", X[0], X[4], X[8]);
 
     int ok = fabs(xx[0] - 1.0) < 1e-4 && fabs(xx[1] - 1.0) < 1e-4 &&
              fabs(po - 2.0) < 1e-4 &&
              fabs(X[0]) < 1e-4 && fabs(X[4]) < 1e-4 && fabs(X[8] - 1.0) < 1e-4;
-    printf("%s (LMI attiva: x=(1,1), X=diag(0,0,1) PSD al bordo)\n",
+    printf("%s (LMI active: x=(1,1), X=diag(0,0,1) PSD at the boundary)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);

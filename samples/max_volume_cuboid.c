@@ -80,7 +80,7 @@ static int solve(const char *name, const double F[][3], int nf, double want) {
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         double vol = 4.0 * x[4] * x[4];
         ok = fabs(vol - want) < 1e-5;
-        printf("%-8s c=(%.4f,%.4f) r=(%.4f,%.4f) volume=%.6f (atteso %.4f) %s\n",
+        printf("%-8s c=(%.4f,%.4f) r=(%.4f,%.4f) volume=%.6f (expected %.4f) %s\n",
                name, x[0], x[1], x[2], x[3], vol, want, ok ? "OK" : "FAIL");
     } else {
         printf("%-8s rc=%d FAIL\n", name, (int)rc);

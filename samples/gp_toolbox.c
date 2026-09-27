@@ -104,7 +104,7 @@ int main(void) {
     double c1 = 1.0 / x[2] + x[1] / (x[0] * x[0]);
     int okall = ok && c0 < 1.0 + 1e-8 && c1 < 1.0 + 1e-8 && fabs(obj - exp(topt)) < 1e-7 * (1.0 + obj);
     printf("gp_toolbox  x=%.6f y=%.6f z=%.6f  obj = %.6f\n", x[0], x[1], x[2], obj);
-    printf("  c0 = %.9f  c1 = %.9f  (entrambi <= 1)   exp(t) = %.6f\n", c0, c1, exp(topt));
+    printf("  c0 = %.9f  c1 = %.9f  (both <= 1)   exp(t) = %.6f\n", c0, c1, exp(topt));
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

@@ -137,7 +137,7 @@ int main(void) {
     }
     if (nact > k) ok = 0;
     if (obj > 0.119066 + 1e-6) ok = 0;
-    printf("%s (MIQP: bilancio, binarie, |x-x0|<=u, obj <= 0.119066)\n",
+    printf("%s (MIQP: budget, binaries, |x-x0|<=u, obj <= 0.119066)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);

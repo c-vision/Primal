@@ -98,8 +98,8 @@ int main(void) {
     int okall = ok && fabs(obj - 1.0) < 1e-8 && fabs(msum - 1.0) < 1e-7 &&
                 mu[0] >= -1e-9 && mu[1] >= -1e-9 && mu[2] >= -1e-9;
     printf("wasserstein  n=%d K=%d\n", NB, NK);
-    printf("  costo totale = %.10f (atteso 1.0)\n", obj);
-    printf("  barycenter mu = (%.6f, %.6f, %.6f)  somma=%.8f\n", mu[0], mu[1], mu[2], msum);
+    printf("  total cost = %.10f (expected 1.0)\n", obj);
+    printf("  barycenter mu = (%.6f, %.6f, %.6f)  sum=%.8f\n", mu[0], mu[1], mu[2], msum);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

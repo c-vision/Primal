@@ -61,7 +61,7 @@ int main(void) {
            (int)rc, (int)PRIMAL_RES_ERR_INFEASIBLE, (int)sta, (int)PRIMAL_SOL_STA_PRIM_INFEAS_CER);
 
     int ok = rc == PRIMAL_RES_ERR_INFEASIBLE && sta == PRIMAL_SOL_STA_PRIM_INFEAS_CER;
-    printf("%s (atteso infeasible con certificato)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected infeasible with certificate)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

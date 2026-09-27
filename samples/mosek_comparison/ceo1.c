@@ -62,7 +62,7 @@ int main(void) {
     printf("x = (%.6f, %.6f, %.6f), obj = %.6f\n", xx[0], xx[1], xx[2], obj);
 
     int ok = fabs(obj - exp(-1.0)) < 1e-6 && fabs(xx[2] - (-1.0)) < 1e-6;
-    printf("%s (atteso obj = e^-1 = 0.367879 in x2 = -1)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected obj = e^-1 = 0.367879 in x2 = -1)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

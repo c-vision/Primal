@@ -89,12 +89,12 @@ int main(void) {
                 if (o > best) best = o;
             }
         }
-    printf("enumerazione: best = %.4f\n", best);
+    printf("enumeration: best = %.4f\n", best);
 
     int ok = fabs(obj - best) < 1e-6 &&
              fabs(xx[0] - floor(xx[0] + 0.5)) < 1e-6 &&
              fabs(xx[1] - floor(xx[1] + 0.5)) < 1e-6;
-    printf("%s (ottimo confermato, initsol accettata)\n", ok ? "OK" : "FAIL");
+    printf("%s (optimum confirmed, initsol accepted)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

@@ -91,7 +91,7 @@ static double solve_case(double cap, double wout[NA], double *sout, int *ok_out)
 
 /* Run the two sector-cap cases and check the Sharpe values. */
 int main(void) {
-    printf("sharpe_ratio_sectors (4 asset, 2 settori, Sigma=I)\n");
+    printf("sharpe_ratio_sectors (4 assets, 2 sectors, Sigma=I)\n");
     int all = 1;
     double w[NA], s = 0; int ok = 0;
 
@@ -101,7 +101,7 @@ int main(void) {
     int good = ok && fabs(sh - sqrt(20.0)) < 1e-4 && fabs(w[0]+w[1]-0.5) < 1e-4 &&
                   fabs(w[0]-0.375) < 1e-4 && fabs(w[1]-0.125) < 1e-4 &&
                   fabs(w[2]-0.375) < 1e-4 && fabs(w[3]-0.125) < 1e-4 && fabs(sw-1.0) < 1e-6;
-    printf("  A cap=0.50: Sharpe=%.6f (atteso %.6f)  w=(%.4f,%.4f,%.4f,%.4f)  %s\n",
+    printf("  A cap=0.50: Sharpe=%.6f (expected %.6f)  w=(%.4f,%.4f,%.4f,%.4f)  %s\n",
            sh, sqrt(20.0), w[0], w[1], w[2], w[3], good ? "OK" : "FAIL");
     all &= good;
 

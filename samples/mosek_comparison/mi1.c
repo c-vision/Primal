@@ -81,7 +81,7 @@ int main(void) {
 
     int ok = fabs(xx[0] - 5.0) < 1e-6 && fabs(xx[1] - 0.0) < 1e-6 &&
              fabs(obj - 5.0) < 1e-6 && sta == PRIMAL_SOL_STA_INTEGER_OPTIMAL;
-    printf("%s\n", ok ? "OK (atteso x1=5, x2=0, obj=5.0000)" : "FAIL");
+    printf("%s\n", ok ? "OK (expected x1=5, x2=0, obj=5.0000)" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

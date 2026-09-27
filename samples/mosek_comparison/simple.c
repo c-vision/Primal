@@ -69,7 +69,7 @@ int main(void) {
              fabs(dobj - 1.0) < 1e-6 &&          /* strong duality */
              fabs(xx[0] + xx[1] - 1.0) < 1e-6 &&  /* feasibility */
              fabs(xx[0] - (1.0 - xx[1])) < 1e-6;
-    printf("%s (atteso obj=1, pobj=dobj, fattibile)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected obj=1, pobj=dobj, feasible)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

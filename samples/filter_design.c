@@ -42,6 +42,10 @@
  */
 #include <stdio.h>
 #include <math.h>
+/* M_PI is not standard C and glibc hides it under -std=c99 (__STRICT_ANSI__). */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include "primal.h"
 
 #define NF 3                       /* polynomial degree n */

@@ -71,7 +71,7 @@ int main(void) {
     printf("tr(X) = %.6f\n", obj);
 
     int ok = fabs(obj - 0.5) < 1e-6;
-    printf("%s (atteso tr(X) = 0.5, X = J/2 rank-1)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected tr(X) = 0.5, X = J/2 rank-1)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

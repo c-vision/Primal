@@ -83,11 +83,11 @@ int main(void) {
         PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
         PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &pobj);
         PRIMAL_getsolsta(task, PRIMAL_SOL_ITR, &sta);
-        printf("\nStato: %d\n", sta);
+        printf("\nStatus: %d\n", sta);
         for (int j = 0; j < 4; j++) printf("x[%d] = %g\n", j, x[j]);
-        printf("Obiettivo = %g\n", pobj);
+        printf("Objective = %g\n", pobj);
     } else {
-        printf("Errore: %d\n", rc);
+        printf("Error: %d\n", rc);
     }
 
     PRIMAL_deletetask(&task);

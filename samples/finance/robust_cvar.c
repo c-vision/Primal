@@ -89,9 +89,9 @@ int main(void) {
     int ok = fabs(rob - (-0.10)) < 1e-7 &&
              fabs(wr[0] - 0.5) < 1e-6 && fabs(wr[1] - 0.5) < 1e-6 &&
              fabs(nom - (-0.15)) < 1e-7 && rob >= nom - 1e-9;
-    printf("nominal CVaR = %.6f (atteso -0.15), w = (%.4f, %.4f)\n", nom, wn[0], wn[1]);
-    printf("robust  CVaR = %.6f (atteso -0.10), w = (%.4f, %.4f)\n", rob, wr[0], wr[1]);
-    printf("%s (la robustezza costa: CVaR robusto >= nominale)\n", ok ? "OK" : "FAIL");
+    printf("nominal CVaR = %.6f (expected -0.15), w = (%.4f, %.4f)\n", nom, wn[0], wn[1]);
+    printf("robust  CVaR = %.6f (expected -0.10), w = (%.4f, %.4f)\n", rob, wr[0], wr[1]);
+    printf("%s (robustness costs: robust CVaR >= nominal)\n", ok ? "OK" : "FAIL");
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;
 }

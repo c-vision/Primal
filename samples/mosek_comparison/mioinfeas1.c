@@ -63,7 +63,7 @@ int main(void) {
     int ok = rc == PRIMAL_RES_ERR_INFEASIBLE
           && pro == PRIMAL_PRO_STA_PRIM_INFEAS
           && sta == PRIMAL_SOL_STA_UNKNOWN;
-    printf("%s (atteso MIP infeasible: prosta PRIM_INFEAS + solsta UNKNOWN)\n",
+    printf("%s (expected MIP infeasible: prosta PRIM_INFEAS + solsta UNKNOWN)\n",
            ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);

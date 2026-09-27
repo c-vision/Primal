@@ -60,11 +60,11 @@ int main(void) {
         if (rc != PRIMAL_RES_OK) { printf("optimize %d rc=%d\n", k, rc); return 1; }
         double po;
         PRIMAL_getprimalobj(task, PRIMAL_SOL_ITR, &po);
-        printf("passo %d (rhs=%g): obj = %.4f (atteso %.4f)\n",
+        printf("step %d (rhs=%g): obj = %.4f (expected %.4f)\n",
                k + 1, steps[k], po, expect[k]);
         if (fabs(po - expect[k]) > 1e-6) ok = 0;
     }
-    printf("%s (reoptimization: 3 risolve successive)\n", ok ? "OK" : "FAIL");
+    printf("%s (reoptimization: 3 successive solves)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

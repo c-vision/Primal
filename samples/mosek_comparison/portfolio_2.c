@@ -88,7 +88,7 @@ int main(void) {
     const double gammas[] = {0.0, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0};
     const int ng = (int)(sizeof(gammas) / sizeof(gammas[0]));
 
-    printf("%8s %12s %12s   x\n", "gamma", "rischio", "rendimento");
+    printf("%8s %12s %12s   x\n", "gamma", "risk", "return");
     double prev_risk = INFINITY;
     int ok = 1;
     for (int g = 0; g < ng; g++) {
@@ -109,7 +109,7 @@ int main(void) {
         prev_risk = risk;
     }
 
-    printf("%s (frontiera monotona nel rischio)\n", ok ? "OK" : "FAIL");
+    printf("%s (monotone risk frontier)\n", ok ? "OK" : "FAIL");
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;
 }

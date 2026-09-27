@@ -86,11 +86,11 @@ int main(void) {
             double c = (a ? x0 : 0.0) + 2.0 * (b ? x1 : 0.0);
             if (cov >= 3.0 - 1e-9 && c < best) best = c;
         }
-    printf("enumerazione: best = %.4f\n", best);
+    printf("enumeration: best = %.4f\n", best);
 
     int ok = fabs(obj - 3.0) < 1e-6 && fabs(obj - best) < 1e-6 &&
              fabs(xx[0] - 3.0) < 1e-6 && fabs(xx[1]) < 1e-6;
-    printf("%s (atteso x=(3,0), obj=3)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected x=(3,0), obj=3)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

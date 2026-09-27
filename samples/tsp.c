@@ -112,7 +112,7 @@ int main(void) {
     /* the tour is 0 -> 1 -> 2 -> 3 -> 0 */
     int good = fabs(po - 4.0) < 1e-6 && succ[0] == 1 && succ[1] == 2 &&
                succ[2] == 3 && succ[3] == 0 && it >= 2;   /* subtours were eliminated */
-    printf("tsp: obj=%.6f  tour 0->%d->%d->%d->%d  (atteso 4, 0->1->2->3->0)  iterazioni=%d  %s\n",
+    printf("tsp: obj=%.6f  tour 0->%d->%d->%d->%d  (expected 4, 0->1->2->3->0)  iterations=%d  %s\n",
            po, succ[0], succ[1], succ[2], succ[3], it, good ? "OK" : "FAIL");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return good ? 0 : 1;

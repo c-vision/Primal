@@ -148,7 +148,7 @@ int main(void) {
         int okk = ok && fabs(obj - ref) < 1e-6 && fabs(obj - best) < 1e-6 &&
                   fabs(x[0] + x[1]) < 1e-7 && fabs(x[0] - tstar) < 1e-5;
         all = all && okk;
-        printf("  caso %c: c=%.4f t0=%.2f  x=(%.8f, %.8f)  obj=%.10f  [chiusa %.10f]\n",
+        printf("  case %c: c=%.4f t0=%.2f  x=(%.8f, %.8f)  obj=%.10f  [closed-form %.10f]\n",
                'A' + k, c, t0, x[0], x[1], obj, ref);
     }
     printf("%s\n", all ? "OK" : "FAIL");

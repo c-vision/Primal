@@ -86,7 +86,7 @@ int main(void) {
     if (fabs(X2[0]) > 1e-4 || fabs(X2[1]) > 1e-4 ||
         fabs(X2[2]) > 1e-4 || fabs(X2[3]) > 1e-4) ok = 0;
 
-    printf("%s (atteso obj = 1.5, X1 = J/4, X2 = 0)\n", ok ? "OK" : "FAIL");
+    printf("%s (expected obj = 1.5, X1 = J/4, X2 = 0)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

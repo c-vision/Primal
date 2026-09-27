@@ -96,12 +96,12 @@ int main(void) {
             if (v > 0 && 3.0 * x0 + 2.0 * x1 + 2.0 * v > best)
                 best = 3.0 * x0 + 2.0 * x1 + 2.0 * v;
         }
-    printf("enumerazione: best = %.4f, clone = %.4f\n", best, obj);
+    printf("enumeration: best = %.4f, clone = %.4f\n", best, obj);
     if (fabs(obj - best) > 1e-6) ok = 0;
     if (fabs(xx[0]-floor(xx[0]+0.5)) > 1e-6 || fabs(xx[1]-floor(xx[1]+0.5)) > 1e-6) ok = 0;
     if (fabs(obj - (3 * xx[0] + 2 * xx[1] + 2 * xx[2])) > 1e-6) ok = 0;
 
-    printf("%s (ottimo confermato per enumerazione)\n", ok ? "OK" : "FAIL");
+    printf("%s (optimum confirmed by enumeration)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

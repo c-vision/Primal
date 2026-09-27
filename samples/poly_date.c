@@ -124,14 +124,14 @@ int main(int argc, char **argv) {
         int n, n1, n2; long L, R;
         if (solve_degree(d, m, y, k, &n, &n1, &n2, &L, &R)) {
             int good = (L == R) && L > 0 && n1 > 0;
-            printf("  grado %d: %d monomi, %d + %d termini, LHS=RHS=%ld  %s\n",
+            printf("  degree %d: %d monomials, %d + %d terms, LHS=RHS=%ld  %s\n",
                    k, n, n1, n2, L, good ? "OK" : "FAIL");
             all &= good; found = 1;
         } else {
-            printf("  grado %d: nessuna equazione\n", k);
+            printf("  degree %d: no equation\n", k);
         }
     }
-    if (!found) { printf("  nessuna equazione fino al grado %d\n", maxDeg); all = 0; }
+    if (!found) { printf("  no equation up to degree %d\n", maxDeg); all = 0; }
     printf("%s\n", all ? "OK" : "FAIL");
     return all ? 0 : 1;
 }

@@ -148,11 +148,11 @@ int main(void) {
              (int)floor(the + 1e-6) == 1;
 
     printf("lovasz_theta  max-clique upper bound (theta of the complement)\n");
-    printf("  C5 (omega=2): theta=%.10f   atteso sqrt(5)=%.10f   X ok=%d\n",
+    printf("  C5 (omega=2): theta=%.10f   expected sqrt(5)=%.10f   X ok=%d\n",
            th5, sqrt(5.0), x5);
-    printf("  K3 (omega=3): theta=%.10f   atteso 3              X ok=%d\n", th3v, x3);
-    printf("  E5 (omega=1): theta=%.10f   atteso 1              X ok=%d\n", the, xe);
-    printf("  bound intero floor(theta): C5->%d, K3->%d, E5->%d\n",
+    printf("  K3 (omega=3): theta=%.10f   expected 3              X ok=%d\n", th3v, x3);
+    printf("  E5 (omega=1): theta=%.10f   expected 1              X ok=%d\n", the, xe);
+    printf("  integer bound floor(theta): C5->%d, K3->%d, E5->%d\n",
            (int)floor(th5 + 1e-6), (int)floor(th3v + 1e-6), (int)floor(the + 1e-6));
     printf("%s\n", ok ? "OK" : "FAIL");
     return ok ? 0 : 1;

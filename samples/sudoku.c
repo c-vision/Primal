@@ -134,7 +134,7 @@ int main(void) {
     for (int f = 0; f < NFIX && good; f++)         /* givens */
         if (grid[HR[f][0] - 1][HR[f][1] - 1] != HR[f][2]) good = 0;
 
-    printf("sudoku: rc=%d  griglia %s\n", (int)rc, good ? "valida e givens rispettati" : "NON valida");
+    printf("sudoku: rc=%d  grid %s\n", (int)rc, good ? "valid and givens respected" : "NOT valid");
     if (good)
         for (int i = 0; i < N; i++) {
             printf("  ");

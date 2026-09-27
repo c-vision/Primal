@@ -123,7 +123,7 @@ int main(void) {
 
     int okall = ok && covered && fabs(obj - 0.5) < 1e-6;
     printf("facility_location  n=%d k=%d\n", NP, NK);
-    printf("  t* = %.8f (atteso 0.5)   raggi=(%.4f,%.4f) copertura ok=%d\n",
+    printf("  t* = %.8f (expected 0.5)   radii=(%.4f,%.4f) coverage ok=%d\n",
            obj, R[0], R[1], covered);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;

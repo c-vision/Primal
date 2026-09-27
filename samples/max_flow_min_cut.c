@@ -151,7 +151,7 @@ int main(void) {
         double cut = min_cut_bruteforce();
         ok = fabs(flow - 5.0) < 1e-6 && maxcapviol < 1e-7 && maxconsviol < 1e-7 &&
              fabs(cut - flow) < 1e-9;
-        printf("max_flow_min_cut  flow=%.6f (atteso 5)  min_cut=%.6f  "
+        printf("max_flow_min_cut  flow=%.6f (expected 5)  min_cut=%.6f  "
                "max_cap_viol=%.2e max_cons_viol=%.2e  f=(%.2f,%.2f,%.2f,%.2f,%.2f) %s\n",
                flow, cut, maxcapviol, maxconsviol, x[0], x[1], x[2], x[3], x[4],
                ok ? "OK" : "FAIL");

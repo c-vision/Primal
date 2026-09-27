@@ -78,9 +78,9 @@ int main(void) {
     int ok = fabs(w0 - 4.0 / 7.0) < 1e-6 && fabs(w1 - 3.0 / 7.0) < 1e-6 &&
              fabs(obj - 12.0 / 35.0) < 1e-6 &&
              fabs((mu[0] * w0 + mu[1] * w1) - cvar - obj) < 1e-6;
-    printf("w = (%.6f, %.6f) (atteso 0.5714, 0.4286)\n", w0, w1);
-    printf("obj = %.6f (atteso 12/35 = %.6f), CVaR = %.6f\n", obj, 12.0 / 35.0, cvar);
-    printf("%s (mean-CVaR, ottimo al ginocchio r0'w = r1'w)\n", ok ? "OK" : "FAIL");
+    printf("w = (%.6f, %.6f) (expected 0.5714, 0.4286)\n", w0, w1);
+    printf("obj = %.6f (expected 12/35 = %.6f), CVaR = %.6f\n", obj, 12.0 / 35.0, cvar);
+    printf("%s (mean-CVaR, optimum at the kink r0'w = r1'w)\n", ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;

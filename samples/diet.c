@@ -51,7 +51,7 @@ static const double CC[NF] = {1.0, 1.0, 2.0};
 
 /* Solve the primal and dual diet LPs and check strong duality. */
 int main(void) {
-    printf("diet (Stigler, 3 alimenti x 3 nutrienti)\n");
+    printf("diet (Stigler, 3 foods x 3 nutrients)\n");
     int all = 1;
 
     /* primal: min c'x s.t. N x >= b, x >= 0 */
@@ -84,7 +84,7 @@ int main(void) {
         nut[i] = s; if (BB[i]-s > mindef) mindef = BB[i]-s; }
     int good = ok && fabs(cost - 5.0) < 1e-7 && fabs(xp[0]-1.0) < 1e-7 &&
                fabs(xp[1]-2.0) < 1e-7 && fabs(xp[2]-1.0) < 1e-7 && mindef < 1e-9;
-    printf("  primale: cost=%.6f (atteso 5)  x=(%.4f,%.4f,%.4f)  deficit=%.2e  %s\n",
+    printf("  primal: cost=%.6f (expected 5)  x=(%.4f,%.4f,%.4f)  deficit=%.2e  %s\n",
            cost, xp[0], xp[1], xp[2], mindef, good ? "OK" : "FAIL");
     all &= good;
 
@@ -117,7 +117,7 @@ int main(void) {
         if (s-CC[j] > vmax) vmax = s-CC[j]; }
     good = ok && fabs(value - 5.0) < 1e-7 && vmax < 1e-9 &&
            fabs(value - cost) < 1e-7;
-    printf("  duale:   value=%.6f (atteso 5)  y=(%.4f,%.4f,%.4f)  viol=%.2e  dualita' forte %s\n",
+    printf("  dual:    value=%.6f (expected 5)  y=(%.4f,%.4f,%.4f)  viol=%.2e  strong duality %s\n",
            value, yd[0], yd[1], yd[2], vmax, good ? "OK" : "FAIL");
     all &= good;
 

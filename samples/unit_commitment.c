@@ -119,7 +119,7 @@ int main(void) {
         double x[NVAR];
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         ok = fabs(obj - 36.0) < 1e-6;
-        printf("unit_commitment  d=[2,4]  p0=(%.1f,%.1f) p1=(%.1f,%.1f) obj=%.4f (atteso 36) %s\n",
+        printf("unit_commitment  d=[2,4]  p0=(%.1f,%.1f) p1=(%.1f,%.1f) obj=%.4f (expected 36) %s\n",
                x[P(0, 0)], x[P(0, 1)], x[P(1, 0)], x[P(1, 1)], obj, ok ? "OK" : "FAIL");
     } else {
         printf("unit_commitment  rc=%d FAIL\n", (int)rc);

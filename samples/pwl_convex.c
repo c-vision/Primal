@@ -98,8 +98,8 @@ int main(void) {
                 fabs(tv[0] - 1.0 / 3.0) < 1e-6 && fabs(tv[1] - 1.0 / 3.0) < 1e-6 &&
                 fabs(tv[2] - 1.0 / 3.0) < 1e-6 && fabs(m - sse) < 1e-7;
     printf("pwl_convex  n=%d\n", NP);
-    printf("  t = (%.8f, %.8f, %.8f)   (atteso 1/3,1/3,1/3)\n", tv[0], tv[1], tv[2]);
-    printf("  m = SSE = %.8f   (atteso 2/3=%.8f)   sse diretto=%.8f\n", m, 2.0 / 3.0, sse);
+    printf("  t = (%.8f, %.8f, %.8f)   (expected 1/3,1/3,1/3)\n", tv[0], tv[1], tv[2]);
+    printf("  m = SSE = %.8f   (expected 2/3=%.8f)   direct sse=%.8f\n", m, 2.0 / 3.0, sse);
     printf("%s\n", okall ? "OK" : "FAIL");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return okall ? 0 : 1;

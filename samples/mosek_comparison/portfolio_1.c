@@ -106,7 +106,7 @@ int main(void) {
         for (int j = 0; j < 3; j++) q += xx[i] * S[i * 3 + j] * xx[j];
     double lin = r[0]*xx[0] + r[1]*xx[1] + r[2]*xx[2];
     double expect = lin - gamma * q;
-    printf("verifica obj: %.6f (atteso %.6f)\n", po, expect);
+    printf("obj check: %.6f (expected %.6f)\n", po, expect);
     if (fabs(po - expect) > 1e-6) ok = 0;
     if (fabs(po - dobj) > 1e-5 * (1 + fabs(po))) ok = 0;
 

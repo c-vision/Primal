@@ -54,7 +54,7 @@ int main(void) {
 
     /* 1. optimize: infeasible */
     PRIMALrescodee rc = PRIMAL_optimize(task);
-    printf("optimize: rc=%d (atteso 1002 infeasible)\n", rc);
+    printf("optimize: rc=%d (expected 1002 infeasible)\n", rc);
     int infeas = (rc == PRIMAL_RES_ERR_INFEASIBLE);
 
     /* 2. feasrepair: point of minimum violation */
@@ -66,11 +66,11 @@ int main(void) {
     double viol = 0.0;
     if (x[0] < 2.0) viol += 2.0 - x[0];
     if (x[0] > 1.0) viol += x[0] - 1.0;
-    printf("feasrepair: x0 = %.4f, violazione totale = %.4f (attesa = 1)\n",
+    printf("feasrepair: x0 = %.4f, total violation = %.4f (expected = 1)\n",
            x[0], viol);
 
     int ok = infeas && fabs(viol - 1.0) < 1e-6;
-    printf("%s (repair a violazione minima)\n", ok ? "OK" : "FAIL");
+    printf("%s (repair to minimum violation)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

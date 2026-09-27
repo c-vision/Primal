@@ -88,10 +88,10 @@ int main(void) {
              fabs(x[0] - 1.0) < 1e-6 && fabs(x[1]) < 1e-6 &&
              fabs(x[2] - 1.0) < 1e-6 && fabs(x[3]) < 1e-6 &&
              fabs(turnover0 - 1.0) < 1e-6 && fabs(turnover1) < 1e-6;
-    printf("w0 = (%.4f, %.4f), w1 = (%.4f, %.4f), obj = %.6f (atteso 0.9)\n",
+    printf("w0 = (%.4f, %.4f), w1 = (%.4f, %.4f), obj = %.6f (expected 0.9)\n",
            x[0], x[1], x[2], x[3], obj);
-    printf("turnover = %.4f poi %.4f (atteso 1.0, 0.0)\n", turnover0, turnover1);
-    printf("%s (multi-periodo: il secondo periodo e' gia' sul target)\n", ok ? "OK" : "FAIL");
+    printf("turnover = %.4f then %.4f (expected 1.0, 0.0)\n", turnover0, turnover1);
+    printf("%s (multi-period: the second period is already on target)\n", ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&t);
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;

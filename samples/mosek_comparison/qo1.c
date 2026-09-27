@@ -68,7 +68,7 @@ int main(void) {
 
     int ok = fabs(xx[0] - 0.5) < 1e-6 && fabs(xx[1] - 0.5) < 1e-6 &&
              fabs(obj - 0.5) < 1e-6;
-    printf("%s\n", ok ? "OK (atteso x=0.5, y=0.5, obj=0.5)" : "FAIL");
+    printf("%s\n", ok ? "OK (expected x=0.5, y=0.5, obj=0.5)" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

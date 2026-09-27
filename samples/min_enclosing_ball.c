@@ -97,8 +97,8 @@ int main(void) {
 
     int ok = ok2 && ok3 && fabs(r2 - want2) < 1e-7 && fabs(r3 - want3) < 1e-7;
     printf("min_enclosing_ball\n");
-    printf("  2 punti (d=2):     r*=%.10f   atteso d/2=%.10f\n", r2, want2);
-    printf("  triangolo (a=2):   r*=%.10f   atteso a/sqrt(3)=%.10f\n", r3, want3);
+    printf("  2 points (d=2):    r*=%.10f   expected d/2=%.10f\n", r2, want2);
+    printf("  triangle (a=2):    r*=%.10f   expected a/sqrt(3)=%.10f\n", r3, want3);
     printf("%s\n", ok ? "OK" : "FAIL");
     return ok ? 0 : 1;
 }

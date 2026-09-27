@@ -63,7 +63,7 @@ int main(void) {
     double pinf, dinf;
     PRIMAL_getprimalinfeas(task, PRIMAL_SOL_ITR, &pinf);
     PRIMAL_getdualinfeas(task, PRIMAL_SOL_ITR, &dinf);
-    printf("violazione primal = %.3e, duale = %.3e (attese ~ 0)\n", pinf, dinf);
+    printf("primal violation = %.3e, dual = %.3e (expected ~ 0)\n", pinf, dinf);
 
     /* 2. without a solution: refused */
     PRIMALtask_t t2;
@@ -73,7 +73,7 @@ int main(void) {
     int rejected = (PRIMAL_getprimalinfeas(t2, PRIMAL_SOL_ITR, &dummy) == PRIMAL_RES_ERR_ARG);
 
     int ok = (pinf < 1e-6) && (dinf < 1e-6) && rejected;
-    printf("%s (qualita' misurata + getter protetti)\n", ok ? "OK" : "FAIL");
+    printf("%s (quality measured + protected getters)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&t2);
     PRIMAL_deletetask(&task);

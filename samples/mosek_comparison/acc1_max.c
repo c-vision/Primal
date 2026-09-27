@@ -84,7 +84,7 @@ int main(void) {
                fabs(x[X1] - 1.1289128998) < 1e-6 &&
                fabs(x[X2] + 0.0505327883) < 1e-6 &&
                nrm <= 0.03 + 1e-9 && fabs(sum - 1.0) < 1e-9;
-    printf("acc1_max  obj=%.10f (atteso 3.2805112648)  x=(%.8f,%.8f,%.8f)\n", obj, x[X0], x[X1], x[X2]);
+    printf("acc1_max  obj=%.10f (expected 3.2805112648)  x=(%.8f,%.8f,%.8f)\n", obj, x[X0], x[X1], x[X2]);
     printf("  ||Gx+h||=%.10f (<=0.03)  sum=%.10f\n", nrm, sum);
     printf("%s\n", good ? "OK" : "FAIL");
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);

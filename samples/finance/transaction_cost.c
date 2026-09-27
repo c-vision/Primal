@@ -87,10 +87,10 @@ int main(void) {
     }
     int on_face = (viol <= 1e-6) && (fabs(sx) <= 1e-6);
     int ok = fabs(obj - 0.8) < 1e-6 && on_face && pinf <= 1e-6;
-    printf("x = (%.4f, %.4f, %.4f), obj = %.6f (atteso 0.8)\n", x[0], x[1], x[2], obj);
+    printf("x = (%.4f, %.4f, %.4f), obj = %.6f (expected 0.8)\n", x[0], x[1], x[2], obj);
     printf("e'x = %.2e, x_i >= x0_i: %s, getprimalinfeas = %.2e\n",
-           sx, on_face ? "si" : "NO", pinf);
-    printf("%s (ottimo su una faccia: valore 0.8, non il vettore del post)\n",
+           sx, on_face ? "yes" : "NO", pinf);
+    printf("%s (optimum on a face: value 0.8, not the post's vector)\n",
            ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);

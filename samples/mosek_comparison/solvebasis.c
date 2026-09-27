@@ -108,7 +108,7 @@ int main(void) {
     if (rc != PRIMAL_RES_OK) { printf("optimize rc=%d\n", rc); return 1; }
     double po1;
     PRIMAL_getprimalobj(t1, PRIMAL_SOL_BAS, &po1);
-    printf("fase 1: pobj = %.4f (atteso 75)\n", po1);
+    printf("phase 1: pobj = %.4f (expected 75)\n", po1);
 
     int nvar, ncon;
     PRIMAL_getnumvar(t1, &nvar);
@@ -123,7 +123,7 @@ int main(void) {
     if (rc) { printf("putsk rc=%d\n", rc); return 1; }
     rc = PRIMAL_writebasis(t1, "/tmp/mc_solvebasis.bas");
     if (rc != PRIMAL_RES_OK) { printf("writebasis rc=%d\n", rc); return 1; }
-    printf("fase 2: base scritta in /tmp/mc_solvebasis.bas\n");
+    printf("phase 2: basis written to /tmp/mc_solvebasis.bas\n");
 
     /* 3. new task: read the basis and solve with solvebasis */
     PRIMALtask_t t2;
@@ -136,13 +136,13 @@ int main(void) {
     double po2, x2[4];
     PRIMAL_getprimalobj(t2, PRIMAL_SOL_BAS, &po2);
     PRIMAL_getxx(t2, PRIMAL_SOL_BAS, x2);
-    printf("fase 3: solvebasis pobj = %.4f, x = (%.4f, %.4f, %.4f, %.4f)\n",
+    printf("phase 3: solvebasis pobj = %.4f, x = (%.4f, %.4f, %.4f, %.4f)\n",
            po2, x2[0], x2[1], x2[2], x2[3]);
 
     int ok = fabs(po1 - 75.0) < 1e-6 && fabs(po2 - po1) < 1e-6 &&
              fabs(x2[0]) < 1e-6 && fabs(x2[1]) < 1e-6 &&
              fabs(x2[2] - 15.0) < 1e-5 && fabs(x2[3]) < 1e-6;
-    printf("%s (atteso pobj=75, x=(0,0,15,0), base ripristinata)\n",
+    printf("%s (expected pobj=75, x=(0,0,15,0), basis restored)\n",
            ok ? "OK" : "FAIL");
 
     free(skc); free(skx);

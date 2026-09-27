@@ -104,7 +104,7 @@ int main(void) {
     double x0 = exp(xx[Y0]), x1 = exp(xx[Y1]);
     printf("y = (%.4f, %.4f) -> x = (%.4f, %.4f), t = %.6f\n",
            xx[Y0], xx[Y1], x0, x1, xx[T]);
-    printf("obiettivo GP = x0/x1 = %.6f (atteso 1), pobj conico = %.6f\n",
+    printf("GP objective = x0/x1 = %.6f (expected 1), conic pobj = %.6f\n",
            x0 / x1, po);
 
     /* check: GP feasibility and analytic optimum */

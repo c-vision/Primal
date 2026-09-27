@@ -105,7 +105,7 @@ int main(void) {
         /* compliance recomputed from t: sqrt(2)/(2 t1 t2) * (t1+t2) */
         double comp = (t1 > 0 && t2 > 0) ? (L / (2.0 * t1 * t2)) * (t1 + t2) : 1e30;
         ok = fabs(obj - 4.0) < 1e-5 && comp <= 1.0 + 1e-6;
-        printf("truss_design  t=(%.6f,%.6f) volume=%.6f (atteso 4) compliance=%.6f %s\n",
+        printf("truss_design  t=(%.6f,%.6f) volume=%.6f (expected 4) compliance=%.6f %s\n",
                t1, t2, obj, comp, ok ? "OK" : "FAIL");
     } else {
         printf("truss_design  rc=%d FAIL\n", (int)rc);

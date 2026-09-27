@@ -130,7 +130,7 @@ int main(void) {
         for (int i = 0; i < M; i++) cnt += xx[i * N + j] > 0.5;
         if (cnt != 1) ok = 0;
     }
-    printf("%s (ottimo provato: LB = max(sum/6, max task) = %.2f, chiude alla radice)\n",
+    printf("%s (optimality proven: LB = max(sum/6, max task) = %.2f, closes at the root)\n",
            ok ? "OK" : "FAIL", fmax((0.0 + 399.801611 /* big 6 */ + 76.963 /* small 24 */) / 6.0, 97.328509));
 
     PRIMAL_deletetask(&task);

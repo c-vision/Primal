@@ -72,10 +72,10 @@ int main(void) {
     int ok = fabs(sharpe - sqrt(10.0)) < 1e-6 &&
              fabs(w0 - 0.75) < 1e-5 && fabs(w1 - 0.25) < 1e-5 &&
              fabs(ratio - sharpe) < 1e-5 && fabs(w0 + w1 - 1.0) < 1e-6;
-    printf("Sharpe = %.6f (atteso sqrt(10) = %.6f), w = (%.4f, %.4f) (atteso .75,.25)\n",
+    printf("Sharpe = %.6f (expected sqrt(10) = %.6f), w = (%.4f, %.4f) (expected .75,.25)\n",
            sharpe, sqrt(10.0), w0, w1);
-    printf("ricostruito (mu'w)/||w|| = %.6f, e'w = %.2e\n", ratio, w0 + w1);
-    printf("%s (A3 non e' quadratico: risolto con Charnes-Cooper)\n", ok ? "OK" : "FAIL");
+    printf("reconstructed (mu'w)/||w|| = %.6f, e'w = %.2e\n", ratio, w0 + w1);
+    printf("%s (A3 is not quadratic: solved with Charnes-Cooper)\n", ok ? "OK" : "FAIL");
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);
     return ok ? 0 : 1;

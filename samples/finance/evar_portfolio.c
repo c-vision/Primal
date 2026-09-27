@@ -181,9 +181,9 @@ int main(void) {
                 fabs(x[0] + x[1] - 1.0) < 1e-7 && x[0] >= -1e-9 && x[1] >= -1e-9;
 
     printf("evar_portfolio  N=%d T=%d alpha=%.2f delta=%.2f\n", NA, NS, ALPHA, DELTA);
-    printf("  x = (%.8f, %.8f)   rendimento = %.8f\n", x[0], x[1], ret_sol);
-    printf("  EVaR = %.8f   [brute force obj %.8f a w=%.5f]\n", ev, best, bw);
-    printf("  obiettivo conico = %.8f   [brute force %.8f]\n", obj, best);
+    printf("  x = (%.8f, %.8f)   return = %.8f\n", x[0], x[1], ret_sol);
+    printf("  EVaR = %.8f   [brute force obj %.8f at w=%.5f]\n", ev, best, bw);
+    printf("  conic objective = %.8f   [brute force %.8f]\n", obj, best);
     printf("%s\n", okall ? "OK" : "FAIL");
     return okall ? 0 : 1;
 }

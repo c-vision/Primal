@@ -87,11 +87,11 @@ int main(void) {
     double xmin, xmax;
     double pmin = solve(0, &xmin);
     double pmax = solve(1, &xmax);
-    printf("min: x0 = %.4f (atteso 0), obj = %.4f\n", xmin, pmin);
-    printf("max: x0 = %.4f (atteso 7), obj = %.4f\n", xmax, pmax);
+    printf("min: x0 = %.4f (expected 0), obj = %.4f\n", xmin, pmin);
+    printf("max: x0 = %.4f (expected 7), obj = %.4f\n", xmax, pmax);
 
     int ok = fabs(xmin) < 1e-6 && fabs(pmin) < 1e-6 &&
              fabs(xmax - 7.0) < 1e-6 && fabs(pmax - 7.0) < 1e-6;
-    printf("%s (disgiunzione: x<=2 OR 6<=x<=7)\n", ok ? "OK" : "FAIL");
+    printf("%s (disjunction: x<=2 OR 6<=x<=7)\n", ok ? "OK" : "FAIL");
     return ok ? 0 : 1;
 }

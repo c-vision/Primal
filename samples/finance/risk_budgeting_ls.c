@@ -124,7 +124,7 @@ int main(void) {
         double want = 0.5 + 0.34657359027997264;          /* 0.5 - log(1/sqrt2) */
         double xw = 1.0 / sqrt(2.0);
         int good = ok && fabs(obj - want) < 1e-4 && fabs(xabs[0]-xw) < 1e-3 && fabs(xabs[1]-xw) < 1e-3;
-        printf("  N=2 S=I: obj=%.6f (atteso %.6f)  |x|=(%.6f,%.6f) (atteso %.6f)  %s\n",
+        printf("  N=2 S=I: obj=%.6f (expected %.6f)  |x|=(%.6f,%.6f) (expected %.6f)  %s\n",
                obj, want, xabs[0], xabs[1], xw, good ? "OK" : "FAIL");
         all &= good;
     }

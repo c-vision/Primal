@@ -91,7 +91,7 @@ int main(void) {
     if (fabs(po - (c[0]*xx[0]+c[1]*xx[1]+c[2]*xx[2]+c[3]*xx[3])) > 1e-6) ok = 0;
     for (int j = 0; j < 4; j++) if (fabs(xx[j] - xb[j]) > 1e-6) ok = 0;
 
-    printf("%s (ottimo certificato da pobj = dobj)\n", ok ? "OK" : "FAIL");
+    printf("%s (optimal certified by pobj = dobj)\n", ok ? "OK" : "FAIL");
 
     PRIMAL_deletetask(&task);
     PRIMAL_deleteenv(&env);
