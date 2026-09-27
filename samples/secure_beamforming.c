@@ -72,7 +72,7 @@ int main(void) {
 
     PRIMALrescodee rc = PRIMAL_optimize(t);
     int ok = (rc == PRIMAL_RES_OK);
-    double obj = 0.0, w[2] = {0};
+    double obj = 0.0, w[NV] = {0};
     if (ok) {
         PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
         PRIMAL_getxx(t, PRIMAL_SOL_ITR, w);
