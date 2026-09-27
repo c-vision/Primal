@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_vartype.c - variable types, SOS, int/double parameter setters.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
 
@@ -64,6 +64,7 @@ static int vartype_ok(PRIMALvariabletypee vt) {
  * PRIMAL_putvartype(task, 3, PRIMAL_VAR_TYPE_SEMI_CONT);
  */
 PRIMALrescodee PRIMAL_putvartype(PRIMALtask_t t, int j, PRIMALvariabletypee vt) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (j < 0 || j >= t->numvar) return PRIMAL_RES_ERR_ARG;
     if (!vartype_ok(vt)) return PRIMAL_RES_ERR_ARG;
@@ -95,6 +96,7 @@ PRIMALrescodee PRIMAL_putvartype(PRIMALtask_t t, int j, PRIMALvariabletypee vt) 
  */
 PRIMALrescodee PRIMAL_putvartypelist(PRIMALtask_t t, int num,
                                      const int *subj, const PRIMALvariabletypee *vartype) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && (!subj || !vartype))) return PRIMAL_RES_ERR_ARG;
     for (int k = 0; k < num; k++) {
@@ -193,8 +195,8 @@ PRIMALrescodee PRIMAL_getnumintvar(PRIMALtask_t t, int *num) {
  * @param sostype [in] SOS type: 1 (SOS1) or 2 (SOS2).
  * @param num     [in] Number of members. Must be >= 1.
  * @param submem  [in] Array of variable indices (length num).
- * @param weight  [in] Array of weights (length num). Must be strictly increasing
- *                    for SOS2; ignored for SOS1 (can be NULL, but API requires it).
+ * @param weight  [in] Array of weights (length num). Must be finite and distinct;
+ *                    input order is preserved, adjacency is by increasing weight.
  *
  * @return PRIMAL_RES_OK on success, error code otherwise.
  *
@@ -206,23 +208,36 @@ static PRIMALrescodee appendsos(PRIMALtask_t t, int sostype, int num,
                              const int *submem, const double *weight) {
     if (!t || !submem || !weight) return PRIMAL_RES_ERR_NULL;
     if (num < 1) return PRIMAL_RES_ERR_ARG;
-    for (int k = 0; k < num; k++)
-        if (submem[k] < 0 || submem[k] >= t->numvar) return PRIMAL_RES_ERR_ARG;
-    if (t->numsos >= t->soscap) {
-        int nc = t->soscap ? t->soscap * 2 : 4;
-        int *a1 = (int *)realloc(t->sos_type, (size_t)nc * sizeof(int));
-        int *a2 = (int *)realloc(t->sos_n, (size_t)nc * sizeof(int));
-        int **a3 = (int **)realloc(t->sos_mem, (size_t)nc * sizeof(int *));
-        double **a4 = (double **)realloc(t->sos_w, (size_t)nc * sizeof(double *));
-        if (!a1 || !a2 || !a3 || !a4) {
-            free(a1); free(a2); free(a3); free(a4); return PRIMAL_RES_ERR_ALLOC;
-        }
-        t->sos_type = a1; t->sos_n = a2; t->sos_mem = a3; t->sos_w = a4; t->soscap = nc;
+    for (int k = 0; k < num; k++) {
+        if (submem[k] < 0 || submem[k] >= t->numvar || !isfinite(weight[k]))
+            return PRIMAL_RES_ERR_ARG;
+        for (int j = 0; j < k; j++)
+            if (submem[j] == submem[k] || weight[j] == weight[k])
+                return PRIMAL_RES_ERR_ARG;
     }
     int *mem = (int *)malloc((size_t)num * sizeof(int));
     double *w = (double *)malloc((size_t)num * sizeof(double));
     if (!mem || !w) { free(mem); free(w); return PRIMAL_RES_ERR_ALLOC; }
     for (int k = 0; k < num; k++) { mem[k] = submem[k]; w[k] = weight[k]; }
+    if (t->numsos >= t->soscap) {
+        if (t->soscap > INT_MAX / 2) { free(mem); free(w); return PRIMAL_RES_ERR_ALLOC; }
+        int nc = t->soscap ? t->soscap * 2 : 4;
+        int *a1 = (int *)malloc((size_t)nc * sizeof(int));
+        int *a2 = (int *)malloc((size_t)nc * sizeof(int));
+        int **a3 = (int **)malloc((size_t)nc * sizeof(int *));
+        double **a4 = (double **)malloc((size_t)nc * sizeof(double *));
+        if (!a1 || !a2 || !a3 || !a4) {
+            free(a1); free(a2); free(a3); free(a4); free(mem); free(w);
+            return PRIMAL_RES_ERR_ALLOC;
+        }
+        for (int k = 0; k < t->numsos; k++) {
+            a1[k] = t->sos_type[k]; a2[k] = t->sos_n[k];
+            a3[k] = t->sos_mem[k]; a4[k] = t->sos_w[k];
+        }
+        free(t->sos_type); free(t->sos_n); free(t->sos_mem); free(t->sos_w);
+        t->sos_type = a1; t->sos_n = a2; t->sos_mem = a3; t->sos_w = a4;
+        t->soscap = nc;
+    }
     int k = t->numsos++;
     t->sos_type[k] = sostype;
     t->sos_n[k] = num;
@@ -257,6 +272,7 @@ static PRIMALrescodee appendsos(PRIMALtask_t t, int sostype, int num,
  * PRIMAL_appendsos1(task, 3, idx, w);
  */
 PRIMALrescodee PRIMAL_appendsos1(PRIMALtask_t t, int num, const int *submem, const double *weight) {
+    model_changed(t);
     return appendsos(t, 1, num, submem, weight);
 }
 
@@ -285,6 +301,7 @@ PRIMALrescodee PRIMAL_appendsos1(PRIMALtask_t t, int num, const int *submem, con
  * PRIMAL_appendsos2(task, 5, idx, w);
  */
 PRIMALrescodee PRIMAL_appendsos2(PRIMALtask_t t, int num, const int *submem, const double *weight) {
+    model_changed(t);
     return appendsos(t, 2, num, submem, weight);
 }
 

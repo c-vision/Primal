@@ -16,133 +16,371 @@
  * under the License.
  */
 /* primal_solio.c - solution I/O (text/binary/JSON) and basis setters.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
+#include <ctype.h>
+#include <errno.h>
 
-/* Write a tagged double vector to the text solution file. */
-static void sol_wr_vec(FILE *f, const char *tag, const double *v, int n) {
-    fprintf(f, "%s %d", tag, n);
-    for (int i = 0; i < n; i++) fprintf(f, " %.17g", v[i]);
-    fprintf(f, "\n");
+/* A complete image is parsed into independent storage. No task state is touched
+ * until every required field, dimension, enum and finite value is validated. */
+enum { SF_SOLSTA, SF_PROSTA, SF_POBJ, SF_DOBJ, SF_DIMS, SF_SKC, SF_SKX,
+       SF_X, SF_Y, SF_SLC, SF_SUC, SF_SLX, SF_SUX, SF_BARX, SF_BARSJ, SF_COUNT };
+static const char *const sol_tags[SF_COUNT] = {
+    "solsta", "prosta", "pobj", "dobj", "dims", "skc", "skx", "xx", "y",
+    "slc", "suc", "slx", "sux", "barx", "barsj"
+};
+typedef struct {
+    double *v[SF_COUNT], *snx, *xc, *pray, *dray;
+    size_t n[SF_COUNT];
+    PRIMALstakeye *skc, *skx;
+} SolImage;
+
+static void sol_image_free(SolImage *s) {
+    for (int k = 0; k < SF_COUNT; k++) free(s->v[k]);
+    free(s->snx); free(s->xc); free(s->pray); free(s->dray);
+    free(s->skc); free(s->skx);
 }
-/* Write a tagged integer vector to the text solution file. */
-static void sol_wr_ivec(FILE *f, const char *tag, const int *v, int n) {
-    fprintf(f, "%s %d", tag, n);
-    for (int i = 0; i < n; i++) fprintf(f, " %d", v[i]);
-    fprintf(f, "\n");
-}
-/* Write the published solution to a text file with the given name. */
-PRIMALrescodee PRIMAL_writesolution(PRIMALtask_t t, PRIMALsolt whichsol, const char *filename) {
-    (void)whichsol;
-    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
-    FILE *f = fopen(filename, "w");
-    if (!f) return PRIMAL_RES_ERR_FILE;
-    fprintf(f, "PRIMAL-SOLUTION 1\n");
-    double sc[1] = {(double)t->solsta};   sol_wr_vec(f, "solsta", sc, 1);
-    double pr[1] = {(double)t->prosta};   sol_wr_vec(f, "prosta", pr, 1);
-    double ob[1] = {t->pobj};             sol_wr_vec(f, "pobj", ob, 1);
-    double db[1] = {t->dobj};             sol_wr_vec(f, "dobj", db, 1);
-    double nv[3] = {t->numvar, t->numcon, t->numbarvar}; sol_wr_vec(f, "dims", nv, 3);
-    if (t->skc) { int *s = (int *)malloc((size_t)t->numcon * sizeof(int));
-        for (int i = 0; i < t->numcon; i++) s[i] = (int)t->skc[i];
-        sol_wr_ivec(f, "skc", s, t->numcon); free(s); } else fprintf(f, "skc 0\n");
-    if (t->skx) { int *s = (int *)malloc((size_t)t->numvar * sizeof(int));
-        for (int j = 0; j < t->numvar; j++) s[j] = (int)t->skx[j];
-        sol_wr_ivec(f, "skx", s, t->numvar); free(s); } else fprintf(f, "skx 0\n");
-    sol_wr_vec(f, "xx", t->x, t->numvar);
-    sol_wr_vec(f, "y", t->y, t->numcon);
-    sol_wr_vec(f, "slc", t->slc, t->numcon);
-    sol_wr_vec(f, "suc", t->suc, t->numcon);
-    sol_wr_vec(f, "slx", t->slx, t->numvar);
-    sol_wr_vec(f, "sux", t->sux, t->numvar);
-    int tot = 0;
-    for (int j = 0; j < t->numbarvar; j++) tot += t->barDim[j] * t->barDim[j];
-    double *bx = (double *)malloc((size_t)(tot > 0 ? tot : 1) * sizeof(double));
-    if (bx) {
-        int w = 0;
-        for (int j = 0; j < t->numbarvar; j++) {
-            int d = t->barDim[j];
-            for (int k = 0; k < d * d; k++) bx[w++] = t->barx[j] ? t->barx[j][k] : 0.0;
-        }
-        sol_wr_vec(f, "barx", bx, tot);
-        w = 0;
-        for (int j = 0; j < t->numbarvar; j++) {
-            int d = t->barDim[j];
-            for (int k = 0; k < d * d; k++) bx[w++] = t->barsj[j] ? t->barsj[j][k] : 0.0;
-        }
-        sol_wr_vec(f, "barsj", bx, tot);
-        free(bx);
+
+static PRIMALrescodee sol_image_init(PRIMALtask_t t, SolImage *s) {
+    memset(s, 0, sizeof *s);
+    size_t nb = 0, nv = (size_t)t->numvar, nc = (size_t)t->numcon;
+    for (int j = 0; j < t->numbarvar; j++) {
+        size_t d = (size_t)t->barDim[j];
+        if (!d || d > SIZE_MAX / d || d*d > SIZE_MAX / sizeof(double) - nb)
+            return PRIMAL_RES_ERR_ALLOC;
+        nb += d*d;
+        if (!t->barx[j] || !t->barsj[j]) return PRIMAL_RES_ERR_ARG;
     }
-    fclose(f);
+    const size_t counts[SF_COUNT] = {1,1,1,1,3,nc,nv,nv,nc,nc,nc,nv,nv,nb,nb};
+    for (int k = 0; k < SF_COUNT; k++) {
+        s->n[k] = counts[k];
+        s->v[k] = (double *)calloc(counts[k] ? counts[k] : 1, sizeof(double));
+        if (!s->v[k]) return PRIMAL_RES_ERR_ALLOC;
+    }
+    s->snx = (double *)calloc(nv ? nv : 1, sizeof(double));
+    s->xc = (double *)calloc(nc ? nc : 1, sizeof(double));
+    s->pray = (double *)calloc(nv ? nv : 1, sizeof(double));
+    s->dray = (double *)calloc(nc ? nc : 1, sizeof(double));
+    s->skc = (PRIMALstakeye *)calloc(nc ? nc : 1, sizeof(PRIMALstakeye));
+    s->skx = (PRIMALstakeye *)calloc(nv ? nv : 1, sizeof(PRIMALstakeye));
+    if (!s->snx || !s->xc || !s->pray || !s->dray || !s->skc || !s->skx)
+        return PRIMAL_RES_ERR_ALLOC;
     return PRIMAL_RES_OK;
 }
-/* Read a text solution file back into the task solution buffers. */
-PRIMALrescodee PRIMAL_readsolution(PRIMALtask_t t, PRIMALsolt whichsol, const char *filename) {
-    (void)whichsol;
+
+static PRIMALrescodee sol_image_validate(PRIMALtask_t t, const SolImage *s) {
+    for (int k = 0; k < SF_COUNT; k++)
+        for (size_t i = 0; i < s->n[k]; i++)
+            if (!isfinite(s->v[k][i])) return PRIMAL_RES_ERR_FILE;
+    if (s->v[SF_DIMS][0] != t->numvar || s->v[SF_DIMS][1] != t->numcon ||
+        s->v[SF_DIMS][2] != t->numbarvar) return PRIMAL_RES_ERR_ARG;
+    double ss = s->v[SF_SOLSTA][0], ps = s->v[SF_PROSTA][0];
+    if (!(ss == 0 || ss == 1 || ss == 2 || ss == 5 || ss == 6 || ss == 9) ||
+        ps < 0 || ps > 8 || ps != floor(ps)) return PRIMAL_RES_ERR_FILE;
+    for (int k = SF_SKC; k <= SF_SKX; k++)
+        for (size_t i = 0; i < s->n[k]; i++) {
+            double v = s->v[k][i];
+            if (v < PRIMAL_SK_UNDEF || v > PRIMAL_SK_UPR || v != floor(v))
+                return PRIMAL_RES_ERR_FILE;
+        }
+    return PRIMAL_RES_OK;
+}
+
+static void sol_image_commit(PRIMALtask_t t, SolImage *s) {
+#define SOL_TAKE(member, src) do { free(t->member); t->member = (src); (src) = NULL; } while (0)
+    SOL_TAKE(x, s->v[SF_X]); SOL_TAKE(y, s->v[SF_Y]);
+    SOL_TAKE(slc, s->v[SF_SLC]); SOL_TAKE(suc, s->v[SF_SUC]);
+    SOL_TAKE(slx, s->v[SF_SLX]); SOL_TAKE(sux, s->v[SF_SUX]);
+    SOL_TAKE(snx, s->snx); SOL_TAKE(xc, s->xc);
+    SOL_TAKE(pray, s->pray); SOL_TAKE(dray, s->dray);
+    for (int i = 0; i < t->numcon; i++) s->skc[i] = (PRIMALstakeye)s->v[SF_SKC][i];
+    for (int j = 0; j < t->numvar; j++) s->skx[j] = (PRIMALstakeye)s->v[SF_SKX][j];
+    SOL_TAKE(skc, s->skc); SOL_TAKE(skx, s->skx);
+    t->skccap = t->numcon > 0 ? t->numcon : 1;
+    t->skxcap = t->numvar > 0 ? t->numvar : 1;
+#undef SOL_TAKE
+    size_t offset = 0;
+    for (int j = 0; j < t->numbarvar; j++) {
+        size_t n = (size_t)t->barDim[j] * (size_t)t->barDim[j];
+        memcpy(t->barx[j], s->v[SF_BARX] + offset, n * sizeof(double));
+        memcpy(t->barsj[j], s->v[SF_BARSJ] + offset, n * sizeof(double));
+        offset += n;
+    }
+    free(t->soc_dual); t->soc_dual = NULL; t->nsoc_dual = 0;
+    t->has_xc = t->has_pray = t->has_dray = 0;
+    t->mip_result = t->mip_bound_defined = 0;
+    /* A file has no authenticated model identity or optimality proof. Keep its
+     * vectors for explicit inspection; only optimization can publish a verdict. */
+    t->has_sol = 1; t->result_stale = 1;
+    t->solsta = PRIMAL_SOL_STA_UNKNOWN; t->prosta = PRIMAL_PRO_STA_UNKNOWN;
+    t->pobj = s->v[SF_POBJ][0]; t->dobj = s->v[SF_DOBJ][0];
+}
+
+/* Tokens have bounded storage; an overlong token is an error, never a prefix. */
+static int sol_token(FILE *f, char *buf, size_t cap) {
+    int c;
+    do { c = fgetc(f); } while (c != EOF && isspace((unsigned char)c));
+    if (c == EOF) return 0;
+    size_t n = 0;
+    do {
+        if (c == 0 || n + 1 >= cap) return -1;
+        buf[n++] = (char)c; c = fgetc(f);
+    } while (c != EOF && !isspace((unsigned char)c));
+    buf[n] = 0;
+    return 1;
+}
+static int sol_number(FILE *f, double *out) {
+    char token[128], *end;
+    if (sol_token(f, token, sizeof token) != 1) return 0;
+    errno = 0;
+    double v = strtod(token, &end);
+    if (end == token || *end || errno || !isfinite(v)) return 0;
+    *out = v; return 1;
+}
+
+
+
+static PRIMALrescodee sol_capture(PRIMALtask_t t, SolImage *s) {
+    PRIMALrescodee rc = sol_image_init(t, s);
+    if (rc != PRIMAL_RES_OK) return rc;
+    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
+    s->v[SF_SOLSTA][0] = t->solsta; s->v[SF_PROSTA][0] = t->prosta;
+    s->v[SF_POBJ][0] = t->pobj; s->v[SF_DOBJ][0] = t->dobj;
+    s->v[SF_DIMS][0] = t->numvar; s->v[SF_DIMS][1] = t->numcon;
+    s->v[SF_DIMS][2] = t->numbarvar;
+    const double *vectors[] = {t->x, t->y, t->slc, t->suc, t->slx, t->sux};
+    for (int k = SF_X; k <= SF_SUX; k++) {
+        if (s->n[k] && !vectors[k-SF_X]) return PRIMAL_RES_ERR_ARG;
+        if (s->n[k]) memcpy(s->v[k], vectors[k-SF_X], s->n[k]*sizeof(double));
+    }
+    if (t->skc) for (int i = 0; i < t->numcon; i++) s->v[SF_SKC][i] = t->skc[i];
+    if (t->skx) for (int j = 0; j < t->numvar; j++) s->v[SF_SKX][j] = t->skx[j];
+    size_t off = 0;
+    for (int j = 0; j < t->numbarvar; j++) {
+        size_t n = (size_t)t->barDim[j] * (size_t)t->barDim[j];
+        memcpy(s->v[SF_BARX]+off, t->barx[j], n*sizeof(double));
+        memcpy(s->v[SF_BARSJ]+off, t->barsj[j], n*sizeof(double)); off += n;
+    }
+    return sol_image_validate(t, s);
+}
+
+PRIMALrescodee PRIMAL_writesolution(PRIMALtask_t t, PRIMALsolt whichsol, const char *filename) {
     if (!t || !filename) return PRIMAL_RES_ERR_NULL;
+    if (!sol_key_ok(whichsol)) return PRIMAL_RES_ERR_ARG;
+    SolImage s; PRIMALrescodee rc = sol_capture(t, &s);
+    if (rc != PRIMAL_RES_OK) { sol_image_free(&s); return rc; }
+    FILE *f = fopen(filename, "w");
+    if (!f) { sol_image_free(&s); return PRIMAL_RES_ERR_FILE; }
+    fprintf(f, "PRIMAL-SOLUTION 1\n");
+    for (int k = 0; k < SF_COUNT; k++) {
+        fprintf(f, "%s %zu", sol_tags[k], s.n[k]);
+        for (size_t i = 0; i < s.n[k]; i++) fprintf(f, " %.17g", s.v[k][i]);
+        fputc('\n', f);
+    }
+    int failed = ferror(f); if (fclose(f)) failed = 1;
+    sol_image_free(&s); return failed ? PRIMAL_RES_ERR_FILE : PRIMAL_RES_OK;
+}
+
+PRIMALrescodee PRIMAL_readsolution(PRIMALtask_t t, PRIMALsolt whichsol, const char *filename) {
+    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
+    if (!sol_key_ok(whichsol)) return PRIMAL_RES_ERR_ARG;
     FILE *f = fopen(filename, "r");
     if (!f) return PRIMAL_RES_ERR_FILE;
-    char line[64];
-    if (!fgets(line, sizeof line, f) || strncmp(line, "PRIMAL-SOLUTION", 15) != 0) {
-        fclose(f); return PRIMAL_RES_ERR_FILE;
+    SolImage s; PRIMALrescodee rc = sol_image_init(t, &s);
+    if (rc != PRIMAL_RES_OK) goto done;
+    rc = PRIMAL_RES_ERR_FILE;
+    char token[128];
+    if (sol_token(f, token, sizeof token) != 1 || strcmp(token, "PRIMAL-SOLUTION")) goto done;
+    if (sol_token(f, token, sizeof token) != 1 || strcmp(token, "1")) goto done;
+    unsigned seen = 0;
+    int result;
+    while ((result = sol_token(f, token, sizeof token)) == 1) {
+        int k;
+        for (k = 0; k < SF_COUNT && strcmp(token, sol_tags[k]); k++) {}
+        if (k == SF_COUNT || (seen & (1u << k))) goto done;
+        double count;
+        if (!sol_number(f, &count)) goto done;
+        if ((k == SF_SKC || k == SF_SKX) && count == 0) s.n[k] = 0;
+        if (count != (double)s.n[k]) goto done;
+        for (size_t i = 0; i < s.n[k]; i++) if (!sol_number(f, &s.v[k][i])) goto done;
+        seen |= 1u << k;
     }
-    PRIMALrescodee rc = opt_prepare(t);
-    if (rc != PRIMAL_RES_OK) { fclose(f); return rc; }
-    t->has_sol = 1;
-    double *buf = NULL; int bufn = 0;
-    while (fgets(line, sizeof line, f)) {
-        char tag[32];
-        if (sscanf(line, "%31s", tag) != 1) continue;
-        const char *p = line + strlen(tag);
-        char *end;
-        long n = strtol(p, &end, 10);
-        if (end == p || n < 0) continue;
-        p = end;
-        if (n > bufn) {
-            double *nb = (double *)realloc(buf, (size_t)(n > 0 ? n : 1) * sizeof(double));
-            if (!nb) { free(buf); fclose(f); return PRIMAL_RES_ERR_ALLOC; }
-            buf = nb; bufn = (int)n;
-        }
-        for (long i = 0; i < n; i++) {
-            buf[i] = strtod(p, &end);
-            if (end == p) break;
-            p = end;
-        }
-        if (strcmp(tag, "solsta") == 0) t->solsta = (PRIMALsolstae)(int)buf[0];
-        else if (strcmp(tag, "prosta") == 0) t->prosta = (PRIMALprostae)(int)buf[0];
-        else if (strcmp(tag, "pobj") == 0) t->pobj = buf[0];
-        else if (strcmp(tag, "dobj") == 0) t->dobj = buf[0];
-        else if (strcmp(tag, "skc") == 0 && t->skc)
-            for (long i = 0; i < n && i < t->numcon; i++) t->skc[i] = (PRIMALstakeye)(int)buf[i];
-        else if (strcmp(tag, "skx") == 0 && t->skx)
-            for (long i = 0; i < n && i < t->numvar; i++) t->skx[i] = (PRIMALstakeye)(int)buf[i];
-        else if (strcmp(tag, "xx") == 0)
-            for (long i = 0; i < n && i < t->numvar; i++) t->x[i] = buf[i];
-        else if (strcmp(tag, "y") == 0)
-            for (long i = 0; i < n && i < t->numcon; i++) t->y[i] = buf[i];
-        else if (strcmp(tag, "slc") == 0)
-            for (long i = 0; i < n && i < t->numcon; i++) t->slc[i] = buf[i];
-        else if (strcmp(tag, "suc") == 0)
-            for (long i = 0; i < n && i < t->numcon; i++) t->suc[i] = buf[i];
-        else if (strcmp(tag, "slx") == 0)
-            for (long i = 0; i < n && i < t->numvar; i++) t->slx[i] = buf[i];
-        else if (strcmp(tag, "sux") == 0)
-            for (long i = 0; i < n && i < t->numvar; i++) t->sux[i] = buf[i];
-        else if (strcmp(tag, "barx") == 0 || strcmp(tag, "barsj") == 0) {
-            int w = 0;
-            for (int j = 0; j < t->numbarvar; j++) {
-                int d = t->barDim[j];
-                double *dst = (strcmp(tag, "barx") == 0) ? t->barx[j] : t->barsj[j];
-                for (int k = 0; k < d * d; k++) if (w < n && dst) dst[k] = buf[w++];
-            }
-        }
-    }
-    free(buf);
-    fclose(f);
-    return PRIMAL_RES_OK;
+    if (result < 0 || ferror(f) || seen != (1u << SF_COUNT)-1) goto done;
+    rc = sol_image_validate(t, &s);
+    if (rc == PRIMAL_RES_OK) sol_image_commit(t, &s);
+done:
+    sol_image_free(&s); fclose(f); return rc;
 }
+
+/* Both file and callback writers emit the same complete native binary format. */
+static void sol_emit(PRIMALhwritefunc emit, void *handle, const void *data, size_t bytes) {
+    const char *p = (const char *)data;
+    while (bytes) {
+        int n = bytes > INT_MAX ? INT_MAX : (int)bytes;
+        emit(handle, p, n); p += n; bytes -= (size_t)n;
+    }
+}
+static void sol_binary_emit(PRIMALtask_t t, const SolImage *s, PRIMALhwritefunc emit, void *handle) {
+    static const char magic[16] = "PRIMAL-BSOL 1";
+    int dims[3] = {t->numvar, t->numcon, t->numbarvar};
+    int ss = (int)s->v[SF_SOLSTA][0], ps = (int)s->v[SF_PROSTA][0];
+    sol_emit(emit, handle, magic, sizeof magic);
+    sol_emit(emit, handle, dims, sizeof dims);
+    sol_emit(emit, handle, &ss, sizeof ss); sol_emit(emit, handle, &ps, sizeof ps);
+    sol_emit(emit, handle, s->v[SF_POBJ], sizeof(double));
+    sol_emit(emit, handle, s->v[SF_DOBJ], sizeof(double));
+    for (int k = SF_X; k <= SF_SUX; k++) sol_emit(emit, handle, s->v[k], s->n[k]*sizeof(double));
+    size_t off = 0;
+    for (int j = 0; j < t->numbarvar; j++) {
+        size_t n = (size_t)t->barDim[j] * (size_t)t->barDim[j];
+        sol_emit(emit, handle, s->v[SF_BARX]+off, n*sizeof(double));
+        sol_emit(emit, handle, s->v[SF_BARSJ]+off, n*sizeof(double)); off += n;
+    }
+}
+static void sol_file_emit(void *handle, const char *data, int len) {
+    (void)fwrite(data, 1, (size_t)len, (FILE *)handle);
+}
+PRIMALrescodee PRIMAL_writebsolution(PRIMALtask_t t, const char *filename, int compress) {
+    if (compress != 0) return PRIMAL_RES_ERR_ARG;
+    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
+    SolImage s; PRIMALrescodee rc = sol_capture(t, &s);
+    if (rc != PRIMAL_RES_OK) { sol_image_free(&s); return rc; }
+    FILE *f = fopen(filename, "wb");
+    if (!f) { sol_image_free(&s); return PRIMAL_RES_ERR_FILE; }
+    sol_binary_emit(t, &s, sol_file_emit, f);
+    int failed = ferror(f); if (fclose(f)) failed = 1;
+    sol_image_free(&s); return failed ? PRIMAL_RES_ERR_FILE : PRIMAL_RES_OK;
+}
+PRIMALrescodee PRIMAL_writebsolutionhandle(PRIMALtask_t t, PRIMALhwritefunc func, void *handle, int compress) {
+    if (compress != 0) return PRIMAL_RES_ERR_ARG;
+    if (!t || !func) return PRIMAL_RES_ERR_NULL;
+    SolImage s; PRIMALrescodee rc = sol_capture(t, &s);
+    if (rc == PRIMAL_RES_OK) sol_binary_emit(t, &s, func, handle);
+    sol_image_free(&s); return rc;
+}
+PRIMALrescodee PRIMAL_readbsolution(PRIMALtask_t t, const char *filename, int compress) {
+    if (compress != 0) return PRIMAL_RES_ERR_ARG;
+    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
+    FILE *f = fopen(filename, "rb");
+    if (!f) return PRIMAL_RES_ERR_FILE;
+    SolImage s; PRIMALrescodee rc = sol_image_init(t, &s);
+    if (rc != PRIMAL_RES_OK) goto done;
+    rc = PRIMAL_RES_ERR_FILE;
+    char magic[16]; static const char expected[16] = "PRIMAL-BSOL 1";
+    int dims[3], ss, ps;
+#define SOL_READ(dst, count) do { size_t n_ = (count); if (fread((dst), sizeof *(dst), n_, f) != n_) goto done; } while (0)
+    SOL_READ(magic, 16);
+    if (memcmp(magic, expected, 16)) goto done;
+    SOL_READ(dims, 3);
+    if (dims[0] != t->numvar || dims[1] != t->numcon || dims[2] != t->numbarvar) {
+        rc = PRIMAL_RES_ERR_ARG; goto done;
+    }
+    for (int i = 0; i < 3; i++) s.v[SF_DIMS][i] = dims[i];
+    SOL_READ(&ss, 1); SOL_READ(&ps, 1);
+    s.v[SF_SOLSTA][0] = ss; s.v[SF_PROSTA][0] = ps;
+    SOL_READ(s.v[SF_POBJ], 1); SOL_READ(s.v[SF_DOBJ], 1);
+    for (int k = SF_X; k <= SF_SUX; k++) SOL_READ(s.v[k], s.n[k]);
+    size_t off = 0;
+    for (int j = 0; j < t->numbarvar; j++) {
+        size_t n = (size_t)t->barDim[j] * (size_t)t->barDim[j];
+        SOL_READ(s.v[SF_BARX]+off, n); SOL_READ(s.v[SF_BARSJ]+off, n); off += n;
+    }
+    if (fgetc(f) != EOF || ferror(f)) goto done;
+    rc = sol_image_validate(t, &s);
+    if (rc == PRIMAL_RES_OK) sol_image_commit(t, &s);
+done:
+#undef SOL_READ
+    sol_image_free(&s); fclose(f); return rc;
+}
+
+PRIMALrescodee PRIMAL_writejsonsol(PRIMALtask_t t, const char *filename) {
+    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
+    SolImage s; PRIMALrescodee rc = sol_capture(t, &s);
+    if (rc != PRIMAL_RES_OK) { sol_image_free(&s); return rc; }
+    FILE *f = fopen(filename, "w");
+    if (!f) { sol_image_free(&s); return PRIMAL_RES_ERR_FILE; }
+    fputc('{', f);
+    for (int k = 0; k < SF_COUNT; k++) {
+        fprintf(f, "%s\"%s\":", k ? "," : "", sol_tags[k]);
+        if (k <= SF_DOBJ) fprintf(f, "%.17g", s.v[k][0]);
+        else {
+            fputc('[', f);
+            for (size_t i = 0; i < s.n[k]; i++) fprintf(f, "%s%.17g", i ? "," : "", s.v[k][i]);
+            fputc(']', f);
+        }
+    }
+    fputs("}\n", f);
+    int failed = ferror(f); if (fclose(f)) failed = 1;
+    sol_image_free(&s); return failed ? PRIMAL_RES_ERR_FILE : PRIMAL_RES_OK;
+}
+static void sol_json_space(const char **p) {
+    while (**p == ' ' || **p == '\t' || **p == '\n' || **p == '\r') (*p)++;
+}
+static int sol_json_number(const char **p, double *value) {
+    sol_json_space(p);
+    const char *start = *p, *end = start;
+    if (*end == '-') end++;
+    if (*end == '0') end++;
+    else { if (*end < '1' || *end > '9') return 0; while (*end >= '0' && *end <= '9') end++; }
+    if (*end == '.') {
+        end++; if (*end < '0' || *end > '9') return 0;
+        while (*end >= '0' && *end <= '9') end++;
+    }
+    if (*end == 'e' || *end == 'E') {
+        end++; if (*end == '+' || *end == '-') end++;
+        if (*end < '0' || *end > '9') return 0;
+        while (*end >= '0' && *end <= '9') end++;
+    }
+    errno = 0; char *parsed;
+    double v = strtod(start, &parsed);
+    if (parsed != end || errno || !isfinite(v)) return 0;
+    *value = v; *p = end; return 1;
+}
+PRIMALrescodee PRIMAL_readjsonstring(PRIMALtask_t t, const char *data) {
+    if (!t || !data) return PRIMAL_RES_ERR_NULL;
+    SolImage s; PRIMALrescodee rc = sol_image_init(t, &s);
+    if (rc != PRIMAL_RES_OK) goto done;
+    rc = PRIMAL_RES_ERR_FILE;
+    const char *p = data; unsigned seen = 0;
+    sol_json_space(&p); if (*p != '{') goto done; p++;
+    for (;;) {
+        sol_json_space(&p); if (*p != '"') goto done; p++;
+        const char *start = p;
+        while (*p && *p != '"') p++;
+        if (!*p) goto done;
+        int k;
+        for (k = 0; k < SF_COUNT; k++)
+            if ((size_t)(p-start) == strlen(sol_tags[k]) && !memcmp(start, sol_tags[k], (size_t)(p-start))) break;
+        if (k == SF_COUNT || (seen & (1u << k))) goto done;
+        p++; sol_json_space(&p); if (*p != ':') goto done; p++;
+        if (k <= SF_DOBJ) { if (!sol_json_number(&p, s.v[k])) goto done; }
+        else {
+            sol_json_space(&p); if (*p != '[') goto done; p++; sol_json_space(&p);
+            size_t n = 0;
+            if (*p != ']') for (;;) {
+                if (n >= s.n[k] || !sol_json_number(&p, &s.v[k][n++])) goto done;
+                sol_json_space(&p);
+                if (*p != ',') break;
+                p++;
+            }
+            if (*p != ']' || (n != s.n[k] && !((k == SF_SKC || k == SF_SKX) && n == 0))) goto done;
+            s.n[k] = n; p++;
+        }
+        seen |= 1u << k;
+        sol_json_space(&p);
+        if (*p == '}') { p++; break; }
+        if (*p != ',') goto done;
+        p++;
+    }
+    sol_json_space(&p);
+    if (*p || seen != (1u << SF_COUNT)-1) goto done;
+    rc = sol_image_validate(t, &s);
+    if (rc == PRIMAL_RES_OK) sol_image_commit(t, &s);
+done:
+    sol_image_free(&s); return rc;
+}
+
 /* Write the interior-point solution to a text file. */
 PRIMALrescodee PRIMAL_writesolutionfile(PRIMALtask_t t, const char *filename) {
     return PRIMAL_writesolution(t, PRIMAL_SOL_ITR, filename);
@@ -150,157 +388,6 @@ PRIMALrescodee PRIMAL_writesolutionfile(PRIMALtask_t t, const char *filename) {
 /* Read a text solution file into the task. */
 PRIMALrescodee PRIMAL_readsolutionfile(PRIMALtask_t t, const char *filename) {
     return PRIMAL_readsolution(t, PRIMAL_SOL_ITR, filename);
-}
-/* Proprietary binary dump: the same description, written as records (tag, n, values). */
-/* Write the published solution to a binary file with a magic header. */
-PRIMALrescodee PRIMAL_writebsolution(PRIMALtask_t t, const char *filename, int compress) {
-    (void)compress;
-    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
-    FILE *f = fopen(filename, "wb");
-    if (!f) return PRIMAL_RES_ERR_FILE;
-    const char magic[16] = "PRIMAL-BSOL 1";
-    fwrite(magic, 1, sizeof magic, f);
-    int dims[3] = {t->numvar, t->numcon, t->numbarvar};
-    fwrite(dims, sizeof(int), 3, f);
-    fwrite(&t->solsta, sizeof(int), 1, f);
-    fwrite(&t->prosta, sizeof(int), 1, f);
-    fwrite(&t->pobj, sizeof(double), 1, f);
-    fwrite(&t->dobj, sizeof(double), 1, f);
-    fwrite(t->x, sizeof(double), (size_t)t->numvar, f);
-    fwrite(t->y, sizeof(double), (size_t)t->numcon, f);
-    fwrite(t->slc, sizeof(double), (size_t)t->numcon, f);
-    fwrite(t->suc, sizeof(double), (size_t)t->numcon, f);
-    fwrite(t->slx, sizeof(double), (size_t)t->numvar, f);
-    fwrite(t->sux, sizeof(double), (size_t)t->numvar, f);
-    for (int j = 0; j < t->numbarvar; j++) {
-        int d = t->barDim[j];
-        if (t->barx[j]) fwrite(t->barx[j], sizeof(double), (size_t)d * d, f);
-        if (t->barsj[j]) fwrite(t->barsj[j], sizeof(double), (size_t)d * d, f);
-    }
-    fclose(f);
-    return PRIMAL_RES_OK;
-}
-/* Read a binary solution file back into the task solution buffers. */
-PRIMALrescodee PRIMAL_readbsolution(PRIMALtask_t t, const char *filename, int compress) {
-    (void)compress;
-    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
-    FILE *f = fopen(filename, "rb");
-    if (!f) return PRIMAL_RES_ERR_FILE;
-    char magic[16];
-    if (fread(magic, 1, sizeof magic, f) != sizeof magic ||
-        strncmp(magic, "PRIMAL-BSOL", 11) != 0) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    int dims[3] = {0, 0, 0};
-    if (fread(dims, sizeof(int), 3, f) != 3) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (dims[0] != t->numvar || dims[1] != t->numcon || dims[2] != t->numbarvar) {
-        fclose(f); return PRIMAL_RES_ERR_ARG;   /* different dimensions: not applicable */
-    }
-    PRIMALrescodee rc = opt_prepare(t);
-    if (rc != PRIMAL_RES_OK) { fclose(f); return rc; }
-    t->has_sol = 1;
-    int iv = 0;
-    if (fread(&iv, sizeof(int), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    t->solsta = (PRIMALsolstae)iv;
-    if (fread(&iv, sizeof(int), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    t->prosta = (PRIMALprostae)iv;
-    if (fread(&t->pobj, sizeof(double), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (fread(&t->dobj, sizeof(double), 1, f) != 1) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (t->numvar > 0 && fread(t->x, sizeof(double), (size_t)t->numvar, f) != (size_t)t->numvar) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (t->numcon > 0 && fread(t->y, sizeof(double), (size_t)t->numcon, f) != (size_t)t->numcon) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (t->numcon > 0 && fread(t->slc, sizeof(double), (size_t)t->numcon, f) != (size_t)t->numcon) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (t->numcon > 0 && fread(t->suc, sizeof(double), (size_t)t->numcon, f) != (size_t)t->numcon) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (t->numvar > 0 && fread(t->slx, sizeof(double), (size_t)t->numvar, f) != (size_t)t->numvar) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    if (t->numvar > 0 && fread(t->sux, sizeof(double), (size_t)t->numvar, f) != (size_t)t->numvar) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    for (int j = 0; j < t->numbarvar; j++) {
-        int d = t->barDim[j];
-        if (t->barx[j] && fread(t->barx[j], sizeof(double), (size_t)d * d, f) != (size_t)d * d) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-        if (t->barsj[j] && fread(t->barsj[j], sizeof(double), (size_t)d * d, f) != (size_t)d * d) { fclose(f); return PRIMAL_RES_ERR_FILE; }
-    }
-    fclose(f);
-    return PRIMAL_RES_OK;
-}
-/* Reference JSON (JSOL): a flat object holding the solution. Here too the
- * reference format was not read: this is a proprietary JSON. */
-/* Write one named double array as a JSON member. */
-static void json_wr_arr(FILE *f, const char *key, const double *v, int n) {
-    fprintf(f, ",\"%s\":[", key);
-    for (int i = 0; i < n; i++) fprintf(f, "%s%.17g", i ? "," : "", v[i]);
-    fprintf(f, "]");
-}
-/* Write the published solution as a flat JSON object. */
-PRIMALrescodee PRIMAL_writejsonsol(PRIMALtask_t t, const char *filename) {
-    if (!t || !filename) return PRIMAL_RES_ERR_NULL;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
-    FILE *f = fopen(filename, "w");
-    if (!f) return PRIMAL_RES_ERR_FILE;
-    fprintf(f, "{\"pobj\":%.17g,\"dobj\":%.17g,\"solsta\":%d,\"prosta\":%d",
-            t->pobj, t->dobj, (int)t->solsta, (int)t->prosta);
-    json_wr_arr(f, "xx", t->x, t->numvar);
-    json_wr_arr(f, "y", t->y, t->numcon);
-    json_wr_arr(f, "slc", t->slc, t->numcon);
-    json_wr_arr(f, "suc", t->suc, t->numcon);
-    json_wr_arr(f, "slx", t->slx, t->numvar);
-    json_wr_arr(f, "sux", t->sux, t->numvar);
-    fprintf(f, "}\n");
-    fclose(f);
-    return PRIMAL_RES_OK;
-}
-/* Parse one numeric JSON member by key into val. */
-static int json_num(const char *data, const char *key, double *val) {
-    char pat[64];
-    snprintf(pat, sizeof pat, "\"%s\"", key);
-    const char *p = strstr(data, pat);
-    if (!p) return 0;
-    p += strlen(pat);
-    while (*p && *p != ':') p++;
-    if (*p != ':') return 0;
-    char *end;
-    double v = strtod(p + 1, &end);
-    if (end == p + 1) return 0;
-    *val = v;
-    return 1;
-}
-/* Parse one JSON array member by key into out, reporting its length. */
-static int json_arr(const char *data, const char *key, double *out, int maxn, int *n) {
-    char pat[64];
-    snprintf(pat, sizeof pat, "\"%s\"", key);
-    const char *p = strstr(data, pat);
-    if (!p) return 0;
-    p += strlen(pat);
-    while (*p && *p != '[') p++;
-    if (*p != '[') return 0;
-    p++;
-    int w = 0;
-    while (*p && *p != ']') {
-        char *end;
-        double v = strtod(p, &end);
-        if (end == p) { p++; continue; }
-        if (w < maxn) out[w] = v;
-        w++;
-        p = end;
-    }
-    *n = w;
-    return 1;
-}
-/* Parse a JSON solution string into the task solution buffers. */
-PRIMALrescodee PRIMAL_readjsonstring(PRIMALtask_t t, const char *data) {
-    if (!t || !data) return PRIMAL_RES_ERR_NULL;
-    PRIMALrescodee rc = opt_prepare(t);
-    if (rc != PRIMAL_RES_OK) return rc;
-    t->has_sol = 1;
-    double v;
-    int n;
-    if (json_num(data, "solsta", &v)) t->solsta = (PRIMALsolstae)(int)v;
-    if (json_num(data, "prosta", &v)) t->prosta = (PRIMALprostae)(int)v;
-    if (json_num(data, "pobj", &v)) t->pobj = v;
-    if (json_num(data, "dobj", &v)) t->dobj = v;
-    if (json_arr(data, "xx", t->x, t->numvar, &n)) {}
-    if (json_arr(data, "y", t->y, t->numcon, &n)) {}
-    if (json_arr(data, "slc", t->slc, t->numcon, &n)) {}
-    if (json_arr(data, "suc", t->suc, t->numcon, &n)) {}
-    if (json_arr(data, "slx", t->slx, t->numvar, &n)) {}
-    if (json_arr(data, "sux", t->sux, t->numvar, &n)) {}
-    return PRIMAL_RES_OK;
 }
 /* Read a JSON solution file into the task solution buffers. */
 PRIMALrescodee PRIMAL_readjsonsol(PRIMALtask_t t, const char *filename) {
@@ -320,29 +407,12 @@ PRIMALrescodee PRIMAL_readjsonsol(PRIMALtask_t t, const char *filename) {
             buf = nb;
         }
     }
+    if (ferror(f) || memchr(buf, 0, len)) { free(buf); fclose(f); return PRIMAL_RES_ERR_FILE; }
     buf[len] = '\0';
     fclose(f);
     PRIMALrescodee rc = PRIMAL_readjsonstring(t, buf);
     free(buf);
     return rc;
-}
-
-/* Write the binary solution image through a caller-supplied write callback. */
-PRIMALrescodee PRIMAL_writebsolutionhandle(PRIMALtask_t t, PRIMALhwritefunc func,
-                                           void *handle, int compress) {
-    (void)compress;
-    if (!t || !func) return PRIMAL_RES_ERR_NULL;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
-    int dims[3] = {t->numvar, t->numcon, t->numbarvar};
-    func(handle, "PRIMAL-BSOL 1", 16);
-    func(handle, (const char *)dims, (int)sizeof dims);
-    int iv = (int)t->solsta; func(handle, (const char *)&iv, (int)sizeof iv);
-    iv = (int)t->prosta; func(handle, (const char *)&iv, (int)sizeof iv);
-    func(handle, (const char *)&t->pobj, (int)sizeof(double));
-    func(handle, (const char *)&t->dobj, (int)sizeof(double));
-    func(handle, (const char *)t->x, (int)((size_t)t->numvar * sizeof(double)));
-    func(handle, (const char *)t->y, (int)((size_t)t->numcon * sizeof(double)));
-    return PRIMAL_RES_OK;
 }
 
 /* Write the basis status keys to a text basis file. */

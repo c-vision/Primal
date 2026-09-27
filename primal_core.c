@@ -16,9 +16,18 @@
  * under the License.
  */
 /* primal_core.c - task/env lifecycle, declarative parameter table, streams/callbacks, model growth.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
+
+void model_changed(PRIMALtask_t t) {
+    if (!t || t->derived_syncing) return;
+    t->derived_dirty = 1;
+    t->result_stale = 1;
+    t->solsta = PRIMAL_SOL_STA_UNKNOWN; t->prosta = PRIMAL_PRO_STA_UNKNOWN;
+    t->has_pray = t->has_dray = 0;
+    t->mip_bound_defined = 0; t->mip_result = 0;
+}
 
 
 /* ---------------- declarative parameter table ----------------
@@ -298,7 +307,7 @@ PRIMALrescodee PRIMAL_putexitfunc(PRIMALenv_t env, PRIMALexitfunc exitfunc, void
 PRIMALrescodee PRIMAL_maketask(PRIMALenv_t env, int maxcon, int maxvar, PRIMALtask_t *task) {
     (void)maxcon; (void)maxvar;
     if (!task) return PRIMAL_RES_ERR_NULL;
-    if (!env) return PRIMAL_RES_ERR_ARG;
+    if (!env || maxcon < 0 || maxvar < 0) return PRIMAL_RES_ERR_ARG;
     PRIMALtask_t t = (PRIMALtask_t)calloc(1, sizeof(struct PRIMAL_task_s));
     if (!t) return PRIMAL_RES_ERR_ALLOC;
     t->env = env;
@@ -314,8 +323,9 @@ PRIMALrescodee PRIMAL_maketask(PRIMALenv_t env, int maxcon, int maxvar, PRIMALta
     *task = t;
     /* pre-allocate the declared sizes (draft- compatible: the example never
      * calls PRIMAL_appendvars/PRIMAL_appendcons explicitly) */
-    if (maxvar > 0) PRIMAL_appendvars(t, maxvar);
-    if (maxcon > 0) PRIMAL_appendcons(t, maxcon);
+    PRIMALrescodee rc = PRIMAL_appendvars(t,maxvar);
+    if (rc == PRIMAL_RES_OK) rc = PRIMAL_appendcons(t,maxcon);
+    if (rc != PRIMAL_RES_OK) { PRIMAL_deletetask(task); return rc; }
     return PRIMAL_RES_OK;
 }
 
@@ -503,7 +513,7 @@ PRIMALrescodee PRIMAL_deletetask(PRIMALtask_t *task) {
     }
     if (t->acc_afe) for (int i = 0; i < t->numacc; i++) { free(t->acc_afe[i]); free(t->acc_b[i]); }
     free(t->acc_afe); free(t->acc_b); free(t->acc_dom); free(t->acc_nafe);
-    free(t->acc_rowbase);
+    free(t->acc_rowbase); free(t->acc_varbase);
     if (t->accname) {
         for (int i = 0; i < t->numacc; i++) free(t->accname[i]);
         free(t->accname);
@@ -513,6 +523,7 @@ PRIMALrescodee PRIMAL_deletetask(PRIMALtask_t *task) {
     }
     free(t->djc_dom); free(t->djc_afe); free(t->djc_b); free(t->djc_termsize);
     free(t->djc_ndom); free(t->djc_nafe); free(t->djc_numterm);
+    free(t->djc_rowbase); free(t->djc_varbase); free(t->djc_nrow);
     if (t->djcname) {
         for (int i = 0; i < t->numdjc; i++) free(t->djcname[i]);
         free(t->djcname);
@@ -1190,6 +1201,7 @@ void model_resized(PRIMALtask_t t) {
     t->prosta = PRIMAL_PRO_STA_UNKNOWN;
     t->has_pray = 0; t->has_dray = 0;
     t->pobj = 0.0; t->dobj = 0.0;
+    t->mip_bound_defined = 0; t->mip_result = 0;
 }
 
 /* One realloc for the lazy per-variable / per-constraint tables. The new tail
@@ -1290,11 +1302,12 @@ static PRIMALrescodee qcon_reshape(PRIMALtask_t t, int on, int nn) {
  * // Variables 0-9 now exist with default bounds
  */
 PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
+    if (num != 0) model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
-    if (num < 0) return PRIMAL_RES_ERR_ARG;
+    if (num < 0 || num > INT_MAX-t->numvar) return PRIMAL_RES_ERR_ARG;
     int nv = t->numvar;
     int nn = nv + num;
-    if (nn == 0) return PRIMAL_RES_OK;
+    if (num == 0) return PRIMAL_RES_OK;
     /* Grow the lazy tables and the quadratic blocks to the NEW length before
      * the model moves: if an allocation fails here, numvar is still the old one
      * and nothing downstream can read a table shorter than the model. */
@@ -1309,10 +1322,8 @@ PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
             if (!s) return PRIMAL_RES_ERR_ALLOC;
             t->skx = s;
         }
-        PRIMALrescodee rrc = qcon_reshape(t, nv, nn);
-        if (rrc != PRIMAL_RES_OK) return rrc;
     }
-    if (nv > 0) {
+    {
         double *c2 = (double *)calloc((size_t)nn, sizeof(double));
         PRIMALboundkeye *k2 = (PRIMALboundkeye *)calloc((size_t)nn, sizeof(PRIMALboundkeye));
         double *l2 = (double *)calloc((size_t)nn, sizeof(double));
@@ -1320,13 +1331,21 @@ PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
         Col *co2 = (Col *)calloc((size_t)nn, sizeof(Col));
         PRIMALvariabletypee *vt2 = (PRIMALvariabletypee *)calloc((size_t)nn, sizeof(PRIMALvariabletypee));
         char **nm2 = (char **)calloc((size_t)nn, sizeof(char *));
-        if (!c2 || !k2 || !l2 || !u2 || !co2 || !vt2 || !nm2) return PRIMAL_RES_ERR_ALLOC;
-        memcpy(c2, t->c, (size_t)nv * sizeof(double));
-        memcpy(k2, t->bkx, (size_t)nv * sizeof(PRIMALboundkeye));
-        memcpy(l2, t->blx, (size_t)nv * sizeof(double));
-        memcpy(u2, t->bux, (size_t)nv * sizeof(double));
-        memcpy(co2, t->cols, (size_t)nv * sizeof(Col));
-        memcpy(vt2, t->vartype, (size_t)nv * sizeof(PRIMALvariabletypee));
+        if (!c2 || !k2 || !l2 || !u2 || !co2 || !vt2 || !nm2) {
+            free(c2); free(k2); free(l2); free(u2); free(co2); free(vt2); free(nm2);
+            return PRIMAL_RES_ERR_ALLOC;
+        }
+        PRIMALrescodee rrc = qcon_reshape(t,nv,nn);
+        if (rrc != PRIMAL_RES_OK) {
+            free(c2); free(k2); free(l2); free(u2); free(co2); free(vt2); free(nm2);
+            return rrc;
+        }
+        if (nv) memcpy(c2, t->c, (size_t)nv * sizeof(double));
+        if (nv) memcpy(k2, t->bkx, (size_t)nv * sizeof(PRIMALboundkeye));
+        if (nv) memcpy(l2, t->blx, (size_t)nv * sizeof(double));
+        if (nv) memcpy(u2, t->bux, (size_t)nv * sizeof(double));
+        if (nv) memcpy(co2, t->cols, (size_t)nv * sizeof(Col));
+        if (nv) memcpy(vt2, t->vartype, (size_t)nv * sizeof(PRIMALvariabletypee));
         if (t->varname) memcpy(nm2, t->varname, (size_t)nv * sizeof(char *));
         for (int j = 0; j < nv; j++) { c2[j] = t->c[j]; }
         for (int j = nv; j < nn; j++) { k2[j] = PRIMAL_BK_FR; l2[j] = -INF; u2[j] = INF; }
@@ -1334,10 +1353,6 @@ PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
         free(t->varname);
         t->c = c2; t->bkx = k2; t->blx = l2; t->bux = u2; t->cols = co2; t->vartype = vt2;
         t->varname = nm2;
-    } else {
-        t->numvar = 0; /* ensure_size allocates fresh below */
-        t->c = NULL; t->bkx = NULL; t->blx = NULL; t->bux = NULL; t->cols = NULL; t->vartype = NULL;
-        t->varname = NULL;
     }
     t->numvar = nn;
     PRIMALrescodee rc = ensure_size(t);
@@ -1388,10 +1403,11 @@ PRIMALrescodee PRIMAL_appendvars(PRIMALtask_t t, int num) {
  * // Constraints 0-2 now exist with default bounds
  */
 PRIMALrescodee PRIMAL_appendcons(PRIMALtask_t t, int num) {
+    if (num != 0) model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
-    if (num < 0) return PRIMAL_RES_ERR_ARG;
+    if (num < 0 || num > INT_MAX-t->numcon) return PRIMAL_RES_ERR_ARG;
     int nc = t->numcon, nn = nc + num;
-    if (nn == 0) return PRIMAL_RES_OK;
+    if (num == 0) return PRIMAL_RES_OK;
     if (num > 0) {
         if (t->warm_y) {
             double *w = (double *)lazy_grow(t->warm_y, &t->warmycap, nn, sizeof(double));
@@ -1414,24 +1430,21 @@ PRIMALrescodee PRIMAL_appendcons(PRIMALtask_t t, int num) {
             t->qcon = q;
         }
     }
-    if (nc > 0) {
+    {
         PRIMALboundkeye *k2 = (PRIMALboundkeye *)calloc((size_t)nn, sizeof(PRIMALboundkeye));
         double *l2 = (double *)calloc((size_t)nn, sizeof(double));
         double *u2 = (double *)calloc((size_t)nn, sizeof(double));
         char **nm2 = (char **)calloc((size_t)nn, sizeof(char *));
-        if (!k2 || !l2 || !u2 || !nm2) return PRIMAL_RES_ERR_ALLOC;
-        memcpy(k2, t->bkc, (size_t)nc * sizeof(PRIMALboundkeye));
-        memcpy(l2, t->blc, (size_t)nc * sizeof(double));
-        memcpy(u2, t->buc, (size_t)nc * sizeof(double));
+        if (!k2 || !l2 || !u2 || !nm2) { free(k2); free(l2); free(u2); free(nm2); return PRIMAL_RES_ERR_ALLOC; }
+        if (nc) memcpy(k2, t->bkc, (size_t)nc * sizeof(PRIMALboundkeye));
+        if (nc) memcpy(l2, t->blc, (size_t)nc * sizeof(double));
+        if (nc) memcpy(u2, t->buc, (size_t)nc * sizeof(double));
         if (t->conname) memcpy(nm2, t->conname, (size_t)nc * sizeof(char *));
         for (int i = nc; i < nn; i++) { k2[i] = PRIMAL_BK_FR; l2[i] = -INF; u2[i] = INF; }
         free(t->bkc); free(t->blc); free(t->buc);
         free(t->conname);
         t->bkc = k2; t->blc = l2; t->buc = u2;
         t->conname = nm2;
-    } else {
-        t->bkc = NULL; t->blc = NULL; t->buc = NULL;
-        t->conname = NULL;
     }
     t->numcon = nn;
     PRIMALrescodee rc = ensure_size(t);
@@ -1562,4 +1575,3 @@ PRIMALrescodee PRIMAL_getmaxnumbarvar(PRIMALtask_t t, int *n) {
     if (!t || !n) return PRIMAL_RES_ERR_NULL;
     *n = t->barcap; return PRIMAL_RES_OK;
 }
-

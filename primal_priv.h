@@ -32,6 +32,7 @@
 #include <stddef.h>
 #include <float.h>
 #include <limits.h>
+#include <stdint.h>
 #include <time.h>
 #include <pthread.h>
 #include "primal.h"
@@ -120,16 +121,18 @@ struct PRIMAL_task_s {
     PRIMALint64t *acc_nafe;
     PRIMALint64t **acc_afe;
     double **acc_b;
+    PRIMALint64t *acc_varbase; /* first auxiliary variable, -1 for linear domains */
     PRIMALint64t *acc_rowbase; /* the first row the ACC produced (for doty) */
     char **accname;            /* the sixth name table, on acccap */
 
     /* disjunctive constraints (DJC, reference style): OR of numterm clauses,
      * each a conjunction of domains on affine expressions. The metadata
      * are the exact description of putdjc; the extended model (selection
-     * binaries + big-M rows) is produced by djc_encode at write time,
-     * as for the ACC. There is a single capacity for all the arrays
+     * binaries + big-M rows) is reserved at write time and refreshed from
+     * current AFEs and bounds before optimization. There is a single capacity for all the arrays
      * and for the fifth name table. */
     int numdjc, djccap;
+    int *djc_rowbase, *djc_varbase, *djc_nrow;
     PRIMALint64t *djc_ndom;        /* for each DJC: |domidxlist| */
     PRIMALint64t *djc_nafe;        /* for each DJC: |afeidxlist| */
     PRIMALint64t *djc_numterm;     /* for each DJC: number of clauses */
@@ -232,6 +235,10 @@ struct PRIMAL_task_s {
     double *xc;           /* x^c: row activity, if set by hand */
     int has_xc;
     double pobj, dobj;
+    double mip_bound; /* Global numerical search bound, original objective sense. */
+    int mip_bound_defined, mip_result;
+    int result_stale;
+    int derived_dirty, derived_syncing;
     /* basis (solvebasis): status keys for rows/variables */
     PRIMALstakeye *skc, *skx;
     int skccap, skxcap;   /* capacity of skc (numcon) and skx (numvar) */
@@ -412,6 +419,7 @@ const PrimalParam *param_find(int kind, int id);
 void *param_slot(const PrimalParam *d, struct PRIMAL_task_s *t);
 /* Worker for parallel binary-variable probing (pthread entry point). */
 void *probe_worker(void *arg);
+void mip_run_jobs(int n, size_t stride, void *jobs, void *(*worker)(void *));
 /* Value of quadratic row i at w (linear plus quadratic terms). */
 double quad_row_value(const PRIMALtask_t t, int i, const double *w);
 /* Picks the better of two candidate ray vectors (own vs the last iterate). */
@@ -455,5 +463,23 @@ void tlog(PRIMALtask_t t, const char *msg);
 /* Writes one message to the task's progress stream. */
 void tprog(PRIMALtask_t t, const char *msg);
 
-#endif /* PRIMAL_PRIV_H */
+int exp_member(int ct, int i);
 
+double exp_factor(int ct, int i);
+
+void model_changed(PRIMALtask_t t);
+
+double row_activity(PRIMALtask_t t, int i, const double *x);
+
+int sos_violation(PRIMALtask_t t, int k, const double *x, double tol, double *pivot);
+
+PRIMALrescodee acc_store(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t numafeidx,
+                        const PRIMALint64t *afeidxlist, const PRIMALrealt *b,
+                        PRIMALint64t rowbase, PRIMALint64t varbase);
+PRIMALrescodee acc_sync(PRIMALtask_t t);
+PRIMALrescodee derived_sync(PRIMALtask_t t);
+PRIMALrescodee djc_sync(PRIMALtask_t t);
+double djc_violation(PRIMALtask_t t, int d, const double *x);
+PRIMALrescodee djc_copy(PRIMALtask_t s, PRIMALtask_t d);
+
+#endif /* PRIMAL_PRIV_H */

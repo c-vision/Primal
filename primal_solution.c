@@ -16,9 +16,20 @@
  * under the License.
  */
 /* primal_solution.c - solution getters, violations, slices, getsolution.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
+
+static double quadratic_row_gradient(PRIMALtask_t t, int j) {
+    double g = 0.0;
+    for (int i = 0; i < t->numcon; i++) if (t->qcon && t->qcon[i]) {
+        double a = 0.0;
+        for (int k = 0; k < t->numvar; k++)
+            a += t->qcon[i][j*t->numvar+k] * t->x[k];
+        g += t->y[i] * a;
+    }
+    return g;
+}
 
 /* ---------------- solution getters ---------------- */
 
@@ -215,7 +226,7 @@ PRIMALrescodee PRIMAL_getsux(PRIMALtask_t t, PRIMALsolt which, double *sux) {
 PRIMALrescodee PRIMAL_getprimalobj(PRIMALtask_t t, PRIMALsolt which, double *pobj) {
     if (!t || !pobj) return PRIMAL_RES_ERR_NULL;
     if (!sol_key_ok(which)) return PRIMAL_RES_ERR_ARG;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
+    if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG;
     *pobj = t->pobj;
     return PRIMAL_RES_OK;
 }
@@ -236,8 +247,9 @@ PRIMALrescodee PRIMAL_getprimalobj(PRIMALtask_t t, PRIMALsolt which, double *pob
  */
 PRIMALrescodee PRIMAL_getdualobj(PRIMALtask_t t, PRIMALsolt which, double *dobj) {
     if (!t || !dobj) return PRIMAL_RES_ERR_NULL;
+    if (t->mip_result) return PRIMAL_RES_ERR_ARG; /* use MIO_OBJ_BOUND */
     if (!sol_key_ok(which)) return PRIMAL_RES_ERR_ARG;
-    if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
+    if (!t->has_sol || t->result_stale) return PRIMAL_RES_ERR_ARG;
     *dobj = t->dobj;
     return PRIMAL_RES_OK;
 }
@@ -410,7 +422,7 @@ PRIMALrescodee PRIMAL_getprimalray(PRIMALtask_t t, PRIMALrealt *rho) {
  * for every bar term on the row. One implementation for the aggregate
  * (PRIMAL_getprimalinfeas) and for the per-row getter, so a term cannot be
  * visible to one and lost by the other. */
-static double row_activity(const PRIMALtask_t t, int i, const double *w) {
+double row_activity(const PRIMALtask_t t, int i, const double *w) {
     double ax = 0.0;
     if (t->has_qcon > 0 && t->qcon && t->qcon[i]) {
         ax = quad_row_value(t, i, w);
@@ -533,7 +545,7 @@ PRIMALrescodee PRIMAL_getdualinfeas(PRIMALtask_t t, PRIMALsolt which, double *di
         double av = 0.0;
         const Col *c = &t->cols[j];
         for (int k = 0; k < c->nz; k++) av += c->val[k] * t->y[c->sub[k]];
-        double zj = -(t->c[j] + (qxv ? qxv[j] : 0.0) + av);
+        double zj = -(t->c[j] + (qxv ? qxv[j] : 0.0) + av + quadratic_row_gradient(t, j));
         double lo, up;
         bound_range(t->bkx[j], t->blx[j], t->bux[j], &lo, &up);
         int at_lo = (t->x[j] <= lo + 1e-7) && (lo > -INF);
@@ -552,7 +564,7 @@ PRIMALrescodee PRIMAL_getdualinfeas(PRIMALtask_t t, PRIMALsolt which, double *di
         const Col *c = &t->cols[j];
         for (int k = 0; k < c->nz; k++) av += c->val[k] * t->y[c->sub[k]];
         double zj = s * (t->slx[j] + t->sux[j]);   /* min-form z */
-        double r = s * t->c[j] + s * (qxv ? qxv[j] : 0.0) + av + zj;
+        double r = s * (t->c[j] + (qxv ? qxv[j] : 0.0) + av + quadratic_row_gradient(t, j)) + zj;
         if (fabs(r) > worst) worst = fabs(r);
     }
     free(qxv);
@@ -626,10 +638,12 @@ static int var_in_cone(const PRIMALtask_t t, int j) {
 static double dviol_con(const PRIMALtask_t t, int i) {
     double lo, up;
     bound_range(t->bkc[i], t->blc[i], t->buc[i], &lo, &up);
-    double dl = -t->slc[i], du = t->suc[i];
+    int sense = t->sense == PRIMAL_OPTIMIZE_MAXIMIZE ? -1 : 1;
+    double y = sense * t->y[i];
+    double dl = fmax(0.0, -y), du = fmax(0.0, y);
     double t1 = isfinite(lo) ? -dl : fabs(dl);
     double t2 = isfinite(up) ? -du : fabs(du);
-    double t3 = fabs(t->y[i] + dl - du);
+    double t3 = fabs(t->y[i] - t->slc[i] - t->suc[i]);
     double m = t1 > t2 ? t1 : t2;
     return t3 > m ? t3 : (m > 0.0 ? m : 0.0);
 }
@@ -645,7 +659,8 @@ static double dviol_var(const PRIMALtask_t t, int j, int s) {
     if (var_in_cone(t, j)) return 0.0;
     double lo, up;
     bound_range(t->bkx[j], t->blx[j], t->bux[j], &lo, &up);
-    double dl = -t->slx[j], du = t->sux[j];
+    double z = s * (t->slx[j] + t->sux[j]);
+    double dl = fmax(0.0, -z), du = fmax(0.0, z);
     double t1 = isfinite(lo) ? -dl : fabs(dl);
     double t2 = isfinite(up) ? -du : fabs(du);
     double av = 0.0; const Col *c = &t->cols[j];
@@ -655,7 +670,7 @@ static double dviol_var(const PRIMALtask_t t, int j, int s) {
         if (t->qt_i[e] == j) qg += t->qt_v[e] * t->x[t->qt_j[e]];
         if (t->qt_j[e] == j && t->qt_i[e] != j) qg += t->qt_v[e] * t->x[t->qt_i[e]];
     }
-    double t3 = fabs(s * t->c[j] + s * qg + av + s * (t->slx[j] + t->sux[j]));
+    double t3 = fabs(t->c[j] + qg + av + quadratic_row_gradient(t, j) + t->slx[j] + t->sux[j]);
     double m = t1 > t2 ? t1 : t2;
     return t3 > m ? t3 : (m > 0.0 ? m : 0.0);
 }
@@ -772,7 +787,7 @@ static double cone_primal_viol(const PRIMALtask_t t, int k) {
     }
     double sl = ok ? cone_signed_slack(t->cone_type[k], t->cone_param[k], v, nk) : HUGE_VAL;
     free(v);
-    if (!isfinite(sl)) return 0.0;
+    if (!isfinite(sl)) return INFINITY;
     return sl < 0.0 ? -sl : 0.0;
 }
 
@@ -889,8 +904,8 @@ PRIMALrescodee PRIMAL_getsolutioninfo(PRIMALtask_t t, PRIMALsolt which,
     if (!t->has_sol) return PRIMAL_RES_ERR_ARG;
     int s = (t->sense == PRIMAL_OPTIMIZE_MAXIMIZE) ? -1 : 1;
 
-    if (pobj) { PRIMALrealt v = 0.0; if (PRIMAL_getprimalobj(t, which, &v) == PRIMAL_RES_OK) *pobj = v; }
-    if (dobj) { PRIMALrealt v = 0.0; if (PRIMAL_getdualobj(t, which, &v) == PRIMAL_RES_OK) *dobj = v; }
+    if (pobj) { PRIMALrealt v = NAN; PRIMAL_getprimalobj(t, which, &v); *pobj = v; }
+    if (dobj) { PRIMALrealt v = NAN; PRIMAL_getdualobj(t, which, &v); *dobj = v; }
     if (pviolcon) {
         double w = 0.0;
         for (int i = 0; i < t->numcon; i++) {
@@ -1348,6 +1363,7 @@ PRIMALrescodee PRIMAL_putsucslice(PRIMALtask_t t, PRIMALsolt which, int first, i
 /* Set the same variable bound on every listed index. */
 PRIMALrescodee PRIMAL_putvarboundlistconst(PRIMALtask_t t, int num, const int *sub,
         PRIMALboundkeye bkx, PRIMALrealt blx, PRIMALrealt bux) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !sub)) return PRIMAL_RES_ERR_NULL;
     for (int k = 0; k < num; k++)
@@ -1361,6 +1377,7 @@ PRIMALrescodee PRIMAL_putvarboundlistconst(PRIMALtask_t t, int num, const int *s
 /* Set the same constraint bound on every listed index. */
 PRIMALrescodee PRIMAL_putconboundlistconst(PRIMALtask_t t, int num, const int *sub,
         PRIMALboundkeye bkc, PRIMALrealt blc, PRIMALrealt buc) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !sub)) return PRIMAL_RES_ERR_NULL;
     for (int k = 0; k < num; k++)
@@ -1754,4 +1771,3 @@ int build_csc(PRIMALtask_t t, int **ptr_out, int **sub_out, double **val_out) {
     *ptr_out = ptr; *sub_out = sub; *val_out = val;
     return 1;
 }
-

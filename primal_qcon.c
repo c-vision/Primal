@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_qcon.c - quadratic constraint terms (putqconk family).
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
 
@@ -78,6 +78,7 @@ static int qcon_alloc(PRIMALtask_t t) {
 PRIMALrescodee PRIMAL_putqconk(PRIMALtask_t t, int k, int numqcnz,
                          const int *qsubi, const int *qsubj,
                          const double *qval) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (k < 0 || k >= t->numcon || numqcnz < 0) return PRIMAL_RES_ERR_ARG;
     if (numqcnz > 0 && (!qsubi || !qsubj || !qval)) return PRIMAL_RES_ERR_NULL;
@@ -147,6 +148,7 @@ PRIMALrescodee PRIMAL_putqconk(PRIMALtask_t t, int k, int numqcnz,
 PRIMALrescodee PRIMAL_putqcon(PRIMALtask_t t, int numqcnz,
                               const int *qcsubk, const int *qcsubi, const int *qcsubj,
                               const PRIMALrealt *qcval) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (numqcnz < 0 || (numqcnz > 0 && (!qcsubk || !qcsubi || !qcsubj || !qcval)))
         return PRIMAL_RES_ERR_ARG;

@@ -16,6 +16,8 @@
  * under the License.
  */
 
+/* Modified 2026-09-26: retain scalar Newton increments in mixed PSD/SOC solves. */
+
 /* sdp.c - primal-dual interior point for conic problems (standard form)
  *
  *   min  c'x + sum_j <C_j, X_j> + sum_i <c_i, z_i>
@@ -1316,7 +1318,10 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                  * annihilates (|rp + A d| back to 1e-12 on every iteration).
                  * Not the default: alone it loses logistic (mosek_comparison),
                  * which the elimination solves. */
-                int augx = secant && nep > 0 && nb == 0 && n > 0;
+                /* Also retain scalar increments for mixed PSD/SOC models:
+                 * recovering dx through x/s near a cone face loses feasibility. */
+                int augx = n > 0 && ((secant && nep > 0 && nb == 0) ||
+                                     (nb > 0 && nsoc > 0 && nep == 0));
                 int bx = m + K + Ke;
                 int Nsys = bx + (augx ? n : 0);
                 double *Sys = (double *)calloc((size_t)Nsys * (size_t)Nsys, sizeof(double));

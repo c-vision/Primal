@@ -16,19 +16,21 @@
  * under the License.
  */
 /* primal_quad.c - opt_prepare, bar_copy, quad_encode_task, optimize_quad.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
 
 /* Clears the previous solve's point, statuses and objective before a new run;
  * also (re)allocates the solution vectors the engines write into. */
 PRIMALrescodee opt_prepare(PRIMALtask_t t) {
+    if (t) t->result_stale = 0;
     int nvar = t->numvar, ncon = t->numcon;
     t->has_sol = 0;
     t->solsta = PRIMAL_SOL_STA_UNKNOWN;
     t->prosta = PRIMAL_PRO_STA_UNKNOWN;
     t->pobj = 0.0;
     t->dobj = 0.0;
+    t->mip_result = 0; t->mip_bound_defined = 0;
     free(t->x); free(t->y); free(t->slc); free(t->suc); free(t->slx); free(t->sux);
     free(t->soc_dual); t->soc_dual = NULL; t->nsoc_dual = 0;
     free(t->snx); free(t->xc);
@@ -145,6 +147,8 @@ static PRIMALrescodee quad_encode_task(PRIMALtask_t t, PRIMALtask_t *shadow_out)
         if (!t->qcon || !t->qcon[i]) continue;
         int nz = 0;
         for (int e = 0; e < nvar * nvar && !nz; e++) if (t->qcon[i][e] != 0.0) nz = 1;
+        if (nz && t->bkc[i] != PRIMAL_BK_UP && t->bkc[i] != PRIMAL_BK_LO &&
+                  t->bkc[i] != PRIMAL_BK_FR) return PRIMAL_RES_ERR_ARG;
         if (nz) nquad_row++;
     }
     if (nquad_row == 0 && nquad_obj == 0) return PRIMAL_RES_ERR_ARG;
@@ -177,12 +181,12 @@ static PRIMALrescodee quad_encode_task(PRIMALtask_t t, PRIMALtask_t *shadow_out)
      * objective: MIN needs Q PSD (lam>0, +u in obj); MAX needs Q NSD
      * (uses -Q, lam<0 of Q, -u in obj). Rows: UP -> PSD, LO -> NSD. */
     int *R = (int *)calloc((size_t)(ncon + 1), sizeof(int));   /* per row + obj */
-    int nent = 0;
     int obj_need = (t->sense == PRIMAL_OPTIMIZE_MAXIMIZE) ? -1 : 1;
     int bad_curv = 0;
     int bad_i = -1;
     double bad_lam = 0.0;
     for (int i = 0; i <= ncon; i++) {   /* i == ncon => objective */
+        if (i < ncon && t->bkc[i] == PRIMAL_BK_FR) continue;
         const double *Qi = (i == ncon) ? (t->has_qobj ? ensure_dense_qobj(t) : NULL)
                                        : (t->qcon ? t->qcon[i] : NULL);
         if (!Qi) continue;
@@ -213,9 +217,8 @@ static PRIMALrescodee quad_encode_task(PRIMALtask_t t, PRIMALtask_t *shadow_out)
             continue;
         }
         R[i] = cnt;
-        nent++;
     }
-    if (bad_curv || nent == 0) {
+    if (bad_curv) {
         if (bad_curv && getenv("GMB_DBG")) {
             if (bad_i == ncon) fprintf(stderr,
                 "  [route] model refused: the quadratic objective has eigenvalue %.3g on the wrong side (domain not convex)\n", bad_lam);
@@ -382,8 +385,7 @@ PRIMALrescodee optimize_quad(PRIMALtask_t t, int s) {
     PRIMALtask_t sh = NULL;
     PRIMALrescodee rc = quad_encode_task(t, &sh);
     if (rc != PRIMAL_RES_OK) return rc;
-    PRIMALenv_t shenv = NULL;
-    (void)shenv;
+    PRIMALenv_t shenv = sh->env;
     /* copy progress callback + params */
     sh->progcb = t->progcb; sh->proghandle = t->proghandle;
     memcpy(sh->infoname, t->infoname, sizeof sh->infoname);
@@ -449,7 +451,12 @@ PRIMALrescodee optimize_quad(PRIMALtask_t t, int s) {
             double av = 0.0;
             const Col *c = &t->cols[j];
             for (int k = 0; k < c->nz; k++) av += c->val[k] * t->y[c->sub[k]];
-            double zz = -(s * t->c[j] + s * (qxv ? qxv[j] : 0.0) + av);
+            for (int i = 0; i < t->numcon; i++) if (t->qcon && t->qcon[i]) {
+                double qg = 0.0;
+                for (int k = 0; k < nvar; k++) qg += t->qcon[i][j*nvar+k] * t->x[k];
+                av += t->y[i] * qg;
+            }
+            double zz = -(t->c[j] + (qxv ? qxv[j] : 0.0) + av);
             t->slx[j] = zz < 0.0 ? zz : 0.0;
             t->sux[j] = zz > 0.0 ? zz : 0.0;
         }
@@ -470,14 +477,15 @@ PRIMALrescodee optimize_quad(PRIMALtask_t t, int s) {
             po += t->barC_coef[k] * tr;
         }
         t->pobj = po;
-        t->dobj = po;   /* deviation: no meaningful dobj for the QCQP path */
+        t->dobj = sh->dobj;   /* deviation: no meaningful dobj for the QCQP path */
         t->has_sol = 1;
         t->solsta = sh->solsta;
     } else if (sh->has_sol) {
         t->has_sol = 1;
         t->solsta = sh->solsta;
     }
-    { PRIMALenv_t e2 = NULL; PRIMAL_deletetask(&sh); (void)e2; }
+    PRIMAL_deletetask(&sh);
+    PRIMAL_deleteenv(&shenv);
     return rcs;
 }
 
@@ -781,6 +789,7 @@ PRIMALrescodee PRIMAL_solvebasis(PRIMALtask_t t) {
         t->dobj = po;
         t->has_sol = 1;
         t->solsta = PRIMAL_SOL_STA_OPTIMAL;
+        t->result_stale = 0;
         {
             char pb[64];
             snprintf(pb, sizeof pb, "basis solved (%d basic)", nbas);

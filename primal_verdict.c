@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_verdict.c - conic verdicts, cone gate, PRIMAL_optimize dispatcher entry.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
 
@@ -24,26 +24,35 @@
  * positive inside K, negative outside, in the same shape for every cone kind.
  * Returns HUGE_VAL for a cone kind this task cannot test. */
 double cone_signed_slack(int ct, double a, const double *v, int nk) {
+    if (!v || nk <= 0) return -INFINITY;
+    for (int i = 0; i < nk; i++) if (!isfinite(v[i])) return -INFINITY;
     switch (ct) {
     case PRIMAL_CT_QUAD: { double s = 0.0; for (int i = 1; i < nk; i++) s += v[i] * v[i];
         return v[0] - sqrt(s); }
     case PRIMAL_CT_RQUAD: { double s = 0.0; for (int i = 2; i < nk; i++) s += v[i] * v[i];
         double q = (v[0] - v[1]) * (v[0] - v[1]) + 2.0 * s;
         return (v[0] + v[1] - (q > 0.0 ? sqrt(q) : 0.0)) / sqrt(2.0); }
-    /* The u = 0 face is not "no violation": the epigraph of u*exp(v/u) closes
-     * onto the half-line {u = 0, v = 0, t >= 0} and on nothing else, so a block
-     * sitting on that face with v anywhere outside 0 is OUTSIDE the cone. The
+    /* The epigraph of u*exp(v/u) closes onto {u = 0, v <= 0, t >= 0}.
+     * A point on that face with v > 0 remains outside the cone. The
      * same for the t = 0 / u = 0 faces of a power cone, where the geometric mean
      * is 0 and only v = 0 belongs. Measured, not assumed: reading the face as
      * slack 0 is how a direction escaping along v passed the ray test. */
-    case PRIMAL_CT_PEXP: { double t = v[0], u = v[1];
-        if (!(u > 0.0)) { if (u < 0.0) return u;
-            double f = -fabs(v[2]); return t < f ? t : f; }
-        double G = t - u * exp(v[2] / u); return G < u ? G : u; }
-    case PRIMAL_CT_DEXP: { double t = v[0], u = v[1];   /* DEXP = -PEXP */
-        if (!(u < 0.0)) { if (u > 0.0) return -u;
-            double f = -fabs(v[2]); return -t < f ? -t : f; }
-        double G = u * exp(v[2] / u) - t; return G < -u ? G : -u; }
+    case PRIMAL_CT_PEXP: {
+        if (nk != 3) return -INFINITY;
+        double t = v[0], u = v[1];
+        if (u < 0.0) return u;
+        if (u == 0.0) return fmin(t, fmin(0.0, -v[2]));
+        double log_rhs = log(u) + v[2] / u;
+        if (log_rhs > log(DBL_MAX)) return -INFINITY;
+        return fmin(u, t - exp(log_rhs)); }
+    case PRIMAL_CT_DEXP: {
+        if (nk != 3) return -INFINITY;
+        double t = v[0], u = v[1], w = v[2];   /* Mathematical dual in (t,u,w) order. */
+        if (w > 0.0) return -w;
+        if (w == 0.0) return fmin(0.0, fmin(t, u));
+        double log_rhs = log(-w) + u / w - 1.0;
+        if (log_rhs > log(DBL_MAX)) return -INFINITY;
+        return fmin(-w, t - exp(log_rhs)); }
     case PRIMAL_CT_PPOW: case PRIMAL_CT_RPOW: { double t = v[0], u = v[1], m = t < u ? t : u;
         if (!(t > 0.0 && u > 0.0)) { double f = -fabs(v[2]); return m < f ? m : f; }
         double g = (ct == PRIMAL_CT_RPOW ? sqrt(2.0) : 1.0)
@@ -68,18 +77,10 @@ double cone_dual_signed_slack(int ct, double a, const double *v, int nk) {
     switch (ct) {
     case PRIMAL_CT_QUAD: case PRIMAL_CT_RQUAD:
         return cone_signed_slack(ct, a, v, nk);
-    case PRIMAL_CT_PEXP: case PRIMAL_CT_DEXP: {
-        if (nk < 3) return HUGE_VAL;
-        /* DEXP = -PEXP (every member negated), and (MK)* = M^-T K* with M = -I
-         * is the same negation: s in DEXP* <=> -s in PEXP*. */
-        double s0 = (ct == PRIMAL_CT_DEXP ? -v[0] : v[0]),
-               s1 = (ct == PRIMAL_CT_DEXP ? -v[1] : v[1]),
-               s2 = (ct == PRIMAL_CT_DEXP ? -v[2] : v[2]);
-        if (!(s0 > 0.0)) return s0;
-        if (!(s2 < 0.0)) return s2;
-        double q = s1 - s2 + s2 * log(-s2 / s0);
-        double m = s0 < -s2 ? s0 : -s2;
-        return q < m ? q : m; }
+    case PRIMAL_CT_PEXP:
+        return cone_signed_slack(PRIMAL_CT_DEXP, a, v, nk);
+    case PRIMAL_CT_DEXP:
+        return cone_signed_slack(PRIMAL_CT_PEXP, a, v, nk);
     case PRIMAL_CT_PPOW: case PRIMAL_CT_RPOW: {
         if (nk < 3 || !(a > 0.0 && a < 1.0)) return HUGE_VAL;
         double s0 = v[0], s1 = v[1];
@@ -145,7 +146,7 @@ double cone_dual_worst(PRIMALtask_t t, int s, int *nmeas, int verb) {
             if (fabs(d[i]) > sc) sc = fabs(d[i]);
         }
         double sl = cone_dual_signed_slack(t->cone_type[k], t->cone_param[k], d, nk);
-        if (!isfinite(sl)) continue;     /* untestable: not measured, not "measured clean" */
+        if (!isfinite(sl)) { worst = INFINITY; nm++; continue; }
         nm++;
         if (verb && getenv("GMB_DBG")) {
             fprintf(stderr, "  [condual] cone %d %s rel=%.3g d=", k,
@@ -518,7 +519,7 @@ static double conic_primal_cone_worst(PRIMALtask_t t) {
         for (int i = 0; i < nk; i++) { v[i] = t->x[mi[i]]; if (fabs(v[i]) > sc) sc = fabs(v[i]); }
         double sl = cone_signed_slack(t->cone_type[k], t->cone_param[k], v, nk);
         free(v);
-        if (!isfinite(sl)) continue;
+        if (!isfinite(sl)) return -INFINITY;
         double rel = sl / (1.0 + sc);
         if (rel < worst) worst = rel;
     }
@@ -887,6 +888,8 @@ static void intpnt_crossover_cleanup(PRIMALtask_t t)
  * }
  */
 PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
+    PRIMALrescodee sync_rc = derived_sync(t);
+    if (sync_rc != PRIMAL_RES_OK) return sync_rc;
     clock_t opt_t0 = clock();
     /* Wall-clock cap: PRIMAL_DPAR_OPTIMIZER_MAX_TIME seconds (<0 = no limit). */
     double deadline = (t && t->optimizer_max_time >= 0.0)
@@ -924,7 +927,8 @@ PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
      * longer consults only bar-free models, and `conic_dual_verdict` measures
      * the bar blocks too. Quadratic terms remain out, since neither
      * `cone_dual_worst` nor `model_lp_witness` carries them. */
-    int conic_only = t && (t->numcones > 0 || t->numbarvar > 0) &&
+    int conic_only = t && !t->mip_result &&
+                     (t->numcones > 0 || t->numbarvar > 0) &&
                      !t->has_qcon && !t->has_qobj;
     int s = (t && t->sense == PRIMAL_OPTIMIZE_MAXIMIZE) ? -1 : 1;
     /* A cone-only model has one more side to judge than the rows do, and it is
@@ -946,6 +950,24 @@ PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
         }
     }
     /* And when a route gave up, the model is still asked what it is. */
+    if (r == PRIMAL_RES_OK && t && t->has_sol) {
+        int valid = isfinite(t->pobj);
+        for (int j = 0; j < t->numvar; j++) valid &= isfinite(t->x[j]);
+        if (t->has_qcon) for (int i = 0; i < t->numcon; i++) {
+            double lo, up, a = row_activity(t, i, t->x);
+            bound_range(t->bkc[i], t->blc[i], t->buc[i], &lo, &up);
+            double scale = 1.0;
+            if (isfinite(lo)) scale = fmax(scale, fabs(lo));
+            if (isfinite(up)) scale = fmax(scale, fabs(up));
+            double tol = t->tol_co_pfeas * fmax(1.0, t->tol_near_rel) * scale;
+            if (!isfinite(a) || a < lo - tol || a > up + tol) valid = 0;
+        }
+        if (!valid) {
+            t->has_sol = 0; t->solsta = PRIMAL_SOL_STA_UNKNOWN;
+            t->prosta = PRIMAL_PRO_STA_UNKNOWN; r = PRIMAL_RES_TRM_MAX_ITER;
+        }
+    }
+    /* And when a route gave up, the model is still asked what it is. */
     if (r == PRIMAL_RES_TRM_MAX_ITER && conic_only)
         r = conic_no_answer_verdict(t, s, r);
     /* One line per solve that published something into a conic/SDP model: the
@@ -960,7 +982,7 @@ PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
         intpnt_identify_basis(t);
         intpnt_crossover_cleanup(t);
     }
-    if (t) { t->last_rc = r; t->opt_time = (double)(clock() - opt_t0) / (double)CLOCKS_PER_SEC; }
+    if (t) { t->result_stale = 0;
+        t->last_rc = r; t->opt_time = (double)(clock() - opt_t0) / (double)CLOCKS_PER_SEC; }
     return r;
 }
-

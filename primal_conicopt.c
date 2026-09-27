@@ -16,9 +16,17 @@
  * under the License.
  */
 /* primal_conicopt.c - exp/power tangent cuts, optimize_conic.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
+
+double exp_factor(int ct, int i) {
+    return ct == PRIMAL_CT_DEXP ? (i == 0 ? exp(1.0) : -1.0) : 1.0;
+}
+
+int exp_member(int ct, int i) {
+    return ct == PRIMAL_CT_DEXP && i > 0 ? 3 - i : i;
+}
 
 /* Sum of the stored A entries in row i, column j (duplicates included). */
 static double conic_aij(PRIMALtask_t t, int i, int j) {
@@ -79,8 +87,8 @@ int expp_add_cut(int type, double alpha, const int *mem,
                         int *cutcol, double *cuta, double *cuth) {
     int nc = 0;
     if (type == PRIMAL_CT_PEXP || type == PRIMAL_CT_DEXP) {
-        int sg = (type == PRIMAL_CT_PEXP) ? 1 : -1;   /* DEXP: negated variables */
-        double u = sg * xs[mem[1]], v = sg * xs[mem[2]];
+        double u = exp_factor(type, 1) * xs[mem[exp_member(type, 1)]];
+        double v = exp_factor(type, 2) * xs[mem[exp_member(type, 2)]];
         if (u < 1e-2) u = 1e-2;          /* clamp: well-conditioned tangents */
         double w = v / u; if (w > EXPP_WCAP) { w = EXPP_WCAP; v = w * u; }
         double f0 = u * exp(w);
@@ -88,9 +96,9 @@ int expp_add_cut(int type, double alpha, const int *mem,
         double fv = exp(w);
         double k = f0 - fu * u - fv * v;
         /* row: sg*m0 - fu*(sg*m1) - fv*(sg*m2) - k >= 0 */
-        cutcol[0] = mem[0]; cuta[0] = (double)sg;
-        cutcol[1] = mem[1]; cuta[1] = -fu * (double)sg;
-        cutcol[2] = mem[2]; cuta[2] = -fv * (double)sg;
+        cutcol[0] = mem[0]; cuta[0] = exp_factor(type, 0);
+        cutcol[1] = mem[exp_member(type, 1)]; cuta[1] = -fu * exp_factor(type, 1);
+        cutcol[2] = mem[exp_member(type, 2)]; cuta[2] = -fv * exp_factor(type, 2);
         cuth[0] = -k;
         nc = 1;
     } else if (type == PRIMAL_CT_PPOW) {
@@ -398,7 +406,6 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         if (ct != PRIMAL_CT_PEXP && ct != PRIMAL_CT_DEXP &&
             ct != PRIMAL_CT_PPOW && ct != PRIMAL_CT_RPOW) continue;
         const int *mem = t->cone_mem[k];
-        int sg = (ct == PRIMAL_CT_DEXP) ? -1 : 1;
         int A0 = auxBase[k];
         int nl = nNlin++;
         /* DEXP = PEXP in the auxiliary space (auxiliaries = signed members) */
@@ -406,9 +413,10 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         nlAlpha[nl] = t->cone_param[k];
         for (int i = 0; i < 3; i++) {
             nlMem[3 * nl + i] = A0 + i;
-            /* link equality: A_i - sg*m_i = 0 */
-            eqKind[e] = EQ_LINK; eqIdx[e] = mem[i]; eqAux[e] = A0 + i;
-            E[e * ntot + A0 + i] = 1.0; E[e * ntot + mem[i]] = -(double)sg;
+            int member = mem[exp_member(ct, i)];
+            double factor = exp_factor(ct, i);
+            eqKind[e] = EQ_LINK; eqIdx[e] = member; eqAux[e] = A0 + i;
+            E[e * ntot + A0 + i] = 1.0; E[e * ntot + member] = -factor;
             d[e] = 0.0; e++;
         }
         nauxDone += 3;
@@ -754,7 +762,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             case EQ_FXVAR: zmin[eqIdx[q]] += ye; break;
             case EQ_LINK:
                 zmin[eqAux[q]] += ye;
-                zmin[eqIdx[q]] -= ye;
+                zmin[eqIdx[q]] += E[q * ntot + eqIdx[q]] * ye;
                 break;
             case EQ_RQUAD_U: zmin[eqIdx[q]] -= ye; break;
             case EQ_RQUAD_V: zmin[eqIdx[q]] -= ye; break;
@@ -828,7 +836,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
 
     double dob = 0.0;
     for (int q = 0; q < neq; q++) dob += d[q] * ys[q];
-    for (int q = 0; q < K; q++)  dob += h[q] * lm[q];
+    for (int q = 0; q < r_cut + ncuts + ncuts_psd; q++)  dob += h[q] * lm[q];
     /* cfix is a term of the objective as written (pobj starts from it above), so
      * it sits OUTSIDE the sense factor: inside, -s*(dob+cfix) misses by 2*cfix. */
     t->dobj = -s * dob + t->cfix;

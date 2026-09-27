@@ -16,14 +16,27 @@
  * under the License.
  */
 /* primal_mip_opt.c - optimize_mip (branch & bound).
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
+
+/* Jobs are prepared by the caller. A failed creation executes the unchanged
+ * job synchronously; only threads actually created may be joined. */
+void mip_run_jobs(int n, size_t stride, void *jobs, void *(*worker)(void *)) {
+    pthread_t threads[64]; int made[64] = {0};
+    for (int k = 0; k < n; k++) {
+        void *job = (char *)jobs+(size_t)k*stride;
+        made[k] = pthread_create(&threads[k],NULL,worker,job) == 0;
+        if (!made[k]) worker(job);
+    }
+    for (int k = 0; k < n; k++) if (made[k]) pthread_join(threads[k],NULL);
+}
 
 /* Run branch and bound over the node relaxations. Builds cut copies,
  * tightens bounds, probes binaries, then searches the tree until the
  * node cap or an optimal incumbent. Returns the result code. */
 PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
+    t->mip_result = 1; t->mip_bound_defined = 0;
     int nvar = t->numvar, ncon = t->numcon;
 
     /* conic/quadratic/SDP node relaxations need a shadow env */
@@ -145,7 +158,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             int nth = t->num_threads > 1 ? t->num_threads : 1;
             if (nth > nbin) nth = nbin;
             if (nth > 1) {
-                pthread_t th[64]; ProbeJob jobs[64];
+                ProbeJob jobs[64]; int njob = 0;
                 int chunk = (nbin + nth - 1) / nth;
                 for (int k = 0; k < nth; k++) {
                     int st = k * chunk, en = st + chunk;
@@ -154,13 +167,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     jobs[k].t = t; jobs[k].s = s; jobs[k].nvar = nvar; jobs[k].ncon = ncon;
                     jobs[k].lx = lx; jobs[k].ux = ux; jobs[k].lc = lc; jobs[k].uc = uc;
                     jobs[k].bins = bins; jobs[k].start = st; jobs[k].end = en; jobs[k].fix = fix;
-                    if (pthread_create(&th[k], NULL, probe_worker, &jobs[k]) != 0) {
-                        jobs[k].start = jobs[k].end;   /* no thread: fallback */
-                        probe_worker(&jobs[k]);
-                    }
+                    njob++;
                 }
-                for (int k = 0; k < nth; k++)
-                    if (k * chunk < nbin) pthread_join(th[k], NULL);
+                mip_run_jobs(njob,sizeof(ProbeJob),jobs,probe_worker);
             } else {
                 ProbeJob jb;
                 jb.t = t; jb.s = s; jb.nvar = nvar; jb.ncon = ncon;
@@ -249,11 +258,12 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
      * with the child's bound). If the root is integral, continue sequentially. */
     if (t->num_threads > 1) {
         double *xr = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
-        int bjr = -1; double vv = 0.0;
+        int bjr = -1; double vv = 0.0, root_bound = -INF;
         if (xr) {
             double pminr = 0.0;
             int str = MIP_RELAX(trelax, lx, ux, xr, &pminr, NULL);
             double bfr = -1.0;
+            if (str == 0) root_bound = pminr;
             if (str == 0)
                 for (int j = 0; j < nvar; j++) {
                     if (t->vartype[j] != PRIMAL_VAR_TYPE_INT &&
@@ -271,6 +281,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             for (int side = 0; side < 2; side++) {
                 if (PRIMAL_clonetask(t, &kids[side]) != PRIMAL_RES_OK) { kids[side] = NULL; continue; }
                 kids[side]->num_threads = 1;
+                kids[side]->opt_deadline = t->opt_deadline;
+                kids[side]->mip_deadline = t->mip_deadline;
+                if (opt_prepare(kids[side]) != PRIMAL_RES_OK) { PRIMAL_deletetask(&kids[side]); continue; }
                 if (kids[side]->mip_max_nodes > 1) kids[side]->mip_max_nodes /= 2;
                 kids[side]->bkx[bjr] = PRIMAL_BK_RA;
                 if (side == 0) kids[side]->bux[bjr] = floor(vv);
@@ -284,27 +297,40 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 else kj[side].rc = optimize_mip(kids[side], s);
             }
             for (int side = 0; side < 2; side++) if (made[side]) pthread_join(th[side], NULL);
-            int bside = -1; double bkey = INF;
+            int bside = -1; double bkey = best;
             for (int side = 0; side < 2; side++) {
-                if (!kids[side] || kj[side].rc != PRIMAL_RES_OK || !kids[side]->has_sol) continue;
+                if (!kids[side] || !kids[side]->has_sol) continue;
                 double key = s * kids[side]->pobj;
                 if (key < bkey) { bkey = key; bside = side; }
             }
             PRIMALrescodee prc;
-            if (bside >= 0) {
-                memcpy(t->x, kids[bside]->x, (size_t)nvar * sizeof(double));
-                for (int j = 0; j < t->numbarvar; j++) {
+            int complete = 1;
+            double bound = INF;
+            for (int side = 0; side < 2; side++) {
+                if (!kids[side]) { complete = 0; bound = fmin(bound, root_bound); continue; }
+                if (kj[side].rc == PRIMAL_RES_ERR_INFEASIBLE) continue;
+                if (kj[side].rc != PRIMAL_RES_OK) complete = 0;
+                double child_bound = kids[side]->mip_bound_defined
+                    ? fmax(root_bound, s * kids[side]->mip_bound) : root_bound;
+                bound = fmin(bound, child_bound);
+            }
+            t->mip_bound_defined = isfinite(bound);
+            t->mip_bound = s * bound;
+            if (bside >= 0 || best < INF) {
+                memcpy(t->x, bside >= 0 ? kids[bside]->x : bestx, (size_t)nvar * sizeof(double));
+                for (int j = 0; bside >= 0 && j < t->numbarvar; j++) {
                     int d = t->barDim[j];
                     memcpy(t->barx[j], kids[bside]->barx[j], (size_t)d * d * sizeof(double));
                 }
-                t->pobj = kids[bside]->pobj; t->dobj = kids[bside]->dobj;
-                t->solsta = kids[bside]->solsta; t->prosta = kids[bside]->prosta;
-                t->has_sol = kids[bside]->has_sol;
-                prc = PRIMAL_RES_OK;
+                t->pobj = bside >= 0 ? kids[bside]->pobj : s * best;
+                t->solsta = complete ? PRIMAL_SOL_STA_INTEGER_OPTIMAL : PRIMAL_SOL_STA_PRIM_FEAS;
+                t->prosta = PRIMAL_PRO_STA_PRIM_FEAS;
+                t->has_sol = 1; t->dobj = t->mip_bound_defined ? t->mip_bound : NAN;
+                prc = complete ? PRIMAL_RES_OK : PRIMAL_RES_TRM_MAX_ITER;
             } else {
                 int inf = 1;
                 for (int side = 0; side < 2; side++)
-                    if (kids[side] && kj[side].rc != PRIMAL_RES_ERR_INFEASIBLE) inf = 0;
+                    if (!kids[side] || kj[side].rc != PRIMAL_RES_ERR_INFEASIBLE) inf = 0;
                 t->solsta = PRIMAL_SOL_STA_UNKNOWN;
                 t->prosta = inf ? PRIMAL_PRO_STA_PRIM_INFEAS : PRIMAL_PRO_STA_UNKNOWN;
                 prc = inf ? PRIMAL_RES_ERR_INFEASIBLE : PRIMAL_RES_TRM_MAX_ITER;
@@ -318,7 +344,8 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         }
     }
 
-    int deadline_hit = 0;
+    int deadline_hit = 0, incomplete = 0;
+    double open_bound = INF, closed_bound = INF, active_bound = INF;
     while (sp > 0 && nodes < t->mip_max_nodes) {
         if (t->mip_deadline >= 0.0 && (double)clock() >= t->mip_deadline) { deadline_hit = 1; break; }
         /* best-bound: expand the node with the lowest bound (the parent leaves
@@ -328,21 +355,24 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         for (int q = sp - 2; q >= 0; q--) if (stk[q].bound < stk[besti].bound) besti = q;
         MipNode nd = stk[besti];
         stk[besti] = stk[--sp];
+        active_bound = nd.bound;
         double *x = (double *)malloc((size_t)nvar * sizeof(double));
         double pmin;
-        if (!x) { free(nd.lx); free(nd.ux); break; }
+        if (!x) { incomplete = 1; free(nd.lx); free(nd.ux); break; }
         int st = MIP_RELAX(trelax, nd.lx, nd.ux, x, &pmin, NULL);
         nodes++;
         if (nodes == 1) root_status = st;
         if (st != 0) {   /* infeasible (or unbounded child): prune */
+            if (st != 1) { incomplete = 1; open_bound = fmin(open_bound, nd.bound); }
+            active_bound = INF;
             if (st == 3 && getenv("GMB_DBG"))
                 fprintf(stderr, "  [mip] node=%ld relaxation gave no answer\n", nodes);
             free(x); free(nd.lx); free(nd.ux);
             continue;
         }
-        /* primal heuristic at the root: round the node solution, pin the
-         * integers and repair with the relaxation -- a relaxation of the node,
-         * hence a feasible point. It finds an incumbent before branching. */
+        active_bound = pmin;
+        /* Round the root solution, pin integers and solve the restricted model
+         * for an incumbent. Its objective is not the original node's bound. */
         if (nodes == 1 && best == INF) {
             for (int j = 0; j < nvar; j++) {
                 int vt = t->vartype[j];
@@ -560,7 +590,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             double rg = t->mip_tol_rel_gap * (1.0 + fabs(best));
             if (rg > gap) gap = rg;
         }
-        if (pmin >= best - gap) { free(x); free(nd.lx); free(nd.ux); continue; }
+        if (best < INF && pmin >= best - gap) {
+            closed_bound = fmin(closed_bound, pmin); active_bound = INF;
+            free(x); free(nd.lx); free(nd.ux); continue; }
 
         /* branching priority:
          * 1. semi-continuous/integer violated (0 < x < l): two children
@@ -577,38 +609,15 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             double l = t->blx[j];
             if (x[j] > 1e-7 && x[j] < l - 1e-7) bsemi = j;
         }
-        /* SOS check: count nonzero members (SOS1), adjacent pairs (SOS2) */
+        double sos_pivot = 0.0;
+        int invalid_sos = 0;
         for (int k = 0; k < t->numsos && bsemi < 0 && bsos < 0; k++) {
-            const int *mem = t->sos_mem[k];
-            const double *w = t->sos_w[k];
-            int n = t->sos_n[k];
-            if (t->sos_type[k] == 1) {
-                int nz = 0;
-                for (int q = 0; q < n; q++)
-                    if (x[mem[q]] > 1e-7) nz++;
-                if (nz > 1) bsos = k;
-            } else {
-                /* SOS2: order members by weight, find the first pair of
-                 * non-adjacent members both nonzero */
-                int idx[64];
-                if (n > 64) { bsos = -1; continue; }   /* too big: skip check */
-                for (int q = 0; q < n; q++) idx[q] = q;
-                /* insertion sort by weight */
-                for (int q = 1; q < n; q++) {
-                    int key = idx[q];
-                    double kw = w[key];
-                    int p = q - 1;
-                    while (p >= 0 && w[idx[p]] > kw) { idx[p + 1] = idx[p]; p--; }
-                    idx[p + 1] = key;
-                }
-                int lastnz = -1;
-                for (int q = 0; q < n; q++) {
-                    if (x[mem[idx[q]]] > 1e-7) {
-                        if (lastnz >= 0 && q > lastnz + 1) { bsos = k; break; }
-                        lastnz = q;
-                    }
-                }
-            }
+            int violation = sos_violation(t, k, x, ftol, &sos_pivot);
+            if (violation < 0) { invalid_sos = 1; break; }
+            if (violation) bsos = k;
+        }
+        if (invalid_sos) {
+            incomplete = 1; free(x); free(nd.lx); free(nd.ux); break;
         }
         /* integer check: collect the fractional candidates (for strong
          * branching) and keep the most fractional as default */
@@ -641,7 +650,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     int nth = t->num_threads > 1 ? t->num_threads : 1;
                     if (nth > K) nth = K;
                     if (nth > 1) {
-                        pthread_t th[64]; SBJob jobs[64];
+                        SBJob jobs[64]; int njob = 0;
                         int chunk = (K + nth - 1) / nth;
                         for (int k = 0; k < nth; k++) {
                             int st = k * chunk, en = st + chunk;
@@ -652,11 +661,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                             jobs[k].lc = lc; jobs[k].uc = uc; jobs[k].x = x;
                             jobs[k].cand = cand; jobs[k].start = st; jobs[k].end = en;
                             jobs[k].score = scores;
-                            if (pthread_create(&th[k], NULL, sb_worker, &jobs[k]) != 0) {
-                                jobs[k].start = jobs[k].end; sb_worker(&jobs[k]);
-                            }
+                            njob++;
                         }
-                        for (int k = 0; k < nth; k++) if (k * chunk < K) pthread_join(th[k], NULL);
+                        mip_run_jobs(njob,sizeof(SBJob),jobs,sb_worker);
                     } else {
                         SBJob jb;
                         jb.trelax = trelax; jb.s = s; jb.nvar = nvar;
@@ -689,7 +696,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             if (sp + 2 > cap) {
                 cap *= 2;
                 MipNode *ns = (MipNode *)realloc(stk, (size_t)cap * sizeof(MipNode));
-                if (!ns) { free(nd.lx); free(nd.ux); break; }
+                if (!ns) { incomplete = 1; free(nd.lx); free(nd.ux); break; }
                 stk = ns;
             }
             int ok = 1;
@@ -707,83 +714,50 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     }
                     if (ok) { stk[sp].bound = pmin; sp++; }
                 }
-                if (!ok) break;
+                if (!ok) { incomplete = 1; break; }
             }
             free(nd.lx); free(nd.ux);
-            if (!ok) break;
+            if (!ok) { incomplete = 1; break; }
             continue;
         }
 
         if (bsos >= 0) {
-            /* SOS branching: partition members by weight. SOS1 violated:
-             * pick the two largest nonzero members; children are
-             * "all-zero-except-first" (ux of others = 0) and "first = 0".
-             * For SOS2: first non-adjacent pair (a,b): children keep
-             * members on one side of the weight gap. */
-            int k = bsos;
-            const int *mem = t->sos_mem[k];
-            const double *w = t->sos_w[k];
-            int n = t->sos_n[k];
-            /* order members by weight */
-            int *idx = (int *)malloc((size_t)n * sizeof(int));
-            if (!idx) { free(x); free(nd.lx); free(nd.ux); break; }
-            for (int q = 0; q < n; q++) idx[q] = q;
-            for (int q = 1; q < n; q++) {
-                int key = idx[q];
-                double kw = w[key];
-                int p = q - 1;
-                while (p >= 0 && w[idx[p]] > kw) { idx[p + 1] = idx[p]; p--; }
-                idx[p + 1] = key;
-            }
-            /* find split point: SOS1 -> the largest nonzero is isolated;
-             * SOS2 -> keep a maximal adjacent window containing the first
-             * violated pair gap. */
-            int split = -1;   /* child A: members idx[0..split) forced 0,
-                               child B: members idx[split..n) forced 0 */
-            if (t->sos_type[k] == 1) {
-                int firstnz = -1;
-                for (int q = 0; q < n; q++)
-                    if (x[mem[idx[q]]] > 1e-7) { firstnz = q; break; }
-                split = firstnz + 1;   /* isolate the first (smallest weight) */
-                if (split >= n) split = n - 1;   /* safety */
-            } else {
-                int lastnz = -1;
-                for (int q = 0; q < n; q++) {
-                    if (x[mem[idx[q]]] > 1e-7) {
-                        if (lastnz >= 0 && q > lastnz + 1) { split = lastnz + 1; break; }
-                        lastnz = q;
-                    }
-                }
-                if (split < 0) split = 0;   /* safety */
-            }
+            /* SOS1 partitions the ordered set; SOS2 children overlap at the
+             * pivot. Intersect with x_j=0, including the lower bound: merely
+             * setting an upper bound to zero permits negative SOS violations. */
             free(x);
             if (sp + 2 > cap) {
                 cap *= 2;
                 MipNode *ns = (MipNode *)realloc(stk, (size_t)cap * sizeof(MipNode));
-                if (!ns) { free(idx); free(nd.lx); free(nd.ux); break; }
+                if (!ns) { incomplete = 1; free(nd.lx); free(nd.ux); break; }
                 stk = ns;
             }
             int ok = 1;
             for (int side = 0; side < 2; side++) {
-                stk[sp].lx = (double *)malloc((size_t)nvar * sizeof(double));
-                stk[sp].ux = (double *)malloc((size_t)nvar * sizeof(double));
-                if (!stk[sp].lx || !stk[sp].ux) ok = 0;
-                else {
-                    memcpy(stk[sp].lx, nd.lx, (size_t)nvar * sizeof(double));
-                    memcpy(stk[sp].ux, nd.ux, (size_t)nvar * sizeof(double));
-                    for (int q = 0; q < n; q++) {
-                        int j = mem[idx[q]];
-                        if (side == 0 && q < split) stk[sp].ux[j] = 0.0;
-                        if (side == 1 && q >= split) stk[sp].ux[j] = 0.0;
+                double *cl = (double *)malloc((size_t)nvar * sizeof(double));
+                double *cu = (double *)malloc((size_t)nvar * sizeof(double));
+                if (!cl || !cu) { free(cl); free(cu); ok = 0; break; }
+                memcpy(cl, nd.lx, (size_t)nvar * sizeof(double));
+                memcpy(cu, nd.ux, (size_t)nvar * sizeof(double));
+                int feasible = 1;
+                for (int q = 0; q < t->sos_n[bsos]; q++) {
+                    int j = t->sos_mem[bsos][q];
+                    double w = t->sos_w[bsos][q];
+                    int zero = side == 0
+                        ? (t->sos_type[bsos] == 1 ? w <= sos_pivot : w < sos_pivot)
+                        : w > sos_pivot;
+                    if (zero) {
+                        cl[j] = fmax(cl[j], 0.0); cu[j] = fmin(cu[j], 0.0);
+                        if (cl[j] > cu[j]) feasible = 0;
                     }
-                    stk[sp].bound = pmin;
-                    sp++;
                 }
-                if (!ok) break;
+                if (feasible) {
+                    stk[sp].lx = cl; stk[sp].ux = cu; stk[sp].bound = pmin; sp++;
+                } else { free(cl); free(cu); }
             }
-            free(idx);
             free(nd.lx); free(nd.ux);
-            if (!ok) break;
+            if (!ok) { incomplete = 1; break; }
+            active_bound = INF;
             continue;
         }
 
@@ -852,12 +826,20 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 for (int j = 0; j < nvar; j++) p += t->c[j] * xs[j];
                 if (t->has_qobj) p += 0.5 * task_xQx(t, xs);
                 if (t->numbarvar > 0) p += barC_dot(t, barXbuf);
-                best = s * p;   /* min-form; p is the objective as written */
+                if (s * p < best) {
+                    best = s * p;   /* min-form; p is the objective as written */
                 memcpy(bestx, xs, (size_t)nvar * sizeof(double));
                 if (t->numbarvar > 0)
                     memcpy(bestX, barXbuf, (size_t)nbartot * sizeof(double));
-                free(x); free(nd.lx); free(nd.ux);
+                }
+                double close_gap = fmax(t->mip_tol_abs_gap,
+                    t->mip_tol_rel_gap * (1.0 + fabs(best)));
+                /* Only the ORIGINAL relaxation bound can close this node. */
+                if (pmin >= best - close_gap) {
+                    closed_bound = fmin(closed_bound, pmin); active_bound = INF;
+                    free(x); free(nd.lx); free(nd.ux);
                 continue;
+            }
             }
             /* Still nothing to publish. If the snap moved some integer off its
              * LP value, that variable is a legitimate branch: floor/ceil of the
@@ -867,6 +849,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
              * dropped rather than published. */
             bj = moved;
             if (bj < 0) {
+                incomplete = 1; open_bound = fmin(open_bound, pmin);
                 tlog(t, "MIP leaf rejected: the integral point does not measure\n");
                 if (getenv("GMB_DBG"))
                     fprintf(stderr, "  [mip] node=%ld leaf rejected: nothing moved"
@@ -895,7 +878,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         if (sp + 2 > cap) {
             cap *= 2;
             MipNode *ns = (MipNode *)realloc(stk, (size_t)cap * sizeof(MipNode));
-            if (!ns) { free(nd.lx); free(nd.ux); break; }
+            if (!ns) { incomplete = 1; free(nd.lx); free(nd.ux); break; }
             stk = ns;
         }
         int ok = 1, refined = 0;
@@ -931,8 +914,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             refined = 1;
         }
         free(nd.lx); free(nd.ux);
-        if (!ok) break;   /* alloc failure: unwind (best so far kept) */
+        if (!ok) { incomplete = 1; break; }   /* alloc failure: unwind (best so far kept) */
         if (!refined) {
+            incomplete = 1; open_bound = fmin(open_bound, pmin);
             /* The relaxation answer sits on a box that no branch can cut: the
              * node's own LP is what disagrees with the model, and there is
              * nothing left to search inside it. */
@@ -944,6 +928,12 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         }
     }
 
+    /* Retain bounds before releasing the frontier. Closed leaves also matter
+     * when a nonzero gap tolerance permits early pruning. */
+    double global_bound = fmin(best, fmin(closed_bound, fmin(open_bound, active_bound)));
+    for (int q = 0; q < sp; q++) global_bound = fmin(global_bound, stk[q].bound);
+    t->mip_bound_defined = isfinite(global_bound);
+    t->mip_bound = s * global_bound;
     /* free remaining stack */
     for (int q = 0; q < sp; q++) { free(stk[q].lx); free(stk[q].ux); }
     free(stk);
@@ -959,7 +949,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
      * reference's pairing for that outcome (Table 7.3: PRIM_FEAS + PRIM_FEAS,
      * "integer feasible point") is what goes out, with a termination code. */
     if (root_status == 1)      rc = PRIMAL_RES_ERR_INFEASIBLE;
-    else if (root_status == 2) rc = PRIMAL_RES_ERR_UNBOUNDED;
+    else if (incomplete || (sp > 0 && nodes < t->mip_max_nodes && !deadline_hit)) rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (deadline_hit)     rc = PRIMAL_RES_TRM_MAX_ITER;   /* time cap */
     else if (nodes >= t->mip_max_nodes && sp > 0)  rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (nodes >= t->mip_max_nodes && sp == 0 && best == INF) rc = PRIMAL_RES_TRM_MAX_ITER;
@@ -984,7 +974,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         if (t->has_qobj) po += 0.5 * task_xQx(t, t->x);
         if (t->numbarvar > 0 && bestX) po += barC_dot(t, bestX);
         t->pobj = po;
-        t->dobj = po;      /* MIP: no duals; dobj = pobj */
+        t->dobj = t->mip_bound_defined ? t->mip_bound : NAN;      /* MIP: no duals; dobj = pobj */
         t->solsta = PRIMAL_SOL_STA_INTEGER_OPTIMAL;
         tlog(t, "integer optimal solution found\n");
     } else if (rc == PRIMAL_RES_ERR_INFEASIBLE) {
@@ -1025,7 +1015,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             if (t->has_qobj) t->pobj += 0.5 * task_xQx(t, t->x);
             if (t->numbarvar > 0 && bestX) t->pobj += barC_dot(t, bestX);
         }
-        t->dobj = 0.0;
+        t->dobj = t->mip_bound_defined ? t->mip_bound : NAN;
         /* Table 7.3: an integer-feasible point that is not proven optimal is
          * PRIM_FEAS, not UNKNOWN -- the incumbent is worth publishing. With no
          * incumbent there is no conclusion, and the derived problem status is

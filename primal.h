@@ -1,3 +1,4 @@
+/* Modified 2026-09-27: numerical and result-contract corrections. */
 /*
  * PrimalSolver - a convex optimization solver in C99 (LP/QP/SOCP/SDP/exp-power/MIP).
  * Copyright 2026 Gaetano Minardi
@@ -186,7 +187,7 @@ typedef enum {
     PRIMAL_CT_QUAD = 0,   /* (t, x1..xk): t >= sqrt(sum xi^2)    */
     PRIMAL_CT_RQUAD = 1,  /* rotated: 2*x1*x2 >= sum_{i>=3} xi^2 */
     PRIMAL_CT_PEXP = 2,   /* (x1,x2,x3): x1 >= x2*exp(x3/x2), x2 >= 0 (param ignored) */
-    PRIMAL_CT_DEXP = 3,   /* dual: x1 <= x2*exp(x3/x2), x2 <= 0       */
+    PRIMAL_CT_DEXP = 3,   /* dual exponential: x1 >= -x3*exp(x2/x3-1), x3<=0 */
     PRIMAL_CT_PPOW = 4,   /* (x1,x2,x3): x1^a*x2^(1-a) >= |x3|, a=param in (0,1) */
     /* 5 and 6 are the reference's DPOW (dual power cone) and ZERO: not
      * implemented here, and deliberately left empty rather than reused, so a
@@ -1736,7 +1737,7 @@ PRIMALrescodee PRIMAL_putbaraijlist(PRIMALtask_t t, PRIMALint64t num,
 PRIMALrescodee PRIMAL_getnumbarvar(PRIMALtask_t t, int *num);
 /* solution of the bar variable j (dim_j x dim_j matrix, row-major) */
 PRIMALrescodee PRIMAL_getbarxj(PRIMALtask_t t, PRIMALsolt which, int j, PRIMALrealt *xj);
-/* approximate bar dual Z_j = C_j - sum_i y_i A^i (PSD by construction) */
+/* Bar dual block: writes dim_j*dim_j doubles in row-major order. */
 PRIMALrescodee PRIMAL_getbarsj(PRIMALtask_t t, PRIMALsolt which, int j, PRIMALrealt *sj);
 /* reference bar surface: counters (getnumbaranz/getnumbarcnz), names
  * (putbarvarname/getbarvarname/getbarvarnameindex/getbarvarnamelen), slices of
@@ -1761,9 +1762,9 @@ PRIMALrescodee PRIMAL_getbarxslice(PRIMALtask_t t, PRIMALsolt which, int first,
 /* Reads the bar dual over bar variables [first,last). */
 PRIMALrescodee PRIMAL_getbarsslice(PRIMALtask_t t, PRIMALsolt which, int first,
                                    int last, PRIMALint64t slicesize, PRIMALrealt *barsslice);
-/* Sets the bar solution of variable j (warm start). */
+/* Reads dim_j*dim_j row-major doubles for the primal bar warm start. */
 PRIMALrescodee PRIMAL_putbarxj(PRIMALtask_t t, PRIMALsolt which, int j, const PRIMALrealt *barxj);
-/* Sets the bar dual of variable j (warm start). */
+/* Reads dim_j*dim_j row-major doubles for the dual bar warm start. */
 PRIMALrescodee PRIMAL_putbarsj(PRIMALtask_t t, PRIMALsolt which, int j, const PRIMALrealt *barsj);
 /* Capacity hint for the number of bar variables (no-op here). */
 PRIMALrescodee PRIMAL_putmaxnumbarvar(PRIMALtask_t t, int maxnumbarvar);
@@ -1826,7 +1827,10 @@ PRIMALrescodee PRIMAL_solvebasis(PRIMALtask_t t);
 PRIMALrescodee PRIMAL_writebasis(PRIMALtask_t t, const char *filename);
 /* Reads a basis in MPS BAS format from the file. */
 PRIMALrescodee PRIMAL_readbasis(PRIMALtask_t t, const char *filename);
-/* solution I/O (reference writesolution/readsolution, writebsolution/
+/* Solution imports are complete, validated, transactional images. Imported
+ * vectors are unverified: statuses UNKNOWN and objective
+ * getters unavailable until solve. Malformed imports preserve the old result.
+ * Solution I/O (reference writesolution/readsolution, writebsolution/
  * readbsolution, writebsolutionhandle). Declared deviation: the reference's
  * FORMAT was not read; here there is a text format and a binary format
  * of our own that round-trip. `*file` are the same calls. */
@@ -1839,7 +1843,7 @@ PRIMALrescodee PRIMAL_readsolution(PRIMALtask_t t, PRIMALsolt whichsol, const ch
 PRIMALrescodee PRIMAL_writesolutionfile(PRIMALtask_t t, const char *filename);
 /* Reads all solution keys from the file. */
 PRIMALrescodee PRIMAL_readsolutionfile(PRIMALtask_t t, const char *filename);
-/* Writes the solution in the binary form (compress is stored, not applied). */
+/* Writes the native binary solution; nonzero compression is rejected. */
 PRIMALrescodee PRIMAL_writebsolution(PRIMALtask_t t, const char *filename, int compress);
 /* Reads the solution from the binary form. */
 PRIMALrescodee PRIMAL_readbsolution(PRIMALtask_t t, const char *filename, int compress);
@@ -1938,7 +1942,7 @@ PRIMALrescodee PRIMAL_getsuc(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *suc)
 PRIMALrescodee PRIMAL_getslx(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *slx);
 /* Reads the upper-variable slack vector of the solution. */
 PRIMALrescodee PRIMAL_getsux(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *sux);
-/* Reads the primal objective value. */
+/* Reads the primal objective; unavailable after model edits until re-solved. */
 PRIMALrescodee PRIMAL_getprimalobj(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *pobj);
 /* Reads the dual objective value. */
 PRIMALrescodee PRIMAL_getdualobj(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *dobj);

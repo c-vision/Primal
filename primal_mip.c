@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_mip.c - MIP shadow copy, node relaxation, cut generators.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
 
@@ -160,7 +160,8 @@ int mip_relax_conic(PRIMALtask_t t, int s, PRIMALenv_t env2,
     if (rc == PRIMAL_RES_OK && sh->has_sol && sh->solsta == PRIMAL_SOL_STA_OPTIMAL) {
         memcpy(xout, sh->x, (size_t)t->numvar * sizeof(double));
         /* min-form objective from the shadow primal obj (original sense) */
-        *pmin = s * sh->pobj;
+        *pmin = isfinite(sh->pobj) && isfinite(sh->dobj)
+        ? fmin(s * sh->pobj, s * sh->dobj) : NAN;
         if (barX_out && sh->numbarvar == t->numbarvar) {
             int off = 0;
             for (int j = 0; j < sh->numbarvar; j++) {
@@ -194,6 +195,28 @@ double quad_row_value(const PRIMALtask_t t, int i, const double *w) {
     return lin + (t->bkc[i] == PRIMAL_BK_UP ? 0.5 : -0.5) * q;
 }
 
+/* Shared SOS predicate and valid branching separator. Input order is arbitrary;
+ * distinct weights define adjacency. The split for SOS2 overlaps at one member
+ * so an adjacent pair spanning the separator survives in one child. */
+int sos_violation(PRIMALtask_t t, int k, const double *x, double tol, double *pivot) {
+    int count = 0;
+    double first = INF, last = -INF;
+    for (int q = 0; q < t->sos_n[k]; q++) {
+        double v = x[t->sos_mem[k][q]], w = t->sos_w[k][q];
+        if (!isfinite(v)) return -1;
+        if (fabs(v) > tol) { count++; first = fmin(first, w); last = fmax(last, w); }
+    }
+    if (count <= 1) return 0;
+    if (t->sos_type[k] == 1) { if (pivot) *pivot = first; return 1; }
+    /* Two active members are adjacent iff no member has an intermediate weight.
+     * Three or more active members necessarily have an intermediate member. */
+    for (int q = 0; q < t->sos_n[k]; q++) {
+        double w = t->sos_w[k][q];
+        if (w > first && w < last) { if (pivot) *pivot = w; return 1; }
+    }
+    return 0;
+}
+
 /* Does w measure as an integer-feasible point of THIS model: bounds, rows,
  * cones, quadratic rows, semi-continuous/semi-integer sets and SOS sets, all
  * within ftol, with integrality within itol?
@@ -212,6 +235,7 @@ int mip_point_measures(PRIMALtask_t t, const double *lx, const double *ux,
                               double ftol, double itol) {
     int nvar = t->numvar, ncon = t->numcon;
     for (int j = 0; j < nvar; j++) {
+        if (!isfinite(w[j])) return 0;
         int vt = t->vartype[j];
         int semi = (vt == PRIMAL_VAR_TYPE_SEMI_CONT || vt == PRIMAL_VAR_TYPE_SEMI_INT);
         /* The disjunctive domain of a semi variable is {0} union [l, up], and
@@ -263,37 +287,10 @@ int mip_point_measures(PRIMALtask_t t, const double *lx, const double *ux,
         }
         free(v);
     }
-    for (int k = 0; k < t->numsos; k++) {
-        const int *mem = t->sos_mem[k];
-        const double *swt = t->sos_w[k];
-        int n = t->sos_n[k];
-        int *idx = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
-        if (!idx) return 0;
-        for (int q = 0; q < n; q++) idx[q] = q;
-        for (int q = 1; q < n; q++) {           /* insertion sort by weight */
-            int key = idx[q];
-            double kw = swt[key];
-            int p = q - 1;
-            while (p >= 0 && swt[idx[p]] > kw) { idx[p + 1] = idx[p]; p--; }
-            idx[p + 1] = key;
-        }
-        int bad = 0;
-        if (t->sos_type[k] == 1) {
-            int nz = 0;
-            for (int q = 0; q < n; q++) if (w[mem[idx[q]]] > ftol) nz++;
-            bad = (nz > 1);
-        } else {
-            int lastnz = -1;
-            for (int q = 0; q < n && !bad; q++) {
-                if (w[mem[idx[q]]] > ftol) {
-                    if (lastnz >= 0 && q > lastnz + 1) bad = 1;
-                    lastnz = q;
-                }
-            }
-        }
-        free(idx);
-        if (bad) return 0;
-    }
+    for (int k = 0; k < t->numsos; k++)
+        if (sos_violation(t, k, w, ftol, NULL) != 0) return 0;
+    for (int k = 0; k < t->numdjc; k++)
+        if (djc_violation(t,k,w) > ftol) return 0;
     return 1;
 }
 
@@ -994,6 +991,7 @@ gdone:
 void *probe_worker(void *arg) {
     ProbeJob *jb = (ProbeJob *)arg;
     int nvar = jb->nvar;
+    for (int k = jb->start; k < jb->end; k++) jb->fix[k] = -1;
     double *plx = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
     double *pux = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
     double *pout = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
@@ -1021,6 +1019,7 @@ void *probe_worker(void *arg) {
 void *sb_worker(void *arg) {
     SBJob *jb = (SBJob *)arg;
     int nvar = jb->nvar;
+    for (int k = jb->start; k < jb->end; k++) jb->score[k] = -INF;
     double *flx = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
     double *flux = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));
     double *xo = (double *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(double));

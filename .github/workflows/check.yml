@@ -1,0 +1,26 @@
+name: Build and contracts
+on:
+  push:
+    branches: [master]
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -j2 all lib bench
+      - run: make test fuzz
+      - run: make sanitize sanitize-fuzz
+      - run: make sanitize-samples
+      - run: make OUT=out/fault-san CFLAGS='-std=c99 -Wall -Wextra -pedantic -O1 -g -fno-omit-frame-pointer -pthread -fsanitize=address,undefined' fault-test
+        env:
+          ASAN_OPTIONS: detect_leaks=0

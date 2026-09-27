@@ -16,7 +16,7 @@
  * under the License.
  */
 /* primal_bar.c - bar variables, symmetric store, A-bar/C-bar triplets.
- * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
+ * Shares primal_priv.h. Modified 2026-09-27 for numerical/result contracts.
  */
 #include "primal_priv.h"
 
@@ -112,6 +112,7 @@ PRIMALrescodee PRIMAL_appendsparsesymmatlist(PRIMALtask_t t, int num, const int 
 /* Appends bar variables of the given dimensions with zeroed solution blocks.
  * Grows the shared bar storage and invalidates any published solution. */
 PRIMALrescodee PRIMAL_appendbarvars(PRIMALtask_t t, int num, const int *dim) {
+    if (num != 0) model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !dim)) return PRIMAL_RES_ERR_ARG;
     for (int k = 0; k < num; k++) if (dim[k] <= 0) return PRIMAL_RES_ERR_ARG;
@@ -152,6 +153,7 @@ PRIMALrescodee PRIMAL_appendbarvars(PRIMALtask_t t, int num, const int *dim) {
  * indices. The kept ones are compacted, the A-bar/C-bar terms on removed
  * variables are dropped and the remaining bar indices are remapped. */
 PRIMALrescodee PRIMAL_removebarvars(PRIMALtask_t t, int num, const int *subset) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && !subset)) return PRIMAL_RES_ERR_ARG;
     for (int a = 0; a < num; a++) {
@@ -200,6 +202,18 @@ PRIMALrescodee PRIMAL_removebarvars(PRIMALtask_t t, int num, const int *subset) 
         wc++;
     }
     t->nbarC = wc;
+    for (int a = 0; a < t->numafe; a++) {
+        int count = 0;
+        for (int e = 0; e < t->afe_barnz[a]; e++) {
+            int j = t->afe_baridx[a][e];
+            if (j >= 0 && j < oldn && remap[j] >= 0) {
+                t->afe_baridx[a][count] = remap[j];
+                t->afe_barsym[a][count] = t->afe_barsym[a][e];
+                t->afe_barcoef[a][count++] = t->afe_barcoef[a][e];
+            }
+        }
+        t->afe_barnz[a] = count;
+    }
     free(del); free(remap);
     if (num > 0) model_resized(t);
     return PRIMAL_RES_OK;
@@ -209,6 +223,7 @@ PRIMALrescodee PRIMAL_removebarvars(PRIMALtask_t t, int num, const int *subset) 
  * Validates stored-matrix ids and dimensions; appends to the A-bar list. */
 PRIMALrescodee PRIMAL_putbaraij(PRIMALtask_t t, int i, int j, int num,
                           const int *sub, const PRIMALrealt *val) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (i < 0 || i >= t->numcon || j < 0 || j >= t->numbarvar ||
         num < 0 || (num > 0 && (!sub || !val))) return PRIMAL_RES_ERR_ARG;
@@ -526,10 +541,11 @@ PRIMALrescodee PRIMAL_getbarcblocktriplet(PRIMALtask_t t, PRIMALint64t maxnum, P
  * Same per-block semantics as putbaraij; appends instead of replacing. */
 PRIMALrescodee PRIMAL_putbarablockij(PRIMALtask_t t, int i, int j, int num,
                                const int *blk_sub, const double *blk_val) {
-    /* The clone represents each term as (con, bar, sym, coef): the
-     * block (i,j) is the matrix list for the pair (i,j) -- same
-     * semantics as putbaraij (which is already per-block). PRIMAL deviation:
-     * appends to the existing terms instead of replacing them. */
+    model_changed(t);
+    /* il clone rappresenta ogni termine come (con, bar, sym, coef): il
+     * blocco (i,j) e' la lista di matrici per la coppia (i,j) — stessa
+     * semantica di putbaraij (che e' gia' per-block). Deviazione PRIMAL:
+     * appende ai termini esistenti invece di sostituirli. */
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (i < 0 || i >= t->numcon || j < 0 || j >= t->numbarvar ||
         num < 0 || (num > 0 && (!blk_sub || !blk_val))) return PRIMAL_RES_ERR_ARG;
@@ -561,6 +577,7 @@ PRIMALrescodee PRIMAL_putbarablockij(PRIMALtask_t t, int i, int j, int num,
  * Validates stored-matrix ids and dimensions; appends to the C-bar list. */
 PRIMALrescodee PRIMAL_putbarcj(PRIMALtask_t t, int j, int num,
                          const int *sub, const PRIMALrealt *val) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (j < 0 || j >= t->numbarvar || num < 0 || (num > 0 && (!sub || !val)))
         return PRIMAL_RES_ERR_ARG;
@@ -594,6 +611,7 @@ PRIMALrescodee PRIMAL_putbarcj(PRIMALtask_t t, int j, int num,
 PRIMALrescodee PRIMAL_putbarablocktriplet(PRIMALtask_t t, PRIMALint64t num,
         const int *subi, const int *subj, const int *subk, const int *subl,
         const PRIMALrealt *valijkl) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && (!subi || !subj || !subk || !subl || !valijkl)))
         return PRIMAL_RES_ERR_NULL;
@@ -616,6 +634,7 @@ PRIMALrescodee PRIMAL_putbarablocktriplet(PRIMALtask_t t, PRIMALint64t num,
  * a single-entry symmetric matrix appended to the C-bar list. */
 PRIMALrescodee PRIMAL_putbarcblocktriplet(PRIMALtask_t t, PRIMALint64t num,
         const int *subj, const int *subk, const int *subl, const PRIMALrealt *valjkl) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && (!subj || !subk || !subl || !valjkl))) return PRIMAL_RES_ERR_NULL;
     for (PRIMALint64t k = 0; k < num; k++) {
@@ -638,6 +657,7 @@ PRIMALrescodee PRIMAL_putbaraijlist(PRIMALtask_t t, PRIMALint64t num,
         const int *subi, const int *subj, const PRIMALint64t *alphaptrb,
         const PRIMALint64t *alphaptre, const PRIMALint64t *matidx,
         const PRIMALrealt *weights) {
+    model_changed(t);
     if (!t) return PRIMAL_RES_ERR_NULL;
     if (num < 0 || (num > 0 && (!subi || !subj || !alphaptrb || !alphaptre || !matidx || !weights)))
         return PRIMAL_RES_ERR_NULL;
