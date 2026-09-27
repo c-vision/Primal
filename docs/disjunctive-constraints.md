@@ -35,6 +35,9 @@ adding the rows that put the expressions in the cone, which is why
 `getpviolacc` and `getdviolacc` can measure it: the ACC keeps the first row it
 produced, and the dual multipliers of those rows are its `doty`.
 
+Generated rows are refreshed before solving after AFE coefficient, constant,
+bar-term or bound edits. Cloning preserves the canonical ACC/DJC definitions.
+
 ## DJC — disjunctive constraint
 
 `appenddjcs` + `putdjc` declares a **disjunction of clauses**: an OR, where each
@@ -53,6 +56,11 @@ which clause is active. The consequence is the same as for the MIP: the rows
 are **emitted and not withdrawn**, so an ACC/DJC slot that has been written
 cannot be rewritten — it would need different rows.
 
+For multiple clauses, every required big-M must follow from finite variable
+bounds or external singleton linear rows. An unsupported unbounded relaxation
+returns `ERR_ARG`; there is no arbitrary `1e6` fallback. Bounds and AFEs are
+re-read before each solve.
+
 **Only linear domains are representable in a DJC.** A conic domain is an
 argument error, and that is a declared limitation rather than a gap: the
 backend is a big-M MIP, and there is no MIP big-M encoding for a nonlinear cone
@@ -60,10 +68,9 @@ here.
 
 ## SOS1 / SOS2
 
-`sos1` is a set of columns of which at most one may be non-zero; `sos2` at
-most two. Both are handled as a special form of the same structure: the
-selector variables and the rows that link them, with SOS1 branching available
-to the MIP search ([branch and bound](branch-and-bound.md)).
+`sos1` permits at most one nonzero member; `sos2` permits at most two, adjacent
+in weight order. Negative values count as nonzero. The MIP search branches on
+these support restrictions without a 64-member size exemption.
 
 ## Semi-continuous / semi-integer
 

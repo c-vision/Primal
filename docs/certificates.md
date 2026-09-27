@@ -8,8 +8,9 @@ too.** Everything below follows from that.
 
 ## Optimality: the KKT certificate
 
-Every solved problem returns a primal point **and** a dual point, and the
-caller can check the four conditions through public getters:
+For continuous problems with a published dual result, the caller can check
+the following conditions through public getters. Integer incumbents have no
+continuous dual objective; use the MIP search bound instead.
 
 ```
 c + Qx + A'y + z = 0        stationarity
@@ -53,6 +54,7 @@ satisfy.
 ```
 
 — a recession direction along which the objective improves without limit.
+For a convex QP, the direction must also satisfy `Qρ = 0`.
 
 Both rays are normalized to `max |·| = 1`, so the tolerances sit on the scale
 of the model rather than on the scale of whatever internal representation
@@ -79,7 +81,7 @@ combination negative. A candidate that does not measure proves nothing.
 | Conic infeasible / unbounded, **no PSD block** | same | **published** |
 | Any route, model **with** a PSD block | in `prosta` | none — the compressed block has no image in `numvar` scalars |
 | Tangent-cut route | in `prosta` | none — it solves in cut space, whose rows are tangents; lifting a witness is not sound |
-| MIP infeasible or unbounded relaxation | in `prosta` | none — the search never lifts the relaxation's direction to the integer model |
+| MIP unbounded relaxation | `UNKNOWN` unless the integer model is resolved | none — a relaxation ray does not establish integer unboundedness |
 | Node cap reached, no incumbent | nothing | none |
 
 In every "no vector" case the status is `UNKNOWN` and the verdict is readable
