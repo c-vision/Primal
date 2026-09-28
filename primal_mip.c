@@ -287,13 +287,13 @@ int mip_point_measures(PRIMALtask_t t, const double *lx, const double *ux,
             for (int q = 0; q < n; q++) if (fabs(w[mem[idx[q]]]) > ftol) nz++;
             bad = (nz > 1);
         } else {
-            /* SOS2 keeps at most two ADJACENT nonzero members: a run of three
-             * consecutive nonzero members violates it. */
-            int run = 0;
-            for (int q = 0; q < n && !bad; q++) {
-                if (fabs(w[mem[idx[q]]]) > ftol) { if (++run > 2) bad = 1; }
-                else run = 0;
-            }
+            /* SOS2 keeps at most two ADJACENT nonzero members: in weight order
+             * the nonzero members must span at most one gap (span <= 1), which
+             * covers both a non-adjacent pair and a run of three. */
+            int first = -1, last = -2;
+            for (int q = 0; q < n; q++)
+                if (fabs(w[mem[idx[q]]]) > ftol) { if (first < 0) first = q; last = q; }
+            bad = (first >= 0 && last - first > 1);
         }
         free(idx);
         if (bad) return 0;

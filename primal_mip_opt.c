@@ -616,12 +616,10 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     while (p >= 0 && w[idx[p]] > kw) { idx[p + 1] = idx[p]; p--; }
                     idx[p + 1] = key;
                 }
-                int run = 0;
-                for (int q = 0; q < n; q++) {
-                    if (fabs(x[mem[idx[q]]]) > 1e-7) {
-                        if (++run > 2) { bsos = k; break; }
-                    } else run = 0;
-                }
+                int first = -1, last = -2;
+                for (int q = 0; q < n; q++)
+                    if (fabs(x[mem[idx[q]]]) > 1e-7) { if (first < 0) first = q; last = q; }
+                if (first >= 0 && last - first > 1) bsos = k;
                 free(idx);
             }
         }
@@ -765,13 +763,13 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 /* SOS2: split just before the first run of three consecutive
                  * nonzero members (signed support, issue #16); children keep the
                  * prefix or the suffix, so at most two adjacent stay nonzero. */
-                int run = 0, at = -1;
-                for (int q = 0; q < n; q++) {
-                    if (fabs(x[mem[idx[q]]]) > 1e-7) { if (++run > 2) { at = q; break; } }
-                    else run = 0;
-                }
-                split = (at >= 0) ? at - 1 : 0;
-                if (split < 0) split = 0;   /* safety */
+                int first = -1, last = -2;
+                for (int q = 0; q < n; q++)
+                    if (fabs(x[mem[idx[q]]]) > 1e-7) { if (first < 0) first = q; last = q; }
+                /* split inside the offending window: keep the first half or the
+                 * second, so no child can leave two non-adjacent members on. */
+                split = (first >= 0) ? first + 1 : 0;
+                if (split >= n) split = n - 1;
             }
             free(x);
             if (sp + 2 > cap) {
