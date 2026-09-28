@@ -14025,11 +14025,14 @@ static void test_t96(void) {
         close_enough_tol(tr, 1.0, 1e-6, "C1 <I,B> = 1");
         pend(&p);
     }
-    /* C2. discriminators: same tolerances, factor disabled. The weak verdict
-     * must not carry numbers along: before this change
-     * getxx/getprimalobj answered OK with the opt_prepare zero. */
+    /* C2. discriminators: a tolerance the native IPM does NOT reach, factor
+     * disabled. The weak verdict must not carry numbers along: before this
+     * change getxx/getprimalobj answered OK with the opt_prepare zero. At the
+     * declared 1e-8 the native now solves this model outright (rel_pri 9.7e-9,
+     * T96's own C1), so the refusal is measured at 1e-9, where it still cannot.
+     */
     {
-        P p; pbegin(&p); t96_bar20(p.task); t96_set(p.task, 0.0, 1.0);
+        P p; pbegin(&p); t96_bar20(p.task); t96_set(p.task, 1e-9, 1.0);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_TRM_MAX_ITER, "C2 not solved without the factor");
         PRIMALsolstae sta = PRIMAL_SOL_STA_OPTIMAL;
         PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta);
