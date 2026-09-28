@@ -751,10 +751,10 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             /* find split point: SOS1 -> the largest nonzero is isolated;
              * SOS2 -> keep a maximal adjacent window containing the first
              * violated pair gap. */
-            int split = -1;   /* child A: members idx[0..split) forced 0,
-                               child B: members idx[split..n) forced 0 */
+            int split = -1;   /* SOS2 only: child A: idx[0..split) forced 0,
+                               child B: idx[split..n) forced 0 */
+            int firstnz = -1; /* SOS1: the first nonzero member's weight rank */
             if (t->sos_type[k] == 1) {
-                int firstnz = -1;
                 for (int q = 0; q < n; q++)
                     if (fabs(x[mem[idx[q]]]) > 1e-7) { firstnz = q; break; }
                 split = firstnz + 1;   /* isolate the first (smallest weight) */
@@ -786,10 +786,22 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 else {
                     memcpy(stk[sp].lx, nd.lx, (size_t)nvar * sizeof(double));
                     memcpy(stk[sp].ux, nd.ux, (size_t)nvar * sizeof(double));
+                    /* SOS1: to keep at most ONE member nonzero, child 0 fixes
+                     * the first nonzero member to 0 and child 1 fixes EVERY
+                     * OTHER member to 0 (leaving that one free). SOS2: split the
+                     * weight order at the offending window, as before. */
                     for (int q = 0; q < n; q++) {
                         int j = mem[idx[q]];
-                        if (side == 0 && q < split) stk[sp].ux[j] = 0.0;
-                        if (side == 1 && q >= split) stk[sp].ux[j] = 0.0;
+                        int force0 =
+                            (t->sos_type[k] == 1)
+                              ? ((side == 0 && q == firstnz) ||
+                                 (side == 1 && q != firstnz))
+                              : ((side == 0 && q < split) ||
+                                 (side == 1 && q >= split));
+                        /* "Zero" means x_j == 0, not x_j <= 0: a member can be
+                         * negative (issue #16), and an upper bound of 0 leaves
+                         * [-1,0] available. Fix both bounds. */
+                        if (force0) { stk[sp].lx[j] = 0.0; stk[sp].ux[j] = 0.0; }
                     }
                     stk[sp].bound = pmin;
                     sp++;
