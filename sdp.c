@@ -1288,6 +1288,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
          * because sharing the factorisation would mean hoisting a third buffer
          * and its lifetime out of the block that builds the system, for a
          * saving that is not what limits these solves. */
+        int maxd = 0; for (int j = 0; j < nb; j++) if (dims[j] > maxd) maxd = dims[j];
         for (int pass = 0; pass < 2; pass++) {
             int aug_dx = 0;   /* dx already solved in the augmented system */
             /* per-block scaling */
@@ -1542,7 +1543,18 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 for (int a = 0; a < Ke; a++) mua += (ez[a] + ap * Dez[a]) * (es[a] + ad * Des[a]);
                 mua /= (double)(ntot > 0 ? ntot : 1);
                 sigma = (mu > 0) ? (mua / mu) : 0; sigma = sigma * sigma * sigma;
-                if (!(sigma > 0.1)) sigma = 0.1;
+                /* A large PSD block degenerates at its optimum (the pure-SDP
+                 * sweep is rank-1 at d>=11: X has one large eigenvalue and the
+                 * rest at the boundary).  There the aggressive floor 0.1 sends
+                 * the corrector along the face instead of into it: the step
+                 * cannot lower mu, the merit test rejects every halving and the
+                 * iterate freezes at rel_gap ~ 5e-3 (measured d=11..14; the cut
+                 * fallback then diverges on its big-M cap).  The floor rises to
+                 * 0.3 for blocks d>=8, which keeps the whole trajectory central
+                 * and solves d=11/12; small blocks (d=2, where T100 D/E and the
+                 * accuracy cases live) keep 0.1.  A measured heuristic, like the
+                 * rescale gate above, not a conditioning test. */
+                { double sf = (maxd >= 8) ? 0.3 : 0.1; if (!(sigma > sf)) sigma = sf; }
                 if (sigma > 1) sigma = 1;
                 if (polish_center) sigma = 1.0;
             } else {
