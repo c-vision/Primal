@@ -1000,7 +1000,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
                     for(int z=0;z<kk*kk;z++){double q=fabs(Qwi[(size_t)o*maxk+z]); if(!isfinite(q)||q>amax)amax=q;}
                     for(int i=0;i<kk;i++){double q=fabs(sinv[o+i]); if(!isfinite(q)||q>amax)amax=q;}
                 }
-                if(amax>1e12){use_nt=0;break;}   /* scaling ill-conditioned -> fall back */
+                if(amax>1e16){use_nt=0;break;}   /* scaling ill-conditioned -> fall back */
                 o+=kk;
             }
         }
