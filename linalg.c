@@ -662,6 +662,51 @@ int spchol_solve(const SpChol *L, double *rhs) {
     return spchol_solve_nat(L, rhs);
 }
 
+/* Batched solve: K * B = R with B row-major (row*nrhs + col).  Same per-RHS
+ * operation order as spchol_solve_nat (the backward sum is accumulated in the
+ * same ascending-column order into one accumulator per RHS), so each column of
+ * the result is bit-identical to solving it alone; the factor is traversed once
+ * instead of nrhs times.  Returns 0 ok, -1 on NULL or a zero diagonal. */
+int spchol_solve_all(const SpChol *L, double *B, int nrhs) {
+    if (!L || !B || nrhs < 1) return -1;
+    int n = L->n;
+    double *acc = (double *)calloc((size_t)nrhs, sizeof(double));
+    if (!acc) return -1;
+    for (int k = 0; k < n; k++) {
+        int p0 = L->Lp[k], p1 = L->Lp[k + 1];
+        double lkk = 0.0;
+        for (int p = p0; p < p1; p++) if (L->Li[p] == k) { lkk = L->Lx[p]; break; }
+        if (lkk == 0.0) { free(acc); return -1; }
+        double *bk = B + (size_t)k * nrhs;
+        for (int r = 0; r < nrhs; r++) bk[r] /= lkk;
+        for (int p = p0; p < p1; p++) {
+            int i = L->Li[p];
+            if (i <= k) continue;
+            double l = L->Lx[p];
+            double *bi = B + (size_t)i * nrhs;
+            for (int r = 0; r < nrhs; r++) bi[r] -= l * bk[r];
+        }
+    }
+    for (int k = n - 1; k >= 0; k--) {
+        int p0 = L->Lp[k], p1 = L->Lp[k + 1];
+        double lkk = 0.0;
+        for (int p = p0; p < p1; p++) if (L->Li[p] == k) { lkk = L->Lx[p]; break; }
+        if (lkk == 0.0) { free(acc); return -1; }
+        for (int r = 0; r < nrhs; r++) acc[r] = 0.0;
+        for (int p = p0; p < p1; p++) {
+            int i = L->Li[p];
+            if (i <= k) continue;
+            double l = L->Lx[p];
+            const double *bi = B + (size_t)i * nrhs;
+            for (int r = 0; r < nrhs; r++) acc[r] += l * bi[r];
+        }
+        double *bk = B + (size_t)k * nrhs;
+        for (int r = 0; r < nrhs; r++) bk[r] = (bk[r] - acc[r]) / lkk;
+    }
+    free(acc);
+    return 0;
+}
+
 /* Fill-reducing wrapper: apply AMD to K, factor the permuted matrix, and keep
  * the permutation so spchol_solve can undo it.  A quasi-definite KKT factored
  * in natural order can carry orders-of-magnitude more fill than the same matrix

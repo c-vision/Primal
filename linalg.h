@@ -98,6 +98,11 @@ SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx)
 int spchol_solve_ord(const SpChol *L, double *rhs);
 /* solve K u = rhs in place. 0 ok, -1 singular. */
 int spchol_solve(const SpChol *L, double *rhs);
+/* Solve K * B = R for `nrhs` right-hand sides at once, B laid out row-major as
+ * B[row*nrhs + col] (i.e. each RHS is a contiguous nrhs-strided vector).  One
+ * pass over the factor instead of nrhs, and per-RHS the same operation order as
+ * spchol_solve, so the numbers are identical.  0 ok, -1 on failure. */
+int spchol_solve_all(const SpChol *L, double *B, int nrhs);
 /* Release a sparse Cholesky factor, including its ordering. NULL-safe. */
 void spchol_free(SpChol *L);
 
