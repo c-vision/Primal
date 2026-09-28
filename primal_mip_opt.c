@@ -145,7 +145,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             int nth = t->num_threads > 1 ? t->num_threads : 1;
             if (nth > nbin) nth = nbin;
             if (nth > 1) {
-                pthread_t th[64]; ProbeJob jobs[64];
+                pthread_t th[64]; ProbeJob jobs[64]; int made[64] = {0};
                 int chunk = (nbin + nth - 1) / nth;
                 for (int k = 0; k < nth; k++) {
                     int st = k * chunk, en = st + chunk;
@@ -155,12 +155,11 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     jobs[k].lx = lx; jobs[k].ux = ux; jobs[k].lc = lc; jobs[k].uc = uc;
                     jobs[k].bins = bins; jobs[k].start = st; jobs[k].end = en; jobs[k].fix = fix;
                     if (pthread_create(&th[k], NULL, probe_worker, &jobs[k]) != 0) {
-                        jobs[k].start = jobs[k].end;   /* no thread: fallback */
-                        probe_worker(&jobs[k]);
-                    }
+                        probe_worker(&jobs[k]);   /* no thread: run the whole range here */
+                    } else made[k] = 1;
                 }
                 for (int k = 0; k < nth; k++)
-                    if (k * chunk < nbin) pthread_join(th[k], NULL);
+                    if (made[k]) pthread_join(th[k], NULL);
             } else {
                 ProbeJob jb;
                 jb.t = t; jb.s = s; jb.nvar = nvar; jb.ncon = ncon;
@@ -654,7 +653,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     int nth = t->num_threads > 1 ? t->num_threads : 1;
                     if (nth > K) nth = K;
                     if (nth > 1) {
-                        pthread_t th[64]; SBJob jobs[64];
+                        pthread_t th[64]; SBJob jobs[64]; int made[64] = {0};
                         int chunk = (K + nth - 1) / nth;
                         for (int k = 0; k < nth; k++) {
                             int st = k * chunk, en = st + chunk;
@@ -666,10 +665,10 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                             jobs[k].cand = cand; jobs[k].start = st; jobs[k].end = en;
                             jobs[k].score = scores;
                             if (pthread_create(&th[k], NULL, sb_worker, &jobs[k]) != 0) {
-                                jobs[k].start = jobs[k].end; sb_worker(&jobs[k]);
-                            }
+                                sb_worker(&jobs[k]);   /* no thread: run the whole range here */
+                            } else made[k] = 1;
                         }
-                        for (int k = 0; k < nth; k++) if (k * chunk < K) pthread_join(th[k], NULL);
+                        for (int k = 0; k < nth; k++) if (made[k]) pthread_join(th[k], NULL);
                     } else {
                         SBJob jb;
                         jb.trelax = trelax; jb.s = s; jb.nvar = nvar;
