@@ -662,6 +662,43 @@ int spchol_solve(const SpChol *L, double *rhs) {
     return spchol_solve_nat(L, rhs);
 }
 
+/* See linalg.h.  For a full lower triangle the factor is exactly the triangle,
+ * so the CSC arrays are allocated once and filled column by column. */
+SpChol *spchol_factor_dense(int n, const double *Kd) {
+    if (n <= 0 || !Kd) return NULL;
+    SpChol *L = (SpChol *)calloc(1, sizeof(SpChol));
+    if (!L) return NULL;
+    long long nnz = (long long)n * (n + 1) / 2;
+    L->n = n; L->perm = NULL;
+    L->Lp = (int *)malloc((size_t)(n + 1) * sizeof(int));
+    L->Li = (int *)malloc((size_t)nnz * sizeof(int));
+    L->Lx = (double *)malloc((size_t)nnz * sizeof(double));
+    double *w = (double *)malloc((size_t)n * sizeof(double));
+    if (!L->Lp || !L->Li || !L->Lx || !w) { free(w); spchol_free(L); return NULL; }
+    int p = 0;
+    for (int j = 0; j < n; j++) {
+        L->Lp[j] = p;
+        for (int i = j; i < n; i++) { L->Li[p] = i; L->Lx[p] = 0.0; p++; }
+    }
+    L->Lp[n] = p;
+    for (int j = 0; j < n; j++) {
+        for (int i = j; i < n; i++) w[i - j] = Kd[(size_t)i * n + j];
+        for (int k = 0; k < j; k++) {
+            double ljk = L->Lx[L->Lp[k] + (j - k)];   /* L(j,k): column k, row j */
+            if (ljk == 0.0) continue;
+            int pk = L->Lp[k];
+            for (int i = j; i < n; i++) w[i - j] -= ljk * L->Lx[pk + (i - k)];
+        }
+        double dj = w[0];
+        if (!(dj > 1e-300)) { free(w); spchol_free(L); return NULL; }
+        double ljj = sqrt(dj);
+        L->Lx[L->Lp[j]] = ljj;
+        for (int i = j + 1; i < n; i++) L->Lx[L->Lp[j] + (i - j)] = w[i - j] / ljj;
+    }
+    free(w);
+    return L;
+}
+
 /* Batched solve: K * B = R with B row-major (row*nrhs + col).  Same per-RHS
  * operation order as spchol_solve_nat (the backward sum is accumulated in the
  * same ascending-column order into one accumulator per RHS), so each column of
