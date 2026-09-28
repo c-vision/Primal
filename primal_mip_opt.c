@@ -763,9 +763,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 /* SOS2: split just before the first run of three consecutive
                  * nonzero members (signed support, issue #16); children keep the
                  * prefix or the suffix, so at most two adjacent stay nonzero. */
-                int first = -1, last = -2;
+                int first = -1;
                 for (int q = 0; q < n; q++)
-                    if (fabs(x[mem[idx[q]]]) > 1e-7) { if (first < 0) first = q; last = q; }
+                    if (fabs(x[mem[idx[q]]]) > 1e-7) { first = q; break; }
                 /* split inside the offending window: keep the first half or the
                  * second, so no child can leave two non-adjacent members on. */
                 split = (first >= 0) ? first + 1 : 0;

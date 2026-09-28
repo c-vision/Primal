@@ -121,6 +121,7 @@ struct PRIMAL_task_s {
     PRIMALint64t **acc_afe;
     double **acc_b;
     PRIMALint64t *acc_rowbase; /* the first row the ACC produced (for doty) */
+    PRIMALint64t *acc_vbase;   /* the first AUX variable a conic ACC produced (-1 if none) */
     char **accname;            /* the sixth name table, on acccap */
 
     /* disjunctive constraints (DJC, reference style): OR of numterm clauses,
