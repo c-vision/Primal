@@ -801,6 +801,16 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
  * delta on the diagonal, via the sparse Cholesky. Diagonal is always emitted. */
 static SpChol *spchol_from_dense(const double *Kd, int m,
                                  int *Kp, int *kcap, int **Ki, double **Kx) {
+    /* Count the lower triangle first: a full one needs no fill-reducing order
+     * and no sparse machinery, just the dense factor. */
+    {
+        long long full = (long long)m * (m + 1) / 2, cnt = 0;
+        for (int j = 0; j < m; j++) {
+            cnt++;
+            for (int i = j + 1; i < m; i++) if (Kd[(size_t)i * m + j] != 0.0) cnt++;
+        }
+        if (cnt == full) return spchol_factor_dense(m, Kd);
+    }
     Kp[0] = 0;
     for (int j = 0; j < m; j++) {
         int cnt = 1;

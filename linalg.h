@@ -98,6 +98,12 @@ SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx)
 int spchol_solve_ord(const SpChol *L, double *rhs);
 /* solve K u = rhs in place. 0 ok, -1 singular. */
 int spchol_solve(const SpChol *L, double *rhs);
+/* Cholesky of a matrix known to have a FULL lower triangle: the same
+ * left-looking operations as spchol_factor_nat (same k and i order), writing the
+ * dense triangle straight into the CSC arrays, with no per-column growth and no
+ * row-adjacency indirection.  Kd is row-major (Kd[i*n+j]).  NULL on bad input,
+ * alloc failure or a non-positive pivot. */
+SpChol *spchol_factor_dense(int n, const double *Kd);
 /* Solve K * B = R for `nrhs` right-hand sides at once, B laid out row-major as
  * B[row*nrhs + col] (i.e. each RHS is a contiguous nrhs-strided vector).  One
  * pass over the factor instead of nrhs, and per-RHS the same operation order as
