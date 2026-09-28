@@ -149,7 +149,7 @@ objective against the analytic value; it exits non-zero on a mismatch. LP/QP/
 MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 `bench/conic_bench.c` and `bench/sdp_sweep.c`.
 
-| instance | class | vars x cons | nnz | PrimalSolver (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
+| instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
 | lp_50x25 | lp | 50 x 25 | 171 | 0.0011 | 0.0044 | 0.0002 | N/A | N/A | 64.188598 |
 | lp_100x50 | lp | 100 x 50 | 576 | 0.0027 | 0.0017 | 0.0008 | N/A | N/A | 121.94612 |

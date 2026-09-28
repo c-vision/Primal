@@ -228,7 +228,7 @@ def main():
     if not os.path.exists(SOLVE_MPS):
         sys.exit("run `make bench` first")
     mism = []
-    print("| instance | class | vars x cons | nnz | PrimalSolver (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |")
+    print("| instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |")
     print("|---|---|---|---|---|---|---|---|---|---|")
 
     for name, cls, n, m, fn, sense_max in SPECS:
