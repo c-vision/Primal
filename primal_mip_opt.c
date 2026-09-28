@@ -595,15 +595,18 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             const double *w = t->sos_w[k];
             int n = t->sos_n[k];
             if (t->sos_type[k] == 1) {
+                /* Support is SIGNED: a negative component is nonzero too, so the
+                 * count uses |x| (issue #16). */
                 int nz = 0;
                 for (int q = 0; q < n; q++)
-                    if (x[mem[q]] > 1e-7) nz++;
+                    if (fabs(x[mem[q]]) > 1e-7) nz++;
                 if (nz > 1) bsos = k;
             } else {
-                /* SOS2: order members by weight, find the first pair of
-                 * non-adjacent members both nonzero */
-                int idx[64];
-                if (n > 64) { bsos = -1; continue; }   /* too big: skip check */
+                /* SOS2: order members by weight, then find a run of three
+                 * consecutive nonzero members (at most two adjacent may be
+                 * nonzero), with the same signed support. */
+                int *idx = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
+                if (!idx) { bsos = -1; continue; }
                 for (int q = 0; q < n; q++) idx[q] = q;
                 /* insertion sort by weight */
                 for (int q = 1; q < n; q++) {
@@ -613,13 +616,13 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     while (p >= 0 && w[idx[p]] > kw) { idx[p + 1] = idx[p]; p--; }
                     idx[p + 1] = key;
                 }
-                int lastnz = -1;
+                int run = 0;
                 for (int q = 0; q < n; q++) {
-                    if (x[mem[idx[q]]] > 1e-7) {
-                        if (lastnz >= 0 && q > lastnz + 1) { bsos = k; break; }
-                        lastnz = q;
-                    }
+                    if (fabs(x[mem[idx[q]]]) > 1e-7) {
+                        if (++run > 2) { bsos = k; break; }
+                    } else run = 0;
                 }
+                free(idx);
             }
         }
         /* integer check: collect the fractional candidates (for strong
@@ -755,17 +758,19 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             if (t->sos_type[k] == 1) {
                 int firstnz = -1;
                 for (int q = 0; q < n; q++)
-                    if (x[mem[idx[q]]] > 1e-7) { firstnz = q; break; }
+                    if (fabs(x[mem[idx[q]]]) > 1e-7) { firstnz = q; break; }
                 split = firstnz + 1;   /* isolate the first (smallest weight) */
                 if (split >= n) split = n - 1;   /* safety */
             } else {
-                int lastnz = -1;
+                /* SOS2: split just before the first run of three consecutive
+                 * nonzero members (signed support, issue #16); children keep the
+                 * prefix or the suffix, so at most two adjacent stay nonzero. */
+                int run = 0, at = -1;
                 for (int q = 0; q < n; q++) {
-                    if (x[mem[idx[q]]] > 1e-7) {
-                        if (lastnz >= 0 && q > lastnz + 1) { split = lastnz + 1; break; }
-                        lastnz = q;
-                    }
+                    if (fabs(x[mem[idx[q]]]) > 1e-7) { if (++run > 2) { at = q; break; } }
+                    else run = 0;
                 }
+                split = (at >= 0) ? at - 1 : 0;
                 if (split < 0) split = 0;   /* safety */
             }
             free(x);
