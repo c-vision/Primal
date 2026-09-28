@@ -1438,7 +1438,10 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
                                   sf->m, sf->n, sf->b, sf->c, t, xt, ystd, zst,
                                   NULL, NULL, 0, NULL, NULL);
     }
-    if (status == 0) {
+    if (status == 0 || status == 2) {
+        /* On an unbounded relaxation the simplex still fills its current
+         * feasible basic solution, so the MIP can round it (status 2 means the
+         * LP is feasible and has a recession direction; the point is feasible). */
         stdform_map_x(sf, xt, xout);
         for (int j = 0; j < nvar; j++) xout[j] *= ds[j];   /* descale the columns */
         double p = 0.0;
@@ -1447,7 +1450,7 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
             double qq = task_xQx(t, xout);
             p += 0.5 * s * qq;   /* min-form quadratic term (s on 1/2 x'Qx) */
         }
-        *pmin = p;
+        *pmin = (status == 2) ? -INF : p;
     }
     free(xt); free(ystd); free(zst); stdform_free(sf); free(ci); free(ds);
     return status;

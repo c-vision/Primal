@@ -334,7 +334,13 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         int st = MIP_RELAX(trelax, nd.lx, nd.ux, x, &pmin, NULL);
         nodes++;
         if (nodes == 1) root_status = st;
-        if (st != 0) {   /* infeasible (or unbounded child): prune */
+        /* An unbounded ROOT is not pruned: its relaxation still yields a
+         * feasible point, so the root heuristic below can try to round an
+         * integer one. That is what decides the MIP's own verdict (an unbounded
+         * relaxation is unboundedness only if the model has an integer point).
+         * An unbounded CHILD is pruned as before. */
+        int unb_root = (st == 2 && nodes == 1);
+        if (st != 0 && !unb_root) {
             if (st == 3 && getenv("GMB_DBG"))
                 fprintf(stderr, "  [mip] node=%ld relaxation gave no answer\n", nodes);
             free(x); free(nd.lx); free(nd.ux);
@@ -369,6 +375,13 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                     memcpy(bestx, xs, (size_t)nvar * sizeof(double));
                 }
             }
+        }
+        if (st != 0) {   /* the unbounded root cannot be branched: stop here */
+            if (st == 2 && getenv("GMB_DBG"))
+                fprintf(stderr, "  [mip] unbounded root: point roundable, incumbent=%d\n",
+                        best < INF);
+            free(x); free(nd.lx); free(nd.ux);
+            continue;
         }
         /* Diving (fractional diving, gated GMB_MIP_DIVING, default off): from
          * the node point, fix in turn the most fractional integer to its
@@ -959,7 +972,14 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
      * reference's pairing for that outcome (Table 7.3: PRIM_FEAS + PRIM_FEAS,
      * "integer feasible point") is what goes out, with a termination code. */
     if (root_status == 1)      rc = PRIMAL_RES_ERR_INFEASIBLE;
-    else if (root_status == 2) rc = PRIMAL_RES_ERR_UNBOUNDED;
+    else if (root_status == 2)
+        /* An unbounded relaxation is unboundedness only when the MIP has an
+         * integer point (a relaxation ray alone proves nothing: an infeasible
+         * model can relax to an unbounded LP). The root heuristic above tried
+         * to round the root's feasible basic solution; only an incumbent that
+         * came out of it certifies the model is unbounded. Without one the run
+         * stays unresolved rather than claiming a ray it cannot produce. */
+        rc = (best < INF) ? PRIMAL_RES_ERR_UNBOUNDED : PRIMAL_RES_TRM_MAX_ITER;
     else if (deadline_hit)     rc = PRIMAL_RES_TRM_MAX_ITER;   /* time cap */
     else if (nodes >= t->mip_max_nodes && sp > 0)  rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (nodes >= t->mip_max_nodes && sp == 0 && best == INF) rc = PRIMAL_RES_TRM_MAX_ITER;
