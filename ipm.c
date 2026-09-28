@@ -1040,14 +1040,13 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         SpChol *Lm = spchol_factor(n, Qptr, Qrow, Mval);
         if (!Lm) { status = IPM_SINGULAR; break; }
 
-        /* W = M^-1 A' (column i = M^-1 (row i of A)) */
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) tmpn[j] = 0.0;
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) tmpn[ridx[p]] = rval[p];
-            if (spchol_solve(Lm, tmpn)) { spchol_free(Lm); status = IPM_SINGULAR; break; }
-            for (int j = 0; j < n; j++) W[(size_t)j * m + i] = tmpn[j];
-        }
-        if (status == IPM_SINGULAR) break;
+        /* W = M^-1 A' (column i = M^-1 (row i of A)): all m right-hand sides
+         * in one pass over the factor.  The batched solve keeps the per-RHS
+         * operation order, so the result is what m spchol_solve calls gave. */
+        for (size_t q = 0; q < (size_t)n * (size_t)m; q++) W[q] = 0.0;
+        for (int i = 0; i < m; i++)
+            for (int p = rptr[i]; p < rptr[i + 1]; p++) W[(size_t)ridx[p] * m + i] = rval[p];
+        if (spchol_solve_all(Lm, W, m)) { spchol_free(Lm); status = IPM_SINGULAR; break; }
         /* Kd = A W + delta I */
         for (int i = 0; i < m; i++)
             for (int k = 0; k < m; k++) Kd[(size_t)i * m + k] = (i == k) ? delta : 0.0;
