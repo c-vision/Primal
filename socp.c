@@ -1088,7 +1088,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             for(int k2=0;k2<K;k2++) for(int q=SG.rp[k2];q<SG.rp[k2+1];q++){ int j=SG.ri[q];
                 if(tri3_add(&tri,K+p+j,n+p+k2,-SG.rv[q])){status=OPT_MEMORY;goto done;} }
             if(tri3_to_csc(N,&tri,&Mp,&Mi,&Mv)){status=OPT_MEMORY;goto done;}
-            if(!luperm) luperm=sym_amd_order(N,Mp,Mi);
+            if(!luperm) luperm=sym_rcm_order(N,Mp,Mi);
             f=splu_factor_ord(N,Mp,Mi,Mv,luperm);
             double reg=0.0;
             if(!f){ static const double regs[]={1e-10,1e-8,1e-7,1e-6,1e-5};

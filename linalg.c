@@ -822,6 +822,45 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
  * computes it once and reuses it via splu_factor_ord. */
 int *sym_amd_order(int n, const int *Ap, const int *Ai) { return sym_amd(n, Ap, Ai); }
 
+/* Reverse Cuthill-McKee: a banded ordering in O(nnz), no dynamic fill model.
+ * A cheap alternative to min-degree; any permutation is a valid column order,
+ * so it trades fill for setup time without touching the solution. */
+int *sym_rcm_order(int n, const int *Ap, const int *Ai) {
+    if (n <= 0 || !Ap || !Ai) return NULL;
+    if (primal_cb_iter_on) primal_cb_iter(84);
+    int *deg = (int *)calloc((size_t)n, sizeof(int));
+    int *off = (int *)malloc((size_t)(n + 1) * sizeof(int));
+    int *adj = (int *)malloc((size_t)(Ai ? Ap[n] * 2 + n : 1) * sizeof(int));
+    int *perm = (int *)malloc((size_t)n * sizeof(int));
+    int *q = (int *)malloc((size_t)n * sizeof(int));
+    char *done = (char *)calloc((size_t)n, 1);
+    if (!deg || !off || !adj || !perm || !q || !done) { free(deg); free(off); free(adj); free(perm); free(q); free(done); return NULL; }
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) { int i = Ai[p]; if (i != j && i >= 0 && i < n) { deg[i]++; deg[j]++; } }
+    off[0] = 0; for (int i = 0; i < n; i++) off[i + 1] = off[i] + deg[i];
+    { int *cur = (int *)malloc((size_t)(n + 1) * sizeof(int));
+      if (!cur) { free(deg); free(off); free(adj); free(perm); free(q); free(done); return NULL; }
+      for (int i = 0; i <= n; i++) cur[i] = off[i];
+      for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) { int i = Ai[p]; if (i != j && i >= 0 && i < n) { adj[cur[j]++] = i; adj[cur[i]++] = j; } }
+      free(cur); }
+    int np = 0;
+    for (int root = 0; root < n; root++) {
+        if (done[root]) continue;
+        int head = 0, tail = 0; q[tail++] = root; done[root] = 1;
+        while (head < tail) {
+            int v = q[head++]; perm[np++] = v;
+            /* neighbours of v not yet queued, by ascending degree (insertion sort) */
+            int b = head;
+            for (int p = off[v]; p < off[v + 1]; p++) { int u = adj[p]; if (!done[u]) { done[u] = 1; q[tail++] = u; } }
+            for (int a = b + 1; a < tail; a++) { int u = q[a], du = deg[u], k = a - 1;
+                while (k >= b && deg[q[k]] > du) { q[k + 1] = q[k]; k--; } q[k + 1] = u; }
+        }
+    }
+    /* reverse */
+    for (int i = 0; i < n / 2; i++) { int t = perm[i]; perm[i] = perm[n - 1 - i]; perm[n - 1 - i] = t; }
+    free(deg); free(off); free(adj); free(q); free(done);
+    return perm;
+}
+
 /* History-friendly entry point: ordering computed here, then factored. */
 SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
     int *q = sym_amd(n, Ap, Ai);
