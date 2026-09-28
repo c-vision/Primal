@@ -97,7 +97,7 @@ deterministic models, 44 finance models, 16 book models.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 4866 checks
+make test          # reliability suite: 4881 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -127,13 +127,14 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **10–30× faster** here on
-  SOCP — but it has no PSD cone, so it cannot do half of what this does.
+- **Clarabel** is the closest open conic IPM and is **~30× faster** here on
+  SOCP (0.0004 s against 0.013 s at 200 cones) — but it has no PSD cone, so it
+  cannot do half of what this does.
 - **SCS** does PSD and exponential cones, but is first-order: it agrees with
   this solver's objective to about `1e-5`, where the IPM reaches `1e-8`.
-- **HiGHS** is much faster on large LP/MILP — 0.016 s against 0.57 s on a
-  400×200 LP. The crossover sits around 100–200 constraints; below that this
-  solver wins on fixed overhead.
+- **HiGHS** is faster on large LP/MILP — 0.013 s against 0.10 s on a 400×200 LP.
+  The crossover sits around 50–100 constraints; below that this solver wins on
+  fixed overhead.
 - **SDP with exponential cones and integer variables, in one dependency-free
   library**, is what nothing else permissively licensed covers. CVXOPT / SDPA /
   Sedumi have SDP but are GPL.
@@ -143,7 +144,7 @@ cone *and* an integer variable, in C, without linking anything? This is it.
 
 ## Status
 
-**4866 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
+**4881 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
 exit 0. Warning-free. ASan + UBSan clean.
 
 ## TODO

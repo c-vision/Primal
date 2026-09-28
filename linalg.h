@@ -127,6 +127,9 @@ typedef struct {
 /* Factor a sparse non-symmetric A with row pivoting and column ordering.
  * Returns NULL when singular or on allocation failure. */
 SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax);
+SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm);
+int *sym_amd_order(int n, const int *Ap, const int *Ai);
+int *sym_rcm_order(int n, const int *Ap, const int *Ai);
 /* solves A x = rhs in place (rhs overwritten with x). 0 ok, -1 singular. */
 int splu_solve(const SpluFact *F, double *rhs);
 /* Release a sparse LU factor. NULL-safe, also safe on half-built structs. */

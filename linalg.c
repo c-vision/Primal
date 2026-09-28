@@ -822,6 +822,59 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
     return perm;
 }
 
+/* Public wrapper: the fill-reducing ordering alone, so a caller with a fixed
+ * pattern (the sparse conic IPM, which rebuilds only the values each iteration)
+ * computes it once and reuses it via splu_factor_ord. */
+int *sym_amd_order(int n, const int *Ap, const int *Ai) { return sym_amd(n, Ap, Ai); }
+
+/* Reverse Cuthill-McKee: a banded ordering in O(nnz), no dynamic fill model.
+ * A cheap alternative to min-degree; any permutation is a valid column order,
+ * so it trades fill for setup time without touching the solution. */
+int *sym_rcm_order(int n, const int *Ap, const int *Ai) {
+    if (n <= 0 || !Ap || !Ai) return NULL;
+    if (primal_cb_iter_on) primal_cb_iter(84);
+    int *deg = (int *)calloc((size_t)n, sizeof(int));
+    int *off = (int *)malloc((size_t)(n + 1) * sizeof(int));
+    int *adj = (int *)malloc((size_t)(Ai ? Ap[n] * 2 + n : 1) * sizeof(int));
+    int *perm = (int *)malloc((size_t)n * sizeof(int));
+    int *q = (int *)malloc((size_t)n * sizeof(int));
+    char *done = (char *)calloc((size_t)n, 1);
+    if (!deg || !off || !adj || !perm || !q || !done) { free(deg); free(off); free(adj); free(perm); free(q); free(done); return NULL; }
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) { int i = Ai[p]; if (i != j && i >= 0 && i < n) { deg[i]++; deg[j]++; } }
+    off[0] = 0; for (int i = 0; i < n; i++) off[i + 1] = off[i] + deg[i];
+    { int *cur = (int *)malloc((size_t)(n + 1) * sizeof(int));
+      if (!cur) { free(deg); free(off); free(adj); free(perm); free(q); free(done); return NULL; }
+      for (int i = 0; i <= n; i++) cur[i] = off[i];
+      for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) { int i = Ai[p]; if (i != j && i >= 0 && i < n) { adj[cur[j]++] = i; adj[cur[i]++] = j; } }
+      free(cur); }
+    int np = 0;
+    for (int root = 0; root < n; root++) {
+        if (done[root]) continue;
+        int head = 0, tail = 0; q[tail++] = root; done[root] = 1;
+        while (head < tail) {
+            int v = q[head++]; perm[np++] = v;
+            /* neighbours of v not yet queued, by ascending degree (insertion sort) */
+            int b = head;
+            for (int p = off[v]; p < off[v + 1]; p++) { int u = adj[p]; if (!done[u]) { done[u] = 1; q[tail++] = u; } }
+            for (int a = b + 1; a < tail; a++) { int u = q[a], du = deg[u], k = a - 1;
+                while (k >= b && deg[q[k]] > du) { q[k + 1] = q[k]; k--; } q[k + 1] = u; }
+        }
+    }
+    /* reverse */
+    for (int i = 0; i < n / 2; i++) { int t = perm[i]; perm[i] = perm[n - 1 - i]; perm[n - 1 - i] = t; }
+    free(deg); free(off); free(adj); free(q); free(done);
+    return perm;
+}
+
+/* History-friendly entry point: ordering computed here, then factored. */
+SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
+    int *q = sym_amd(n, Ap, Ai);
+    SpluFact *F = splu_factor_ord(n, Ap, Ai, Ax, q);
+    free(q);
+    return F;
+}
+
+
 /* Factor A in CSC with partial (row) pivoting and a fill-reducing COLUMN
  * ordering.  The ordering is applied while the rows are scattered, not as a
  * later renumbering: the working matrix is already A with its columns
@@ -838,7 +891,7 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
  * is published on that path.  On success the rows are scanned once more to
  * split the factor into L (CSC, unit diagonal implicit) and U (CSR by
  * position row), and from there the struct owns every array. */
-SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
+SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm_in) {
     if (n < 0 || !Ap) return NULL;
     if (primal_cb_iter_on) primal_cb_iter(79);
     SpluFact *F = (SpluFact *)calloc(1, sizeof(SpluFact));
@@ -846,16 +899,13 @@ SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
     int *rc = (int *)calloc((size_t)(n > 0 ? n : 1), sizeof(int));
     if (!F || !rows || !rc) { free(F); free(rows); free(rc); return NULL; }
     F->n = n;
-    /* fill-reducing column ordering (falls back to the natural order) */
-    int *qperm = sym_amd(n, Ap, Ai);
+    /* column ordering: the caller's (fill-reducing, reused across calls) or the
+     * natural one. Any permutation is valid; a stale one only costs fill, so a
+     * cached ordering from a fixed pattern is safe. */
+    int *qperm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
     int *iperm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
-    if (!iperm) { free(qperm); free(F); free(rows); free(rc); return NULL; }
-    if (qperm) { for (int k = 0; k < n; k++) iperm[qperm[k]] = k; }
-    else {
-        qperm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
-        if (!qperm) { free(iperm); free(F); free(rows); free(rc); return NULL; }
-        for (int k = 0; k < n; k++) { qperm[k] = k; iperm[k] = k; }
-    }
+    if (!qperm || !iperm) { free(qperm); free(iperm); free(F); free(rows); free(rc); return NULL; }
+    for (int k = 0; k < n; k++) { qperm[k] = qperm_in ? qperm_in[k] : k; iperm[qperm[k]] = k; }
     F->qperm = qperm;
     for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) rc[Ai[p]]++;
     for (int i = 0; i < n; i++) {
