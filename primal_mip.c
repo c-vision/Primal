@@ -191,7 +191,10 @@ double quad_row_value(const PRIMALtask_t t, int i, const double *w) {
             if (t->cols[j].sub[k] == i) lin += t->cols[j].val[k] * w[j];
     for (int a = 0; a < n; a++)
         for (int b = 0; b < n; b++) q += w[a] * t->qcon[i][(size_t)a * n + b] * w[b];
-    return lin + (t->bkc[i] == PRIMAL_BK_UP ? 0.5 : -0.5) * q;
+    /* The row expression the USER wrote is a'x + 0.5 x'Qx for either bound
+     * direction (issue #17). The stored qcon keeps the user's sign; the internal
+     * flip a solver may apply to a '>=' row is not part of the exposed value. */
+    return lin + 0.5 * q;
 }
 
 /* Does w measure as an integer-feasible point of THIS model: bounds, rows,
