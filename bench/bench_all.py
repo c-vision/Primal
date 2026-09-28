@@ -260,7 +260,7 @@ def main():
         obj = objs[0] if objs else None
         print("| %s | %s | %d x %d | %d | %s | %s | %s | %s | %s | %s |" %
               (name, cls, n, m, nnz, pst, fmt(hst), fmt(cst), "N/A", fmt(scst),
-               "%.8g" % obj if obj is not None else "N/A"))
+               "%.6g" % obj if obj is not None else "N/A"))
 
     # ---- SOCP: closed-form family (Clarabel, SCS, no HiGHS/SCIP) ----
     ps_socp, _ = parse_conic_bench()
@@ -282,7 +282,7 @@ def main():
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
             if ob is not None and abs(ob - ref) > 1e-4:
                 mism.append("socp_%d %s=%g" % (n, nm2, ob))
-        print("| socp_%d | socp | %d x 1 | - | %s | N/A | %s | %s | N/A | %.8f |" %
+        print("| socp_%d | socp | %d x 1 | - | %s | N/A | %s | %s | N/A | %.6f |" %
               (n, n, pcell, fmt(tc), fmt(ts), ref))
     # ---- SDP: the same closed-form family swept over the block size d ----
     ps_sdp = parse_sdp_sweep(4, SDP_DMAX)
@@ -306,7 +306,7 @@ def main():
                 mism.append("sdp_%d %s=%g" % (d, nm2, ob))
         print("| sdp_%d | sdp | %d x %d | - | %s | N/A | %s | %s | N/A | %s |" %
               (d, d, d, pcell, fmt(tc), fmt(ts),
-               "%.8g" % exp if exp is not None else "N/A"))
+               "%.6g" % exp if exp is not None else "N/A"))
 
     print(file=sys.stderr)
     if mism:
