@@ -827,7 +827,7 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
  * computes it once and reuses it via splu_factor_ord. */
 int *sym_amd_order(int n, const int *Ap, const int *Ai) { return sym_amd(n, Ap, Ai); }
 
-/* Reverse Cuthill-McKee: a banded ordering in O(nnz), no dynamic fill model.
+/* Reverse Cuthill-McKee: a degree-ordered breadth-first traversal.
  * A cheap alternative to min-degree; any permutation is a valid column order,
  * so it trades fill for setup time without touching the solution. */
 int *sym_rcm_order(int n, const int *Ap, const int *Ai) {
@@ -854,7 +854,7 @@ int *sym_rcm_order(int n, const int *Ap, const int *Ai) {
         while (head < tail) {
             int v = q[head++]; perm[np++] = v;
             /* neighbours of v not yet queued, by ascending degree (insertion sort) */
-            int b = head;
+            int b = tail;
             for (int p = off[v]; p < off[v + 1]; p++) { int u = adj[p]; if (!done[u]) { done[u] = 1; q[tail++] = u; } }
             for (int a = b + 1; a < tail; a++) { int u = q[a], du = deg[u], k = a - 1;
                 while (k >= b && deg[q[k]] > du) { q[k + 1] = q[k]; k--; } q[k + 1] = u; }
@@ -866,7 +866,7 @@ int *sym_rcm_order(int n, const int *Ap, const int *Ai) {
     return perm;
 }
 
-/* History-friendly entry point: ordering computed here, then factored. */
+/* Compute a fill-reducing column order, then factor the permuted matrix. */
 SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
     int *q = sym_amd(n, Ap, Ai);
     SpluFact *F = splu_factor_ord(n, Ap, Ai, Ax, q);

@@ -184,6 +184,24 @@ static void mutation_and_availability(void) {
     OK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&p)); CHECK(fabs(p+0.5)<1e-7);
     OK(PRIMAL_deletetask(&t));
 }
+static void rcm_layers(void) {
+    /* Edges 0-1, 0-2, 1-3, 2-4, 2-5. From root 0, vertices 1 and 2
+     * must both precede their children in the unreversed traversal. */
+    const int ptr[]={0,2,3,5,5,5,5}, sub[]={1,2,3,4,5};
+    const int depth[]={0,1,1,2,2,2};
+    int *perm=sym_rcm_order(6,ptr,sub), seen[6]={0}, previous=-1;
+    CHECK(perm != NULL);
+    if (!perm) return;
+    for (int k=5;k>=0;k--) {
+        int i=perm[k];
+        CHECK(i>=0 && i<6);
+        if (i<0 || i>=6) continue;
+        CHECK(seen[i]++ == 0);
+        CHECK(depth[i]>=previous);
+        previous=depth[i];
+    }
+    free(perm);
+}
 static void eigenvalue_scales(void) {
     /* This matrix has eigenvalues scale and 3*scale. Squaring its largest
      * entries overflows even though its eigenvalues remain representable. */
@@ -204,6 +222,7 @@ static void eigenvalue_scales(void) {
 }
 
 int main(void) {
+    rcm_layers();
     eigenvalue_scales();
     OK(PRIMAL_makeenv(&env,NULL));
     exp_faces(PRIMAL_CT_PEXP); exp_faces(PRIMAL_CT_DEXP);
