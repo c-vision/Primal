@@ -1098,10 +1098,11 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     cur = (int *)calloc((size_t)n, sizeof(int));
     CK(ari); CK(cur);
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) { int i = Ki[p]; if (i > j) { ari[arp[j] + cur[j]++] = i; ari[arp[i] + cur[i]++] = j; } }
-    free(cur);
+    free(cur); cur = NULL;
     for (int k = 0; k < n; k++) pair[k] = -1;
     if (!getenv("NO2")) {
         double *diag = (double *)calloc((size_t)n, sizeof(double)), maxd = 0.0;
+        if (!diag) { free(pair); free(adjc); free(arp); free(ari); return NULL; }
         for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) if (Ki[p] == j) { diag[j] = Kx[p]; if (fabs(Kx[p]) > maxd) maxd = fabs(Kx[p]); }
         double thr = 1e-12 * (maxd > 0 ? maxd : 1.0);
         for (int u = 0; u < n; u++) {
@@ -1114,7 +1115,7 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
         }
         free(diag);
     }
-    free(ari); free(arp); free(adjc);
+    free(ari); free(arp); free(adjc); ari = NULL; arp = NULL; adjc = NULL;
 
     /* --- perm: pairs first (adjacent), then singletons --- */
     perm = (int *)malloc((size_t)n * sizeof(int));
@@ -1293,7 +1294,8 @@ done:
         free(Pp); free(Pi); free(Pv); free(perm); free(ip); free(piv2); free(pair);
         return NULL;
     }
-    SpLdl *L = (SpLdl *)malloc(sizeof(SpLdl));
+    SpLdl *L = (SpLdl *)calloc(1, sizeof(SpLdl));
+    if (!L) return NULL;
     int total = 0; for (int j = 0; j < n; j++) total += cn[j];
     L->n = n;
     L->Lp = (int *)malloc((size_t)(n+1)*sizeof(int));
@@ -1303,6 +1305,7 @@ done:
     L->piv2 = (int *)malloc((size_t)n*sizeof(int));
     L->Doff = (double *)malloc((size_t)n*sizeof(double));
     L->perm = (int *)malloc((size_t)n*sizeof(int));
+    if (!L->Lp || !L->Li || !L->Lx || !L->D || !L->piv2 || !L->Doff || !L->perm) { spldl_free(L); return NULL; }
     int off = 0;
     for (int j = 0; j < n; j++) { L->Lp[j] = off; for (int p = 0; p < cn[j]; p++) { L->Li[off] = ci[j][p]; L->Lx[off] = cv[j][p]; off++; } }
     L->Lp[n] = off;
