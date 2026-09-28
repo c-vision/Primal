@@ -867,12 +867,30 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 for (int j = 0; j < nvar; j++) p += t->c[j] * xs[j];
                 if (t->has_qobj) p += 0.5 * task_xQx(t, xs);
                 if (t->numbarvar > 0) p += barC_dot(t, barXbuf);
-                best = s * p;   /* min-form; p is the objective as written */
-                memcpy(bestx, xs, (size_t)nvar * sizeof(double));
-                if (t->numbarvar > 0)
-                    memcpy(bestX, barXbuf, (size_t)nbartot * sizeof(double));
-                free(x); free(nd.lx); free(nd.ux);
-                continue;
+                if (s * p < best) {   /* never overwrite a better incumbent (#18) */
+                    best = s * p;   /* min-form; p is the objective as written */
+                    memcpy(bestx, xs, (size_t)nvar * sizeof(double));
+                    if (t->numbarvar > 0)
+                        memcpy(bestX, barXbuf, (size_t)nbartot * sizeof(double));
+                }
+                /* The relaxation here is integral only WITHIN itol. If the snap
+                 * moved an integer off its LP value, this node's LP bound is not
+                 * achieved by any feasible point -- rounding to the NEAR integer
+                 * can be much worse than the LP value (issue #18: x=0.999995
+                 * rounds to x=1, objective 5, while x=0 gives 1). Branch on the
+                 * moved variable so the other rounding is explored; only a
+                 * negligible move lets the node close as a leaf. */
+                /* A node whose LP point was integral only WITHIN itol is not
+                 * solved when rounding it produced an objective far above this
+                 * node's LP bound (issue #18), but a small INTEGRALITY gap is
+                 * normal (T84: x <= 4.000004 snaps to x=4 and -4 is optimal) and
+                 * must not refine. The threshold is coarser than the declared
+                 * gap on purpose: it separates "the LP floor is unreachable noise"
+                 * from "a better integer exists". */
+                double gap = s * p - pmin;
+                if (moved >= 0 && gap > t->mip_tol_abs_gap + 1e-3 * (1.0 + fabs(pmin)))
+                    { bj = moved; bfrac = mvd; }
+                else { free(x); free(nd.lx); free(nd.ux); continue; }
             }
             /* Still nothing to publish. If the snap moved some integer off its
              * LP value, that variable is a legitimate branch: floor/ceil of the
