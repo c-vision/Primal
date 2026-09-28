@@ -19735,6 +19735,88 @@ static void test_t269(void) {
     PRIMAL_deleteenv(&env);
 }
 
+/* T271 — an AFE edit must reach every solve encoding the AFE built (issue #19).
+ * appendacc emits the rows of a linear domain directly and, for a conic domain,
+ * numterms auxiliary variables plus the rows 'v_e - sum a_k x = b_e'; putdjc
+ * emits selection binaries plus big-M rows. All three read the affine
+ * expression once, at write time, so an accepted PRIMAL_putafeg /
+ * PRIMAL_putafefentry afterwards used to leave the solve enforcing the OLD
+ * expression. These are the three refreshes, each asserted on a value that only
+ * moves if the edit reaches the encoding. */
+static double t271_linacc(int edit) {
+    PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
+    PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
+    PRIMAL_appendvars(t, 1);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_UP, -INFINITY, 10.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
+    PRIMAL_appendafes(t, 1);
+    PRIMAL_putafefentry(t, 0, 0, 1.0);
+    PRIMAL_putafeg(t, 0, -1.0);                     /* x - 1 */
+    PRIMALint64t dom = -1; PRIMAL_appendrplusdomain(t, 1, &dom);
+    PRIMAL_appendacc(t, dom, 1, (PRIMALint64t[]){0}, NULL);   /* x >= 1 */
+    if (edit) PRIMAL_putafeg(t, 0, -3.0);           /* x >= 3 */
+    double po = -1;
+    if (PRIMAL_optimize(t) == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
+    return po;
+}
+
+static double t271_conacc(int edit) {
+    PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
+    PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
+    PRIMAL_appendvars(t, 1);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
+    PRIMAL_appendafes(t, 3);
+    PRIMAL_putafefentry(t, 0, 0, 1.0); PRIMAL_putafeg(t, 0, 0.0);   /* t */
+    PRIMAL_putafeg(t, 1, 1.0);                                      /* 1 */
+    PRIMAL_putafeg(t, 2, 1.0);                                      /* 1 */
+    PRIMALint64t dom = -1; PRIMAL_appendquadraticconedomain(t, 3, &dom);
+    PRIMAL_appendacc(t, dom, 3, (PRIMALint64t[]){0, 1, 2}, NULL);
+    if (edit) PRIMAL_putafeg(t, 1, 2.0);            /* t >= sqrt(4 + 1) */
+    double po = -1;
+    if (PRIMAL_optimize(t) == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
+    return po;
+}
+
+static double t271_djc(int edit) {
+    PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
+    PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
+    PRIMAL_appendvars(t, 1);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 10.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
+    PRIMAL_appendafes(t, 2);
+    PRIMAL_putafefentry(t, 0, 0, 1.0); PRIMAL_putafeg(t, 0, -1.0);  /* x - 1 */
+    PRIMAL_putafefentry(t, 1, 0, 1.0); PRIMAL_putafeg(t, 1, -2.0);  /* x - 2 */
+    PRIMALint64t d1 = -1, d2 = -1;
+    PRIMAL_appendrzerodomain(t, 1, &d1); PRIMAL_appendrzerodomain(t, 1, &d2);
+    PRIMAL_appenddjcs(t, 1);
+    PRIMALint64t doms[2] = {d1, d2}, afes[2] = {0, 1}, ts[2] = {1, 1};
+    PRIMALrescodee rc = PRIMAL_putdjc(t, 0, 2, doms, 2, afes, NULL, 2, ts);
+    if (edit) PRIMAL_putafeg(t, 1, -4.0);           /* clause x = 4 */
+    double po = -1;
+    if (rc == PRIMAL_RES_OK && PRIMAL_optimize(t) == PRIMAL_RES_OK)
+        PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
+    return po;
+}
+
+static void test_t271(void) {
+    cur_name = "T271 AFE edit reaches the ACC (linear, conic) and DJC encodings";
+    double v;
+    v = t271_linacc(0); check(fabs(v - 1.0) < 1e-7, "T271 linear ACC: x >= 1 first");
+    v = t271_linacc(1); check(fabs(v - 3.0) < 1e-7, "T271 linear ACC: edit -> x >= 3");
+    v = t271_conacc(0); check(fabs(v - 1.41421356) < 1e-4, "T271 conic ACC: t >= sqrt(2)");
+    v = t271_conacc(1); check(fabs(v - 2.23606798) < 1e-4, "T271 conic ACC: edit -> sqrt(5)");
+    v = t271_djc(0); check(fabs(v - 2.0) < 1e-6, "T271 DJC: max over {1,2} is 2");
+    v = t271_djc(1); check(fabs(v - 4.0) < 1e-6, "T271 DJC: edit -> max over {1,4} is 4");
+}
+
 /* T270 — an unbounded LP relaxation is not, by itself, integer unboundedness.
  * min -x1 s.t. x1 - 2*x2 = rhs, x1,x2 integer >= 0 is unbounded as a relaxation
  * (x1 = 2*x2 + rhs -> inf) for either rhs. With rhs = 0 it HAS the integer point
@@ -19778,6 +19860,7 @@ static void test_t270(void) {
 
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t271();
     test_t270();
     test_t269();
     test_t268();
