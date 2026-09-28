@@ -512,6 +512,7 @@ PRIMALrescodee PRIMAL_deletetask(PRIMALtask_t *task) {
         free(t->djc_dom[i]); free(t->djc_afe[i]); free(t->djc_b[i]); free(t->djc_termsize[i]);
     }
     free(t->djc_dom); free(t->djc_afe); free(t->djc_b); free(t->djc_termsize);
+    free(t->djc_rbase); free(t->djc_zbase);
     free(t->djc_ndom); free(t->djc_nafe); free(t->djc_numterm);
     if (t->djcname) {
         for (int i = 0; i < t->numdjc; i++) free(t->djcname[i]);

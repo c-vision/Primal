@@ -138,6 +138,8 @@ struct PRIMAL_task_s {
     PRIMALint64t **djc_afe;        /* for each DJC: list of the AFEs */
     double **djc_b;                /* for each DJC: vector b (or NULL) */
     PRIMALint64t **djc_termsize;   /* for each DJC: size of each clause */
+    PRIMALint64t *djc_rbase;       /* for each DJC: first row of its encoding */
+    PRIMALint64t *djc_zbase;       /* for each DJC: first selection binary */
     char **djcname;                /* the fifth name table, on djccap */
 
     /* SOS constraints (MIP): type 1/2, members, weights */
@@ -456,5 +458,7 @@ void tlog(PRIMALtask_t t, const char *msg);
 /* Writes one message to the task's progress stream. */
 void tprog(PRIMALtask_t t, const char *msg);
 
+/* Rewrite the DJC big-M rows after an AFE edit (primal_djc.c). */
+PRIMALrescodee primal_djc_sync(PRIMALtask_t t);
 #endif /* PRIMAL_PRIV_H */
 

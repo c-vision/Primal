@@ -302,6 +302,10 @@ static PRIMALrescodee djc_apply(PRIMALtask_t t, PRIMALint64t djcidx,
     t->djc_b[k] = mb;
     t->djc_termsize[k] = mt;
     t->djc_numterm[k] = numterms;   /* last: it is the "written" marker */
+    /* the selection binaries and the rows are appended by djc_encode; remember
+     * where so an AFE edit can rewrite the rows (issue #19) */
+    t->djc_zbase[k] = t->numvar;
+    t->djc_rbase[k] = t->numcon;
     PRIMALrescodee rc = djc_encode(t, ndis, disj_start, rpd, ncoef, varidx, rowcoefs, rhs);
     free(rpd); free(disj_start); free(ncoef); free(rhs); free(varidx); free(rowcoefs);
     return rc;
@@ -324,26 +328,31 @@ PRIMALrescodee PRIMAL_appenddjcs(PRIMALtask_t t, PRIMALint64t num) {
         double **n6 = (double **)malloc((size_t)nc * sizeof(double *));
         PRIMALint64t **n7 = (PRIMALint64t **)malloc((size_t)nc * sizeof(PRIMALint64t *));
         char **n8 = (char **)malloc((size_t)nc * sizeof(char *));
-        if (!n1 || !n2 || !n3 || !n4 || !n5 || !n6 || !n7 || !n8) {
+        PRIMALint64t *n9 = (PRIMALint64t *)malloc((size_t)nc * sizeof(PRIMALint64t));
+        PRIMALint64t *n10 = (PRIMALint64t *)malloc((size_t)nc * sizeof(PRIMALint64t));
+        if (!n1 || !n2 || !n3 || !n4 || !n5 || !n6 || !n7 || !n8 || !n9 || !n10) {
             free(n1); free(n2); free(n3); free(n4); free(n5); free(n6); free(n7); free(n8);
+            free(n9); free(n10);
             return PRIMAL_RES_ERR_ALLOC;
         }
         for (int i = 0; i < t->numdjc; i++) {
             n1[i] = t->djc_ndom[i]; n2[i] = t->djc_nafe[i]; n3[i] = t->djc_numterm[i];
             n4[i] = t->djc_dom[i]; n5[i] = t->djc_afe[i]; n6[i] = t->djc_b[i];
             n7[i] = t->djc_termsize[i]; n8[i] = t->djcname[i];
+            n9[i] = t->djc_rbase[i]; n10[i] = t->djc_zbase[i];
         }
         free(t->djc_ndom); free(t->djc_nafe); free(t->djc_numterm);
         free(t->djc_dom); free(t->djc_afe); free(t->djc_b); free(t->djc_termsize);
-        free(t->djcname);
+        free(t->djcname); free(t->djc_rbase); free(t->djc_zbase);
         t->djc_ndom = n1; t->djc_nafe = n2; t->djc_numterm = n3;
         t->djc_dom = n4; t->djc_afe = n5; t->djc_b = n6; t->djc_termsize = n7;
-        t->djcname = n8; t->djccap = nc;
+        t->djcname = n8; t->djc_rbase = n9; t->djc_zbase = n10; t->djccap = nc;
     }
     for (int i = t->numdjc; i < want; i++) {
         t->djc_ndom[i] = 0; t->djc_nafe[i] = 0; t->djc_numterm[i] = 0;
         t->djc_dom[i] = NULL; t->djc_afe[i] = NULL; t->djc_b[i] = NULL;
         t->djc_termsize[i] = NULL; t->djcname[i] = NULL;
+        t->djc_rbase[i] = 0; t->djc_zbase[i] = 0;
     }
     t->numdjc = want;
     return PRIMAL_RES_OK;
@@ -618,3 +627,81 @@ PRIMALrescodee PRIMAL_getdjcname(PRIMALtask_t t, PRIMALint64t djcidx,
     return PRIMAL_RES_OK;
 }
 
+
+/* Rewrite the big-M rows of every written DJC from the CURRENT affine
+ * expressions (issue #19). The selection binaries and the row layout are fixed
+ * at putdjc time (djc_zbase/djc_rbase), so only the coefficients and the RHS
+ * move: the row derivation below is djc_encode's, reading the stored
+ * description instead of the caller's arguments. Not static because an accepted
+ * AFE edit (primal_afe.c) has to refresh the rows. */
+static PRIMALrescodee djc_rewrite_row(PRIMALtask_t t, int row, int afe,
+                                      double sgn, double rhs, int zvar) {
+    int n = t->afe_nz[afe];
+    int *sub = (int *)malloc((size_t)(n + 1) * sizeof(int));
+    double *val = (double *)malloc((size_t)(n + 1) * sizeof(double));
+    if (!sub || !val) { free(sub); free(val); return PRIMAL_RES_ERR_ALLOC; }
+    int w = 0;
+    for (int z = 0; z < n; z++) { sub[w] = t->afe_sub[afe][z]; val[w] = sgn * t->afe_val[afe][z]; w++; }
+    sub[w] = zvar;
+    double lhsmax = 0.0; int finite = 1;
+    for (int z = 0; z < n; z++) {
+        int j = t->afe_sub[afe][z];
+        double a = sgn * t->afe_val[afe][z];
+        double lb = t->blx[j], ub = t->bux[j];
+        double tmax = (a >= 0.0) ? a * ub : a * lb;
+        if (!isfinite(tmax)) { finite = 0; break; }
+        lhsmax += tmax;
+    }
+    double M;
+    if (!finite) M = DJC_BIGM;
+    else { M = lhsmax - rhs; if (M < 0.0) M = 0.0; }
+    val[w] = M;
+    PRIMALrescodee rc = PRIMAL_putarow(t, row, w + 1, sub, val);
+    free(sub); free(val);
+    if (rc != PRIMAL_RES_OK) return rc;
+    PRIMAL_putconbound(t, row, PRIMAL_BK_UP, -INFINITY, rhs + M);
+    return PRIMAL_RES_OK;
+}
+
+PRIMALrescodee primal_djc_sync(PRIMALtask_t t) {
+    if (!t || t->numdjc <= 0) return PRIMAL_RES_OK;
+    for (int k = 0; k < t->numdjc; k++) {
+        if (t->djc_numterm[k] == 0) continue;    /* slot never written */
+        int ndis = (int)t->djc_numterm[k];
+        int rbase = (int)t->djc_rbase[k], zbase = (int)t->djc_zbase[k];
+        int afe_cur = 0, dom_cur = 0, row = rbase;
+        for (int d = 0; d < ndis; d++) {
+            for (int q = 0; q < (int)t->djc_termsize[k][d]; q++) {
+                int dom = (int)t->djc_dom[k][dom_cur++];
+                int ty = t->dom_type[dom];
+                int n = (int)t->dom_n[dom];
+                for (int c = 0; c < n; c++) {
+                    int a = (int)t->djc_afe[k][afe_cur];
+                    double g = t->afeg[a];
+                    double bv = t->djc_b[k] ? t->djc_b[k][afe_cur] : 0.0;
+                    afe_cur++;
+                    PRIMALrescodee rc;
+                    if (ty == PRIMAL_DOMAIN_R) continue;
+                    if (ty == PRIMAL_DOMAIN_RZERO) {
+                        rc = djc_rewrite_row(t, row++, a,  1.0, bv - g, zbase + d); if (rc) return rc;
+                        rc = djc_rewrite_row(t, row++, a, -1.0, g - bv, zbase + d); if (rc) return rc;
+                    } else if (ty == PRIMAL_DOMAIN_RPLUS) {
+                        rc = djc_rewrite_row(t, row++, a, -1.0, g - bv, zbase + d); if (rc) return rc;
+                    } else {                        /* RMINUS */
+                        rc = djc_rewrite_row(t, row++, a,  1.0, bv - g, zbase + d); if (rc) return rc;
+                    }
+                }
+            }
+        }
+        /* selection: sum z >= 1 */
+        int *sub = (int *)malloc((size_t)ndis * sizeof(int));
+        double *val = (double *)malloc((size_t)ndis * sizeof(double));
+        if (!sub || !val) { free(sub); free(val); return PRIMAL_RES_ERR_ALLOC; }
+        for (int d = 0; d < ndis; d++) { sub[d] = zbase + d; val[d] = 1.0; }
+        PRIMALrescodee rc = PRIMAL_putarow(t, row, ndis, sub, val);
+        free(sub); free(val);
+        if (rc != PRIMAL_RES_OK) return rc;
+        PRIMAL_putconbound(t, row, PRIMAL_BK_LO, 1.0, INFINITY);
+    }
+    return PRIMAL_RES_OK;
+}
