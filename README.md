@@ -7,6 +7,8 @@ It solves **LP, MILP, QP, QCQP, SOCP, SDP, exponential and power cones, and
 mixed-integer conic problems**, and it hands back the primal point, the dual
 point and a status you can check rather than trust.
 
+[![Sponsor](https://img.shields.io/badge/Sponsor-❤-ea4aaa)](https://github.com/sponsors/c-vision)
+
 ## Where it fits
 
 The niche is the **combination**, not any single capability: among solvers with
