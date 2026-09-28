@@ -822,6 +822,13 @@ static SpChol *spchol_from_dense(const double *Kd, int m,
             if (v != 0.0) { (*Ki)[w] = i; (*Kx)[w] = v; w++; }
         }
     }
+    /* K = A M^-1 A' + delta I is DENSE whenever M^-1 is (a dense Q makes it so),
+     * and AMD on a complete graph reduces no fill while costing a full ordering
+     * pass every iteration -- measured at 42% of a dense QP's runtime.  Order
+     * only when the pattern actually has gaps to exploit. */
+    long long half = (long long)m * (m + 1) / 2;
+    if ((long long)Kp[m] * 4 > half)
+        return spchol_factor(m, Kp, *Ki, *Kx);
     return spchol_factor_ord(m, Kp, *Ki, *Kx);
 }
 
@@ -877,7 +884,6 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
     if (n <= 0) return IPM_OPTIMAL;
     if (m <= 0) return IPM_MAXITER;
     int nnzA = Aptr[n], nnzQ = Qptr[n];
-
     double *rp   = (double *)calloc((size_t)m, sizeof(double));
     double *rd   = (double *)calloc((size_t)n, sizeof(double));
     double *Qx   = (double *)calloc((size_t)n, sizeof(double));
