@@ -298,7 +298,7 @@ PRIMALrescodee PRIMAL_putexitfunc(PRIMALenv_t env, PRIMALexitfunc exitfunc, void
 PRIMALrescodee PRIMAL_maketask(PRIMALenv_t env, int maxcon, int maxvar, PRIMALtask_t *task) {
     (void)maxcon; (void)maxvar;
     if (!task) return PRIMAL_RES_ERR_NULL;
-    if (!env) return PRIMAL_RES_ERR_ARG;
+    if (!env || maxcon < 0 || maxvar < 0) return PRIMAL_RES_ERR_ARG;
     PRIMALtask_t t = (PRIMALtask_t)calloc(1, sizeof(struct PRIMAL_task_s));
     if (!t) return PRIMAL_RES_ERR_ALLOC;
     t->env = env;

@@ -206,17 +206,32 @@ static PRIMALrescodee appendsos(PRIMALtask_t t, int sostype, int num,
                              const int *submem, const double *weight) {
     if (!t || !submem || !weight) return PRIMAL_RES_ERR_NULL;
     if (num < 1) return PRIMAL_RES_ERR_ARG;
-    for (int k = 0; k < num; k++)
-        if (submem[k] < 0 || submem[k] >= t->numvar) return PRIMAL_RES_ERR_ARG;
+    for (int k = 0; k < num; k++) {
+        if (submem[k] < 0 || submem[k] >= t->numvar || !isfinite(weight[k]))
+            return PRIMAL_RES_ERR_ARG;
+        /* A set lists each variable once with a distinct weight: the adjacency
+         * of SOS2 is the weight order, and a repeat has no position in it. */
+        for (int j = 0; j < k; j++)
+            if (submem[j] == submem[k] || weight[j] == weight[k])
+                return PRIMAL_RES_ERR_ARG;
+    }
     if (t->numsos >= t->soscap) {
         int nc = t->soscap ? t->soscap * 2 : 4;
-        int *a1 = (int *)realloc(t->sos_type, (size_t)nc * sizeof(int));
-        int *a2 = (int *)realloc(t->sos_n, (size_t)nc * sizeof(int));
-        int **a3 = (int **)realloc(t->sos_mem, (size_t)nc * sizeof(int *));
-        double **a4 = (double **)realloc(t->sos_w, (size_t)nc * sizeof(double *));
-        if (!a1 || !a2 || !a3 || !a4) {
-            free(a1); free(a2); free(a3); free(a4); return PRIMAL_RES_ERR_ALLOC;
+        /* Allocate the replacements and copy into them BEFORE committing any
+         * pointer: a realloc that fails after an earlier one moved leaves the
+         * task pointing at a freed block (a later free double-frees it). */
+        int *a1 = (int *)malloc((size_t)nc * sizeof(int));
+        int *a2 = (int *)malloc((size_t)nc * sizeof(int));
+        int **a3 = (int **)malloc((size_t)nc * sizeof(int *));
+        double **a4 = (double **)malloc((size_t)nc * sizeof(double *));
+        if (!a1 || !a2 || !a3 || !a4) { free(a1); free(a2); free(a3); free(a4); return PRIMAL_RES_ERR_ALLOC; }
+        if (t->numsos > 0) {
+            memcpy(a1, t->sos_type, (size_t)t->numsos * sizeof(int));
+            memcpy(a2, t->sos_n, (size_t)t->numsos * sizeof(int));
+            memcpy(a3, t->sos_mem, (size_t)t->numsos * sizeof(int *));
+            memcpy(a4, t->sos_w, (size_t)t->numsos * sizeof(double *));
         }
+        free(t->sos_type); free(t->sos_n); free(t->sos_mem); free(t->sos_w);
         t->sos_type = a1; t->sos_n = a2; t->sos_mem = a3; t->sos_w = a4; t->soscap = nc;
     }
     int *mem = (int *)malloc((size_t)num * sizeof(int));

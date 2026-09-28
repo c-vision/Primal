@@ -425,7 +425,8 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
      * need -- while letting the sweep stop as soon as it truly converges. */
     double fnorm2 = 0.0;
     for (int i = 0; i < n * n; i++) fnorm2 += A[i] * A[i];
-    double tol = 1e-28 * fnorm2;
+    /* An overflowing squared norm must not make every iterate look converged. */
+    double tol = isfinite(fnorm2) ? 1e-28 * fnorm2 : 1e-30;
     for (int sweep = 0; sweep < 100; sweep++) {
         double off = 0.0;
         for (int p = 0; p < n; p++)
@@ -490,7 +491,9 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
     int *mark = (int *)calloc((size_t)n, sizeof(int));
     int *touched = (int *)malloc((size_t)n * sizeof(int));
     if (!ci || !cv || !cn || !cc || !ri || !rv || !rn || !rc || !w || !mark || !touched) {
-        for (int j = 0; j < n; j++) { free(ci[j]); free(cv[j]); free(ri[j]); free(rv[j]); }
+        /* A partially successful calloc set leaves some of these NULL: free each
+         * row array only if its own vector was allocated. */
+        for (int j = 0; j < n; j++) { if (ci) free(ci[j]); if (cv) free(cv[j]); if (ri) free(ri[j]); if (rv) free(rv[j]); }
         free(ci); free(cv); free(cn); free(cc);
         free(ri); free(rv); free(rn); free(rc);
         free(w); free(mark); free(touched);
@@ -529,14 +532,19 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
         if (cc[j] < nt + 1) {
             int cap = nt + 2;
             int *ti = (int *)realloc(ci[j], (size_t)cap * sizeof(int));
-            double *tv = (double *)realloc(cv[j], (size_t)cap * sizeof(double));
-            if (!ti || !tv) { free(ti); free(tv);
+            /* Commit each realloc as it succeeds: a second that fails after the
+             * first moved leaves ci[j]/cv[j] pointing at a freed block, and the
+             * error handler below would free it a second time. */
+            if (ti) ci[j] = ti;
+            double *tv = ti ? (double *)realloc(cv[j], (size_t)cap * sizeof(double)) : NULL;
+            if (tv) cv[j] = tv;
+            if (!ti || !tv) {
                 for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
                 free(ci); free(cv); free(cn); free(cc);
                 free(ri); free(rv); free(rn); free(rc);
                 free(w); free(mark); free(touched);
                 return NULL; }
-            ci[j] = ti; cv[j] = tv; cc[j] = cap;
+            cc[j] = cap;
         }
         ci[j][0] = j; cv[j][0] = ljj; cn[j] = 1;
         for (int q = 0; q < nt; q++) {
@@ -550,14 +558,16 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
             if (rc[i] == rn[i]) {
                 int cap = rc[i] ? rc[i] * 2 : 4;
                 int *ti = (int *)realloc(ri[i], (size_t)cap * sizeof(int));
-                double *tv = (double *)realloc(rv[i], (size_t)cap * sizeof(double));
-                if (!ti || !tv) { free(ti); free(tv);
+                if (ti) ri[i] = ti;
+                double *tv = ti ? (double *)realloc(rv[i], (size_t)cap * sizeof(double)) : NULL;
+                if (tv) rv[i] = tv;
+                if (!ti || !tv) {
                     for (int q2 = 0; q2 < n; q2++) { free(ci[q2]); free(cv[q2]); free(ri[q2]); free(rv[q2]); }
                     free(ci); free(cv); free(cn); free(cc);
                     free(ri); free(rv); free(rn); free(rc);
                     free(w); free(mark); free(touched);
                     return NULL; }
-                ri[i] = ti; rv[i] = tv; rc[i] = cap;
+                rc[i] = cap;
             }
             ri[i][rn[i]] = j; rv[i][rn[i]] = v; rn[i]++;
         }
@@ -715,7 +725,7 @@ int spchol_solve_ord(const SpChol *L, double *rhs) {
 /* Release a sparse Cholesky factor and its ordering. NULL-safe. */
 void spchol_free(SpChol *L) {
     if (!L) return;
-    free(L->Lp); free(L->Li); free(L->Lx);
+    free(L->Lp); free(L->Li); free(L->Lx); free(L->perm);
     free(L);
 }
 
@@ -782,7 +792,7 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
     int *nbr = (int *)malloc((size_t)n * sizeof(int));
     int *perm = (int *)malloc((size_t)n * sizeof(int));
     if (!adj || !deg || !cap || !rem || !seen || !nbr || !perm) {
-        for (int i = 0; i < n; i++) free(adj[i]);
+        if (adj) for (int i = 0; i < n; i++) free(adj[i]);
         free(adj); free(deg); free(cap); free(rem); free(seen); free(nbr); free(perm);
         return NULL;
     }
