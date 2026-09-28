@@ -503,7 +503,7 @@ PRIMALrescodee PRIMAL_deletetask(PRIMALtask_t *task) {
     }
     if (t->acc_afe) for (int i = 0; i < t->numacc; i++) { free(t->acc_afe[i]); free(t->acc_b[i]); }
     free(t->acc_afe); free(t->acc_b); free(t->acc_dom); free(t->acc_nafe);
-    free(t->acc_rowbase);
+    free(t->acc_rowbase); free(t->acc_vbase);
     if (t->accname) {
         for (int i = 0; i < t->numacc; i++) free(t->accname[i]);
         free(t->accname);

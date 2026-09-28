@@ -1134,7 +1134,7 @@ static PRIMALrescodee accseq_encode(PRIMALtask_t t, PRIMALconetypee domtype, dou
  * accseq_encode, linear domains (R/RZERO/RPLUS/RMINUS) through rows. */
 static PRIMALrescodee acc_store(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t numafeidx,
                                 const PRIMALint64t *afeidxlist, const PRIMALrealt *b,
-                                PRIMALint64t rowbase) {
+                                PRIMALint64t rowbase, PRIMALint64t vbase) {
     if (t->numacc >= t->acccap) {
         int nc = t->acccap ? t->acccap * 2 : 4;
         PRIMALint64t *a1 = (PRIMALint64t *)realloc(t->acc_dom, (size_t)nc * sizeof(PRIMALint64t));
@@ -1142,17 +1142,19 @@ static PRIMALrescodee acc_store(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64
         PRIMALint64t **a3 = (PRIMALint64t **)realloc(t->acc_afe, (size_t)nc * sizeof(PRIMALint64t *));
         double **a4 = (double **)realloc(t->acc_b, (size_t)nc * sizeof(double *));
         PRIMALint64t *a6 = (PRIMALint64t *)realloc(t->acc_rowbase, (size_t)nc * sizeof(PRIMALint64t));
+        PRIMALint64t *a7 = (PRIMALint64t *)realloc(t->acc_vbase, (size_t)nc * sizeof(PRIMALint64t));
         char **a5 = (char **)realloc(t->accname, (size_t)nc * sizeof(char *));
-        if (!a1 || !a2 || !a3 || !a4 || !a5 || !a6) {
-            free(a1); free(a2); free(a3); free(a4); free(a5); free(a6);
+        if (!a1 || !a2 || !a3 || !a4 || !a5 || !a6 || !a7) {
+            free(a1); free(a2); free(a3); free(a4); free(a5); free(a6); free(a7);
             return PRIMAL_RES_ERR_ALLOC;
         }
         t->acc_dom = a1; t->acc_nafe = a2; t->acc_afe = a3; t->acc_b = a4;
-        t->acc_rowbase = a6; t->accname = a5; t->acccap = nc;
+        t->acc_rowbase = a6; t->acc_vbase = a7; t->accname = a5; t->acccap = nc;
     }
     int k = t->numacc;
     t->acc_dom[k] = domidx; t->acc_nafe[k] = numafeidx;
     t->acc_rowbase[k] = rowbase;
+    t->acc_vbase[k] = vbase;
     t->accname[k] = NULL;
     size_t nb = (size_t)(numafeidx > 0 ? numafeidx : 1);
     t->acc_afe[k] = (PRIMALint64t *)malloc(nb * sizeof(PRIMALint64t));
@@ -1170,19 +1172,41 @@ static PRIMALrescodee acc_store(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64
 static void acc_sync_linear(PRIMALtask_t t) {
     for (int k = 0; k < t->numacc; k++) {
         int type = t->dom_type[t->acc_dom[k]];
-        if (!(type == PRIMAL_DOMAIN_R || type == PRIMAL_DOMAIN_RZERO ||
-              type == PRIMAL_DOMAIN_RPLUS || type == PRIMAL_DOMAIN_RMINUS)) continue;
         int rbase = (int)t->acc_rowbase[k];
-        for (int e = 0; e < (int)t->acc_nafe[k]; e++) {
-            int afe = (int)t->acc_afe[k][e];
-            double g = t->afeg[afe] - t->acc_b[k][e];   /* F x + g - b */
-            if (PRIMAL_putarow(t, rbase + e, t->afe_nz[afe], t->afe_sub[afe],
-                               t->afe_val[afe]) != PRIMAL_RES_OK) return;
-            afe_add_bar_terms(t, rbase + e, afe);
-            if      (type == PRIMAL_DOMAIN_R)     PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_FR, -INFINITY, INFINITY);
-            else if (type == PRIMAL_DOMAIN_RZERO) PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_FX, -g, -g);
-            else if (type == PRIMAL_DOMAIN_RPLUS) PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_LO, -g, INFINITY);
-            else                                  PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_UP, -INFINITY, -g);
+        int lin = (type == PRIMAL_DOMAIN_R || type == PRIMAL_DOMAIN_RZERO ||
+                   type == PRIMAL_DOMAIN_RPLUS || type == PRIMAL_DOMAIN_RMINUS);
+        if (lin) {
+            for (int e = 0; e < (int)t->acc_nafe[k]; e++) {
+                int afe = (int)t->acc_afe[k][e];
+                double g = t->afeg[afe] - t->acc_b[k][e];   /* F x + g - b */
+                if (PRIMAL_putarow(t, rbase + e, t->afe_nz[afe], t->afe_sub[afe],
+                                   t->afe_val[afe]) != PRIMAL_RES_OK) return;
+                afe_add_bar_terms(t, rbase + e, afe);
+                if      (type == PRIMAL_DOMAIN_R)     PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_FR, -INFINITY, INFINITY);
+                else if (type == PRIMAL_DOMAIN_RZERO) PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_FX, -g, -g);
+                else if (type == PRIMAL_DOMAIN_RPLUS) PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_LO, -g, INFINITY);
+                else                                  PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_UP, -INFINITY, -g);
+            }
+        } else {
+            /* Conic domain: row e is 'v_e - sum a_k x = b_e' with v_e the aux var
+             * at vbase+e (accseq_encode), unchanged by edits -- only the
+             * coefficients and the RHS come from the affine expression. */
+            int vbase = (int)t->acc_vbase[k];
+            if (vbase < 0) continue;
+            for (int e = 0; e < (int)t->acc_nafe[k]; e++) {
+                int afe = (int)t->acc_afe[k][e];
+                int nz = t->afe_nz[afe];
+                int *sub = (int *)malloc((size_t)(nz + 1) * sizeof(int));
+                double *val = (double *)malloc((size_t)(nz + 1) * sizeof(double));
+                if (!sub || !val) { free(sub); free(val); return; }
+                for (int q = 0; q < nz; q++) { sub[q] = t->afe_sub[afe][q]; val[q] = -t->afe_val[afe][q]; }
+                sub[nz] = vbase + e; val[nz] = 1.0;
+                if (PRIMAL_putarow(t, rbase + e, nz + 1, sub, val) != PRIMAL_RES_OK) { free(sub); free(val); return; }
+                free(sub); free(val);
+                afe_add_bar_terms(t, rbase + e, afe);
+                double g = t->afeg[afe] - t->acc_b[k][e];
+                PRIMAL_putconbound(t, rbase + e, PRIMAL_BK_FX, g, g);
+            }
         }
     }
 }
@@ -1224,7 +1248,7 @@ PRIMALrescodee PRIMAL_appendacc(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64
             else
                 PRIMAL_putconbound(t, rbase + e, PRIMAL_BK_UP, -INFINITY, -g);
         }
-        return acc_store(t, domidx, numafeidx, afeidxlist, b, rbase);
+        return acc_store(t, domidx, numafeidx, afeidxlist, b, rbase, -1);
     }
     /* conic domains: map to the internal cone type */
     PRIMALconetypee ct;
@@ -1251,6 +1275,7 @@ PRIMALrescodee PRIMAL_appendacc(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64
         bb[e] = t->afeg[afe] - (b ? b[e] : 0.0);   /* F x + g - b */
     }
     int rbase = t->numcon;
+    int vbase = t->numvar;
     PRIMALrescodee rc = accseq_encode(t, ct, param, n, nz, aidx, aval, bb);
     free(nz); free(aidx); free(aval); free(bb);
     if (rc != PRIMAL_RES_OK) return rc;
@@ -1258,7 +1283,7 @@ PRIMALrescodee PRIMAL_appendacc(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64
         rc = afe_add_bar_terms(t, rbase + e, (int)afeidxlist[e]);
         if (rc != PRIMAL_RES_OK) return rc;
     }
-    return acc_store(t, domidx, numafeidx, afeidxlist, b, rbase);
+    return acc_store(t, domidx, numafeidx, afeidxlist, b, rbase, vbase);
 }
 
 /* Report the number of ACCs. */
