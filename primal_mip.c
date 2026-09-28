@@ -279,16 +279,17 @@ int mip_point_measures(PRIMALtask_t t, const double *lx, const double *ux,
         }
         int bad = 0;
         if (t->sos_type[k] == 1) {
+            /* Signed support (issue #16): a negative component is nonzero. */
             int nz = 0;
-            for (int q = 0; q < n; q++) if (w[mem[idx[q]]] > ftol) nz++;
+            for (int q = 0; q < n; q++) if (fabs(w[mem[idx[q]]]) > ftol) nz++;
             bad = (nz > 1);
         } else {
-            int lastnz = -1;
+            /* SOS2 keeps at most two ADJACENT nonzero members: a run of three
+             * consecutive nonzero members violates it. */
+            int run = 0;
             for (int q = 0; q < n && !bad; q++) {
-                if (w[mem[idx[q]]] > ftol) {
-                    if (lastnz >= 0 && q > lastnz + 1) bad = 1;
-                    lastnz = q;
-                }
+                if (fabs(w[mem[idx[q]]]) > ftol) { if (++run > 2) bad = 1; }
+                else run = 0;
             }
         }
         free(idx);
