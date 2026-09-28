@@ -19617,31 +19617,31 @@ static void test_t268(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* ---------------- T269: i due doppi free segnalati da -Wuse-after-free (issue #4)
+/* ---------------- T269: the two double frees reported by -Wuse-after-free
+ * (issue #4)
  *
- * GCC (Linux) segnala `-Wuse-after-free` in due punti che clang non ha, e
- * l'avviso qui e' la forma conservativa di un DIFETTO REALE, non cosmetico.
+ * GCC (Linux) reports `-Wuse-after-free` at two sites clang does not, and the
+ * warning there is the conservative form of a REAL defect, not a cosmetic one.
  *
- *  A) stdform.c stdform_build(): la riga di successo libera csr_*, lc3, uc3
- *     PRIMA del blocco Q, e le label di errore `a_fail` e `qfail` li liberavano
- *     di nuovo. Ogni `goto qfail` e' a valle di quella free, quindi il
- *     `qfail: free(lc3); free(uc3);` era un doppio free sui quattro siti
- *     (tri_add o tri_to_csc falliti con hasQ). Lo stesso vale per `a_fail`,
- *     che puo essere raggiunto sia prima sia dopo la free di successo.
- *  B) primal_optimize.c (bound tightening LP/QP): `free(bt_lx); free(bt_ux);`
- *     compariva due volte di fila nel ramo di allocazione fallita.
+ *  A) stdform.c stdform_build(): the success path frees csr_*, lc3, uc3 BEFORE
+ *     the Q block, and the error labels `a_fail` and `qfail` freed them a second
+ *     time. Every `goto qfail` is downstream of that free, so the
+ *     `qfail: free(lc3); free(uc3);` was a double free on all four sites
+ *     (tri_add or tri_to_csc failing with hasQ). The same holds for `a_fail`,
+ *     which can be reached both before and after the success free.
+ *  B) primal_optimize.c (LP/QP bound tightening): `free(bt_lx); free(bt_ux);`
+ *     appeared twice in a row in the allocation-failure branch.
  *
- * PERCHE' IL TEST NON PUO' RIPRODURRE IL FREE DOPPIO
- * Nessun hook di fallimento di allocazione esiste in questa libreria: per
- * arrivare a `qfail` serve che una malloc/realloc dentro tri_add o tri_to_csc
- * restituisca NULL, e senza un allocator sostituibile l'unico modo sarebbe
- * esaurire la memoria del processo. Percio' questo test non asserisce "il doppio
- * free non accade" -- asserisce la **forma della sorgente**, che e' cio' che
- * rende il difetto impossibile: ogni buffer liberato dal percorso di successo
- * non compare piu' nelle label a valle. Il difetto e' nel testo del programma,
- * non in un comportamento raggiungibile, quindi e' li' che va misurato. Il
- * percorso nominale resta asserito subito sotto, ed e' quello che la free di
- * successo attraversa.
+ * WHY THE TEST CANNOT REPRODUCE THE DOUBLE FREE
+ * No allocation-failure hook exists in this library: reaching `qfail` needs a
+ * malloc/realloc inside tri_add or tri_to_csc to return NULL, and without a
+ * replaceable allocator the only way would be to exhaust the process memory. So
+ * this test does not assert "the double free does not happen" -- it asserts the
+ * **shape of the source**, which is what makes the defect impossible: every
+ * buffer freed by the success path no longer appears in the downstream labels.
+ * The defect is in the program text, not in a reachable behaviour, so that is
+ * where it must be measured. The nominal path stays asserted just below, and it
+ * is the one the success free goes through.
  */
 static void t269_count_frees(const char *file, int after_line,
                              const char *const *names, int nnames, int *out) {
@@ -19666,9 +19666,9 @@ static void test_t269(void) {
     const char *sf_names[] = {"lc3", "uc3", "csr_ptr", "csr_j", "csr_v"};
     int n_sf[5];
 
-    /* stdform.c: dalla free di successo in giu, ogni buffer deve comparire
-     * esattamente UNA volta nelle label a valle (a_fail lo riprende, qfail no).
-     * Prima della correzione erano 2: qfail li liberava una seconda volta. */
+    /* stdform.c: from the success free downward, each buffer must appear
+     * exactly ONCE in the downstream labels (a_fail takes it back, qfail does
+     * not). Before the fix they were 2: qfail freed them a second time. */
     t269_count_frees("stdform.c", 313, sf_names, 5, n_sf);
     check(n_sf[0] == 1, "T269 stdform lc3 freed once after the success path");
     check(n_sf[1] == 1, "T269 stdform uc3 freed once after the success path");
@@ -19676,18 +19676,18 @@ static void test_t269(void) {
     check(n_sf[3] == 1, "T269 stdform csr_j freed once after success");
     check(n_sf[4] == 1, "T269 stdform csr_v freed once after success");
 
-    /* primal_optimize.c: bt_lx/bt_ux sono liberati in quattro rami distinti
-     * (allocazione fallita, due uscite intermedie, uscita di successo). Prima
-     * della correzione il primo ramo li liberava due volte di fila: era 5. */
+    /* primal_optimize.c: bt_lx/bt_ux are freed in four distinct branches
+     * (allocation failure, two intermediate exits, the success exit). Before
+     * the fix the first branch freed them twice in a row: it was 5. */
     const char *opt_names[] = {"bt_lx", "bt_ux"};
     int n_opt[2];
     t269_count_frees("primal_optimize.c", 0, opt_names, 2, n_opt);
     check(n_opt[0] == 4, "T269 primal_optimize bt_lx freed in the 4 branches, no double");
     check(n_opt[1] == 4, "T269 primal_optimize bt_ux freed in the 4 branches, no double");
 
-    /* Il percorso NOMINALE resta misurabile e non solo la forma: un modello con
-     * parte quadratica e' quello che attraversa il blocco Q e la free di successo
-     * che il difetto rendeva duplicata. */
+    /* The NOMINAL path stays measurable and not just the shape: a model with a
+     * quadratic part is the one that crosses the Q block and the success free
+     * the defect had duplicated. */
     PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
     PRIMALtask_t task; PRIMAL_maketask(env, 1, 2, &task);
     PRIMAL_putcj(task, 0, -1.0);
@@ -19711,13 +19711,13 @@ static void test_t269(void) {
          * moves the optimum off the row, which is the point of using Q here. */
         check(fabs(x[0] - 1.0) < 1e-6 && fabs(x[1] - 1.0) < 1e-6, "T269 QP: x = (1,1)");
         check(fabs(pobj + 1.0) < 1e-6, "T269 QP: pobj = -1");
-        check(fabs(pobj - dobj) < 1e-6, "T269 QP: dualita forte");
+        check(fabs(pobj - dobj) < 1e-6, "T269 QP: strong duality");
     }
     PRIMAL_deletetask(&task);
 
-    /* cbf.c: strdup deve essere dichiarato, non dichiarato implicitamente come
-     * int (che su x86-64 tronca il puntatore a 32 bit). La feature macro deve
-     * precedere il primo include, altrimenti non dichiara nulla. */
+    /* cbf.c: strdup must be declared, not implicitly declared as int (which on
+     * x86-64 truncates the pointer to 32 bits). The feature macro must precede
+     * the first include, otherwise it declares nothing. */
     FILE *cf = fopen("cbf.c", "r");
     check(cf != NULL, "T269 cbf.c leggibile");
     if (cf) {
@@ -19728,7 +19728,7 @@ static void test_t269(void) {
             if (strstr(ln, "#include")) { at_first_include = lineno; break; }
         }
         fclose(cf);
-        check(at_macro > 0, "T269 cbf.c: _POSIX_C_SOURCE presente");
+        check(at_macro > 0, "T269 cbf.c: _POSIX_C_SOURCE present");
         check(at_macro < at_first_include,
               "T269 cbf.c: _POSIX_C_SOURCE before the first include (declares strdup)");
     }
