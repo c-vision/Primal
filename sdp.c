@@ -53,6 +53,9 @@ void primal_cb_iter(int code);
 /* Iterates the exp/power line search remembers the merit of, to let a step that
  * worsens it briefly (the only way out of a basin far from the path). */
 #define MWIN 4
+/* Window for the slow-crawl stall detector: a point that stops improving by 1%
+ * over this many iterations is spent, even if it is not the exact freeze. */
+#define CWIN 16
 
 /* ---------- second-order-cone Jordan-algebra helpers ---------- */
 /* Signed distance of v to the boundary of SOC, in the cone's own units: v[0] is
@@ -1132,6 +1135,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     double *trial = (nep > 0 || nb > 0) ? (double *)malloc(
                      ipm_state_size(n, m, nb, dims, nsoc, socdims, Ke) * sizeof(double)) : NULL;
     int have_best = 0, stall = 0, lost = 0, frozen = 0, fb_saved = 0;
+    double viol_win[CWIN]; int nviol_win = 0, iwin_win = 0, crawl = 0;
     double prev_feas = HUGE_VAL; int use_rescue = 0;
     double gap_best = 0.0, viol_best = 0.0, merit_prev = 0.0, viol_prev = 0.0;
     double mwin[MWIN]; int nwin = 0, iwin = 0;
@@ -1235,6 +1239,32 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 goto refine;
             }
         } else frozen = 0;
+        /* A slow crawl is neither a freeze nor progress. The pure-SDP d=18
+         * spends ~150 iterations lowering rel_pri from 3e-8 to 1.9e-8 (0.05% per
+         * iteration, enough to keep resetting `frozen`) on a face where the
+         * relative triple already sits inside the effective tolerance. Stop the
+         * run when the relative violation has not improved by 1% over a window
+         * of CWIN iterations, offering the point to the gate like the freeze. */
+        if (nviol_win < CWIN) viol_win[nviol_win++] = viol;
+        else {
+            double vmin = viol_win[0];
+            for (int q = 1; q < CWIN; q++) if (viol_win[q] < vmin) vmin = viol_win[q];
+            viol_win[iwin_win] = viol; iwin_win = (iwin_win + 1) % CWIN;
+            if (!(viol < 0.99 * vmin)) {
+                /* Only a point already inside the effective tolerance may be
+                 * surrendered this way: a crawl far from it is still progress
+                 * (d=16/17 need the full run to close the gap). */
+                if (++crawl >= 2 && viol <= near_rel) {
+                    if (getenv("GMB_DBG")) fprintf(stderr,
+                        "  [crawl] no 1%% gain over %d iters at it=%d viol=%.3g\n", CWIN, it, viol);
+                    if (!have_best && !fb_saved) {
+                        fb_saved = 1;
+                        ipm_state(fb_snap, 1, IPM_STATE_PASS);
+                    }
+                    goto refine;
+                }
+            } else crawl = 0;
+        }
         merit_prev = merit; viol_prev = viol;
         if (getenv("GMB_DBG")) fprintf(stderr,
             "it=%d pfeas=%.3g dfeas=%.3g mu=%.3g | rel_pri=%.3g rel_dual=%.3g rel_gap=%.3g\n",
