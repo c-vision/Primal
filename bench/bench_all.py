@@ -37,6 +37,7 @@ Needs numpy/scipy plus the optional references clarabel, scs, highspy, pyscipopt
 (N/A when missing). All of them live in one environment on this machine:
 /Users/gaetano/ai/env-bench/bin/python3.14 -- run the script with that interpreter.
 """
+import math
 import os
 import subprocess
 import sys
@@ -277,7 +278,7 @@ def main():
             mism.append("socp_%d: no PrimalSolver row" % n)
         elif rc != "0":
             mism.append("socp_%d: PrimalSolver rc=%s" % (n, rc))
-        elif abs(pobj - ref) > 1e-4:
+        elif not math.isfinite(pobj) or abs(pobj - ref) > 1e-4:
             mism.append("socp_%d: PrimalSolver=%g want %g" % (n, pobj, ref))
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
             if ob is not None and abs(ob - ref) > 1e-4:
@@ -299,7 +300,7 @@ def main():
             mism.append("sdp_%d: no PrimalSolver row" % d)
         elif rc != "0":
             mism.append("sdp_%d: PrimalSolver rc=%s" % (d, rc))
-        elif exp is not None and abs(pobj - exp) > 1e-4 * (1 + abs(exp)):
+        elif not math.isfinite(pobj) or (exp is not None and abs(pobj - exp) > 1e-4 * (1 + abs(exp))):
             mism.append("sdp_%d: PrimalSolver=%g want %g" % (d, pobj, exp))
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
             if ob is not None and exp is not None and abs(ob - exp) > 1e-4 * (1 + abs(exp)):

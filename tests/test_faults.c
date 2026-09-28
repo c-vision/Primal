@@ -94,6 +94,25 @@ static void mutation_case(PRIMALenv_t env, int kind) {
         CHECK(nth < 99);
     }
 }
+static void quadratic_objective_case(PRIMALenv_t env, int single) {
+    for (int nth=1;nth<=4;nth++) {
+        long before=primal_fault_live;
+        PRIMALtask_t t=NULL; OK(PRIMAL_maketask(env,0,16,&t));
+        int idx[16]; double val[16];
+        for (int j=0;j<16;j++) { idx[j]=j; val[j]=j+1; }
+        OK(PRIMAL_putqobj(t,16,idx,idx,val));
+        arm(nth);
+        int rc=single ? PRIMAL_putqobjij(t,1,0,.5) :
+            PRIMAL_putqobj(t,1,(int[]){1},(int[]){0},(double[]){.5});
+        int hit=disarm();
+        CHECK(rc==(hit ? PRIMAL_RES_ERR_ALLOC : PRIMAL_RES_OK));
+        for (int j=0;j<16;j++) {
+            double q=NAN; OK(PRIMAL_getqobjij(t,j,j,&q)); CHECK(q==j+1);
+        }
+        double q=NAN; OK(PRIMAL_getqobjij(t,1,0,&q)); CHECK(q==(hit ? 0 : .5));
+        OK(PRIMAL_deletetask(&t)); CHECK(primal_fault_live==before);
+    }
+}
 static void thread_case(PRIMALenv_t env) {
     /* Two binary packing rows have a fractional root. Enumerate all
      * assignments to supply an independent optimum. Disable optional cuts so
@@ -142,6 +161,7 @@ int main(void) {
     standard_case();
     PRIMALenv_t env = NULL; OK(PRIMAL_makeenv(&env,NULL));
     for (int kind = 0; kind < 6; kind++) mutation_case(env,kind);
+    quadratic_objective_case(env,0); quadratic_objective_case(env,1);
     thread_case(env); OK(PRIMAL_deleteenv(&env));
     printf("Fault checks: %d, failures: %d; injected allocations: %d; failed probe/strong-branch threads: %d/%d\n",checks,failures,injected,primal_fault_probe,primal_fault_sb);
     return failures ? 1 : 0;

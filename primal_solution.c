@@ -561,7 +561,8 @@ PRIMALrescodee PRIMAL_getdualinfeas(PRIMALtask_t t, PRIMALsolt which, double *di
         double ctol = t->tol_co_dfeas * (1.0 + fabs(zj));
         int at_lo = (lo > -INF) && ((t->x[j] - lo) * fabs(zj) <= ctol);
         int at_up = (up < INF) && ((up - t->x[j]) * fabs(zj) <= ctol);
-        if (at_lo && at_up) at_up = 0;                 /* fixed variable: judge one side */
+        /* If both bounds qualify, use the side compatible with the reduced cost. */
+        if (at_lo && at_up) { at_lo = s * zj <= 0.0; at_up = !at_lo; }
         int inside = !at_lo && !at_up;
         double v = 0.0;
         if (at_lo && s * zj > 1e-9) v = s * zj;         /* wrong sign at lower */

@@ -184,6 +184,32 @@ static void mutation_and_availability(void) {
     OK(PRIMAL_getprimalobj(t,PRIMAL_SOL_ITR,&p)); CHECK(fabs(p+0.5)<1e-7);
     OK(PRIMAL_deletetask(&t));
 }
+static void dual_bound_classification(void) {
+    const double widths[]={0,1e-6,1};
+    for (int k=0;k<3;k++) for (int max=0;max<2;max++) for (int upper=0;upper<2;upper++) {
+        PRIMALtask_t t=model(1,0);
+        double width=widths[k], x=NAN, dinf=NAN;
+        OK(PRIMAL_putvarbound(t,0,width ? PRIMAL_BK_RA : PRIMAL_BK_FX,0,width));
+        OK(PRIMAL_putcj(t,0,(max ? -1 : 1)*(upper ? -.01 : .01)));
+        OK(PRIMAL_putobjsense(t,max ? PRIMAL_OPTIMIZE_MAXIMIZE : PRIMAL_OPTIMIZE_MINIMIZE));
+        OK(PRIMAL_optimize(t));
+        OK(PRIMAL_getxx(t,PRIMAL_SOL_ITR,&x));
+        CHECK(fabs(x-(upper ? width : 0))<1e-12);
+        /* A linear objective attains its optimum at the selected endpoint,
+         * including when both bounds satisfy the complementarity tolerance. */
+        OK(PRIMAL_getdualinfeas(t,PRIMAL_SOL_ITR,&dinf)); CHECK(dinf<1e-12);
+        if (width==1) {
+            double wrong=upper ? 0 : 1;
+            OK(PRIMAL_putxxslice(t,PRIMAL_SOL_ITR,0,1,&wrong));
+            OK(PRIMAL_getdualinfeas(t,PRIMAL_SOL_ITR,&dinf)); CHECK(dinf>.009);
+        }
+        /* Removing the required multiplier must still expose a dual error. */
+        OK(PRIMAL_putslx(t,PRIMAL_SOL_ITR,(double[]){0}));
+        OK(PRIMAL_putsux(t,PRIMAL_SOL_ITR,(double[]){0}));
+        OK(PRIMAL_getdualinfeas(t,PRIMAL_SOL_ITR,&dinf)); CHECK(dinf>.009);
+        OK(PRIMAL_deletetask(&t));
+    }
+}
 static void rcm_layers(void) {
     /* Edges 0-1, 0-2, 1-3, 2-4, 2-5. From root 0, vertices 1 and 2
      * must both precede their children in the unreversed traversal. */
@@ -225,6 +251,7 @@ int main(void) {
     rcm_layers();
     eigenvalue_scales();
     OK(PRIMAL_makeenv(&env,NULL));
+    dual_bound_classification();
     exp_faces(PRIMAL_CT_PEXP); exp_faces(PRIMAL_CT_DEXP);
     dexp_optimum(0,0); dexp_optimum(1,0); dexp_optimum(0,1); dexp_optimum(1,1); quadratic_rows(); bounded_qp(); mutation_and_availability();
     for (int max=0;max<2;max++) for (int threads=1;threads<=2;threads++)
