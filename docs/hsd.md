@@ -49,6 +49,56 @@ branch, and the anti-collapse rescaling interacts with the certificate
 thresholds (the HSD is homogeneous, so the scale has to be fixed without moving
 the branch).
 
+## In-tree HSD (`hsd_psd`, opt-in `GMB_SDP_HSD`)
+
+Separate from the prototype above: `sdp.c` carries an opt-in **PSD + scalar** HSD
+embedding (`hsd_psd`), default **off**. Its only regression cover is `T197` — the
+degree-3 axisymmetric M1 max-margin SDP of `jcpaik/p2-kkt-flag-sos`, reference
+margin `-0.85506573` (agreed by Clarabel / SCS / MOSEK). It is the smallest
+instance where W's own NT scaling matrix becomes ill-conditioned near the
+optimum, which is what the bar-block `dS` elimination had to get right.
+
+## Reproducing the sanitizer-only failure (#11)
+
+An ordinary `-O2` build solves T197; the **same** source under LLVM 22
+`-fsanitize=address,undefined` returns `PRIMAL_RES_TRM_MAX_ITER` with **no**
+ASan/UBSan report. Recipe (LLVM 22 is not the Apple clang; Homebrew carries it):
+
+```sh
+brew install llvm@22                      # 22.1.8 on arm64 macOS
+CC=/opt/homebrew/opt/llvm@22/bin/clang
+# library objects, then the isolated probe (test_primal.c renamed main):
+$CC -std=c99 -O2 -g -fno-omit-frame-pointer -pthread -I. -fsanitize=address,undefined \
+    -c <LIBSRCS> 
+$CC ... -o t197.c <objs> -lm              # ASAN_OPTIONS=detect_leaks=0 at run time
+```
+
+Measured (this tree): plain `-O2` passes, the sanitized build fails the two T197
+checks. `MallocScribble=1` / `MallocGuardEdges=1` do **not** change the plain
+result, so it is not an allocator-layout sensitivity. The trace shows the two
+builds identical through it≈20 and then divergent (the `dual` residual already
+differs at 1e-13 by it=10); at it≈31 the merit backtracking collapses:
+
+```
+[HSD] step  it=31 alpha=8.077e-07 alpha0=0.8469 sigma=0.01 accepted=1
+[HSD] merit it=31 old=1.192e-08 ref=1.192e-08 T.pf=9.169e-08 T.df=3.6e-15 T.mu=2.4e-10
+```
+
+The cone allows `alpha0 = 0.847`, but the `pf+df+mu` merit rejects every length:
+the Newton direction **raises `pf` ~8x while lowering `mu`**. From there `pf`
+plateaus near 1e-8, so `pri = pf/(tau (1+|b|))` stays around 3.9e-8 and the
+termination criteria are never met. A centring rescue (force `sigma=1` for a
+burst of 15 when the accepted step collapses below 1e-4, taking the first
+feasible step besides the merit — the same diagnosis that closed #22 in the
+primary path) fires at it=40, 80, 167 but `pf` plateaus anyway, so it was **not**
+kept. The step/merit policy is not robust to a codegen-level floating-point
+difference on this degenerate model; the fix belongs here, in the HSD rewrite.
+
+Related: the same LLVM 22 ASan+UBSan recipe reproduces the old **#22** (T244,
+mixed SDP/SOC ellipse) on `b4799b0` and `7e2ea11` and it **passes** from
+`6735a28` on, so that one was a primary-path convergence issue already fixed by
+the centring rescue, not an HSD issue.
+
 ## Next steps
 
 1. Fix the scale handling / degenerate-feasible branch selection in the probe.
