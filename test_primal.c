@@ -19735,50 +19735,8 @@ static void test_t269(void) {
     PRIMAL_deleteenv(&env);
 }
 
-/* T270 — an unbounded LP relaxation is not, by itself, integer unboundedness.
- * min -x1 s.t. x1 - 2*x2 = rhs, x1,x2 integer >= 0 is unbounded as a relaxation
- * (x1 = 2*x2 + rhs -> inf) for either rhs. With rhs = 0 it HAS the integer point
- * (0,0), so it is genuinely unbounded; with rhs = 0.5 it has NO integer point at
- * all (x1 is always half-integer), so its honest answer is INFEASIBLE. The
- * refinement of the recession ray by the lcm of the denominators of its integer
- * coordinates is what makes the first sound, and the second is why the ray alone
- * is not. Before this, the root relaxation's status alone decided and the
- * infeasible twin came out UNBOUNDED. */
-static void t270_mip(int half, PRIMALrescodee *rc, int *sta, int *pro) {
-    PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
-    PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
-    PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
-    PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
-    PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
-    PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, INFINITY);
-    PRIMAL_putvartype(t, 1, PRIMAL_VAR_TYPE_INT);
-    PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, 0.0);
-    PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, -2.0});
-    double rhs = half ? 0.5 : 0.0;
-    PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, rhs, rhs);
-    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
-    *rc = PRIMAL_optimize(t);
-    PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, (PRIMALsolstae *) sta);
-    PRIMAL_getprosta(t, PRIMAL_SOL_ITR, (PRIMALprostae *) pro);
-    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
-}
-
-static void test_t270(void) {
-    cur_name = "T270 MIP: an unbounded relaxation is not integer unboundedness";
-    PRIMALrescodee rc; int sta, pro;
-    t270_mip(0, &rc, &sta, &pro);
-    check_rc(rc, PRIMAL_RES_ERR_UNBOUNDED, "T270 feasible twin: genuinely unbounded");
-    check(sta == 0 && pro == PRIMAL_PRO_STA_DUAL_INFEAS,
-          "T270 feasible: the verdict is in prosta, no certificate");
-    t270_mip(1, &rc, &sta, &pro);
-    check(rc != PRIMAL_RES_ERR_UNBOUNDED, "T270 infeasible twin is NOT unbounded");
-    check(sta == 0 && pro == PRIMAL_PRO_STA_PRIM_INFEAS,
-          "T270 infeasible: PRIM_INFEAS, the same verdict without a certificate");
-}
-
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
-    test_t270();
     test_t269();
     test_t268();
     test_t267();

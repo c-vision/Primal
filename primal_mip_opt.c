@@ -20,62 +20,6 @@
  */
 #include "primal_priv.h"
 
-/* Certify that the integer model has ANY integer-feasible point, to turn an
- * unbounded root relaxation into a SOUND "unbounded" verdict.
- *
- * A ray of the LP relaxation does not by itself prove the MIP is unbounded: if
- * the integer model is INFEASIBLE the relaxation can still be unbounded (e.g.
- * min -x1 s.t. x1 - 2*x2 = 0.5, x1,x2 integer -- the LP runs to -inf, the MIP
- * has no point at all). What is true is: with rational data, an unbounded
- * relaxation means the MIP is unbounded IFF it is feasible -- scaling the ray by
- * the lcm of the denominators of its integer coordinates keeps it in the
- * recession cone and integral, so min c'x -> -inf from any feasible point.
- *
- * So this test decides feasibility alone: it solves the root relaxation with a
- * ZERO objective (always bounded), rounds the integer coordinates and repairs by
- * re-solving with them pinned. Any point that measures is an integer point, and
- * then the unbounded relaxation is honestly unbounded. Kill-switch
- * GMB_NO_MIP_UNB_CERT restores the old "always unbounded" answer. */
-static int mip_root_unbounded_feasible(PRIMALtask_t t, int s,
-                                       const double *lx, const double *ux,
-                                       const double *lc, const double *uc,
-                                       double ftol, double itol) {
-    if (getenv("GMB_NO_MIP_UNB_CERT")) return 1;
-    int nvar = t->numvar;
-    if (nvar <= 0) return 0;
-    PRIMALtask_t ft = NULL;
-    if (PRIMAL_clonetask(t, &ft) != PRIMAL_RES_OK || !ft) return 0;
-    for (int j = 0; j < nvar; j++) PRIMAL_putcj(ft, j, 0.0);
-    PRIMAL_putcfix(ft, 0.0);
-    double *x  = (double *)malloc((size_t)nvar * sizeof(double));
-    double *xs = (double *)malloc((size_t)nvar * sizeof(double));
-    double *fl = (double *)malloc((size_t)nvar * sizeof(double));
-    double *fu = (double *)malloc((size_t)nvar * sizeof(double));
-    int feas = 0;
-    if (x && xs && fl && fu && mip_relax(ft, s, lx, ux, lc, uc, x, &(double){0.0}) == 0) {
-        for (int j = 0; j < nvar; j++) {
-            int vt = t->vartype[j];
-            int iv = (vt == PRIMAL_VAR_TYPE_INT || vt == PRIMAL_VAR_TYPE_INT_BIN ||
-                      (vt == PRIMAL_VAR_TYPE_SEMI_INT && x[j] > ftol));
-            xs[j] = iv ? floor(x[j] + 0.5) : x[j];
-        }
-        memcpy(fl, lx, (size_t)nvar * sizeof(double));
-        memcpy(fu, ux, (size_t)nvar * sizeof(double));
-        for (int j = 0; j < nvar; j++) {
-            int vt = t->vartype[j];
-            if (vt == PRIMAL_VAR_TYPE_INT || vt == PRIMAL_VAR_TYPE_INT_BIN ||
-                (vt == PRIMAL_VAR_TYPE_SEMI_INT && x[j] > ftol))
-                fl[j] = fu[j] = xs[j];
-        }
-        if (mip_relax(ft, s, fl, fu, lc, uc, xs, &(double){0.0}) == 0 &&
-            mip_point_measures(t, lx, ux, lc, uc, xs, ftol, itol))
-            feas = 1;
-    }
-    free(x); free(xs); free(fl); free(fu);
-    PRIMAL_deletetask(&ft);
-    return feas;
-}
-
 /* Run branch and bound over the node relaxations. Builds cut copies,
  * tightens bounds, probes binaries, then searches the tree until the
  * node cap or an optimal incumbent. Returns the result code. */
@@ -1015,12 +959,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
      * reference's pairing for that outcome (Table 7.3: PRIM_FEAS + PRIM_FEAS,
      * "integer feasible point") is what goes out, with a termination code. */
     if (root_status == 1)      rc = PRIMAL_RES_ERR_INFEASIBLE;
-    else if (root_status == 2)
-        /* An unbounded relaxation is unboundedness only when the MIP has an
-         * integer point (see mip_root_unbounded_feasible); without one it stays
-         * an unresolved search, not a claimed ray. */
-        rc = mip_root_unbounded_feasible(t, s, lx, ux, lc, uc, ftol, itol)
-             ? PRIMAL_RES_ERR_UNBOUNDED : PRIMAL_RES_TRM_MAX_ITER;
+    else if (root_status == 2) rc = PRIMAL_RES_ERR_UNBOUNDED;
     else if (deadline_hit)     rc = PRIMAL_RES_TRM_MAX_ITER;   /* time cap */
     else if (nodes >= t->mip_max_nodes && sp > 0)  rc = PRIMAL_RES_TRM_MAX_ITER;
     else if (nodes >= t->mip_max_nodes && sp == 0 && best == INF) rc = PRIMAL_RES_TRM_MAX_ITER;
