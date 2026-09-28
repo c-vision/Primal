@@ -23,14 +23,19 @@ references that can take each class:
 
   - LP / QP / MILP: the generated MPS instances (bench/gen_instances.py);
     HiGHS via SciPy, SCIP via pyscipopt, Clarabel via a conic conversion.
-  - SOCP / SDP: the closed-form families of bench/conic_bench.c; Clarabel and
-    SCS, and no HiGHS/SCIP baseline.
+  - SOCP: the closed-form family of bench/conic_bench.c; Clarabel and SCS, and
+    no HiGHS/SCIP baseline.
+  - SDP: the same closed-form family swept over the block size d by
+    bench/sdp_sweep.c (past conic_bench's d=8, to where the conic route stops
+    scaling), Clarabel and SCS references from bench/conic_ref.py.
 
 Clarabel is a conic interior-point solver: it takes LP, QP, SOCP and SDP, and
 has no integer support, so the MILP rows are N/A for it (as for SCS).
 
 Usage:  make bench && python3 bench/bench_all.py
-Needs numpy/scipy; clarabel, scs, highspy, pyscipopt are optional (N/A without).
+Needs numpy/scipy plus the optional references clarabel, scs, highspy, pyscipopt
+(N/A when missing). All of them live in one environment on this machine:
+/Users/gaetano/ai/env-bench/bin/python3.14 -- run the script with that interpreter.
 """
 import os
 import subprocess
@@ -49,6 +54,8 @@ import gen_instances
 
 SOLVE_MPS = os.path.join(ROOT, "out", "bench", "solve_mps")
 CONIC_BENCH = os.path.join(ROOT, "out", "bench", "conic_bench")
+SDP_SWEEP = os.path.join(ROOT, "out", "bench", "sdp_sweep")
+SDP_DMAX = 12          # conic_bench stops at d=8; the sweep exposes the scaling limit
 
 # (name, class, n, m, generator, sense_max) -- same specs as gen_instances.main
 SPECS = []
@@ -184,7 +191,7 @@ def solve_highs_scipy(c, rows, lo, up):
 
 
 def parse_conic_bench():
-    """PrimalSolver SOCP/SDP rows from out/bench/conic_bench."""
+    """PrimalSolver SOCP rows from out/bench/conic_bench."""
     socp, sdp = {}, {}
     try:
         out = subprocess.run([CONIC_BENCH], capture_output=True, text=True, timeout=600).stdout
@@ -197,6 +204,20 @@ def parse_conic_bench():
     except Exception:
         pass
     return socp, sdp
+
+
+def parse_sdp_sweep(dmin=4, dmax=SDP_DMAX):
+    """PrimalSolver SDP rows from out/bench/sdp_sweep (CSV: d,obj,seconds,rc,expected)."""
+    rows = {}
+    try:
+        out = subprocess.run([SDP_SWEEP, str(dmin), str(dmax)],
+                             capture_output=True, text=True, timeout=600).stdout
+        for ln in out.strip().splitlines()[1:]:
+            f = ln.split(",")
+            rows[int(f[0])] = (float(f[2]), f[3])
+    except Exception:
+        pass
+    return rows
 
 
 def fmt(t):
@@ -221,7 +242,7 @@ def main():
             # Clarabel/SCS have no integer support; HiGHS-QP not used here.
             try:
                 import run_bench
-                scst, scobj = run_bench.solve_scip(path)[1:]
+                scst, scobj = run_bench.solve_scip(path, 600)[1:]
                 if scobj is not None:
                     objs.append(scobj)
             except Exception:
@@ -241,8 +262,8 @@ def main():
               (name, cls, n, m, nnz, pst, fmt(hst), fmt(cst), "N/A", fmt(scst),
                "%.8g" % obj if obj is not None else "N/A"))
 
-    # ---- SOCP / SDP: closed-form families (Clarabel, SCS, no HiGHS/SCIP) ----
-    ps_socp, ps_sdp = parse_conic_bench()
+    # ---- SOCP: closed-form family (Clarabel, SCS, no HiGHS/SCIP) ----
+    ps_socp, _ = parse_conic_bench()
     ref = 1.0 / (2.0 ** 0.5)
     for n in conic_ref.SIZES:
         tc, oc = conic_ref.solve_clarabel(n)
@@ -254,16 +275,23 @@ def main():
                 mism.append("socp_%d %s=%g" % (n, nm2, ob))
         print("| socp_%d | socp | %d x 1 | - | %s | N/A | %s | %s | N/A | %.8f |" %
               (n, n, pcell, fmt(tc), fmt(ts), ref))
-    for d in range(4, 9):
-        tc, oc, exp = conic_ref.solve_clarabel_sdp(d, 200 + d)
+    # ---- SDP: the same closed-form family swept over the block size d ----
+    ps_sdp = parse_sdp_sweep(4, SDP_DMAX)
+    for d in range(4, SDP_DMAX + 1):
+        try:
+            _, _, _, _, _, exp = conic_ref.sdp_data(d, 200 + d)
+        except Exception:
+            exp = None
+        tc, oc, _ = conic_ref.solve_clarabel_sdp(d, 200 + d)
         ts, os_, _ = conic_ref.solve_scs_sdp(d, 200 + d)
         sec, rc = ps_sdp.get(d, (None, None))
         pcell = fmt(sec) if (sec is not None and rc == "0") else ("N/A (rc=%s)" % rc if rc else "N/A")
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
-            if ob is not None and abs(ob - exp) > 1e-4 * (1 + abs(exp)):
+            if ob is not None and exp is not None and abs(ob - exp) > 1e-4 * (1 + abs(exp)):
                 mism.append("sdp_%d %s=%g" % (d, nm2, ob))
-        print("| sdp_%d | sdp | %d x %d | - | %s | N/A | %s | %s | N/A | %.8g |" %
-              (d, d, d, pcell, fmt(tc), fmt(ts), exp))
+        print("| sdp_%d | sdp | %d x %d | - | %s | N/A | %s | %s | N/A | %s |" %
+              (d, d, d, pcell, fmt(tc), fmt(ts),
+               "%.8g" % exp if exp is not None else "N/A"))
 
     print(file=sys.stderr)
     if mism:
