@@ -1289,15 +1289,18 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
          * and its lifetime out of the block that builds the system, for a
          * saving that is not what limits these solves. */
         int maxd = 0; for (int j = 0; j < nb; j++) if (dims[j] > maxd) maxd = dims[j];
+        /* Per-block scaling (Ws, Wi, Xi, Mt): W = X#S is a function of the
+         * iterate (Xbar, Sbar) alone, not of sigma -- the two Mehrotra passes
+         * share the same primal-dual point, so computing it once saves a whole
+         * second set of Jacobi eigen-solves (six per block) per iteration. */
+        for (int j = 0; j < nb; j++) { int d = dims[j];
+            sym_fun(d, Xbar[j], 0, t1); mmul(d, t1, Sbar[j], t2); mmul(d, t2, t1, t3);
+            sym_fun(d, t3, 1, t2); mmul(d, t1, t2, t3); mmul(d, t3, t1, Ws + j * dmax2);
+            sym_fun(d, Ws + j * dmax2, 2, Wi + j * dmax2); sym_fun(d, Xbar[j], 2, Xi + j * dmax2); }
+        for (int k = 0; k < m; k++) for (int j = 0; j < nb; j++) { int d = dims[j];
+            const double *Wj = Ws + j * dmax2; mmul(d, Wj, Abar[k * nb + j], t1); mmul(d, t1, Wj, Mt + ((size_t)k * nb + j) * dmax2); }
         for (int pass = 0; pass < 2; pass++) {
             int aug_dx = 0;   /* dx already solved in the augmented system */
-            /* per-block scaling */
-            for (int j = 0; j < nb; j++) { int d = dims[j];
-                sym_fun(d, Xbar[j], 0, t1); mmul(d, t1, Sbar[j], t2); mmul(d, t2, t1, t3);
-                sym_fun(d, t3, 1, t2); mmul(d, t1, t2, t3); mmul(d, t3, t1, Ws + j * dmax2);
-                sym_fun(d, Ws + j * dmax2, 2, Wi + j * dmax2); sym_fun(d, Xbar[j], 2, Xi + j * dmax2); }
-            for (int k = 0; k < m; k++) for (int j = 0; j < nb; j++) { int d = dims[j];
-                const double *Wj = Ws + j * dmax2; mmul(d, Wj, Abar[k * nb + j], t1); mmul(d, t1, Wj, Mt + ((size_t)k * nb + j) * dmax2); }
             /* ---- augmented KKT: [ Kpp  Esoc' ; Esoc  Theta_soc ] ----
              * R_+ and PSD enter via their normal-equations Schur complement Kpp;
              * each SOC block keeps its cone equation A(s)dz + A(z)ds = rc in the
