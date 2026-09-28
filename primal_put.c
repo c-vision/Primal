@@ -817,10 +817,21 @@ PRIMALrescodee PRIMAL_putqobj(PRIMALtask_t t, int numqcnz, const int *qi, const 
     if (t->qt_n + numqcnz > t->qt_cap) {
         int nc = t->qt_cap ? t->qt_cap : 16;
         while (nc < t->qt_n + numqcnz) nc *= 2;
-        int *ni = (int *)realloc(t->qt_i, (size_t)nc * sizeof(int));
-        int *nj = (int *)realloc(t->qt_j, (size_t)nc * sizeof(int));
-        double *nv = (double *)realloc(t->qt_v, (size_t)nc * sizeof(double));
+        /* Allocate the replacements and copy into them BEFORE committing any
+         * pointer: a realloc that fails after an earlier one moved leaves the
+         * task pointing at a freed block, so a later PRIMAL_deletetask
+         * double-frees it (issue #10). On failure the old arrays stay intact
+         * and the task remains safe to inspect and destroy. */
+        int *ni = (int *)malloc((size_t)nc * sizeof(int));
+        int *nj = (int *)malloc((size_t)nc * sizeof(int));
+        double *nv = (double *)malloc((size_t)nc * sizeof(double));
         if (!ni || !nj || !nv) { free(ni); free(nj); free(nv); return PRIMAL_RES_ERR_ALLOC; }
+        if (t->qt_n > 0) {
+            memcpy(ni, t->qt_i, (size_t)t->qt_n * sizeof(int));
+            memcpy(nj, t->qt_j, (size_t)t->qt_n * sizeof(int));
+            memcpy(nv, t->qt_v, (size_t)t->qt_n * sizeof(double));
+        }
+        free(t->qt_i); free(t->qt_j); free(t->qt_v);
         t->qt_i = ni; t->qt_j = nj; t->qt_v = nv; t->qt_cap = nc;
     }
     result_changed(t);
@@ -876,10 +887,17 @@ PRIMALrescodee PRIMAL_putqobjij(PRIMALtask_t t, int i, int j, double qoij) {
     if (qoij != 0.0) {
         if (t->qt_n + 1 > t->qt_cap) {
             int nc = t->qt_cap ? t->qt_cap * 2 : 16;
-            int *ni = (int *)realloc(t->qt_i, (size_t)nc * sizeof(int));
-            int *nj = (int *)realloc(t->qt_j, (size_t)nc * sizeof(int));
-            double *nv = (double *)realloc(t->qt_v, (size_t)nc * sizeof(double));
+            /* Same replacement-before-commit rule as PRIMAL_putqobj (issue #10). */
+            int *ni = (int *)malloc((size_t)nc * sizeof(int));
+            int *nj = (int *)malloc((size_t)nc * sizeof(int));
+            double *nv = (double *)malloc((size_t)nc * sizeof(double));
             if (!ni || !nj || !nv) { free(ni); free(nj); free(nv); return PRIMAL_RES_ERR_ALLOC; }
+            if (t->qt_n > 0) {
+                memcpy(ni, t->qt_i, (size_t)t->qt_n * sizeof(int));
+                memcpy(nj, t->qt_j, (size_t)t->qt_n * sizeof(int));
+                memcpy(nv, t->qt_v, (size_t)t->qt_n * sizeof(double));
+            }
+            free(t->qt_i); free(t->qt_j); free(t->qt_v);
             t->qt_i = ni; t->qt_j = nj; t->qt_v = nv; t->qt_cap = nc;
         }
         t->qt_i[t->qt_n] = i; t->qt_j[t->qt_n] = j; t->qt_v[t->qt_n] = qoij; t->qt_n++;

@@ -72,6 +72,14 @@ static int run_sdp(int d, int seed) {
 int main(int argc, char **argv) {
     int dmin = argc > 1 ? atoi(argv[1]) : 4;
     int dmax = argc > 2 ? atoi(argv[2]) : 16;
+    /* run_sdp writes v[128] and the d(d+1)/2 triangular triplets into si/sj/sv
+     * [4096]; the coefficient arrays bind first at 90*91/2 = 4095, while
+     * 91*92/2 = 4186 already overflows them. Reject the range before any model
+     * is built (issue #12: `sdp_sweep 91 91` used to write past the arrays). */
+    if (dmin < 1 || dmax < dmin || dmax > 90) {
+        fprintf(stderr, "sdp_sweep: need 1 <= dmin <= dmax <= 90\n");
+        return 2;
+    }
     printf("d,obj,seconds,rc,expected\n");
     for (int d = dmin; d <= dmax; d++) run_sdp(d, 200 + d);
     return 0;

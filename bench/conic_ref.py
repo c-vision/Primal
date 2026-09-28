@@ -213,13 +213,20 @@ def main():
     print("| d | PrimalSolver (s) | Clarabel (s) | SCS (s) | obj | chiuso |")
     print("|---|---|---|---|---|---|")
     for d in range(4, 9):
-        tc, oc, exp = solve_clarabel_sdp(d, 200 + d)
+        # The analytic value does not depend on clarabel/scs being importable
+        # (issue #8): read it from sdp_data, not from solve_clarabel_sdp's tuple.
+        try:
+            _, _, _, _, _, exp = sdp_data(d, 200 + d)
+        except Exception:
+            exp = None
+        tc, oc, _ = solve_clarabel_sdp(d, 200 + d)
         ts, os_, _ = solve_scs_sdp(d, 200 + d)
         ob = oc if oc is not None else os_
-        print("| %d | — | %s | %s | %s | %.8g |" %
+        print("| %d | — | %s | %s | %s | %s |" %
               (d, "%.4f" % tc if tc is not None else "N/A",
                "%.4f" % ts if ts is not None else "N/A",
-               "%.8g" % ob if ob is not None else "N/A", exp))
+               "%.8g" % ob if ob is not None else "N/A",
+               "%.8g" % exp if exp is not None else "N/A"))
 
 
 if __name__ == "__main__":

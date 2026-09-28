@@ -198,9 +198,9 @@ def parse_conic_bench():
         for ln in out.strip().splitlines()[1:]:
             f = ln.split(",")
             if f[0] == "socp":
-                socp[int(f[1])] = (float(f[4]), f[5].split("=")[1])
+                socp[int(f[1])] = (float(f[4]), f[5].split("=")[1], float(f[3]))
             elif f[0] == "sdp":
-                sdp[int(f[1])] = (float(f[4]), f[5].split("=")[1])
+                sdp[int(f[1])] = (float(f[4]), f[5].split("=")[1], float(f[3]))
     except Exception:
         pass
     return socp, sdp
@@ -214,7 +214,7 @@ def parse_sdp_sweep(dmin=4, dmax=SDP_DMAX):
                              capture_output=True, text=True, timeout=600).stdout
         for ln in out.strip().splitlines()[1:]:
             f = ln.split(",")
-            rows[int(f[0])] = (float(f[2]), f[3])
+            rows[int(f[0])] = (float(f[2]), f[3], float(f[1]))
     except Exception:
         pass
     return rows
@@ -268,8 +268,17 @@ def main():
     for n in conic_ref.SIZES:
         tc, oc = conic_ref.solve_clarabel(n)
         ts, os_ = conic_ref.solve_scs(n)
-        sec, rc = ps_socp.get(n, (None, None))
+        sec, rc, pobj = ps_socp.get(n, (None, None, None))
         pcell = fmt(sec) if (sec is not None and rc == "0") else ("N/A (rc=%s)" % rc if rc else "N/A")
+        # PrimalSolver's own SOCP answer enters the cross-check (issue #8): a
+        # missing row, a failed solve or an objective off the analytic value is
+        # a failure, not part of "they agree".
+        if sec is None:
+            mism.append("socp_%d: no PrimalSolver row" % n)
+        elif rc != "0":
+            mism.append("socp_%d: PrimalSolver rc=%s" % (n, rc))
+        elif abs(pobj - ref) > 1e-4:
+            mism.append("socp_%d: PrimalSolver=%g want %g" % (n, pobj, ref))
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
             if ob is not None and abs(ob - ref) > 1e-4:
                 mism.append("socp_%d %s=%g" % (n, nm2, ob))
@@ -284,8 +293,14 @@ def main():
             exp = None
         tc, oc, _ = conic_ref.solve_clarabel_sdp(d, 200 + d)
         ts, os_, _ = conic_ref.solve_scs_sdp(d, 200 + d)
-        sec, rc = ps_sdp.get(d, (None, None))
+        sec, rc, pobj = ps_sdp.get(d, (None, None, None))
         pcell = fmt(sec) if (sec is not None and rc == "0") else ("N/A (rc=%s)" % rc if rc else "N/A")
+        if sec is None:
+            mism.append("sdp_%d: no PrimalSolver row" % d)
+        elif rc != "0":
+            mism.append("sdp_%d: PrimalSolver rc=%s" % (d, rc))
+        elif exp is not None and abs(pobj - exp) > 1e-4 * (1 + abs(exp)):
+            mism.append("sdp_%d: PrimalSolver=%g want %g" % (d, pobj, exp))
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
             if ob is not None and exp is not None and abs(ob - exp) > 1e-4 * (1 + abs(exp)):
                 mism.append("sdp_%d %s=%g" % (d, nm2, ob))
@@ -296,8 +311,8 @@ def main():
     print(file=sys.stderr)
     if mism:
         print("obj cross-check FAILED: " + "; ".join(mism), file=sys.stderr)
-    else:
-        print("obj cross-check: PrimalSolver / HiGHS / Clarabel / SCS / SCIP agree.", file=sys.stderr)
+        sys.exit(1)
+    print("obj cross-check: PrimalSolver / HiGHS / Clarabel / SCS / SCIP agree.", file=sys.stderr)
 
 
 if __name__ == "__main__":
