@@ -1000,6 +1000,10 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         }
     }
 
+    /* Check feasibility while the root bounds are still alive. */
+    int root_feasible = root_status == 2 &&
+        mip_root_unbounded_feasible(t, s, lx, ux, lc, uc, ftol, itol);
+
     /* free remaining stack */
     for (int q = 0; q < sp; q++) { free(stk[q].lx); free(stk[q].ux); }
     free(stk);
@@ -1019,7 +1023,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         /* An unbounded relaxation is unboundedness only when the MIP has an
          * integer point (see mip_root_unbounded_feasible); without one it stays
          * an unresolved search, not a claimed ray. */
-        rc = mip_root_unbounded_feasible(t, s, lx, ux, lc, uc, ftol, itol)
+        rc = root_feasible
              ? PRIMAL_RES_ERR_UNBOUNDED : PRIMAL_RES_TRM_MAX_ITER;
     else if (deadline_hit)     rc = PRIMAL_RES_TRM_MAX_ITER;   /* time cap */
     else if (nodes >= t->mip_max_nodes && sp > 0)  rc = PRIMAL_RES_TRM_MAX_ITER;
