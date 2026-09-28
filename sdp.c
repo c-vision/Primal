@@ -1653,6 +1653,16 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                     if (getenv("GMB_DBG")) fprintf(stderr,
                         "  [ls] no descent step at it=%d ap=%.3g merit=%.3g ref=%.3g\n",
                         it, ap, merit0, ref);
+                    /* A line search that cannot take any step is the same dead end
+                     * as the frozen merit test, and the iterate in hand is the same
+                     * kind of candidate: offer it to the gate under the near factor.
+                     * Without this the pure-SDP d=15 stalls here at rel_dual 1.2e-6
+                     * (inside the 1000x factor) and the point is never restored, so
+                     * the run reports "not solved" on an iterate the gate would take. */
+                    if (!have_best && !fb_saved && viol <= near_rel) {
+                        fb_saved = 1;
+                        ipm_state(fb_snap, 1, IPM_STATE_PASS);
+                    }
                     goto refine;
                 }
                 /* `took` is set only by the exp/power branch, so this line is the

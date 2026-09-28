@@ -55,7 +55,7 @@ import gen_instances
 SOLVE_MPS = os.path.join(ROOT, "out", "bench", "solve_mps")
 CONIC_BENCH = os.path.join(ROOT, "out", "bench", "conic_bench")
 SDP_SWEEP = os.path.join(ROOT, "out", "bench", "sdp_sweep")
-SDP_DMAX = 12          # conic_bench stops at d=8; the sweep exposes the scaling limit
+SDP_DMAX = 16          # conic_bench stops at d=8; the sweep exposes the scaling limit
 
 # (name, class, n, m, generator, sense_max) -- same specs as gen_instances.main
 SPECS = []
