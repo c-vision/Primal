@@ -961,10 +961,15 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
             int need = newnz + nt;
             if (need > rows[i].cap) {
                 int nc = need * 2 + 4;
+                /* Commit each realloc as it succeeds: a second that fails after
+                 * the first moved leaves rows[i].ci/cv pointing at a freed block
+                 * that the caller's cleanup would free again. */
                 int *ni = (int *)realloc(rows[i].ci, (size_t)nc * sizeof(int));
-                double *nv = (double *)realloc(rows[i].cv, (size_t)nc * sizeof(double));
-                if (!ni || !nv) { free(ni); free(nv); singular = 2; break; }
-                rows[i].ci = ni; rows[i].cv = nv; rows[i].cap = nc;
+                if (ni) rows[i].ci = ni;
+                double *nv = ni ? (double *)realloc(rows[i].cv, (size_t)nc * sizeof(double)) : NULL;
+                if (nv) rows[i].cv = nv;
+                if (!ni || !nv) { singular = 2; break; }
+                rows[i].cap = nc;
             }
             for (int a = 0; a < nt; a++) { int col = touch[a]; double v = w[col]; if (v != 0.0) { rows[i].ci[newnz] = col; rows[i].cv[newnz] = v; newnz++; } }
             rows[i].nz = newnz;
@@ -1073,15 +1078,25 @@ void splu_free(SpluFact *F) {
  * the backward error ||Kx-b||/(||K|||x||+||b||) on random indefinite matrices
  * with structural zero diagonals (test_primal.c T253). */
 SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
+    /* All early buffers start NULL so a partial allocation can be released by
+     * the done_early cleanup below (issue #20: a failing calloc used to be
+     * written through). */
+    int ok = 1;
+    int *pair = NULL, *adjc = NULL, *arp = NULL, *ari = NULL, *cur = NULL;
+    int *perm = NULL, *ip = NULL, *piv2 = NULL, *Pp = NULL, *Pi = NULL, *f = NULL;
+    double *Pv = NULL;
+#define CK(X) do { if (!(X)) { ok = 0; goto done_early; } } while (0)
     /* --- greedy symmetric matching on off-diagonal nonzeros --- */
-    int *pair = (int *)malloc((size_t)n * sizeof(int));
-    int *adjc = (int *)calloc((size_t)(n + 1), sizeof(int));
+    pair = (int *)malloc((size_t)n * sizeof(int));
+    adjc = (int *)calloc((size_t)(n + 1), sizeof(int));
+    CK(pair); CK(adjc);
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) { int i = Ki[p]; if (i > j) { adjc[j+1]++; adjc[i+1]++; } }
     /* adjacency CSR, fully symmetric (both directions of each edge) */
-    int *arp = (int *)malloc((size_t)(n + 1) * sizeof(int));
+    arp = (int *)malloc((size_t)(n + 1) * sizeof(int)); CK(arp);
     arp[0] = 0; for (int j = 0; j < n; j++) arp[j+1] = arp[j] + adjc[j+1];
-    int *ari = (int *)malloc((size_t)(arp[n] > 0 ? arp[n] : 1) * sizeof(int));
-    int *cur = (int *)calloc((size_t)n, sizeof(int));
+    ari = (int *)malloc((size_t)(arp[n] > 0 ? arp[n] : 1) * sizeof(int));
+    cur = (int *)calloc((size_t)n, sizeof(int));
+    CK(ari); CK(cur);
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) { int i = Ki[p]; if (i > j) { ari[arp[j] + cur[j]++] = i; ari[arp[i] + cur[i]++] = j; } }
     free(cur);
     for (int k = 0; k < n; k++) pair[k] = -1;
@@ -1102,30 +1117,32 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     free(ari); free(arp); free(adjc);
 
     /* --- perm: pairs first (adjacent), then singletons --- */
-    int *perm = (int *)malloc((size_t)n * sizeof(int));
-    int *ip = (int *)malloc((size_t)n * sizeof(int));
+    perm = (int *)malloc((size_t)n * sizeof(int));
+    ip = (int *)malloc((size_t)n * sizeof(int));
+    CK(perm); CK(ip);
     int pos = 0;
     for (int u = 0; u < n; u++) if (pair[u] != -1 && u < pair[u]) { perm[pos++] = u; perm[pos++] = pair[u]; }
     for (int u = 0; u < n; u++) if (pair[u] == -1) perm[pos++] = u;
     for (int k = 0; k < n; k++) ip[perm[k]] = k;
     /* static pair in permuted order: is k the first of a 2x2? */
-    int *piv2 = (int *)calloc((size_t)n, sizeof(int));
+    piv2 = (int *)calloc((size_t)n, sizeof(int)); CK(piv2);
     for (int k = 0; k + 1 < n; k++) {
         int u = perm[k], v = perm[k+1];
         if (pair[u] == v) { piv2[k] = 1; k++; }
     }
 
     /* --- permuted lower CSC of K --- */
-    int *Pp = (int *)calloc((size_t)(n + 1), sizeof(int));
+    Pp = (int *)calloc((size_t)(n + 1), sizeof(int)); CK(Pp);
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) {
         int a = ip[Ki[p]], b = ip[j];      /* original (row=Ki[p]>=j) */
         int col = a < b ? a : b; Pp[col+1]++;
     }
     for (int j = 0; j < n; j++) Pp[j+1] += Pp[j];
     int pn = Pp[n];
-    int *Pi = (int *)malloc((size_t)(pn > 0 ? pn : 1) * sizeof(int));
-    double *Pv = (double *)malloc((size_t)(pn > 0 ? pn : 1) * sizeof(double));
-    int *f = (int *)calloc((size_t)n, sizeof(int));
+    Pi = (int *)malloc((size_t)(pn > 0 ? pn : 1) * sizeof(int));
+    Pv = (double *)malloc((size_t)(pn > 0 ? pn : 1) * sizeof(double));
+    f = (int *)calloc((size_t)n, sizeof(int));
+    CK(Pi); CK(Pv); CK(f);
     for (int j = 0; j < n; j++) for (int p = Kp[j]; p < Kp[j+1]; p++) {
         int a = ip[Ki[p]], b = ip[j];
         int col = a < b ? a : b, row = a < b ? b : a;
@@ -1133,6 +1150,12 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     }
     free(f);
 
+done_early:
+    if (!ok) {
+        free(pair); free(adjc); free(arp); free(ari); free(cur);
+        free(perm); free(ip); free(piv2); free(Pp); free(Pi); free(Pv); free(f);
+        return NULL;
+    }
     /* --- left-looking SpLdl with static 2x2 blocks --- */
     int **ci = (int **)calloc((size_t)n, sizeof(int *));
     double **cv = (double **)calloc((size_t)n, sizeof(double *));
@@ -1155,8 +1178,14 @@ SpLdl *spldl_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     if(!a||!b){free(a);free(b);FAIL();} (P)=a;(V)=b;(CAP)=nc; } } while(0)
 
 #define FAIL() do { ok = 0; goto done; } while (0)
-    int ok = 1;
     int stamp = 0;
+    if (!ci||!cv||!cn||!cc||!ri||!rv||!rn||!rc||!w||!w2||!d||!Doff||!mark||!bseen||!touched||!touched2) {
+        for (int q = 0; q < n; q++) { if (ci) free(ci[q]); if (cv) free(cv[q]); if (ri) free(ri[q]); if (rv) free(rv[q]); }
+        free(ci);free(cv);free(cn);free(cc);free(ri);free(rv);free(rn);free(rc);
+        free(w);free(w2);free(d);free(Doff);free(mark);free(bseen);free(touched);free(touched2);
+        free(Pp); free(Pi); free(Pv); free(perm); free(ip); free(piv2); free(pair); free(ari); free(arp); free(adjc);
+        return NULL;
+    }
     for (int c = 0; c < n && ok; ) {
         /* ---- updated column c ---- */
         stamp++;
