@@ -536,9 +536,20 @@ PRIMALrescodee PRIMAL_getdualinfeas(PRIMALtask_t t, PRIMALsolt which, double *di
         double zj = -(t->c[j] + (qxv ? qxv[j] : 0.0) + av);
         double lo, up;
         bound_range(t->bkx[j], t->blx[j], t->bux[j], &lo, &up);
-        int at_lo = (t->x[j] <= lo + 1e-7) && (lo > -INF);
-        int at_up = (t->x[j] >= up - 1e-7) && (up < INF);
-        int inside = (t->x[j] > lo + 1e-7) && (t->x[j] < up - 1e-7);
+        /* Classification consistent with the solver's own tolerances (issue #9):
+         * a variable sits ON a bound when the complementary product of its
+         * distance to that bound and its reduced cost is within the declared dual
+         * tolerance -- that is, when a bound multiplier can be carrying the
+         * reduced cost there. The old rule used a bare 1e-7 distance, which read
+         * x = 2.9e-7 with z = -1.7e-2 as "strictly interior" and reported the
+         * whole 1.7e-2 as a dual violation, although stationarity was 1e-17 and
+         * the complementary product 4.9e-9. The sign test below still flags a
+         * wrong-sign multiplier at a bound, so a real error is not hidden. */
+        double ctol = t->tol_co_dfeas * (1.0 + fabs(zj));
+        int at_lo = (lo > -INF) && ((t->x[j] - lo) * fabs(zj) <= ctol);
+        int at_up = (up < INF) && ((up - t->x[j]) * fabs(zj) <= ctol);
+        if (at_lo && at_up) at_up = 0;                 /* fixed variable: judge one side */
+        int inside = !at_lo && !at_up;
         double v = 0.0;
         if (at_lo && s * zj > 1e-9) v = s * zj;         /* wrong sign at lower */
         if (at_up && s * zj < -1e-9) v = -s * zj;      /* wrong sign at upper */
