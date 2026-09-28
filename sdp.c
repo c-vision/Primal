@@ -1135,6 +1135,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     double *trial = (nep > 0 || nb > 0) ? (double *)malloc(
                      ipm_state_size(n, m, nb, dims, nsoc, socdims, Ke) * sizeof(double)) : NULL;
     int have_best = 0, stall = 0, lost = 0, frozen = 0, fb_saved = 0;
+    int rescue_used = 0, rescue_iters = 0;   /* centring rescue on a freeze */
     double viol_win[CWIN]; int nviol_win = 0, iwin_win = 0, crawl = 0;
     double prev_feas = HUGE_VAL; int use_rescue = 0;
     double gap_best = 0.0, viol_best = 0.0, merit_prev = 0.0, viol_prev = 0.0;
@@ -1226,6 +1227,20 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
             if (++frozen >= 6) {
                 if (getenv("GMB_DBG")) fprintf(stderr,
                     "  [frozen] merit stalled at it=%d merit=%.3g\n", it, merit);
+                /* Rescue before giving up: a freeze on a degenerate face is a
+                 * centring failure (d=19 sticks at mu=0.32 with the fixed floor
+                 * 0.3). Raise the centring target for a short burst and retry a
+                 * few times; only a model that also fails that way falls through
+                 * to the fallback. T88 converges without ever freezing, so it
+                 * never sees this. */
+                if (rescue_used < 3) {
+                    rescue_used++;
+                    rescue_iters = 15;
+                    frozen = 0;
+                    if (getenv("GMB_DBG")) fprintf(stderr,
+                        "  [rescue] centring raise #%d at it=%d\n", rescue_used, it);
+                    goto rescue_continue;
+                }
                 /* Fallback candidate: the frozen point, when the RELATIVE triple
                  * is within the near-optimal factor. The native verdict stays
                  * "not solved": the cuts remain the first choice, and this
@@ -1239,6 +1254,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 goto refine;
             }
         } else frozen = 0;
+    rescue_continue:;
         /* A slow crawl is neither a freeze nor progress. The pure-SDP d=18
          * spends ~150 iterations lowering rel_pri from 3e-8 to 1.9e-8 (0.05% per
          * iteration, enough to keep resetting `frozen`) on a face where the
@@ -1585,6 +1601,9 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                  * accuracy cases live) keep 0.1.  A measured heuristic, like the
                  * rescale gate above, not a conditioning test. */
                 { double sf = (maxd >= 8) ? 0.3 : 0.1; if (!(sigma > sf)) sigma = sf; }
+                /* Rescue burst after a freeze: centring is what the iterate was
+                 * missing, so push sigma up for a few iterations. */
+                if (rescue_iters > 0) { if (sigma < 0.7) sigma = 0.7; rescue_iters--; }
                 if (sigma > 1) sigma = 1;
                 if (polish_center) sigma = 1.0;
             } else {
