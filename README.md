@@ -138,6 +138,44 @@ The rows that decide it:
 Needing raw LP/MIP throughput? Use HiGHS. Needing an SDP *and* an exponential
 cone *and* an integer variable, in C, without linking anything? This is it.
 
+## Benchmark
+
+Reproduce with `make bench` and a Python that has numpy/scipy plus the optional
+references (`clarabel`, `scs`, `highspy`, `pyscipopt`; a solver that is absent
+shows `N/A`). `bench/bench_all.py` prints this table and cross-checks every
+objective against the analytic value; it exits non-zero on a mismatch. LP/QP/
+MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
+`bench/conic_bench.c` and `bench/sdp_sweep.c`.
+
+| instance | class | vars x cons | nnz | PrimalSolver (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
+|---|---|---|---|---|---|---|---|---|---|
+| lp_50x25 | lp | 50 x 25 | 171 | 0.0011 | 0.0044 | 0.0002 | N/A | N/A | 64.188598 |
+| lp_100x50 | lp | 100 x 50 | 576 | 0.0027 | 0.0017 | 0.0008 | N/A | N/A | 121.94612 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.0151 | 0.0039 | 0.0021 | N/A | N/A | 284.36663 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.1023 | 0.0125 | 0.0140 | N/A | N/A | 546.48143 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.0016 | N/A | 0.0004 | N/A | N/A | 12.801367 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.0402 | N/A | 0.0022 | N/A | N/A | 26.405191 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.2698 | N/A | 0.0074 | N/A | N/A | 55.99293 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.3015 | N/A | N/A | N/A | 0.1724 | 143.95499 |
+| milp_60x30 | milp | 60 x 30 | 260 | 1.1015 | N/A | N/A | N/A | 0.2928 | 200.84587 |
+| milp_80x40 | milp | 80 x 40 | 460 | 3.2644 | N/A | N/A | N/A | 1.0101 | 277.01889 |
+| socp_40 | socp | 40 x 1 | - | 0.0005 | N/A | 0.0001 | 0.0041 | N/A | 0.70710678 |
+| socp_120 | socp | 120 x 1 | - | 0.0047 | N/A | 0.0002 | 0.0012 | N/A | 0.70710678 |
+| socp_200 | socp | 200 x 1 | - | 0.0139 | N/A | 0.0004 | 0.0018 | N/A | 0.70710678 |
+| sdp_4 | sdp | 4 x 4 | - | 0.0018 | N/A | 0.0105 | 0.0007 | N/A | -9.8323309 |
+| sdp_5 | sdp | 5 x 5 | - | 0.0004 | N/A | 0.0001 | 0.0002 | N/A | -4.7994785 |
+| sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.243829 |
+| sdp_7 | sdp | 7 x 7 | - | 0.0019 | N/A | 0.0003 | 0.0004 | N/A | -8.1861266 |
+| sdp_8 | sdp | 8 x 8 | - | 0.0013 | N/A | 0.0013 | 0.0005 | N/A | -22.164966 |
+| sdp_9 | sdp | 9 x 9 | - | 0.0020 | N/A | 0.0005 | 0.0004 | N/A | -17.004832 |
+| sdp_10 | sdp | 10 x 10 | - | 0.0026 | N/A | 0.0009 | 0.0007 | N/A | -31.719512 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0034 | N/A | 0.0010 | 0.0016 | N/A | -20.575265 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0057 | N/A | 0.0016 | 0.0009 | N/A | -44.517448 |
+| sdp_13 | sdp | 13 x 13 | - | 0.0050 | N/A | 0.0019 | 0.0010 | N/A | -38.721156 |
+| sdp_14 | sdp | 14 x 14 | - | 0.0059 | N/A | 0.0020 | 0.0010 | N/A | -74.21207 |
+| sdp_15 | sdp | 15 x 15 | - | 0.0091 | N/A | 0.0022 | 0.0012 | N/A | -51.070558 |
+| sdp_16 | sdp | 16 x 16 | - | 0.0198 | N/A | 0.0030 | 0.0014 | N/A | -69.772226 |
+
 ## Status
 
 **4881 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
