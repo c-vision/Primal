@@ -352,10 +352,14 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
                             const double *x0, const double *y0, int method,
                             double *dray, double *pray)
 {
-    if (method == 2)
-        return std_status(ipm_solve_std_csc(Aptr, Arow, Aval, m, n, b, c,
-                                 t->tol_gap, t->tol_pfeas, t->tol_dfeas,
-                                 iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0), method);
+    int nit;
+    if (method == 2) {
+        int st = ipm_solve_std_csc(Aptr, Arow, Aval, m, n, b, c,
+                                   t->tol_gap, t->tol_pfeas, t->tol_dfeas,
+                                   iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0, &nit);
+        count_add(&t->intpnt_iter, nit);
+        return std_status(st, method);
+    }
     if (method == 3) {
         double dens = (n > 0) ? (double)Qptr[n] / ((double)n * (n + 1) / 2.0) : 1.0;
         if (dens > 0.3) {                 /* dense Q: normal equations useless -> dense IPM */
@@ -364,13 +368,16 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
             if (!dA || !dQ) { free(dA); free(dQ); return STD_MEMORY; }
             int st = ipm_solve_std(dA, dQ, m, n, b, c,
                                    t->tol_qo_gap, t->tol_qo_pfeas, t->tol_qo_dfeas,
-                                   iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0);
+                                   iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0, &nit);
+            count_add(&t->intpnt_iter, nit);
             free(dA); free(dQ);
             return std_status(st, method);
         }
-        return std_status(ipm_solve_qp_csc(Aptr, Arow, Aval, Qptr, Qrow, Qval, m, n, b, c,
-                                t->tol_qo_gap, t->tol_qo_pfeas, t->tol_qo_dfeas,
-                                iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0), method);
+        int st = ipm_solve_qp_csc(Aptr, Arow, Aval, Qptr, Qrow, Qval, m, n, b, c,
+                                  t->tol_qo_gap, t->tol_qo_pfeas, t->tol_qo_dfeas,
+                                  iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0, &nit);
+        count_add(&t->intpnt_iter, nit);
+        return std_status(st, method);
     }
     if (method == 1) {
         double *dA = csc_to_dense(Aptr, Arow, Aval, m, n);
@@ -382,10 +389,11 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
         int st = Qptr
             ? ipm_solve_std(dA, dQ, m, n, b, c,
                             t->tol_qo_gap, t->tol_qo_pfeas, t->tol_qo_dfeas,
-                            iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0)
+                            iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0, &nit)
             : ipm_solve_std(dA, dQ, m, n, b, c,
                             t->tol_gap, t->tol_pfeas, t->tol_dfeas,
-                            iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0);
+                            iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0, &nit);
+        count_add(&t->intpnt_iter, nit);
         free(dA); free(dQ);
         return std_status(st, method);
     }
@@ -394,9 +402,11 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
         if (!dA) return STD_MEMORY;
         int *bas = (int *)malloc((size_t)(m > 0 ? m : 1) * sizeof(int));
         int st = STD_STALLED;
-        if (bas && simplex_crash_basis(dA, m, n, bas))
+        if (bas && simplex_crash_basis(dA, m, n, bas)) {
             st = std_status(simplex_dual_solve_std(dA, m, n, b, c, bas,
-                             iter_cap(t->max_iter_simplex), xt, NULL, ystd), method);
+                             iter_cap(t->max_iter_simplex), xt, NULL, ystd, &nit), method);
+            count_add(&t->sim_dual_iter, nit);
+        }
         free(bas); free(dA);
         return st;
     }
@@ -411,7 +421,8 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
         int *bas = (int *)malloc((size_t)(m > 0 ? m : 1) * sizeof(int));
         if (bas && simplex_crash_basis(dA, m, n, bas)) {
             st = simplex_revised_solve_std(dA, m, n, b, c, bas,
-                                           iter_cap(t->max_iter_simplex), xt, ystd);
+                                           iter_cap(t->max_iter_simplex), xt, ystd, &nit);
+            count_add(&t->sim_primal_iter, nit);
             /* Only the optimum (0) is used by the revised: on a non-feasible
              * basis (1), unbounded (2, the revised does not compute the `pray`
              * ray), maxiter (3) or singular (4) one goes back to the tableau. */
@@ -419,8 +430,10 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
         }
         free(bas);
     }
-    if (st != 0 && st != 2)
-        st = simplex_solve_std(dA, m, n, b, c, iter_cap(t->max_iter_simplex), xt, ystd, dray, pray);
+    if (st != 0 && st != 2) {
+        st = simplex_solve_std(dA, m, n, b, c, iter_cap(t->max_iter_simplex), xt, ystd, dray, pray, &nit);
+        count_add(&t->sim_primal_iter, nit);
+    }
     free(dA);
     return std_status(st, method);
 }

@@ -2669,7 +2669,7 @@ static void test_t68(void) {
         for (int j = 0; j < N; j++) b[M+j] = dem[j];
         double x[16], y[8], z[16];
         int st = ipm_solve_std_csc(Aptr, Arow, Aval, m, n, b, c,
-                                   1e-9, 1e-9, 1e-9, 200, x, y, z, NULL, NULL);
+                                   1e-9, 1e-9, 1e-9, 200, x, y, z, NULL, NULL, NULL);
         check(st == 0, "transport 4x4 sparse IPM: status optimal");
         /* primal feasibility: row/column sums == sup/dem, x >= 0 */
         double maxviol = 0.0;
@@ -14804,26 +14804,26 @@ static void test_t180(void) {
     cur_name = "T180 dual simplex + revised (gmbortools port)";
     /* dual: already optimal */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {1}; double x[2];
-      int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
+      int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL, NULL);
       check(rc == 0, "T180 dual already optimal");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 dual already optimal solution"); }
     /* dual: infeasible */
     { double A[1] = {1}, b[1] = {-1}, c[1] = {1}; int bas[1] = {0}; double x[1];
-      int rc = simplex_dual_solve_std(A, 1, 1, b, c, bas, 100, x, NULL, NULL);
+      int rc = simplex_dual_solve_std(A, 1, 1, b, c, bas, 100, x, NULL, NULL, NULL);
       check(rc == 1, "T180 dual infeasible"); }
     /* dual: requires an iteration */
     { double A[2] = {-1, 1}, b[1] = {1}, c[2] = {3, 2}; int bas[1] = {0}; double x[2];
-      int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
+      int rc = simplex_dual_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL, NULL);
       check(rc == 0, "T180 dual iteration");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 1.0) < 1e-9, "T180 dual iteration solution"); }
     /* revised: already optimal from basis {x2} */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {1}; double x[2];
-      int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL);
+      int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
       check(rc == 0, "T180 revised already optimal");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised already optimal solution"); }
     /* revised: requires an iteration from basis {x1} */
     { double A[2] = {1, 1}, b[1] = {2}, c[2] = {2, 1}; int bas[1] = {0}; double x[2];
-      int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL);
+      int rc = simplex_revised_solve_std(A, 1, 2, b, c, bas, 100, x, NULL, NULL);
       check(rc == 0, "T180 revised iteration");
       check(fabs(x[0]) < 1e-9 && fabs(x[1] - 2.0) < 1e-9, "T180 revised iteration solution"); }
     /* reduced costs: c - A'y with y=1 on min 2x1+x2 s.t. x1+x2=2 -> red=(1,0) */
@@ -14835,14 +14835,14 @@ static void test_t180(void) {
      * of the original source the rows overlap and B^-1 is wrong. */
     { double A[8] = {1, 1, 0, 0, 0, 0, 1, 1}; double b[2] = {2, 3};
       double c[4] = {1, 1, 1, 1}; int bas[2] = {0, 2}; double x[4];
-      int rc = simplex_dual_solve_std(A, 2, 4, b, c, bas, 100, x, NULL, NULL);
+      int rc = simplex_dual_solve_std(A, 2, 4, b, c, bas, 100, x, NULL, NULL, NULL);
       check(rc == 0, "T180 dual m=2 optimal");
       check(fabs(x[0] - 2.0) < 1e-9 && fabs(x[1]) < 1e-9 &&
             fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 dual m=2 solution"); }
     /* revised m=2: same model, basis {x0,x2} */
     { double A[8] = {1, 1, 0, 0, 0, 0, 1, 1}; double b[2] = {2, 3};
       double c[4] = {1, 1, 1, 1}; int bas[2] = {0, 2}; double x[4];
-      int rc = simplex_revised_solve_std(A, 2, 4, b, c, bas, 100, x, NULL);
+      int rc = simplex_revised_solve_std(A, 2, 4, b, c, bas, 100, x, NULL, NULL);
       check(rc == 0, "T180 revised m=2 optimal");
       check(fabs(x[0] - 2.0) < 1e-9 && fabs(x[1]) < 1e-9 &&
             fabs(x[2] - 3.0) < 1e-9 && fabs(x[3]) < 1e-9, "T180 revised m=2 solution"); }
@@ -19858,8 +19858,93 @@ static void test_t270(void) {
           "T270 infeasible: PRIM_INFEAS, the same verdict without a certificate");
 }
 
+/* T272 — the optimizer counters. After a solve, PRIMAL_getintinf reports how
+ * many iterations the interior-point and the simplex optimizers ran and how
+ * many nodes, relaxations and branches the branch-and-bound took; before any
+ * solve, and for an optimizer that did not run, it reports 0. The counts are
+ * for the last optimize only: a re-solve with another optimizer starts over.
+ * LP: min x0 + 10 x1, x0 + 2 x1 >= 2, 2 x0 + x1 >= 2, x >= 0, optimum (2, 0),
+ * objective 2; the crash basis {x0, x1} is feasible but not optimal, so the
+ * primal simplex has to pivot. MIP: max 5 x0 + 4 x1 + 3 x2, 2 x0 + 3 x1 + x2
+ * <= 5, binaries, optimum 9 at (1, 1, 0). The root relaxation (1, 2/3, 1) has
+ * bound 32/3 and branches on x1; the x1 = 1 child relaxes to (1/2, 1, 1) with
+ * bound 9.5 and branches on x0, so the search branches twice and solves at
+ * most five nodes (a sharper search may solve fewer, never more). */
+static void t272_counters(PRIMALtask_t t, int *ipm, int *simp, int *simd,
+                          int *relax, int *nodes, int *branch) {
+    *ipm = *simp = *simd = *relax = *nodes = *branch = -1;
+    check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_INTPNT_ITER, ipm), PRIMAL_RES_OK, "T272 INTPNT_ITER rc");
+    check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_SIM_PRIMAL_ITER, simp), PRIMAL_RES_OK, "T272 SIM_PRIMAL_ITER rc");
+    check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_SIM_DUAL_ITER, simd), PRIMAL_RES_OK, "T272 SIM_DUAL_ITER rc");
+    check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_MIO_NUM_RELAX, relax), PRIMAL_RES_OK, "T272 MIO_NUM_RELAX rc");
+    check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_MIO_NUM_SOLVED_NODES, nodes), PRIMAL_RES_OK, "T272 MIO_NUM_SOLVED_NODES rc");
+    check_rc(PRIMAL_getintinf(t, PRIMAL_IINF_MIO_NUM_BRANCH, branch), PRIMAL_RES_OK, "T272 MIO_NUM_BRANCH rc");
+}
+
+static void test_t272(void) {
+    cur_name = "T272 getintinf: iteration, node, relaxation and branch counts of the last solve";
+    int ipm, simp, simd, relax, nodes, branch;
+    double po;
+    P p; pbegin(&p); PRIMALtask_t t = p.task;
+    t272_counters(t, &ipm, &simp, &simd, &relax, &nodes, &branch);
+    check(ipm == 0 && simp == 0 && simd == 0 && relax == 0 && nodes == 0 && branch == 0,
+          "T272 unsolved task: every counter is 0");
+
+    PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, INFINITY);
+    PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0.0, INFINITY);
+    PRIMAL_putcj(t, 0, 1.0); PRIMAL_putcj(t, 1, 10.0);
+    PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 2.0});
+    PRIMAL_putarow(t, 1, 2, (int[]){0, 1}, (double[]){2.0, 1.0});
+    PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 2.0, INFINITY);
+    PRIMAL_putconbound(t, 1, PRIMAL_BK_LO, 2.0, INFINITY);
+    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
+
+    PRIMAL_putintparam(t, PRIMAL_IPAR_OPTIMIZER, PRIMAL_OPTIMIZER_PRIMAL_SIMPLEX);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T272 LP simplex optimize");
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    close_enough(po, 2.0, "T272 LP simplex pobj = 2");
+    t272_counters(t, &ipm, &simp, &simd, &relax, &nodes, &branch);
+    check(simp >= 1 && simp <= 100, "T272 LP simplex: primal simplex pivoted, within budget");
+    check(ipm == 0 && simd == 0, "T272 LP simplex: no interior-point or dual simplex iteration");
+    check(relax == 0 && nodes == 0 && branch == 0, "T272 LP simplex: no branch-and-bound counts");
+
+    PRIMAL_putintparam(t, PRIMAL_IPAR_OPTIMIZER, PRIMAL_OPTIMIZER_INTPNT);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T272 LP intpnt optimize");
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    close_enough(po, 2.0, "T272 LP intpnt pobj = 2");
+    t272_counters(t, &ipm, &simp, &simd, &relax, &nodes, &branch);
+    check(ipm >= 1 && ipm <= 100, "T272 LP intpnt: interior point iterated, within budget");
+    check(simp == 0 && simd == 0, "T272 LP intpnt: the simplex counts of the earlier solve are gone");
+    pend(&p);
+
+    pbegin(&p); t = p.task;
+    PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 1);
+    for (int j = 0; j < 3; j++) {
+        PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 1.0);
+        PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT_BIN);
+    }
+    PRIMAL_putcj(t, 0, 5.0); PRIMAL_putcj(t, 1, 4.0); PRIMAL_putcj(t, 2, 3.0);
+    PRIMAL_putarow(t, 0, 3, (int[]){0, 1, 2}, (double[]){2.0, 3.0, 1.0});
+    PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 5.0);
+    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MAXIMIZE);
+    setenv("GMB_NO_MIP_CUTS", "1", 1);
+    PRIMALrescodee rc = PRIMAL_optimize(t);
+    unsetenv("GMB_NO_MIP_CUTS");
+    check_rc(rc, PRIMAL_RES_OK, "T272 MIP optimize");
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITG, &po);
+    close_enough(po, 9.0, "T272 MIP pobj = 9");
+    t272_counters(t, &ipm, &simp, &simd, &relax, &nodes, &branch);
+    check(branch >= 1 && branch <= 2, "T272 MIP: the fractional root branched, at most twice");
+    check(nodes >= 1 && nodes <= 1 + 2 * branch, "T272 MIP: the root and at most two children per branching solved");
+    check(relax >= nodes, "T272 MIP: every solved node took a relaxation");
+    check(simp >= 1, "T272 MIP: the relaxations ran the primal simplex");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t272();
     test_t271();
     test_t270();
     test_t269();

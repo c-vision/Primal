@@ -125,7 +125,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         int sw = xo ? MIP_RELAX(tc, lx, ux, xo, &pw, NULL) : 3;
         int sn = xo ? MIP_RELAX(t, lx, ux, xo, &pn, NULL) : 3;
         if (xo && sw == 0 && sn == 0 && pw > pn + 1e-9) {
-            PRIMAL_deletetask(&tc); tc = NULL;
+            count_fold(t, tc); PRIMAL_deletetask(&tc); tc = NULL;
             cgcuts = 0; gocuts = 0; ncuts = 0; nrelax = ncon;
             trelax = t;
             tlog(t, "MIP: cuts discarded (node relaxation worsened)\n");
@@ -221,7 +221,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         free(stk); free(bestx); free(lx); free(ux); free(lc); free(uc);
         return PRIMAL_RES_ERR_ALLOC;
     }
-    long nodes = 0;
+    long nodes = 0, branches = 0;
     int root_status = 0;   /* remember root relaxation status */
 
     /* initial incumbent from PRIMAL_putxx (mioinitsol): accepted only if it
@@ -308,9 +308,15 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                 t->prosta = inf ? PRIMAL_PRO_STA_PRIM_INFEAS : PRIMAL_PRO_STA_UNKNOWN;
                 prc = inf ? PRIMAL_RES_ERR_INFEASIBLE : PRIMAL_RES_TRM_MAX_ITER;
             }
-            for (int side = 0; side < 2; side++) if (kids[side]) PRIMAL_deletetask(&kids[side]);
+            count_add(&t->mio_nodes, 1);      /* the root, solved above */
+            count_add(&t->mio_branch, 1);
+            for (int side = 0; side < 2; side++) {
+                count_fold(t, kids[side]);
+                if (kids[side]) PRIMAL_deletetask(&kids[side]);
+            }
             free(stk[0].lx); free(stk[0].ux); free(stk); free(bestx); free(bestX); free(barXbuf);
             free(xs); free(flx); free(flux); free(lx); free(ux); free(lc); free(uc);
+            count_fold(t, tc);
             PRIMAL_deletetask(&tc);
             if (senv) PRIMAL_deleteenv(&senv);
             return prc;
@@ -724,6 +730,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             }
             free(nd.lx); free(nd.ux);
             if (!ok) break;
+            branches++;
             continue;
         }
 
@@ -811,6 +818,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
             free(idx);
             free(nd.lx); free(nd.ux);
             if (!ok) break;
+            branches++;
             continue;
         }
 
@@ -987,6 +995,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
                         " (j=%d lp=%g box=[%g,%g])\n", nodes, bj, v, box_l, box_u);
             continue;
         }
+        branches++;
     }
 
     /* free remaining stack */
@@ -994,6 +1003,9 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
     free(stk);
     free(xs); free(flx); free(flux);
     free(lx); free(ux); free(lc); free(uc);
+    count_add(&t->mio_nodes, (int)nodes);
+    count_add(&t->mio_branch, (int)branches);
+    count_fold(t, tc);
     PRIMAL_deletetask(&tc);
 
     PRIMALrescodee rc;

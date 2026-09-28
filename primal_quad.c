@@ -721,10 +721,10 @@ PRIMALrescodee PRIMAL_solvebasis(PRIMALtask_t t) {
                             int st = 0;
                             if (pfeas)
                                 st = simplex_revised_solve_std(dA, sf->m, sf->n, sf->b, sf->c, sb,
-                                                               iter_cap(t->max_iter_simplex), xt, ystd);
+                                                               iter_cap(t->max_iter_simplex), xt, ystd, NULL);
                             if (st != 0 && dfeas)
                                 st = simplex_dual_solve_std(dA, sf->m, sf->n, sf->b, sf->c, sb,
-                                                            iter_cap(t->max_iter_simplex), xt, sb, ystd);
+                                                            iter_cap(t->max_iter_simplex), xt, sb, ystd, NULL);
                             if (st == 0) {
                                 stdform_map_x(sf, xt, x);
                                 stdform_map_y(sf, ystd, ymin);

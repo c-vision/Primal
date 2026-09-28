@@ -1152,6 +1152,27 @@ void iter_cb_begin(PRIMALtask_t t) { g_iter_task = t; primal_cb_iter_on = (t && 
 /* Disarm the per-iteration hook after the solve finishes. */
 void iter_cb_end(void) { primal_cb_iter_on = 0; g_iter_task = NULL; }
 
+/* Work counters are added through one lock: branch-and-bound probing and
+ * strong branching, and the concurrent optimizer, run engines on ONE task from
+ * several threads, and an increment lost between them would make the counts
+ * depend on scheduling. */
+static pthread_mutex_t g_count_mx = PTHREAD_MUTEX_INITIALIZER;
+void count_add(int *slot, int n) {
+    pthread_mutex_lock(&g_count_mx);
+    *slot += n;
+    pthread_mutex_unlock(&g_count_mx);
+}
+/* Carry the counters of a clone that worked on dst's behalf into dst. */
+void count_fold(PRIMALtask_t dst, const PRIMALtask_t src) {
+    if (!src) return;
+    count_add(&dst->intpnt_iter, src->intpnt_iter);
+    count_add(&dst->sim_primal_iter, src->sim_primal_iter);
+    count_add(&dst->sim_dual_iter, src->sim_dual_iter);
+    count_add(&dst->mio_relax, src->mio_relax);
+    count_add(&dst->mio_nodes, src->mio_nodes);
+    count_add(&dst->mio_branch, src->mio_branch);
+}
+
 /* Allocate the per-variable and per-constraint arrays for the current
  * model size, with free bounds and empty columns; no-op when present. */
 PRIMALrescodee ensure_size(PRIMALtask_t t) {

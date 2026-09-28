@@ -195,8 +195,9 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
                   double tol_gap, double tol_pfeas, double tol_dfeas,
                   int max_iter,
                   double *x, double *y, double *z,
-                  const double *x0, const double *y0)
+                  const double *x0, const double *y0, int *niter)
 {
+    if (niter) *niter = 0;
     if (n <= 0) return IPM_OPTIMAL;
     int N = n + m;
 
@@ -248,8 +249,9 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
 
     int status = IPM_MAXITER;
     int no_progress = 0;
+    int it;
 
-    for (int it = 0; it < max_iter; it++) {
+    for (it = 0; it < max_iter; it++) {
         if (primal_cb_iter_on) primal_cb_iter(90);
         if (ipm_past_deadline()) { status = IPM_MAXITER; break; }
         /* residuals and measures */
@@ -400,6 +402,7 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
         for (int i = 0; i < m; i++) y[i] += ad * dy[i];
     }
 
+    if (niter) *niter = it;
     free(rp); free(rd); free(rc); free(qx); free(rhs);
     free(dxa); free(dya); free(dza); free(dx); free(dy); free(dz);
     return status;
@@ -517,8 +520,9 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
                       double tol_gap, double tol_pfeas, double tol_dfeas,
                       int max_iter,
                       double *x, double *y, double *z,
-                      const double *x0, const double *y0)
+                      const double *x0, const double *y0, int *niter)
 {
+    if (niter) *niter = 0;
     if (n <= 0) return IPM_OPTIMAL;
     if (m <= 0) return IPM_MAXITER;
 
@@ -643,8 +647,9 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
 
     int status = IPM_MAXITER;
     int no_progress = 0;
+    int it;
 
-    for (int it = 0; it < max_iter; it++) {
+    for (it = 0; it < max_iter; it++) {
         if (primal_cb_iter_on) primal_cb_iter(90);
         if (ipm_past_deadline()) { status = IPM_MAXITER; break; }
         /* residuals */
@@ -792,6 +797,7 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int i = 0; i < m; i++) y[i] += ad * tmpm[i];
     }
 
+    if (niter) *niter = it;
     IPMSP_FREE();
 #undef IPMSP_FREE
     return status;
@@ -889,8 +895,9 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
                      int m, int n, const double *b, const double *c,
                      double tol_gap, double tol_pfeas, double tol_dfeas,
                      int max_iter, double *x, double *y, double *z,
-                     const double *x0, const double *y0)
+                     const double *x0, const double *y0, int *niter)
 {
+    if (niter) *niter = 0;
     if (n <= 0) return IPM_OPTIMAL;
     if (m <= 0) return IPM_MAXITER;
     int nnzA = Aptr[n], nnzQ = Qptr[n];
@@ -1007,8 +1014,8 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
     for (int j = 0; j < n; j++) { double a = fabs(c[j]); if (a > cnorm) cnorm = a; }
     for (int p = 0; p < nnzQ; p++) { double a = fabs(Qval[p]); if (a > cnorm) cnorm = a; }
 
-    int status = IPM_MAXITER, no_progress = 0;
-    for (int it = 0; it < max_iter; it++) {
+    int status = IPM_MAXITER, no_progress = 0, it;
+    for (it = 0; it < max_iter; it++) {
         if (primal_cb_iter_on) primal_cb_iter(90);
         if (ipm_past_deadline()) { status = IPM_MAXITER; break; }
         /* residuals */
@@ -1142,6 +1149,7 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int j = 0; j < n; j++) { x[j] += ap*dxC[j]; z[j] += ad*dzC[j]; }
         for (int i = 0; i < m; i++) y[i] += ad*tmpm[i];
     }
+    if (niter) *niter = it;
     IPMQP_FREE();
 #undef IPMQP_FREE
     return status;

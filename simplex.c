@@ -53,6 +53,7 @@ typedef struct {
     int m, n, ntot, stride;
     double *T;
     int *basis;
+    int iters;        /* pivots taken so far */
 } Tab;
 
 /**
@@ -211,6 +212,7 @@ static int run_phase(Tab *t, int max_iter, int *ent_out) {
         if (lev < 0) { if (ent_out) *ent_out = ent; return SIMP_UNBOUNDED; }
         double zprev = red[t->ntot];
         tab_pivot(t, lev, ent);
+        t->iters++;
         double znow = red[t->ntot];
         if (fabs(znow - zprev) > 1e-11 * (1.0 + fabs(znow))) { stall = 0; bland = 0; }
         else if (++stall > STALL_LIMIT) bland = 1;
@@ -225,10 +227,11 @@ int simplex_solve_std_tab(const double *A, int m, int n,
                           const double *b, const double *c,
                           int max_iter, double *x, double *y,
                           double *dray, double *pray,
-                          int *basis_out, double *tab_out)
+                          int *basis_out, double *tab_out, int *niter)
 {
     Tab t;
-    t.m = m; t.n = n;
+    if (niter) *niter = 0;
+    t.m = m; t.n = n; t.iters = 0;
     t.ntot = n + m;
     t.stride = t.ntot + 1;
     t.T = (double *)calloc((size_t)(m + 1) * (size_t)t.stride, sizeof(double));
@@ -280,7 +283,7 @@ int simplex_solve_std_tab(const double *A, int m, int n,
             double a = fabs(t.T[i * t.stride + j]);
             if (a > bmax) { bmax = a; bj = j; }
         }
-        if (bj >= 0) tab_pivot(&t, i, bj);
+        if (bj >= 0) { tab_pivot(&t, i, bj); t.iters++; }
         /* else: redundant row, artificial stays basic at ~0 */
     }
 
@@ -330,6 +333,7 @@ int simplex_solve_std_tab(const double *A, int m, int n,
     for (int r = 0; r < m; r++) y[r] = -red[n + r];
 
 done:
+    if (niter) *niter = t.iters;
     if (basis_out) for (int i = 0; i < m; i++) basis_out[i] = t.basis[i];
     if (tab_out) memcpy(tab_out, t.T, (size_t)(m + 1) * (size_t)t.stride * sizeof(double));
     free(t.T);
@@ -358,8 +362,8 @@ done:
 int simplex_solve_std(const double *A, int m, int n,
                       const double *b, const double *c,
                       int max_iter, double *x, double *y,
-                      double *dray, double *pray) {
-    return simplex_solve_std_tab(A, m, n, b, c, max_iter, x, y, dray, pray, NULL, NULL);
+                      double *dray, double *pray, int *niter) {
+    return simplex_solve_std_tab(A, m, n, b, c, max_iter, x, y, dray, pray, NULL, NULL, niter);
 }
 
 /**
@@ -391,10 +395,11 @@ int simplex_solve_std(const double *A, int m, int n,
 int simplex_dual_solve_std(const double *A, int m, int n,
                            const double *b, const double *c,
                            const int *basis, int max_iter, double *x,
-                           int *basis_out, double *yout) {
+                           int *basis_out, double *yout, int *niter) {
     int ncols = n + 1, i, j, k, it, rc = 0;
     double *T, *red, *cB, *M;
     int *bas;
+    if (niter) *niter = 0;
     if (m < 1 || n < 1 || !A || !b || !c || !basis || !x) return 4;
     T = (double *)malloc((size_t)m * ncols * sizeof(double));
     red = (double *)malloc((size_t)n * sizeof(double));
@@ -492,6 +497,7 @@ int simplex_dual_solve_std(const double *A, int m, int n,
         }
         free(Bt); free(rhs);
     }
+    if (niter) *niter = it;
     free(T); free(red); free(cB); free(M); free(bas);
     return rc;
 }
@@ -529,10 +535,11 @@ int simplex_dual_solve_std(const double *A, int m, int n,
 int simplex_revised_solve_std(const double *A, int m, int n,
                               const double *b, const double *c,
                               const int *basis, int max_iter, double *x,
-                              double *yout) {
+                              double *yout, int *niter) {
     double *Binv, *xB, *y, *d, *cB;
     int *bas;
     int i, j, k, it, rc = 0;
+    if (niter) *niter = 0;
     if (m < 1 || n < 1 || !A || !b || !c || !basis || !x) return 4;
     Binv = (double *)malloc((size_t)m * m * sizeof(double));
     xB = (double *)malloc((size_t)m * sizeof(double));
@@ -605,6 +612,7 @@ int simplex_revised_solve_std(const double *A, int m, int n,
     for (i = 0; i < n; i++) x[i] = 0.0;
     for (i = 0; i < m; i++) if (bas[i] >= 0 && bas[i] < n) x[bas[i]] = xB[i];
     if (yout) for (j = 0; j < m; j++) yout[j] = y[j];   /* duals y = cB^T B^-1 */
+    if (niter) *niter = it;
     free(Binv); free(xB); free(y); free(d); free(cB); free(bas);
     return rc;
 }

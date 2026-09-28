@@ -1366,6 +1366,12 @@ PRIMALrescodee PRIMAL_getintinf(PRIMALtask_t t, PRIMALiinfiteme which, int *valu
     case PRIMAL_IINF_RD_NUMCONE:               *value = t->numcones; break;
     case PRIMAL_IINF_RD_NUMBARVAR:             *value = t->numbarvar; break;
     case PRIMAL_IINF_INTPNT_NUM_THREADS:       *value = 1; break;
+    case PRIMAL_IINF_INTPNT_ITER:              *value = t->intpnt_iter; break;
+    case PRIMAL_IINF_SIM_PRIMAL_ITER:          *value = t->sim_primal_iter; break;
+    case PRIMAL_IINF_SIM_DUAL_ITER:            *value = t->sim_dual_iter; break;
+    case PRIMAL_IINF_MIO_NUM_RELAX:            *value = t->mio_relax; break;
+    case PRIMAL_IINF_MIO_NUM_SOLVED_NODES:     *value = t->mio_nodes; break;
+    case PRIMAL_IINF_MIO_NUM_BRANCH:           *value = t->mio_branch; break;
     case PRIMAL_IINF_RD_PROTYPE: {
         PRIMALproblemtypee pt = PRIMAL_PROBTYPE_LO;
         PRIMAL_getprobtype(t, &pt);

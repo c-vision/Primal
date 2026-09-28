@@ -230,6 +230,11 @@ struct PRIMAL_task_s {
     PRIMALprostae prosta;
     PRIMALrescodee last_rc;
     double opt_time;   /* CPU seconds of the last optimize (getdouinf) */
+    /* Work counters of the last optimize (getintinf): iterations per
+     * optimizer, summed over every engine run made on the task's behalf, and
+     * the branch-and-bound's nodes, relaxations and branches. */
+    int intpnt_iter, sim_primal_iter, sim_dual_iter;
+    int mio_relax, mio_nodes, mio_branch;
     double *x, *y, *slc, *suc, *slx, *sux;
     double *snx;          /* s_n^x: conic multipliers per variable (storage) */
     double *xc;           /* x^c: row activity, if set by hand */
@@ -355,6 +360,11 @@ int iter_cap(int v);
 void iter_cb_begin(PRIMALtask_t t);
 /* Ends the iteration callback scope opened by iter_cb_begin. */
 void iter_cb_end(void);
+/* Adds n to a work counter of the last optimize; safe from the threads that
+ * share a task. */
+void count_add(int *slot, int n);
+/* Adds every counter of a clone (NULL allowed) into the task it worked for. */
+void count_fold(PRIMALtask_t dst, const PRIMALtask_t src);
 /* Grows a lazily-sized table to at least need elements, updating *cap. */
 void *lazy_grow(void *tbl, int *cap, int need, size_t esz);
 /* Builds CG/cover cuts into a clone tc of the task; returns the number built. */

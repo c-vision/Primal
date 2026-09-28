@@ -896,6 +896,8 @@ PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
     /* The B&B obeys the tighter of the two caps. */
     if (deadline >= 0.0 && (mip_deadline < 0.0 || deadline < mip_deadline)) mip_deadline = deadline;
     if (t) { t->opt_deadline = deadline; t->mip_deadline = mip_deadline; }
+    if (t) t->intpnt_iter = t->sim_primal_iter = t->sim_dual_iter =
+           t->mio_relax = t->mio_nodes = t->mio_branch = 0;
     ipm_set_deadline(deadline);
     ipm_set_max_cor(t ? t->intpnt_max_cor : -1);
     /* Objective cuts in min-space: for a minimization the two cuts are as

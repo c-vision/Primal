@@ -33,7 +33,8 @@
 int simplex_solve_std(const double *A, int m, int n,
                       const double *b, const double *c,
                       int max_iter, double *x /*n*/, double *y /*m*/,
-                      double *dray /*m, status 1*/, double *pray /*n, status 2*/);
+                      double *dray /*m, status 1*/, double *pray /*n, status 2*/,
+                      int *niter /*pivots taken, optional*/);
 /* As above, but also returns the final basis (`basis_out`, m column
  * indices) and the tableau (`tab_out`, m rows of stride n+m+1: reduced
  * coefficients in the first n+m columns, RHS in [n+m]). Needed for Gomory cuts.
@@ -42,7 +43,8 @@ int simplex_solve_std_tab(const double *A, int m, int n,
                           const double *b, const double *c,
                           int max_iter, double *x, double *y,
                           double *dray, double *pray,
-                          int *basis_out, double *tab_out);
+                          int *basis_out, double *tab_out,
+                          int *niter /*pivots taken, optional*/);
 
 /* Dual simplex: min c'x s.t. A x = b, x >= 0, from a DUAL-feasible basis
  * (`basis[m]`, column indices); `b` may have negative entries. Builds
@@ -54,7 +56,8 @@ int simplex_dual_solve_std(const double *A, int m, int n,
                            const double *b, const double *c,
                            const int *basis, int max_iter, double *x /*n*/,
                            int *basis_out /*m, final basis, optional*/,
-                           double *y /*m, duals cB^T B^-1 via LU, optional*/);
+                           double *y /*m, duals cB^T B^-1 via LU, optional*/,
+                           int *niter /*pivots taken, optional*/);
 
 /* Revised simplex: min c'x s.t. A x = b, x >= 0, from a PRIMAL-feasible basis
  * (`basis[m]`). Keeps B^-1 with eta updates (one factorization per
@@ -64,7 +67,8 @@ int simplex_dual_solve_std(const double *A, int m, int n,
 int simplex_revised_solve_std(const double *A, int m, int n,
                               const double *b, const double *c,
                               const int *basis, int max_iter, double *x /*n*/,
-                              double *y /*m, duals, optional (NULL ok)*/);
+                              double *y /*m, duals, optional (NULL ok)*/,
+                              int *niter /*pivots taken, optional*/);
 
 /* Reduced costs c - A'y (n). Ported from gmbortools `gor_lp_reduced_costs`. */
 void simplex_reduced_costs(const double *A, int m, int n, const double *c,

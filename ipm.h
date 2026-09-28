@@ -33,14 +33,16 @@ int  ipm_obj_cut_hit(void);
 void ipm_set_max_cor(int ncor);
 
 /* Dense Mehrotra IPM on the standard form (Q = NULL for LP).
- * Solves for primal x, dual y and multiplier z from an interior start. */
+ * Solves for primal x, dual y and multiplier z from an interior start.
+ * niter (optional) receives the number of iterations taken. */
 int ipm_solve_std(const double *A, const double *Q, int m, int n,
                   const double *b, const double *c,
                   double tol_gap, double tol_pfeas, double tol_dfeas,
                   int max_iter,
                   double *x /*n*/, double *y /*m*/, double *z /*n*/,
                   const double *x0 /*nullable warm start, n*/,
-                  const double *y0 /*nullable warm start, m*/);
+                  const double *y0 /*nullable warm start, m*/,
+                  int *niter /*nullable*/);
 
 /* ---- sparse LP variant: A in CSC (col_ptr n+1, row_idx, val) ----
  * Mehrotra predictor-corrector with normal equations
@@ -53,7 +55,8 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
                       double tol_gap, double tol_pfeas, double tol_dfeas,
                       int max_iter,
                       double *x /*n*/, double *y /*m*/, double *z /*n*/,
-                      const double *x0 /*nullable*/, const double *y0 /*nullable*/);
+                      const double *x0 /*nullable*/, const double *y0 /*nullable*/,
+                      int *niter /*nullable*/);
 
 /* ---- sparse QP variant: A in CSC (n+1) and Q in LOWER-triangle CSC (n+1) ----
  * min 1/2 x'Qx + c'x, A x = b, x >= 0, Q symmetric PSD with its diagonal
@@ -69,6 +72,7 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
                      double tol_gap, double tol_pfeas, double tol_dfeas,
                      int max_iter,
                      double *x /*n*/, double *y /*m*/, double *z /*n*/,
-                     const double *x0 /*nullable*/, const double *y0 /*nullable*/);
+                     const double *x0 /*nullable*/, const double *y0 /*nullable*/,
+                     int *niter /*nullable*/);
 
 #endif /* IPM_H */

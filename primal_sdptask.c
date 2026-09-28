@@ -810,8 +810,10 @@ int model_lp_witness(PRIMALtask_t t, int s, double **symPq, int mode,
         double *rho = (double *)malloc((size_t)ntot * sizeof(double));
         if (!dA || !xt || !yd || !dray || !pr || !rho) oom = 1;
         else {
+            int nit;
             int st = simplex_solve_std(dA, sf->m, sf->n, sf->b, sf->c,
-                                       iter_cap(t->max_iter_simplex), xt, yd, dray, pr);
+                                       iter_cap(t->max_iter_simplex), xt, yd, dray, pr, &nit);
+            count_add(&t->sim_primal_iter, nit);
             char cb[96];
             snprintf(cb, sizeof cb, "%s: candidate LP status %d\n", tag, st);
             tlog(t, cb);
@@ -1106,8 +1108,10 @@ static PRIMALrescodee optimize_sdp_impl(PRIMALtask_t t, int s) {
                 }
                 /* no rays here: this solve is in cut space, whose rows are the
                  * tangents, not the model's — a witness of it is not one of it */
+                int nit;
                 status = simplex_solve_std(dA, sf->m, sf->n, sf->b, sf->c,
-                                           iter_cap(t->max_iter_simplex), xt, ystd, NULL, NULL);
+                                           iter_cap(t->max_iter_simplex), xt, ystd, NULL, NULL, &nit);
+                count_add(&t->sim_primal_iter, nit);
                 free(dA);
                 stdform_map_x(sf, xt, zsol);
                 stdform_map_y(sf, ystd, yb);
@@ -1426,9 +1430,11 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
     if (t->has_qobj) {
         double *dA = stdform_dense_A(sf), *dQ = stdform_dense_Q(sf);
         if (!dA || !dQ) { free(dA); free(dQ); free(xt); free(ystd); free(zst); stdform_free(sf); free(ci); return 3; }
+        int nit;
         status = ipm_solve_std(dA, dQ, sf->m, sf->n, sf->b, sf->c,
                                t->tol_qo_gap, t->tol_qo_pfeas, t->tol_qo_dfeas, iter_cap(t->max_iter_intpnt),
-                               xt, ystd, zst, NULL, NULL);
+                               xt, ystd, zst, NULL, NULL, &nit);
+        count_add(&t->intpnt_iter, nit);
         free(dA); free(dQ);
     } else {
         /* Same engine as the LP path (method 0): crash basis + revised, with
@@ -1438,6 +1444,7 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
                                   sf->m, sf->n, sf->b, sf->c, t, xt, ystd, zst,
                                   NULL, NULL, 0, NULL, NULL);
     }
+    count_add(&t->mio_relax, 1);
     if (status == 0 || status == 2) {
         /* On an unbounded relaxation the simplex still fills its current
          * feasible basic solution, so the MIP can round it (status 2 means the

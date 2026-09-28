@@ -89,6 +89,28 @@ Every solution getter answers `PRIMAL_RES_ERR_ARG` when there is no point to
 deliver. See [certificates](certificates.md) — this is a contract, not a
 detail.
 
+### Information items
+
+`getdouinf`, `getintinf` and `getlintinf` (and the `getna*inf` forms, by
+name) accept every information-item id of the reference. The measured ones:
+
+| Item | Value |
+|---|---|
+| `DINF_OPTIMIZER_TIME`, `DINF_SIM_TIME`, `DINF_MIO_TIME` | CPU seconds of the last `optimize` |
+| `DINF_*_OBJ`, `DINF_MIO_OBJ_*`, `DINF_SOL_ITR_*`, `DINF_SOL_ITG_*` | objectives, gaps, violations and norms of the published point |
+| `IINF_INTPNT_ITER` | iterations of the linear/quadratic interior point |
+| `IINF_SIM_PRIMAL_ITER`, `IINF_SIM_DUAL_ITER` | pivots of the primal and of the dual simplex |
+| `IINF_MIO_NUM_SOLVED_NODES`, `IINF_MIO_NUM_RELAX`, `IINF_MIO_NUM_BRANCH` | branch-and-bound nodes solved, relaxations solved, branchings |
+| `IINF_ANA_PRO_*`, `IINF_OPT_NUM*`, `IINF_RD_*`, `LIINF_RD_*` | model shape |
+| `IINF_OPTIMIZE_RESPONSE`, `IINF_SOL_*_PROSTA`, `IINF_SOL_*_SOLSTA` | last response code and statuses |
+
+Every other id is accepted and answers 0. The iteration and node counters
+describe the last `optimize` call only and count every run of that optimizer
+made on the task's behalf: the route itself, the node relaxations of
+branch-and-bound (probing and strong branching included), the LP masters of
+the cut loops and each engine of the concurrent optimizer. The conic interior
+point (SOCP, SDP, exponential and power cones) is not counted.
+
 ## Reading the model back
 
 The model is fully readable: coefficients, quadratic parts, bar terms, bounds,

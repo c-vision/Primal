@@ -173,6 +173,8 @@ int mip_relax_conic(PRIMALtask_t t, int s, PRIMALenv_t env2,
     } else if (rc == PRIMAL_RES_ERR_INFEASIBLE) status = 1;
     else if (rc == PRIMAL_RES_ERR_UNBOUNDED) status = 2;
     else status = 3;
+    count_add(&t->mio_relax, 1);
+    count_fold(t, sh);
     PRIMAL_deletetask(&sh);
     return status;
 }
@@ -913,8 +915,10 @@ int mip_gomory_round(PRIMALtask_t tc, int s) {
     ystd = (double *)calloc((size_t)(m > 0 ? m : 1), sizeof(double));
     zst = (double *)calloc((size_t)(n > 0 ? n : 1), sizeof(double));
     if (!basis || !tab || !xt || !ystd || !zst) goto gdone;
+    int nit;
     int st = simplex_solve_std_tab(dA, m, n, sf->b, sf->c, iter_cap(tc->max_iter_simplex),
-                                   xt, ystd, NULL, NULL, basis, tab);
+                                   xt, ystd, NULL, NULL, basis, tab, &nit);
+    count_add(&tc->sim_primal_iter, nit);
     if (st != 0) goto gdone;
     for (int i = 0; i < m; i++) {
         int bcol = basis[i];
