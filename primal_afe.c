@@ -68,6 +68,10 @@ PRIMALrescodee PRIMAL_getnumafe(PRIMALtask_t t, PRIMALint64t *numafe) {
     return PRIMAL_RES_OK;
 }
 
+/* Refresh the rows of every LINEAR-domain ACC from the current affine
+ * expressions (issue #19): an accepted edit must be what the next solve uses. */
+static void acc_sync_linear(PRIMALtask_t t);
+
 /* replace F[i][j]; v == 0 removes the entry */
 PRIMALrescodee PRIMAL_putafefentry(PRIMALtask_t t, PRIMALint64t i, int j, PRIMALrealt v) {
     if (!t) return PRIMAL_RES_ERR_NULL;
@@ -88,6 +92,7 @@ PRIMALrescodee PRIMAL_putafefentry(PRIMALtask_t t, PRIMALint64t i, int j, PRIMAL
         }
         t->afe_sub[k][w] = j; t->afe_val[k][w] = v; t->afe_nz[k] = w + 1;
     }
+    acc_sync_linear(t);
     return PRIMAL_RES_OK;
 }
 
@@ -127,6 +132,7 @@ PRIMALrescodee PRIMAL_putafeg(PRIMALtask_t t, PRIMALint64t i, PRIMALrealt g) {
     if (i < 0 || i >= t->numafe) return PRIMAL_RES_ERR_ARG;
     if (g != g) return PRIMAL_RES_ERR_ARG;
     t->afeg[i] = g;
+    acc_sync_linear(t);
     return PRIMAL_RES_OK;
 }
 
@@ -1161,6 +1167,26 @@ static PRIMALrescodee acc_store(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64
 }
 
 /* Append an affine conic constraint: the listed AFEs must lie in domain domidx. */
+static void acc_sync_linear(PRIMALtask_t t) {
+    for (int k = 0; k < t->numacc; k++) {
+        int type = t->dom_type[t->acc_dom[k]];
+        if (!(type == PRIMAL_DOMAIN_R || type == PRIMAL_DOMAIN_RZERO ||
+              type == PRIMAL_DOMAIN_RPLUS || type == PRIMAL_DOMAIN_RMINUS)) continue;
+        int rbase = (int)t->acc_rowbase[k];
+        for (int e = 0; e < (int)t->acc_nafe[k]; e++) {
+            int afe = (int)t->acc_afe[k][e];
+            double g = t->afeg[afe] - t->acc_b[k][e];   /* F x + g - b */
+            if (PRIMAL_putarow(t, rbase + e, t->afe_nz[afe], t->afe_sub[afe],
+                               t->afe_val[afe]) != PRIMAL_RES_OK) return;
+            afe_add_bar_terms(t, rbase + e, afe);
+            if      (type == PRIMAL_DOMAIN_R)     PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_FR, -INFINITY, INFINITY);
+            else if (type == PRIMAL_DOMAIN_RZERO) PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_FX, -g, -g);
+            else if (type == PRIMAL_DOMAIN_RPLUS) PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_LO, -g, INFINITY);
+            else                                  PRIMAL_putconbound(t, rbase+e, PRIMAL_BK_UP, -INFINITY, -g);
+        }
+    }
+}
+
 PRIMALrescodee PRIMAL_appendacc(PRIMALtask_t t, PRIMALint64t domidx, PRIMALint64t numafeidx,
                                 const PRIMALint64t *afeidxlist, const PRIMALrealt *b) {
     if (!t) return PRIMAL_RES_ERR_NULL;
@@ -1499,6 +1525,7 @@ PRIMALrescodee PRIMAL_putaccbj(PRIMALtask_t t, PRIMALint64t accidx, PRIMALint64t
     if (j < 0 || j >= t->acc_nafe[accidx]) return PRIMAL_RES_ERR_ARG;
     if (bj != bj) return PRIMAL_RES_ERR_ARG;
     t->acc_b[accidx][j] = bj;
+    acc_sync_linear(t);
     return PRIMAL_RES_OK;
 }
 
