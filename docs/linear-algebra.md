@@ -32,6 +32,11 @@ Left-looking, with a fill-reducing **minimum-degree** ordering
 large sparse LPs and QPs tractable: the interior-point method forms normal
 equations `K = A·M⁻¹·Aᵀ + δI` and factors `K` here, never the full KKT.
 
+The permutation travels with the factor: `spchol_solve_ord` applies it, and
+the natural-order solves (`spchol_solve`, `spchol_solve_all`) refuse an ordered
+factor. Read in its own order, an ordered factor answers the permuted system,
+a wrong vector with no error.
+
 Measured (`bench/`, sparse route forced on): a 400×200 LP solves in 0.57 s
 through this path versus 1.63 s dense — forcing the sparse route closes about
 2.9× of the gap to HiGHS on that size, the rest being algorithmic.

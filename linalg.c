@@ -656,9 +656,12 @@ SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     return spchol_factor_nat(n, Kp, Ki, Kx);
 }
 
-/* Solve K u = rhs in place through the natural-order factor.
- * Returns 0 ok, -1 on missing or zero diagonal. */
+/* Solve K u = rhs in place through a natural-order factor.  An ordered factor
+ * is refused: read in its own order it answers the permuted system, a wrong
+ * vector with no error, so its solve is spchol_solve_ord.
+ * Returns 0 ok, -1 on an ordered factor or a missing or zero diagonal. */
 int spchol_solve(const SpChol *L, double *rhs) {
+    if (L && L->perm) return -1;
     return spchol_solve_nat(L, rhs);
 }
 
@@ -703,9 +706,10 @@ SpChol *spchol_factor_dense(int n, const double *Kd) {
  * operation order as spchol_solve_nat (the backward sum is accumulated in the
  * same ascending-column order into one accumulator per RHS), so each column of
  * the result is bit-identical to solving it alone; the factor is traversed once
- * instead of nrhs times.  Returns 0 ok, -1 on NULL or a zero diagonal. */
+ * instead of nrhs times.  Natural-order factors only, as spchol_solve.
+ * Returns 0 ok, -1 on NULL, an ordered factor or a zero diagonal. */
 int spchol_solve_all(const SpChol *L, double *B, int nrhs) {
-    if (!L || !B || nrhs < 1) return -1;
+    if (!L || !B || nrhs < 1 || L->perm) return -1;
     int n = L->n;
     double *acc = (double *)calloc((size_t)nrhs, sizeof(double));
     if (!acc) return -1;
@@ -745,7 +749,7 @@ int spchol_solve_all(const SpChol *L, double *B, int nrhs) {
 }
 
 /* Fill-reducing wrapper: apply AMD to K, factor the permuted matrix, and keep
- * the permutation so spchol_solve can undo it.  A quasi-definite KKT factored
+ * the permutation so spchol_solve_ord can undo it.  A quasi-definite KKT factored
  * in natural order can carry orders-of-magnitude more fill than the same matrix
  * ordered (Clarabel/qdldl use exactly this: static AMD + sparse factor). */
 SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx) {

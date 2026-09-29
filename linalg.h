@@ -84,19 +84,22 @@ typedef struct {
     int *Li;      /* row indices */
     double *Lx;   /* values */
     int *perm;    /* fill-reducing ordering perm[k] = original index at position k
-                   * (NULL if the natural order was used); spchol_solve undoes it */
+                   * (NULL if the natural order was used); spchol_solve_ord undoes
+                   * it, spchol_solve and spchol_solve_all refuse a factor that
+                   * has one */
 } SpChol;
 
 /* Factor K in natural order (no fill-reducing permutation).
  * Returns NULL on allocation failure or non-positive-definite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx);
 /* same, with a fill-reducing AMD ordering applied internally (undone by
- * spchol_solve_ord); used by the sparse LP IPM, where fill matters. */
+ * spchol_solve_ord); used by the sparse interior points, where fill matters. */
 SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx);
-/* Solve through an ordered factor, undoing the AMD permutation.
+/* Solve through any factor, undoing its ordering when it has one.
  * Operates in place on rhs. 0 ok, -1 on NULL input or solve failure. */
 int spchol_solve_ord(const SpChol *L, double *rhs);
-/* solve K u = rhs in place. 0 ok, -1 singular. */
+/* solve K u = rhs in place through a natural-order factor. 0 ok, -1 singular
+ * or an ordered factor (whose solve is spchol_solve_ord). */
 int spchol_solve(const SpChol *L, double *rhs);
 /* Cholesky of a matrix known to have a FULL lower triangle: the same
  * left-looking operations as spchol_factor_nat (same k and i order), writing the
@@ -107,7 +110,8 @@ SpChol *spchol_factor_dense(int n, const double *Kd);
 /* Solve K * B = R for `nrhs` right-hand sides at once, B laid out row-major as
  * B[row*nrhs + col] (i.e. each RHS is a contiguous nrhs-strided vector).  One
  * pass over the factor instead of nrhs, and per-RHS the same operation order as
- * spchol_solve, so the numbers are identical.  0 ok, -1 on failure. */
+ * spchol_solve, so the numbers are identical.  Natural-order factors only.
+ * 0 ok, -1 on failure or an ordered factor. */
 int spchol_solve_all(const SpChol *L, double *B, int nrhs);
 /* Release a sparse Cholesky factor, including its ordering. NULL-safe. */
 void spchol_free(SpChol *L);
