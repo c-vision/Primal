@@ -1,0 +1,21 @@
+# PrimalSolver example -- an exponential-cone program in OPF format.
+#
+#   minimize    t
+#   subject to  (t, u, v) in the primal exponential cone, i.e. t >= u e^(v/u)
+#               u = 1
+#               v = 1
+#
+# Solution: t = e = 2.718281828.
+#
+# Run:  primal examples/exp_power.opf
+[objective minimize 'obj']
+t
+[/objective]
+[constraints]
+[con 'cu'] u = 1.0 [/con]
+[con 'cv'] v = 1.0 [/con]
+[/constraints]
+[bounds]
+[b] 0 <= * [/b]
+[cone pexp 'k'] t, u, v [/cone]
+[/bounds]

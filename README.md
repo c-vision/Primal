@@ -91,6 +91,51 @@ int main(void) {
 ports of public MOSEK examples with identical optimal values, 63 larger
 deterministic models, 44 finance models, 16 book models.
 
+## Command line
+
+The default `make` also builds `out/primal`, a small command-line solver that
+reads a model file, solves it and prints the solution. **The file is the
+interface**: the algorithm is chosen from what the model contains, so the same
+command solves LP, QP, SOCP, SDP, exponential/power and mixed-integer models.
+
+An input file (CPLEX LP format, the easiest to write by hand):
+
+```
+Maximize
+ obj: 3 x0 + 2 x1
+Subject To
+ c0: x0 + x1 <= 4
+ c1: x0 + 3 x1 <= 6
+Bounds
+ x0 <= 3
+ x1 <= 3
+End
+```
+
+```sh
+make
+./out/primal diet.lp
+```
+```
+PrimalSolver 0.1.0
+file    : diet.lp   (numvar=2  numcon=2)
+status  : OPTIMAL   prosta=PRIM_AND_DUAL_FEAS  solsta=OPTIMAL
+obj     : primal = 11   dual = 11
+viol    : primal = 0.000e+00
+x[0] = 3
+x[1] = 1
+```
+
+It reads MPS (`.mps`), CPLEX LP (`.lp`), OPF (`.opf`) and CBF (`.cbf`) — detected
+automatically — and accepts `--brief`, `--full` (also the duals and slacks),
+`--solution-file FILE`, `--write FILE`, `--max-iter N`,
+`--tol-pfeas/--tol-dfeas/--tol-gap V` and `--param NAME=VALUE`
+(run `./out/primal --help`).
+
+Ready-to-run inputs for every problem class — LP, MIP, QP, SOCP, an exponential
+cone and an SDP — live in [`examples/`](examples/README.md), each with its
+expected output; `make run-examples` solves them all.
+
 ## Build
 
 ```sh

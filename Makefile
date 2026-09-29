@@ -35,7 +35,7 @@ OBJS    = $(addprefix $(OUT)/,linalg.o stdform.o simplex.o ipm.o socp.o sdp.o \
           expcone.o mpsio.o cbf.o scaling.o presolve.o $(PRIMAL_OBJS))
 LIB_A   = $(OUT)/libprimal.a
 
-all: $(OUT)/example_lp $(OUT)/run_tests
+all: $(OUT)/example_lp $(OUT)/run_tests $(OUT)/primal
 
 lib: $(LIB_A)
 
@@ -48,8 +48,22 @@ $(OUT)/%.o: %.c $(HEADERS) | $(OUT)
 $(OUT)/example_lp: example_lp.c $(OBJS)
 	$(CC) $(CFLAGS) -o $@ example_lp.c $(OBJS) $(LDLIBS)
 
-$(OUT)/run_tests: test_primal.c $(OBJS)
-	$(CC) $(CFLAGS) -o $@ test_primal.c $(OBJS) $(LDLIBS)
+# Command-line front end (issue #24).  The binary has its own main(); the test
+# runner links the same source with -DPRIMAL_NO_MAIN so a T<n> can drive
+# primal_main() without exec.
+$(OUT)/primal: primal.c $(LIB_A) | $(OUT)
+	$(CC) $(CFLAGS) -I. -o $@ primal.c $(LIB_A) $(LDLIBS)
+
+# Solve every model file under examples/ with the CLI (its own output check).
+.PHONY: run-examples
+run-examples: $(OUT)/primal
+	@for f in examples/*.lp examples/*.opf examples/*.cbf; do echo "== $$f =="; ./$(OUT)/primal $$f --brief || exit 1; done
+
+$(OUT)/primal_cli.o: primal.c $(HEADERS) | $(OUT)
+	$(CC) $(CFLAGS) -DPRIMAL_NO_MAIN -c $< -o $@
+
+$(OUT)/run_tests: test_primal.c $(OBJS) $(OUT)/primal_cli.o
+	$(CC) $(CFLAGS) -o $@ test_primal.c $(OBJS) $(OUT)/primal_cli.o $(LDLIBS)
 
 test: $(OUT)/run_tests
 	./$(OUT)/run_tests

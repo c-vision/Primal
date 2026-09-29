@@ -1,0 +1,47 @@
+# PrimalSolver example -- a semidefinite program in CBF v4 format.
+# SDP needs a bar variable, which OPF/MPS/LP cannot express, so it uses CBF.
+#
+#   minimize    x0 + x1
+#   subject to  X = [[x0, 1], [1, x1]] >= 0   (X in S^2_+)
+#
+# By AM-GM, x0 x1 >= 1 and x0 + x1 >= 2, with equality at x0 = x1 = 1.
+# Solution: x = (1, 1), X = [[1, 1], [1, 1]], objective 2.
+#
+# Run:  primal examples/sdp_lmi.cbf
+VER
+4
+OBJSENSE
+MIN
+PSDVAR
+1
+2
+VAR
+2 1
+F 2
+CON
+5 5
+L= 1
+L= 1
+L= 1
+L+ 1
+L+ 1
+OBJACOORD
+2
+0 1
+1 1
+OBJFCOORD
+0
+FCOORD
+3
+0 0 0 0 1
+1 0 1 1 1
+2 0 0 1 0.5
+ACOORD
+4
+0 0 -1
+1 1 -1
+3 0 1
+4 1 1
+BCOORD
+1
+2 -1

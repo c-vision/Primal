@@ -19858,6 +19858,46 @@ static void test_t270(void) {
           "T270 infeasible: PRIM_INFEAS, the same verdict without a certificate");
 }
 
+/* T274: the command-line front end (primal.c) reads a file, solves it and
+ * prints the solution.  primal_main is main() without its own entry point,
+ * linked into this runner with -DPRIMAL_NO_MAIN (see the Makefile). */
+extern int primal_main(int argc, char **argv, FILE *out);
+static void test_t274(void) {
+    cur_name = "T274 CLI: read an LP file, solve, print the solution";
+    const char *path = "/tmp/mc_t274.lp";
+    FILE *f = fopen(path, "w");
+    if (!f) { check(0, "T274 write fixture"); return; }
+    fputs("Maximize\n obj: 3 x0 + 2 x1\nSubject To\n c0: x0 + x1 <= 4\n"
+          " c1: x0 + 3 x1 <= 6\nBounds\n x0 <= 3\n x1 <= 3\nEnd\n", f);
+    fclose(f);
+
+    FILE *out = tmpfile();
+    if (!out) { check(0, "T274 tmpfile"); remove(path); return; }
+    char *argv[3];
+    argv[0] = (char *)"primal"; argv[1] = (char *)path; argv[2] = NULL;
+    int rc = primal_main(2, argv, out);
+    check(rc == 0, "T274 exit 0 on an optimal model");
+    rewind(out);
+    char buf[4096];
+    size_t got = fread(buf, 1, sizeof buf - 1, out);
+    buf[got] = '\0';
+    fclose(out);
+    check(strstr(buf, "OPTIMAL") != NULL, "T274 prints an OPTIMAL status");
+    check(strstr(buf, "x[0] = ") != NULL && strstr(buf, "x[1] = ") != NULL,
+          "T274 prints one x[i] per variable");
+    const char *po = strstr(buf, "primal = ");
+    check(po && fabs(strtod(po + 9, NULL) - 11.0) < 1e-6, "T274 objective 11");
+
+    /* a missing file is a usage/I/O error, not a crash: exit 2 */
+    char *bad[3];
+    bad[0] = (char *)"primal"; bad[1] = (char *)"/tmp/mc_t274_missing.lp"; bad[2] = NULL;
+    FILE *o2 = tmpfile();
+    int rc2 = o2 ? primal_main(2, bad, o2) : 2;
+    if (o2) fclose(o2);
+    check(rc2 == 2, "T274 exit 2 on a missing file");
+    remove(path);
+}
+
 /* T273: the sparse QP engine solves a separable QP.  min sum (x_j^2 - x_j)
  * s.t. sum x_j <= 5, 0 <= x_j <= 10 has the optimum x_j = 5/n, objective
  * -5 + 25/n.  From n = 75 the standard form (a bound row per column) goes to
@@ -19941,6 +19981,7 @@ static void test_t272(void) {
 
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t274();
     test_t273();
     test_t272();
     test_t271();
