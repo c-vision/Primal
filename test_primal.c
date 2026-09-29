@@ -19858,8 +19858,53 @@ static void test_t270(void) {
           "T270 infeasible: PRIM_INFEAS, the same verdict without a certificate");
 }
 
+/* T272: the sparse QP engine solves a separable QP.  min sum (x_j^2 - x_j)
+ * s.t. sum x_j <= 5, 0 <= x_j <= 10 has the optimum x_j = 5/n, objective
+ * -5 + 25/n.  From n = 75 the standard form (a bound row per column) goes to
+ * the sparse QP engine, whose reduced matrix K = A M^-1 A' is an arrowhead:
+ * sparse, so it is factored under a fill-reducing ordering, and the direction
+ * is right only if every solve with that factor undoes the ordering. */
+static void test_t272(void) {
+    cur_name = "T272 sparse QP engine: separable QP with a sparse reduced matrix";
+    const int sizes[2] = { 75, 400 };
+    for (int s = 0; s < 2; s++) {
+        int n = sizes[s];
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, n);
+        PRIMAL_appendcons(t, 1);
+        for (int j = 0; j < n; j++) {
+            PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 10.0);
+            PRIMAL_putcj(t, j, -1.0);
+            PRIMAL_putaij(t, 0, j, 1.0);
+            PRIMAL_putqobjij(t, j, j, 2.0);
+        }
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 5.0);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T272 optimize");
+        double pobj = 0.0, want = -5.0 + 25.0 / n;
+        PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &pobj);
+        check(fabs(pobj - want) <= 1e-7 * (1.0 + fabs(want)), "T272 objective -5 + 25/n");
+        double *x = (double *)malloc((size_t)n * sizeof(double));
+        if (x && PRIMAL_getxx(t, PRIMAL_SOL_ITR, x) == PRIMAL_RES_OK) {
+            double sum = 0.0, viol = 0.0;
+            for (int j = 0; j < n; j++) {
+                sum += x[j];
+                if (-x[j] > viol) viol = -x[j];
+                if (x[j] - 10.0 > viol) viol = x[j] - 10.0;
+            }
+            if (sum - 5.0 > viol) viol = sum - 5.0;
+            check(viol <= 1e-7, "T272 the point measures feasible");
+        } else {
+            check(0, "T272 getxx");
+        }
+        free(x);
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t272();
     test_t271();
     test_t270();
     test_t269();
