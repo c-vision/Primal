@@ -140,7 +140,7 @@ expected output; `make run-examples` solves them all.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 4891 checks
+make test          # reliability suite: 4910 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -240,16 +240,15 @@ MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 
 ## Status
 
-Last full validation: **4891 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
+Last full validation: **4910 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
 exit 0. Warning-free. ASan + UBSan clean.
 
-The subsequent SDP predictor/corrector change reuses LU factors within an
-iteration only when the equilibrated matrices are identical. T272 covers a
-mixed SOC/PSD problem and reoptimization; the focused conic regression run
-passes 184 checks. Two before/after traces are identical apart from reuse
-diagnostics, with half as many LU factorizations. Five paired timing runs show
-only small median reductions with overlapping ranges; no broad speedup is
-claimed, and the full suite has not been rerun for this change.
+The SDP predictor/corrector change reuses LU factors within an iteration only
+when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD
+problem and reoptimization; the focused conic regression run passes 184 checks.
+Two before/after traces are identical apart from reuse diagnostics, with half
+as many LU factorizations. Five paired timing runs show only small median
+reductions with overlapping ranges; no broad speedup is claimed.
 
 ## TODO
 
