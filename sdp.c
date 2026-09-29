@@ -1145,6 +1145,9 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
              ez && es && Dez && Des && rp && rdx && dy && dx && ds && Dx && Ds && fb_snap &&
              snap && ((nep == 0 && nb == 0) || trial);
     int status = 1;
+    LuFact *pc_factor = NULL;
+    double *pc_matrix = NULL;
+    int pc_size = 0;
     if (!ok) { status = 2; goto done; }
 
     /* Starting point: strictly inside every cone at once, because the barrier
@@ -1201,6 +1204,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     D.Dez = Dez; D.Des = Des; D.dy = dy; D.soff = soff; D.dmax2 = dmax2;
 
     for (int it = 0; it < max_iter; it++) {
+        dmat_lu_free(pc_factor); pc_factor = NULL;
+        free(pc_matrix); pc_matrix = NULL;
         if (primal_cb_iter_on) primal_cb_iter(34);
         ipmres R = ipm_resid(&C);
         double mu = R.mu;
@@ -1329,11 +1334,10 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
          * ratio (predicted complementary product)/(current mu), cubed because
          * that product is quadratic in the step.  Pass 1 re-solves with
          * sigma*mu on the right.  Nothing is applied between the passes, so the
-         * second one rebuilds an IDENTICAL matrix and factors it again: the
-         * redundancy is real (two LU factorisations per iteration) and kept
-         * because sharing the factorisation would mean hoisting a third buffer
-         * and its lifetime out of the block that builds the system, for a
-         * saving that is not what limits these solves. */
+         * corrector can reuse the predictor's LU. Compare the assembled,
+         * equilibrated matrix exactly before reusing it: a different scaling
+         * branch must still get its own factorization. Retain assembly and
+         * refinement unchanged, including their floating-point order. */
         int maxd = 0; for (int j = 0; j < nb; j++) if (dims[j] > maxd) maxd = dims[j];
         /* Per-block scaling (Ws, Wi, Xi, Mt): W = X#S is a function of the
          * iterate (Xbar, Sbar) alone, not of sigma -- the two Mehrotra passes
@@ -1517,8 +1521,13 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 double *gsc = refi, *rcor = refi ? refi + Nsys : NULL, *dcor = refi ? refi + 2 * Nsys : NULL;
                 if (refine_on && !refi) { free(cc); free(Sys); free(Srhs); status = 2; goto done; }
                 if (refine_on) memcpy(gsc, Srhs, (size_t)Nsys * sizeof(double));
-                LuFact *f = dmat_lu_factor(Sys, Nsys);
+                int reuse = pass == 1 && pc_factor && pc_size == Nsys &&
+                    memcmp(Sys, pc_matrix, (size_t)Nsys * Nsys * sizeof(double)) == 0;
+                LuFact *f = reuse ? pc_factor : dmat_lu_factor(Sys, Nsys);
                 if (!f) { free(cc); free(refi); free(Sys); free(Srhs); status = 3; goto refine; }
+                if (pass == 0) { pc_factor = f; pc_matrix = Sys; pc_size = Nsys; }
+                if (getenv("GMB_DBG")) fprintf(stderr,
+                    "  [kkt] pass=%d n=%d reuse=%d\n", pass, Nsys, reuse);
                 /* Compensated triangular sweeps for the PSD/SOC-only path
                  * (nep == 0): the exp/power rows (socp.c, sdp.c's own Thin
                  * block) are validated on the plain solve, see
@@ -1537,7 +1546,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                         t = fabs(gsc[a] - t); if (t > rn2) rn2 = t; }
                     if (!(rn2 < rn)) { for (int b = 0; b < Nsys; b++) Srhs[b] -= dcor[b]; break; }
                 }
-                dmat_lu_free(f);
+                if (f != pc_factor) dmat_lu_free(f);
                 for (int k = 0; k < m; k++) dy[k] = Srhs[k] * cc[k];
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; for (int a = 0; a < kk; a++) Dzsoc[soff[i] + a] = Srhs[m + soff[i] + a] * cc[m + soff[i] + a]; }
                 for (int a = 0; a < Ke; a++) Dez[a] = Srhs[m + K + a] * cc[m + K + a];
@@ -1545,7 +1554,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 aug_dx = augx;
                 free(cc);
                 free(refi);
-                free(Sys); free(Srhs);
+                if (Sys != pc_matrix) free(Sys);
+                free(Srhs);
             }
             /* dz */
             if (!aug_dx) for (int i = 0; i < n; i++) { double e = rdx[i]; for (int k = 0; k < m; k++) e += A[k * n + i] * dy[k]; e += (-ss[i] + sigma * mu / xs[i]); dx[i] = (xs[i] / ss[i]) * e; }
@@ -1810,6 +1820,8 @@ refine:
     for (int i = 0; i < n; i++) x[i] = xs[i];
     for (int i = 0; i < nep; i++) { for (int a = 0; a < 3; a++) { Zexp[i][a] = ez[3 * i + a]; Sexp[i][a] = es[3 * i + a]; } }
 done:
+    dmat_lu_free(pc_factor);
+    free(pc_matrix);
     /* A point is in the outputs (accepted-and-demoted, or frozen) but the
      * native verdict is "not solved": the caller may publish it as a
      * fallback when the cuts do not answer either. */

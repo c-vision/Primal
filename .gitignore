@@ -18,6 +18,7 @@ __pycache__/
 # internal docs (kept locally, never published)
 /TODO.md
 /gap.md
+/attempts.md
 /AGENTS.md
 
 # header template (dev aid, redundant with the headers already in every file)

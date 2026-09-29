@@ -19858,8 +19858,44 @@ static void test_t270(void) {
           "T270 infeasible: PRIM_INFEAS, the same verdict without a certificate");
 }
 
+/* T272: predictor/corrector factor reuse on a coupled SOC/PSD solve, then
+ * reoptimization with a different right side. The analytic optima are
+ * ||(3,4)|| + min tr([[a,1],[1,b]]) = 7, and 10 + 2 = 12. */
+static void test_t272(void) {
+    cur_name = "T272 SOC/PSD predictor-corrector and repeated solve";
+    PRIMALenv_t env; PRIMALtask_t t;
+    PRIMAL_makeenv(&env, NULL); PRIMAL_maketask(env, 3, 3, &t);
+    for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0,1,2});
+    int dim = 2, off, tr;
+    PRIMAL_appendbarvars(t, 1, &dim);
+    PRIMAL_appendsparsesymmat(t, 2, 1, (int[]){0}, (int[]){1}, (double[]){0.5}, &off);
+    PRIMAL_appendsparsesymmat(t, 2, 2, (int[]){0,1}, (int[]){0,1}, (double[]){1,1}, &tr);
+    PRIMAL_putbaraij(t, 2, 0, 1, &off, (double[]){1});
+    PRIMAL_putbarcj(t, 0, 1, &tr, (double[]){1});
+    PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1, 1);
+    PRIMAL_putaij(t, 0, 1, 1); PRIMAL_putaij(t, 1, 2, 1);
+    for (int scale = 1; scale <= 2; scale++) {
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 3*scale, 3*scale);
+        PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 4*scale, 4*scale);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T272 solve");
+        double po = 0, dob = 0, pi = INFINITY, di = INFINITY, pv = INFINITY;
+        PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+        PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
+        PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pi);
+        PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &di);
+        PRIMAL_getpviolcones(t, PRIMAL_SOL_ITR, 1, (int[]){0}, &pv);
+        check(fabs(po-(5*scale+2)) < 1e-6, "T272 analytic objective");
+        check(fabs(po-dob)/(1+fabs(po)+fabs(dob)) < 1e-7, "T272 duality gap");
+        check(pi < 1e-7 && di < 1e-7 && pv < 1e-7, "T272 primal and dual feasibility");
+    }
+    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t272();
     test_t271();
     test_t270();
     test_t269();

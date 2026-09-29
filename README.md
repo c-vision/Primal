@@ -113,9 +113,9 @@ Capability, licence and accuracy class — **not** speed.
 
 | | PrimalSolver | MOSEK | Gurobi | HiGHS | Clarabel | SCS |
 |---|---|---|---|---|---|---|
-| LP / QP | yes | yes | yes | yes | LP (QP via cones) | yes |
+| LP / QP | yes | yes | yes | yes | yes, native QP | yes |
 | SOCP | yes | yes | Gurobi only | — | yes | yes |
-| **SDP** (PSD) | yes | yes | — | — | **no** | yes, first-order |
+| **SDP** (PSD) | yes | yes | — | — | yes | yes, first-order |
 | **Exp / power** | yes, native | yes | — | — | yes | yes, first-order |
 | MIP / MIQP | yes | yes | yes | yes | — | — |
 | Method | interior point | interior point | simplex + IPM | simplex + IPM | interior point | **first-order** |
@@ -125,9 +125,12 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **~35× faster** here on
-  SOCP (0.0004 s against 0.014 s at 200 cones) — but it has no PSD cone, so it
-  cannot do half of what this does.
+- **Clarabel** is the closest open conic IPM and is **~35× faster** in the
+  recorded SOCP case (0.0004 s against 0.014 s for `socp_200`: 100 cones,
+  300 scalar variables). It supports PSD cones and quadratic objectives
+  directly; see its [documented capabilities](https://clarabel.org/stable/).
+  These timings are indicative: the harness excludes Clarabel's solver
+  construction but includes PrimalSolver's conversion inside `PRIMAL_optimize`.
 - **SCS** does PSD and exponential cones, but is first-order: it agrees with
   this solver's objective to about `1e-5`, where the IPM reaches `1e-8`.
 - **HiGHS** is faster on large LP/MILP — 0.012 s against 0.090 s on a 400×200 LP.
@@ -165,9 +168,9 @@ MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 | milp_40x20 | milp | 40 x 20 | 139 | 0.2894 | N/A | N/A | N/A | 0.1442 | 143.955 |
 | milp_60x30 | milp | 60 x 30 | 260 | 1.0002 | N/A | N/A | N/A | 0.2592 | 200.846 |
 | milp_80x40 | milp | 80 x 40 | 460 | 3.0181 | N/A | N/A | N/A | 1.0419 | 277.019 |
-| socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
-| socp_120 | socp | 120 x 1 | - | 0.0042 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0137 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
+| socp_40 | socp | 60 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
+| socp_120 | socp | 180 x 1 | - | 0.0042 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
+| socp_200 | socp | 300 x 1 | - | 0.0137 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
 | sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0004 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
@@ -192,8 +195,16 @@ MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 
 ## Status
 
-**4891 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
+Last full validation: **4891 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
 exit 0. Warning-free. ASan + UBSan clean.
+
+The subsequent SDP predictor/corrector change reuses LU factors within an
+iteration only when the equilibrated matrices are identical. T272 covers a
+mixed SOC/PSD problem and reoptimization; the focused conic regression run
+passes 184 checks. Two before/after traces are identical apart from reuse
+diagnostics, with half as many LU factorizations. Five paired timing runs show
+only small median reductions with overlapping ranges; no broad speedup is
+claimed, and the full suite has not been rerun for this change.
 
 ## TODO
 
