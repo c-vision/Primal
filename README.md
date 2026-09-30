@@ -140,7 +140,7 @@ expected output; `make run-examples` solves them all.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 4910 checks
+make test          # reliability suite: 4905 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -240,7 +240,7 @@ MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 
 ## Status
 
-Last full validation: **4910 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
+Last full validation: **4905 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
 exit 0. Warning-free. ASan + UBSan clean.
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
