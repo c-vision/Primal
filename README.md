@@ -136,6 +136,24 @@ Ready-to-run inputs for every problem class — LP, MIP, QP, SOCP, an exponentia
 cone and an SDP — live in [`lp_examples/`](lp_examples/README.md), each with its
 expected output; `make run-examples` solves them all.
 
+## Python
+
+PrimalSolver is usable from Python through the `primalsolver` package (ctypes
+bindings, no compiler needed). Wheels for **macOS universal2** and **Linux
+x86_64/aarch64** are attached to the [latest
+release](https://github.com/c-vision/Primal/releases/latest); Windows wheels are
+built by the CI.
+
+```sh
+# pick the wheel for your platform from the release page, e.g. macOS:
+pip install https://github.com/c-vision/Primal/releases/download/v0.1.0/primalsolver-0.1.0-py3-none-macosx_11_0_universal2.whl
+
+python -c "import primalsolver; print(primalsolver.version())"
+```
+
+53 runnable examples live in [`python_examples/`](python_examples/README.md) —
+installation, usage, and **one line per example**.
+
 ## Build
 
 ```sh
