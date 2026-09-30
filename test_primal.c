@@ -19950,6 +19950,81 @@ static void test_t275(void) {
     remove(path);
 }
 
+/* Write an LP text to a scratch file and read it back into a fresh task.
+ * Returns NULL if the task cannot be made or the file does not read. */
+static PRIMALtask_t t276_read(PRIMALenv_t env, const char *text) {
+    const char *path = "/tmp/mc_t276.lp";
+    FILE *f = fopen(path, "w");
+    if (!f) return NULL;
+    fputs(text, f); fclose(f);
+    PRIMALtask_t t = NULL;
+    if (PRIMAL_maketask(env, 0, 0, &t) != PRIMAL_RES_OK) return NULL;
+    if (PRIMAL_readdataautoformat(t, path) != PRIMAL_RES_OK) {
+        PRIMAL_deletetask(&t);
+        return NULL;
+    }
+    remove(path);
+    return t;
+}
+
+/* T276: the LP lexical layer matches what real LP files contain.  A signal that
+ * the parser understood the file is numvar: a term the scanner fails to split
+ * ("2x0", "x0+x1", "-x", "2*x", "1.5x0") does not error out -- it coins a
+ * variable named after the whole text, so the model silently changes.  Each case
+ * pins the variable count, the objective and the optimum. */
+static void test_t276(void) {
+    cur_name = "T276 LP parser: glued operators/coefficients, ranged rows, inf bounds";
+    PRIMALenv_t env = NULL;
+    check_rc(PRIMAL_makeenv(&env, NULL), PRIMAL_RES_OK, "T276 env");
+    struct Case { const char *nm; const char *src; int nv; int nc; double obj; double x0, x1; };
+    static const struct Case cs[] = {
+        { "A coeff glued", "Minimize\n obj: 2x0 + 3x1\nSubject To\n c0: x0 + x1 >= 1\nEnd\n", 2, 1, 2.0, 1.0, 0.0 },
+        { "B ops glued",   "Minimize\n obj: x0+x1\nSubject To\n c0: 2*x0+3*x1>=1\nEnd\n", 2, 1, 1.0/3.0, 0.0, 1.0/3.0 },
+        { "C sign glued",  "Minimize\n obj: -x0 + x1\nSubject To\n c0: x0 + x1 >= 1\n c1: x0 <= 3\n c2: x1 <= 3\nEnd\n", 2, 3, -3.0, 3.0, 0.0 },
+        { "D sign+coef",   "Minimize\n obj: x0-2x1\nSubject To\n c0: x0-x1>=-1\n c1: x0 <= 2\n c2: x1 <= 2\nEnd\n", 2, 3, -3.0, 1.0, 2.0 },
+        { "E dot coeff",   "Minimize\n obj: 1.5x0 + x1\nSubject To\n c0: x0 + x1 >= 1\nEnd\n", 2, 1, 1.0, 0.0, 1.0 },
+        { "F sci glued",   "Minimize\n obj: 1e-3x0 + x1\nSubject To\n c0: x0 + x1 >= 1\nEnd\n", 2, 1, 1e-3, 1.0, 0.0 },
+        { "G leading dot", "Minimize\n obj: .5x0 + x1\nSubject To\n c0: x0 + x1 >= 1\nEnd\n", 2, 1, 0.5, 1.0, 0.0 },
+        { "H const+term",  "Minimize\n obj: 5 + 2x0 + x1\nSubject To\n c0: x0 + x1 >= 4\nEnd\n", 2, 1, 9.0, 0.0, 4.0 },
+        { "I ranged row",  "Maximize\n obj: x0 + x1\nSubject To\n c0: 1 <= x0 + x1 <= 3\nEnd\n", 2, 2, 3.0, NAN, NAN },
+        { "J inf bound",   "Minimize\n obj: x0\nSubject To\n c0: x0 >= 1\nBounds\n -inf <= x0 <= 5\nEnd\n", 1, 1, 1.0, 1.0, NAN },
+        { "K sci space",   "Minimize\n obj: 1e-3 x0 + x1\nSubject To\n c0: x0 + x1 >= 1\nEnd\n", 2, 1, 1e-3, 1.0, 0.0 },
+        { "L const pair",  "Minimize\n obj: 5 + 3x0\nSubject To\n c0: x0 >= 2\nEnd\n", 1, 1, 11.0, 2.0, NAN },
+        { "M unlabeled rows", "Maximize\n obj: x0 + x1\nSubject To\n 2x0 + x1 <= 4\n x0 + 2x1 <= 4\nEnd\n", 2, 2, 8.0/3.0, NAN, NAN },
+        { "N wrapped expr",   "Maximize\n obj: x0 + x1\nSubject To\n c0: 2x0\n + x1 <= 4\n c1: x0 + 2x1 <= 4\nEnd\n", 2, 2, 8.0/3.0, NAN, NAN },
+    };
+    for (int c = 0; c < (int)(sizeof cs / sizeof cs[0]); c++) {
+        char lbl[128];
+        PRIMALtask_t t = t276_read(env, cs[c].src);
+        snprintf(lbl, sizeof lbl, "T276 %s reads", cs[c].nm);
+        if (!t) { check(0, lbl); continue; }
+        check(1, lbl);
+        int nv = 0, nc = 0;
+        PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
+        snprintf(lbl, sizeof lbl, "T276 %s numvar=%d", cs[c].nm, cs[c].nv);
+        check(nv == cs[c].nv, lbl);
+        snprintf(lbl, sizeof lbl, "T276 %s numcon=%d", cs[c].nm, cs[c].nc);
+        check(nc == cs[c].nc, lbl);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T276 optimize");
+        double obj = 1e300; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
+        double x[2] = { 0.0, 0.0 }; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
+        snprintf(lbl, sizeof lbl, "T276 %s objective", cs[c].nm);
+        check(fabs(obj - cs[c].obj) < 1e-6 * (1.0 + fabs(cs[c].obj)), lbl);
+        snprintf(lbl, sizeof lbl, "T276 %s x", cs[c].nm);
+        check((isnan(cs[c].x0) || fabs(x[0] - cs[c].x0) < 1e-6) &&
+              (isnan(cs[c].x1) || fabs(x[1] - cs[c].x1) < 1e-6), lbl);
+        PRIMAL_deletetask(&t);
+    }
+    {   /* the phantom the old scanner coined must not exist */
+        PRIMALtask_t t = t276_read(env, cs[0].src);
+        int idx = -1;
+        check(t && PRIMAL_getidxvar(t, "2x0", &idx) != PRIMAL_RES_OK,
+              "T276 no variable named '2x0'");
+        if (t) PRIMAL_deletetask(&t);
+    }
+    PRIMAL_deleteenv(&env);
+}
+
 /* T273: the sparse QP engine solves a separable QP.  min sum (x_j^2 - x_j)
  * s.t. sum x_j <= 5, 0 <= x_j <= 10 has the optimum x_j = 5/n, objective
  * -5 + 25/n.  From n = 75 the standard form (a bound row per column) goes to
@@ -20034,6 +20109,7 @@ static void test_t272(void) {
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
     test_t275();
+    test_t276();
     test_t274();
     test_t273();
     test_t272();

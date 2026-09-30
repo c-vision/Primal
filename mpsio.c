@@ -83,26 +83,69 @@ static void toks_push(Toks *T, const char *s, int len) {
  * Grammar: a '*' is a comment only in column 1 (MPS), a '\' truncates the rest
  * of the line even inside MPS text (LP), and the characters : < > = are tokens
  * of their own -- with a following '=' glued to them -- so a reader can
- * recognise a relation without looking ahead. */
-static int toks_load(const char *filename, Toks *T) {
+ * recognise a relation without looking ahead.  `lp` selects the LP scan, where
+ * '+' '-' '*' are separators too and a number is scanned whole, so a term may
+ * be written "x0+x1", "2x0" or "2*x" with no spaces; the MPS scan keeps
+ * whitespace-delimited names, where those characters may be part of a name. */
+static int toks_load(const char *filename, Toks *T, int lp) {
     FILE *f = fopen(filename, "r");
     if (!f) return 0;
     char line[8192];
     while (fgets(line, sizeof line, f)) {
         T->curline++;
-        char *p = line;
-        if (*p == '*') continue;                      /* MPS comment line */
+        if (line[0] == '*') continue;                 /* comment line (MPS; also seen in LP) */
         char *q = strchr(line, '\\');
         if (q) *q = 0;                                /* LP comment */
-        p = line;
+        char *p = line;
+        if (lp) {
+            /* LP grammar: '+' '-' '*' are separators and are routinely glued
+             * to what they act on ("x0+x1", "2x0", "-x", "2*x"), so a name
+             * never contains one, a sign is always its own token, and a number
+             * is scanned whole (exponent sign included).  Without this every
+             * glued term coined a variable named after the whole text -- the
+             * phantom "+COLONE" of issue #27 was the sign case. */
+            while (*p) {
+                while (*p && isspace((unsigned char)*p)) p++;
+                if (!*p) break;
+                unsigned char ch = (unsigned char)*p;
+                if (ch == ':' || ch == '[' || ch == ']') {
+                    toks_push(T, p, 1); p++; continue;
+                }
+                if (ch == '<' || ch == '>' || ch == '=') {
+                    int len = (p[1] == '=') ? 2 : 1;
+                    toks_push(T, p, len); p += len; continue;
+                }
+                if (ch == '+' || ch == '-') { toks_push(T, p, 1); p++; continue; }
+                if (ch == '*') { p++; continue; }     /* multiplication: a separator */
+                if (isdigit(ch) || (ch == '.' && isdigit((unsigned char)p[1]))) {
+                    char *st = p;
+                    while (isdigit((unsigned char)*p)) p++;
+                    if (*p == '.') { p++; while (isdigit((unsigned char)*p)) p++; }
+                    if (*p == 'e' || *p == 'E') {
+                        char *sv = p; p++;
+                        if (*p == '+' || *p == '-') p++;
+                        if (isdigit((unsigned char)*p))
+                            while (isdigit((unsigned char)*p)) p++;
+                        else p = sv;                  /* not an exponent after all */
+                    }
+                    toks_push(T, st, (int)(p - st)); continue;
+                }
+                if (isalpha(ch) || ch == '_') {
+                    char *st = p; p++;
+                    while (isalnum((unsigned char)*p) || *p == '_' || *p == '.' ||
+                           *p == '$' || *p == '~') p++;
+                    toks_push(T, st, (int)(p - st)); continue;
+                }
+                toks_push(T, p, 1); p++;              /* unknown char: never stall */
+            }
+            continue;
+        }
+        /* MPS / free MPS: names are whitespace-delimited with no operators, so a
+         * sign glued to a name ("+COLONE") is two tokens while a sign glued to a
+         * number ("-3.5") stays one (parse_num consumes it whole). */
         while (*p) {
             while (*p && isspace((unsigned char)*p)) p++;
             if (!*p) break;
-            /* A sign glued to a NAME ("+COLONE", "-x") is two tokens: the LP
-             * parsers read a sign as a token of its own, and keeping it glued
-             * coined a variable literally named "+COLONE" (issue #27).  A sign
-             * glued to a NUMBER ("-3.5", "+.5") stays one token, because
-             * parse_num/strtod consume it whole. */
             if ((*p == '+' || *p == '-') &&
                 (isalpha((unsigned char)p[1]) || p[1] == '_')) {
                 toks_push(T, p, 1); p++; continue;
@@ -185,6 +228,19 @@ static char rel_char(const char *s) {
     if (teq(s, "<=") || teq(s, "<") || teq(s, "=<")) return 'L';
     if (teq(s, ">=") || teq(s, ">") || teq(s, "=>")) return 'G';
     return 'E';
+}
+
+/* True if token i may continue the statement whose previous token is i-1.  An
+ * LP expression wraps onto the next line only when a '+'/'-' sits at one end of
+ * the break; without that a new line is a new statement.  This is what tells
+ * "x <= 4\n x0 <= 3" (two constraints) apart from "x <=\n 4 + y" (one wrapped
+ * constraint), and it is why the readers know where a constraint ends. */
+static int lp_cont(const Toks *T, int i) {
+    if (i <= 0) return 1;
+    if (T->line[i] == T->line[i - 1]) return 1;
+    if (ieq(T->tok[i], "+") || ieq(T->tok[i], "-")) return 1;
+    if (ieq(T->tok[i - 1], "+") || ieq(T->tok[i - 1], "-")) return 1;
+    return 0;
 }
 
 /* Same out-of-memory rule as toks_push: allocate or exit. */
@@ -274,6 +330,15 @@ static int parse_num(const char *s, double *v) {
     if (!end || *end != 0 || end == s) return 0;
     *v = x;
     return 1;
+}
+
+/* An LP bound may be written "inf"/"infinity" (optionally signed) instead of a
+ * number; the LP scanner emits the sign separately, so this is never asked for
+ * "-inf" as one token.  Recognising it keeps "x <= +inf" from coining a
+ * variable named "+inf". */
+static int parse_inf(const char *s, double *v) {
+    if (ieq(s, "inf") || ieq(s, "infinity")) { *v = INF; return 1; }
+    return 0;
 }
 
 /* ================= MPS writer ================= */
@@ -1178,7 +1243,9 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
             double v;
             if (parse_num(tk, &v)) {
                 if (i + 1 < T->n && !is_lp_section(T->tok[i + 1]) &&
-                    !tok_is(T, i + 1, ":")) {
+                    !tok_is(T, i + 1, ":") && !ieq(T->tok[i + 1], "+") &&
+                    !ieq(T->tok[i + 1], "-") &&
+                    T->line[i + 1] == T->line[i]) {
                     int c = names_get(&cols, T->tok[i + 1], 1);
                     ENSURE_CJ(c);
                     cj[c] += sign * v;
@@ -1222,9 +1289,11 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                         }
                     i += 2;
                 }
+                int cstart = i;
                 double lsign = 1.0, lconst = 0.0;
                 while (i < T->n && !is_rel(T->tok[i]) && !is_lp_section(T->tok[i]) &&
-                       !tok_is(T, i, ":") && !tok_is(T, i + 1, ":")) {
+                       !tok_is(T, i, ":") && !tok_is(T, i + 1, ":") &&
+                       (i == cstart || lp_cont(T, i))) {
                     if (T->tok[i][0] == '[' || T->tok[i][0] == ']') { rc = PRIMAL_RES_ERR_FILE; goto done; }
                     if (ieq(T->tok[i], "+")) { lsign = 1.0; i++; continue; }
                     if (ieq(T->tok[i], "-")) { lsign = -1.0; i++; continue; }
@@ -1232,7 +1301,8 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                     if (parse_num(T->tok[i], &v)) {
                         if (i + 2 < T->n && !is_rel(T->tok[i + 1]) &&
                             !is_lp_section(T->tok[i + 1]) && !tok_is(T, i + 1, ":") &&
-                            !tok_is(T, i + 2, ":")) {
+                            !tok_is(T, i + 2, ":") && !ieq(T->tok[i + 1], "+") &&
+                            !ieq(T->tok[i + 1], "-") && T->line[i + 1] == T->line[i]) {
                             int c = names_get(&cols, T->tok[i + 1], 1);
                             ipush(&C->sub, c); dpush(&C->val, lsign * v);
                             i += 2;
@@ -1246,9 +1316,11 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                 }
                 if (i >= T->n || !is_rel(T->tok[i])) { rc = PRIMAL_RES_ERR_FILE; goto done; }
                 char r2 = rel_char(T->tok[i++]);
+                int rstart = i;
                 double rsign = 1.0, rconst = 0.0;
                 while (i < T->n && !is_lp_section(T->tok[i]) && !is_rel(T->tok[i]) &&
-                       !tok_is(T, i, ":") && !tok_is(T, i + 1, ":")) {
+                       !tok_is(T, i, ":") && !tok_is(T, i + 1, ":") &&
+                       (i == rstart || lp_cont(T, i))) {
                     if (T->tok[i][0] == '[' || T->tok[i][0] == ']') { rc = PRIMAL_RES_ERR_FILE; goto done; }
                     if (ieq(T->tok[i], "+")) { rsign = 1.0; i++; continue; }
                     if (ieq(T->tok[i], "-")) { rsign = -1.0; i++; continue; }
@@ -1256,7 +1328,8 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                     if (parse_num(T->tok[i], &v)) {
                         if (i + 2 < T->n && !is_lp_section(T->tok[i + 1]) &&
                             !is_rel(T->tok[i + 1]) && !tok_is(T, i + 1, ":") &&
-                            !tok_is(T, i + 2, ":")) {
+                            !tok_is(T, i + 2, ":") && !ieq(T->tok[i + 1], "+") &&
+                            !ieq(T->tok[i + 1], "-") && T->line[i + 1] == T->line[i]) {
                             /* coef var on the right: move left negated */
                             int c = names_get(&cols, T->tok[i + 1], 1);
                             ipush(&C->sub, c); dpush(&C->val, -rsign * v);
@@ -1272,6 +1345,50 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                 C->rel = r2;
                 C->rhs = rconst - lconst;
                 ncon++;
+                /* A ranged row "l rel1 expr rel2 r": the row above is "l - expr
+                 * rel1 0"; the second relation makes "expr rel2 r" a row of its
+                 * own, so the other bound is not silently dropped.  The middle
+                 * expression is -(C), since C holds l - expr. */
+                if (i < T->n && is_rel(T->tok[i])) {
+                    if (ncon == con_cap) {
+                        con_cap = con_cap ? con_cap * 2 : 8;
+                        LpCon *nc2 = (LpCon *)realloc(cons, (size_t)con_cap * sizeof(LpCon));
+                        if (!nc2) { rc = PRIMAL_RES_ERR_ALLOC; goto done; }
+                        cons = nc2;
+                    }
+                    C = &cons[ncon - 1];   /* realloc may have moved the array */
+                    LpCon *D = &cons[ncon];
+                    memset(D, 0, sizeof *D);
+                    D->rel = rel_char(T->tok[i++]);
+                    for (int z = 0; z < C->sub.n; z++) {
+                        ipush(&D->sub, C->sub.a[z]);
+                        dpush(&D->val, -C->val.a[z]);
+                    }
+                    double dsign = 1.0, dconst = 0.0;
+                    while (i < T->n && !is_lp_section(T->tok[i]) && !is_rel(T->tok[i]) &&
+                           !tok_is(T, i, ":") && !tok_is(T, i + 1, ":")) {
+                        if (ieq(T->tok[i], "+")) { dsign = 1.0; i++; continue; }
+                        if (ieq(T->tok[i], "-")) { dsign = -1.0; i++; continue; }
+                        double v2;
+                        if (parse_num(T->tok[i], &v2) || parse_inf(T->tok[i], &v2)) {
+                            if (i + 2 < T->n && !is_rel(T->tok[i + 1]) &&
+                                !is_lp_section(T->tok[i + 1]) && !tok_is(T, i + 1, ":") &&
+                                !tok_is(T, i + 2, ":") && !ieq(T->tok[i + 1], "+") &&
+                                !ieq(T->tok[i + 1], "-") && T->line[i + 1] == T->line[i]) {
+                                int c = names_get(&cols, T->tok[i + 1], 1);
+                                ipush(&D->sub, c); dpush(&D->val, -dsign * v2);
+                                i += 2;
+                            } else { dconst += dsign * v2; i++; }
+                        } else {
+                            int c = names_get(&cols, T->tok[i], 1);
+                            ipush(&D->sub, c); dpush(&D->val, -dsign);
+                            i++;
+                        }
+                        dsign = 1.0;
+                    }
+                    D->rhs = dconst;
+                    ncon++;
+                }
             }
             continue;
         }
@@ -1283,7 +1400,7 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                 if (ieq(T->tok[k], "-")) { sgn = -1.0; k++; }
                 else if (ieq(T->tok[k], "+")) k++;
                 double v;
-                if (parse_num(T->tok[k], &v)) {
+                if (parse_num(T->tok[k], &v) || parse_inf(T->tok[k], &v)) {
                     v *= sgn;
                     i = k + 1;
                     if (i >= T->n || !is_rel(T->tok[i])) { rc = PRIMAL_RES_ERR_FILE; goto done; }
@@ -1298,7 +1415,7 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                         if (ieq(T->tok[i], "-")) { s2 = -1.0; i++; }
                         else if (ieq(T->tok[i], "+")) i++;
                         double v2;
-                        if (i >= T->n || !parse_num(T->tok[i], &v2)) { rc = PRIMAL_RES_ERR_FILE; goto done; }
+                        if (i >= T->n || (!parse_num(T->tok[i], &v2) && !parse_inf(T->tok[i], &v2))) { rc = PRIMAL_RES_ERR_FILE; goto done; }
                         upfin[c] = 1; bup[c] = v2 * s2;
                         i++;
                     }
@@ -1315,7 +1432,7 @@ static PRIMALrescodee lp_read(PRIMALtask_t t, const Toks *T) {
                         if (ieq(T->tok[i], "-")) { s2 = -1.0; i++; }
                         else if (ieq(T->tok[i], "+")) i++;
                         double v2;
-                        if (i >= T->n || !parse_num(T->tok[i], &v2)) { rc = PRIMAL_RES_ERR_FILE; goto done; }
+                        if (i >= T->n || (!parse_num(T->tok[i], &v2) && !parse_inf(T->tok[i], &v2))) { rc = PRIMAL_RES_ERR_FILE; goto done; }
                         v2 *= s2;
                         if (rc2 == 'L') { upfin[c] = 1; bup[c] = v2; }
                         else if (rc2 == 'G') { lofin[c] = 1; blo[c] = v2; }
@@ -2180,8 +2297,9 @@ PRIMALrescodee primalio_read(PRIMALtask_t t, const char *filename) {
         return rc;
     }
     Toks T = {0};
-    if (!toks_load(filename, &T)) return PRIMAL_RES_ERR_FILE;
-    PRIMALrescodee rc = has_ext(filename, ".lp") ? lp_read(t, &T) : mps_read(t, &T);
+    int islp = has_ext(filename, ".lp");
+    if (!toks_load(filename, &T, islp)) return PRIMAL_RES_ERR_FILE;
+    PRIMALrescodee rc = islp ? lp_read(t, &T) : mps_read(t, &T);
     toks_free(&T);
     return rc;
 }
@@ -2226,7 +2344,7 @@ PRIMALrescodee primalio_read_format(PRIMALtask_t t, const char *filename, int fo
     if (format == PRIMAL_DATA_FORMAT_MPS || format == PRIMAL_DATA_FORMAT_LP ||
         format == PRIMAL_DATA_FORMAT_FREE_MPS) {
         Toks T = {0};
-        if (!toks_load(filename, &T)) return PRIMAL_RES_ERR_FILE;
+        if (!toks_load(filename, &T, format == PRIMAL_DATA_FORMAT_LP)) return PRIMAL_RES_ERR_FILE;
         PRIMALrescodee rc = (format == PRIMAL_DATA_FORMAT_LP) ? lp_read(t, &T) : mps_read(t, &T);
         toks_free(&T);
         return rc;

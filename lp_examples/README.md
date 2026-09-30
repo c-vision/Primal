@@ -29,6 +29,11 @@ Options: `--full` (also the duals and slacks), `--brief`, `--solution-file FILE`
 Detection is automatic (by extension; an OPF file that starts with `[` is
 recognised by content too).
 
+The CPLEX LP reader is written for real files: terms may be glued
+(`2x0`, `x0+x1`, `-x`, `2*x`, `1.5x0`, `1e-3x0`), constraints may be labelled or
+not, a constraint may be ranged (`1 <= x + y <= 3`), bounds accept
+`free`/`inf`/`-inf`, and `\` (and a leading `*`) start a comment.
+
 ## The examples
 
 Each file is a complete model with its optimum written in the header.
