@@ -11,22 +11,18 @@ as documentation.
 
 ## Install the package
 
-The wheels are attached to the [latest release](https://github.com/c-vision/Primal/releases).
-Install the one for your platform:
+From [PyPI](https://pypi.org/project/primalsolver/):
 
 ```sh
-# macOS (Intel + Apple Silicon)
-pip install https://github.com/c-vision/Primal/releases/download/v0.1.0/primalsolver-0.1.0-py3-none-macosx_11_0_universal2.whl
-
-# Linux x86_64
-pip install https://github.com/c-vision/Primal/releases/download/v0.1.0/primalsolver-0.1.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
-
-# Linux aarch64
-pip install https://github.com/c-vision/Primal/releases/download/v0.1.0/primalsolver-0.1.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+pip install primalsolver
 ```
 
-Windows wheels are produced by the CI (`.github/` in the packaging project). From
-a checkout, build and install locally instead:
+Prebuilt wheels cover **macOS (universal2: Intel + Apple Silicon)** and **Linux
+(x86_64, aarch64)**; Windows wheels are produced by the CI. The wheels are also
+attached to the [latest release](https://github.com/c-vision/Primal/releases) if
+you prefer to install a file directly.
+
+From a checkout, build and install locally instead:
 
 ```sh
 cd ../python                 # the packaging project (not tracked in the C repo)
