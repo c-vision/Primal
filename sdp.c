@@ -1742,19 +1742,18 @@ refine:
         ipm_state(snap, 0, IPM_STATE_PASS);
         status = 0;
     } else if (fb_saved) {
-        /* The frozen point is offered to the gate on every route. For exp/power
-         * (nep>0) it stays a fallback CANDIDATE -- the native verdict is "not
-         * solved", the cuts remain the first choice, and this point only leaves
-         * when they also fail (T90/T91/logistic_large/risk_parity). For PSD/SOC
-         * (nep==0) there is no alternative route, so status is set to 0 and the
-         * gate's near-optimal rule judges it: inside the effective tolerance it
-         * is declared optimal, otherwise the gate forces status back to 1 (T96)
-         * and nothing is published. Without this a frozen PSD-only model fell
-         * straight to the tangent cuts (the pure-SDP `sdp_8` benchmark: the
-         * relative triple was inside the factor at it=25, but the point was
-         * never restored and the cut loop hit rc=1007). */
+        /* The frozen point is a fallback CANDIDATE on every route: the native
+         * verdict is "not solved", the cuts are the first choice, and this
+         * point only leaves when they also fail (T90/T91/logistic_large/
+         * risk_parity). PSD/SOC (nep==0) used to set status=0 here -- the
+         * premise "there is no alternative route" -- and let the near factor
+         * declare the STALLED point optimal. That is wrong when the alternative
+         * does answer: on gcc-13 the T100 case-3 bar freezes at rel_pri=2.1e-6
+         * and the near factor (x1000) publishes a point infeasible by 2.1e-3,
+         * while the tangent cuts give 5e-10. The dispatcher already holds the
+         * alternative: for numcones==0 it tries optimize_sdp and delivers this
+         * frozen point when the cuts answer nothing (the sdp_8 case). */
         ipm_state(fb_snap, 0, IPM_STATE_PASS);
-        if (nep == 0) status = 0;
     }
     /* Route selection, on the MEASURED quality of the point about to be handed
      * back and against the task's OWN interior-point tolerances: mu is the
@@ -1825,7 +1824,7 @@ done:
     /* A point is in the outputs (accepted-and-demoted, or frozen) but the
      * native verdict is "not solved": the caller may publish it as a
      * fallback when the cuts do not answer either. */
-    if (fb_ok) *fb_ok = (status != 0 && fb_saved && nep > 0) ? 1 : 0;
+    if (fb_ok) *fb_ok = (status != 0 && fb_saved) ? 1 : 0;
     free(soff); free(Ws); free(Wi); free(Xi); free(t1); free(t2); free(t3); free(Mt);
     free(xs); free(ss); free(zsoc); free(ssoc); free(Dzsoc); free(Dssoc);
     free(Az); free(As); free(rds); free(rcs); free(soc_e);
