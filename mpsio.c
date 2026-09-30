@@ -43,6 +43,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include "mpsio.h"
+
+/* Shortest decimal that reads back as the exact same double: 15, 16 or 17
+ * significant digits, whichever comes first.  A fixed "%.17g" always prints 17
+ * digits (0.1 -> 0.10000000000000001, 6.24 -> 6.2400000000000002) that carry no
+ * information for a model file; "%.15g" alone is not guaranteed to round-trip.
+ * This is the smallest precision that still loses nothing.  The returned buffer
+ * rotates over four slots so several numbers can appear in one format string. */
+static const char *num_g(double v) {
+    static char ring[4][40];
+    static unsigned k = 0;
+    char *b = ring[k = (k + 1) & 3u];
+    int p;
+    for (p = 15; p <= 17; p++) {
+        char *end = NULL;
+        snprintf(b, sizeof ring[0], "%.*g", p, v);
+        if (strtod(b, &end) == v && end && *end == '\0') break;
+    }
+    return b;
+}
 #include "cbf.h"
 
 #define INF INFINITY
@@ -456,14 +475,14 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
         char cb[32];
         const char *cn = mps_colname(t, j, cb, sizeof cb);
         if (cj != 0.0)
-            fprintf(f, "    %s        %s        %.17g\n", cn, on, cj);
+            fprintf(f, "    %s        %s        %s\n", cn, on, num_g(cj));
         for (int i = start; i < numcon; i++) {
             double aij;
             PRIMAL_getaij(t, i, j, &aij);
             if (aij != 0.0) {
                 char rb2[32];
-                fprintf(f, "    %s        %s         %.17g\n", cn,
-                        mps_rowname(t, i, rb2, sizeof rb2), aij);
+                fprintf(f, "    %s        %s         %s\n", cn,
+                        mps_rowname(t, i, rb2, sizeof rb2), num_g(aij));
             }
         }
         if (vt != PRIMAL_VAR_TYPE_CONT)
@@ -471,7 +490,7 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
     }
     fprintf(f, "RHS\n");
     if (cfix != 0.0)
-        fprintf(f, "    rhs       %s        %.17g\n", on, -cfix);
+        fprintf(f, "    rhs       %s        %s\n", on, num_g(-cfix));
     for (int i = start; i < numcon; i++) {
         PRIMALboundkeye bk; double bl, bu, b;
         PRIMAL_getconbound(t, i, &bk, &bl, &bu);
@@ -483,8 +502,8 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
         }
         if (isfinite(b)) {
             char rb[32];
-            fprintf(f, "    rhs       %s         %.17g\n",
-                    mps_rowname(t, i, rb, sizeof rb), b);
+            fprintf(f, "    rhs       %s         %s\n",
+                    mps_rowname(t, i, rb, sizeof rb), num_g(b));
         }
     }
     int any_range = 0;
@@ -500,8 +519,8 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
             PRIMAL_getconbound(t, i, &bk, &bl, &bu);
             if (bk == PRIMAL_BK_RA && isfinite(bl) && isfinite(bu)) {
                 char rb[32];
-                fprintf(f, "    rng       %s         %.17g\n",
-                        mps_rowname(t, i, rb, sizeof rb), fabs(bu - bl));
+                fprintf(f, "    rng       %s         %s\n",
+                        mps_rowname(t, i, rb, sizeof rb), num_g(fabs(bu - bl)));
             }
         }
     }
@@ -512,7 +531,7 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
         char cb[32];
         const char *cn = mps_colname(t, j, cb, sizeof cb);
         if (bk == PRIMAL_BK_FX) {
-            fprintf(f, " FX bnd       %s         %.17g\n", cn, bl);
+            fprintf(f, " FX bnd       %s         %s\n", cn, num_g(bl));
             continue;
         }
         if (bk == PRIMAL_BK_FR) {
@@ -520,9 +539,9 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
             continue;
         }
         if (isfinite(bl) && bl != 0.0)
-            fprintf(f, " LO bnd       %s         %.17g\n", cn, bl);
+            fprintf(f, " LO bnd       %s         %s\n", cn, num_g(bl));
         if (isfinite(bu))
-            fprintf(f, " UP bnd       %s         %.17g\n", cn, bu);
+            fprintf(f, " UP bnd       %s         %s\n", cn, num_g(bu));
         if (bk == PRIMAL_BK_UP && !isfinite(bl) && isfinite(bu) && bu < 0.0)
             fprintf(f, " MI bnd       %s\n", cn);  /* make lower -inf explicit */
     }
@@ -547,9 +566,9 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
                 PRIMAL_getqobjij(t, i, j, &qij);
                 if (qij != 0.0) {
                     char cbi[32], cbj[32];
-                    fprintf(f, "    %s        %s         %.17g\n",
+                    fprintf(f, "    %s        %s         %s\n",
                             mps_colname(t, i, cbi, sizeof cbi),
-                            mps_colname(t, j, cbj, sizeof cbj), qij);
+                            mps_colname(t, j, cbj, sizeof cbj), num_g(qij));
                 }
             }
     }
@@ -572,7 +591,7 @@ static PRIMALrescodee mps_write(PRIMALtask_t t, FILE *f) {
             int *mem = (int *)malloc((size_t)(nmem > 0 ? nmem : 1) * sizeof(int));
             if (!mem) continue;
             PRIMAL_getcone(t, k, &ct, &nmem, mem);
-            fprintf(f, "CSECTION %s %.17g %s", nm, par, tn);
+            fprintf(f, "CSECTION %s %s %s", nm, num_g(par), tn);
             for (int e = 0; e < nmem; e++) {
                 char cb[32];
                 fprintf(f, " %s", mps_colname(t, mem[e], cb, sizeof cb));
@@ -593,7 +612,7 @@ static void lp_row_terms(FILE *f, PRIMALtask_t t, int numvar, int con) {
         double aij;
         if (PRIMAL_getaij(t, con, j, &aij) != PRIMAL_RES_OK || aij == 0.0) continue;
         char cb[32];
-        fprintf(f, " %s%.17g %s", aij < 0 ? "-" : "+", fabs(aij),
+        fprintf(f, " %s%s %s", aij < 0 ? "-" : "+", num_g(fabs(aij)),
                 mps_colname(t, j, cb, sizeof cb));
         first = 0;
     }
@@ -635,12 +654,12 @@ static PRIMALrescodee lp_write(PRIMALtask_t t, FILE *f) {
             PRIMAL_getcj(t, j, &cj);
             if (cj == 0.0) continue;
             char cb[32];
-            fprintf(f, " %s%.17g %s", cj < 0 ? "-" : "+", fabs(cj),
+            fprintf(f, " %s%s %s", cj < 0 ? "-" : "+", num_g(fabs(cj)),
                     mps_colname(t, j, cb, sizeof cb));
             first = 0;
         }
         if (cfix != 0.0) {
-            fprintf(f, " %s%.17g", cfix < 0 ? "-" : "+", fabs(cfix));
+            fprintf(f, " %s%s", cfix < 0 ? "-" : "+", num_g(fabs(cfix)));
             first = 0;
         }
         if (first) fprintf(f, " 0");
@@ -653,25 +672,25 @@ static PRIMALrescodee lp_write(PRIMALtask_t t, FILE *f) {
             case PRIMAL_BK_FX:
                 { char rb[32]; fprintf(f, " %s:", mps_rowname(t, i, rb, sizeof rb)); }
                 lp_row_terms(f, t, numvar, i);
-                fprintf(f, " = %.17g\n", bl);
+                fprintf(f, " = %s\n", num_g(bl));
                 break;
             case PRIMAL_BK_LO:
                 { char rb[32]; fprintf(f, " %s:", mps_rowname(t, i, rb, sizeof rb)); }
                 lp_row_terms(f, t, numvar, i);
-                fprintf(f, " >= %.17g\n", bl);
+                fprintf(f, " >= %s\n", num_g(bl));
                 break;
             case PRIMAL_BK_UP:
                 { char rb[32]; fprintf(f, " %s:", mps_rowname(t, i, rb, sizeof rb)); }
                 lp_row_terms(f, t, numvar, i);
-                fprintf(f, " <= %.17g\n", bu);
+                fprintf(f, " <= %s\n", num_g(bu));
                 break;
             default: /* RA: two constraints */
                 { char rb[32]; fprintf(f, " %s_a:", mps_rowname(t, i, rb, sizeof rb)); }
                 lp_row_terms(f, t, numvar, i);
-                fprintf(f, " >= %.17g\n", bl);
+                fprintf(f, " >= %s\n", num_g(bl));
                 { char rb[32]; fprintf(f, " %s_b:", mps_rowname(t, i, rb, sizeof rb)); }
                 lp_row_terms(f, t, numvar, i);
-                fprintf(f, " <= %.17g\n", bu);
+                fprintf(f, " <= %s\n", num_g(bu));
                 break;
         }
     }
@@ -693,10 +712,10 @@ static PRIMALrescodee lp_write(PRIMALtask_t t, FILE *f) {
                 PRIMAL_getvarbound(t, j, &bk, &bl, &bu);
                 char cb[32];
                 const char *cn = mps_colname(t, j, cb, sizeof cb);
-                if (bk == PRIMAL_BK_FX) { fprintf(f, " %s = %.17g\n", cn, bl); continue; }
+                if (bk == PRIMAL_BK_FX) { fprintf(f, " %s = %s\n", cn, num_g(bl)); continue; }
                 if (bk == PRIMAL_BK_FR) { fprintf(f, " %s free\n", cn); continue; }
-                if (isfinite(bl) && bl != 0.0) fprintf(f, " %s >= %.17g\n", cn, bl);
-                if (isfinite(bu)) fprintf(f, " %s <= %.17g\n", cn, bu);
+                if (isfinite(bl) && bl != 0.0) fprintf(f, " %s >= %s\n", cn, num_g(bl));
+                if (isfinite(bu)) fprintf(f, " %s <= %s\n", cn, num_g(bu));
             }
         }
         if (any_int) {
@@ -2188,7 +2207,7 @@ PRIMALrescodee opf_write(PRIMALtask_t t, FILE *f) {
                              ct == PRIMAL_CT_PEXP ? "pexp" : ct == PRIMAL_CT_DEXP ? "dexp" :
                              ct == PRIMAL_CT_PPOW ? "ppow" : ct == PRIMAL_CT_RPOW ? "dpow" : "quad";
             fprintf(f, "[cone %s", tn);
-            if (ct == PRIMAL_CT_PPOW || ct == PRIMAL_CT_RPOW) fprintf(f, " %.17g", par);
+            if (ct == PRIMAL_CT_PPOW || ct == PRIMAL_CT_RPOW) fprintf(f, " %s", num_g(par));
             fputs("] ", f);
             for (int e = 0; e < nmem; e++) { if (e) fputs(", ", f); opf_vname(f, t, mem[e]); }
             fprintf(f, " [/cone]\n");

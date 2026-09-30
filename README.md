@@ -129,7 +129,8 @@ x[x1] = 1
 
 It reads MPS (`.mps`), CPLEX LP (`.lp`), OPF (`.opf`) and CBF (`.cbf`) — detected
 automatically — and accepts `--brief`, `--full` (also the duals and slacks),
-`--solution-file FILE`, `--write FILE`, `--max-iter N`,
+`--sensitivity` (LP cost/RHS ranges), `--solution-file FILE`, `--write FILE`,
+`--max-iter N`,
 `--tol-pfeas/--tol-dfeas/--tol-gap V` and `--param NAME=VALUE`
 (run `./out/primal --help`).
 

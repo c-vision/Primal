@@ -30,6 +30,7 @@
  * Supported options: see usage() below.  Example inputs: lp_examples/.
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +50,7 @@ typedef struct {
     int full;               /* --full: also y, slacks */
     int brief;              /* --brief: only status and objective */
     int quiet;              /* -q: suppress the header */
+    int sensitivity;        /* --sensitivity: also the LP cost/RHS ranges */
 } cli_options;
 
 /* Print the usage text. */
@@ -70,6 +72,7 @@ static void usage(FILE *out, const char *prog) {
         "      --tol-gap V           relative gap tolerance\n"
         "      --param NAME=VALUE    set a named int or double parameter\n"
         "      --full                also print the duals and the slacks\n"
+        "      --sensitivity         also print the LP cost/RHS ranges\n"
         "      --brief               only the status and the objective\n"
         "  -q, --quiet               suppress the header\n"
         "  -h, --help                print this help and exit\n"
@@ -175,6 +178,46 @@ static void print_solution(PRIMALtask_t t, FILE *out, int full, int brief) {
     }
 }
 
+/* Render one range endpoint (may be +-inf) into b. */
+static const char *rng_str(char *b, size_t n, double v) {
+    if (v == INFINITY) { snprintf(b, n, "inf"); return b; }
+    if (v == -INFINITY) { snprintf(b, n, "-inf"); return b; }
+    snprintf(b, n, "%.10g", v);
+    return b;
+}
+
+/* Print the LP post-optimal ranges: the interval of each objective coefficient
+ * and of each active RHS over which the published optimum stays optimal, from
+ * the public sensitivity API (PRIMAL_costsensitivity / PRIMAL_rhssensitivity).
+ * That API refuses anything but a solved LP, so on other classes this says so
+ * instead of printing a range that does not exist. */
+static void print_ranges(PRIMALtask_t t, FILE *out) {
+    int nv = 0, nc = 0;
+    PRIMAL_getnumvar(t, &nv);
+    PRIMAL_getnumcon(t, &nc);
+    double lo = 0.0, up = 0.0;
+    if (nv > 0 && PRIMAL_costsensitivity(t, 0, &lo, &up) != PRIMAL_RES_OK) {
+        fprintf(out, "ranges  : not available (cost/RHS ranges are LP-only)\n");
+        return;
+    }
+    for (int j = 0; j < nv; j++) {
+        if (PRIMAL_costsensitivity(t, j, &lo, &up) != PRIMAL_RES_OK) continue;
+        const char *nm = NULL;
+        PRIMAL_getvarnameidx(t, j, &nm);
+        char b1[32], b2[32];
+        fprintf(out, "cost[%s] in [%s, %s]\n", nm && nm[0] ? nm : "?",
+                rng_str(b1, sizeof b1, lo), rng_str(b2, sizeof b2, up));
+    }
+    for (int i = 0; i < nc; i++) {
+        if (PRIMAL_rhssensitivity(t, i, &lo, &up) != PRIMAL_RES_OK) break;
+        const char *nm = NULL;
+        PRIMAL_getconnameidx(t, i, &nm);
+        char b1[32], b2[32];
+        fprintf(out, "rhs [%s] in [%s, %s]\n", nm && nm[0] ? nm : "?",
+                rng_str(b1, sizeof b1, lo), rng_str(b2, sizeof b2, up));
+    }
+}
+
 /* Apply the --param NAME=VALUE list to a task.  Returns 0 on success, -1 on an
  * unknown parameter name or a malformed NAME=VALUE. */
 static int apply_params(PRIMALtask_t t, const cli_options *o, FILE *err) {
@@ -246,6 +289,7 @@ int primal_main(int argc, char **argv, FILE *out) {
             o.params[o.nparams++] = argv[i];
         }
         else if (!strcmp(a, "--full")) o.full = 1;
+        else if (!strcmp(a, "--sensitivity") || !strcmp(a, "--ranges")) o.sensitivity = 1;
         else if (!strcmp(a, "--brief")) o.brief = 1;
         else if (!strcmp(a, "-q") || !strcmp(a, "--quiet")) o.quiet = 1;
         else if (a[0] == '-' && a[1] != 0) { fprintf(stderr, "primal: unknown option '%s'\n", a); usage(stderr, prog); return 2; }
@@ -303,6 +347,7 @@ int primal_main(int argc, char **argv, FILE *out) {
     }
 
     print_solution(t, out, o.full, o.brief);
+    if (o.sensitivity) print_ranges(t, out);
 
     PRIMALsolstae solsta = PRIMAL_SOL_STA_UNKNOWN;
     PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &solsta);

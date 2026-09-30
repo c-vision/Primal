@@ -7248,6 +7248,12 @@ static void test_t113(void) {
         double x[2]; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
         close_enough(x[0], 0.0, "F x0=0");
         close_enough(x[1], 3.0, "F x1=3");
+        /* The stationarity residual must be 0 on this exact MAX optimum: the
+         * sense factor s scales c, Qx, A'y and z together.  Measured before the
+         * fix: dinf=4 (the unscaled A'y), while the MIN twin reports 0. */
+        double fdinf = -1.0;
+        check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &fdinf), PRIMAL_RES_OK, "F getdualinfeas");
+        close_enough_tol(fdinf, 0.0, 1e-12, "F dual-infeasibility 0 on the MAX optimum");
         int i0[1] = {0}; double pc[1] = {42.0};
         PRIMAL_getpviolcon(t, PRIMAL_SOL_ITR, 1, i0, pc);
         close_enough(pc[0], 0.0, "F activity 3 = upper 3");
@@ -19896,6 +19902,23 @@ static void test_t274(void) {
           "T274 prints one x[name] per variable");
     const char *po = strstr(buf, "primal = ");
     check(po && fabs(strtod(po + 9, NULL) - 11.0) < 1e-6, "T274 objective 11");
+
+    /* --sensitivity prints the LP cost/RHS ranges (issue #28) */
+    FILE *os = tmpfile();
+    char *argv_s[4];
+    argv_s[0] = (char *)"primal"; argv_s[1] = (char *)path;
+    argv_s[2] = (char *)"--sensitivity"; argv_s[3] = NULL;
+    int rcs = os ? primal_main(3, argv_s, os) : 2;
+    check(rcs == 0, "T274 --sensitivity exit 0");
+    if (os) {
+        rewind(os);
+        char sb[4096];
+        size_t sg = fread(sb, 1, sizeof sb - 1, os);
+        sb[sg] = '\0';
+        fclose(os);
+        check(strstr(sb, "cost[") != NULL, "T274 prints a cost range");
+        check(strstr(sb, "rhs [") != NULL, "T274 prints a rhs range");
+    }
 
     /* a missing file is a usage/I/O error, not a crash: exit 2 */
     char *bad[3];

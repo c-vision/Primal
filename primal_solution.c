@@ -563,7 +563,11 @@ PRIMALrescodee PRIMAL_getdualinfeas(PRIMALtask_t t, PRIMALsolt which, double *di
         const Col *c = &t->cols[j];
         for (int k = 0; k < c->nz; k++) av += c->val[k] * t->y[c->sub[k]];
         double zj = s * (t->slx[j] + t->sux[j]);   /* min-form z */
-        double r = s * t->c[j] + s * (qxv ? qxv[j] : 0.0) + av + zj;
+        /* min-normalize the whole stationarity residual: c, Qx, A'y and z all
+         * carry the sense factor s.  Leaving av unscaled made every MAX model
+         * look dual-infeasible by |A'y| on an exact optimum (measured: dinf=4
+         * on a two-variable MAX LP whose MIN twin reported 0). */
+        double r = s * t->c[j] + s * (qxv ? qxv[j] : 0.0) + s * av + zj;
         if (fabs(r) > worst) worst = fabs(r);
     }
     free(qxv);
