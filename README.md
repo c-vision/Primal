@@ -8,6 +8,7 @@ mixed-integer conic problems**, and it hands back the primal point, the dual
 point and a status you can check rather than trust.
 
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤-ea4aaa)](https://github.com/sponsors/c-vision)
+[![PyPI](https://img.shields.io/pypi/v/primalsolver)](https://pypi.org/project/primalsolver/)
 
 ## Where it fits
 
@@ -138,17 +139,18 @@ expected output; `make run-examples` solves them all.
 
 ## Python
 
-PrimalSolver is usable from Python through the **`primalsolver`** package —
-`ctypes` bindings over the C library, no compiler needed:
+On PyPI: [**`primalsolver`**](https://pypi.org/project/primalsolver/) — `ctypes`
+bindings over the C library, no compiler needed:
 
 ```sh
 pip install primalsolver
 python -c "import primalsolver; print(primalsolver.version())"
 ```
 
-Wheels for macOS (universal2) and Linux (x86_64/aarch64) are also attached to the
-[latest release](https://github.com/c-vision/Primal/releases/latest); Windows
-wheels are built by the CI. **53 runnable examples** live in
+Wheels for macOS (universal2) and Linux (x86_64/aarch64) are published to PyPI and
+also attached to the [latest
+release](https://github.com/c-vision/Primal/releases/latest); Windows wheels are
+built by the CI. **53 runnable examples** live in
 [`python_examples/`](python_examples/README.md) — installation, usage, and one
 line per example.
 
