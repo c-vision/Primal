@@ -86,8 +86,18 @@ static int ends_with(const char *s, const char *suf) {
 }
 
 /* Print one dense vector of n entries as "name[i] = value". */
-static void print_vec(FILE *out, const char *name, const double *v, int n) {
-    for (int i = 0; i < n; i++) fprintf(out, "%s[%d] = %.10g\n", name, i, v[i]);
+/* One line per entry.  When the model carries a name for the entry (from a file
+ * that names rows/columns) it is printed instead of the index; the name table is
+ * the task's, read back through the public getters. */
+static void print_vec(FILE *out, PRIMALtask_t t, int is_var,
+                      const char *name, const double *v, int n) {
+    for (int i = 0; i < n; i++) {
+        const char *nm = NULL;
+        if (is_var) PRIMAL_getvarnameidx(t, i, &nm);
+        else        PRIMAL_getconnameidx(t, i, &nm);
+        if (nm && nm[0]) fprintf(out, "%s[%s] = %.10g\n", name, nm, v[i]);
+        else             fprintf(out, "%s[%d] = %.10g\n", name, i, v[i]);
+    }
 }
 
 /* Print the status, objective, feasibility and the solution of a solved task.
@@ -130,7 +140,7 @@ static void print_solution(PRIMALtask_t t, FILE *out, int full, int brief) {
 
     if (nv > 0) {
         double *x = (double *)malloc((size_t)nv * sizeof(double));
-        if (x && PRIMAL_getxx(t, PRIMAL_SOL_ITR, x) == PRIMAL_RES_OK) print_vec(out, "x", x, nv);
+        if (x && PRIMAL_getxx(t, PRIMAL_SOL_ITR, x) == PRIMAL_RES_OK) print_vec(out, t, 1, "x", x, nv);
         else fprintf(out, "x       : (no primal point published)\n");
         free(x);
     }
@@ -150,17 +160,17 @@ static void print_solution(PRIMALtask_t t, FILE *out, int full, int brief) {
     }
     if (full && nc > 0) {
         double *y = (double *)malloc((size_t)nc * sizeof(double));
-        if (y && PRIMAL_gety(t, PRIMAL_SOL_ITR, y) == PRIMAL_RES_OK) print_vec(out, "y", y, nc);
+        if (y && PRIMAL_gety(t, PRIMAL_SOL_ITR, y) == PRIMAL_RES_OK) print_vec(out, t, 0, "y", y, nc);
         free(y);
     }
     if (full) {
         double *v = nv > 0 ? (double *)malloc((size_t)nv * sizeof(double)) : NULL;
-        if (v && PRIMAL_getslx(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, "slx", v, nv);
-        if (v && PRIMAL_getsux(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, "sux", v, nv);
+        if (v && PRIMAL_getslx(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, t, 1, "slx", v, nv);
+        if (v && PRIMAL_getsux(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, t, 1, "sux", v, nv);
         free(v);
         v = nc > 0 ? (double *)malloc((size_t)nc * sizeof(double)) : NULL;
-        if (v && PRIMAL_getslc(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, "slc", v, nc);
-        if (v && PRIMAL_getsuc(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, "suc", v, nc);
+        if (v && PRIMAL_getslc(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, t, 0, "slc", v, nc);
+        if (v && PRIMAL_getsuc(t, PRIMAL_SOL_ITR, v) == PRIMAL_RES_OK) print_vec(out, t, 0, "suc", v, nc);
         free(v);
     }
 }

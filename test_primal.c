@@ -19891,8 +19891,9 @@ static void test_t274(void) {
     buf[got] = '\0';
     fclose(out);
     check(strstr(buf, "OPTIMAL") != NULL, "T274 prints an OPTIMAL status");
-    check(strstr(buf, "x[0] = ") != NULL && strstr(buf, "x[1] = ") != NULL,
-          "T274 prints one x[i] per variable");
+    /* the file names the variables x0/x1, so the CLI prints those names */
+    check(strstr(buf, "x[x0] = ") != NULL && strstr(buf, "x[x1] = ") != NULL,
+          "T274 prints one x[name] per variable");
     const char *po = strstr(buf, "primal = ");
     check(po && fabs(strtod(po + 9, NULL) - 11.0) < 1e-6, "T274 objective 11");
 
@@ -19903,6 +19904,49 @@ static void test_t274(void) {
     int rc2 = o2 ? primal_main(2, bad, o2) : 2;
     if (o2) fclose(o2);
     check(rc2 == 2, "T274 exit 2 on a missing file");
+    remove(path);
+}
+
+/* T275: an LP term whose sign is glued to the variable name ("+COLONE") is TWO
+ * tokens, not one.  The tokenizer used to keep "+COLONE" whole, and the LP
+ * objective reader then coined a variable literally named "+COLONE", leaving
+ * COLONE with objective coefficient 0: the model solved had a phantom fifth
+ * variable and an objective 10x too small (reported as issue #27).  A sign glued
+ * to a number ("+3", "-3.5") stays one token, because parse_num/strtod consume
+ * it whole. */
+static void test_t275(void) {
+    cur_name = "T275 LP: a sign glued to a name is two tokens (issue #27)";
+    const char *path = "/tmp/mc_t275.lp";
+    FILE *f = fopen(path, "w");
+    if (!f) { check(0, "T275 write fixture"); return; }
+    fputs("Minimize\n +COLONE +3 COLTWO +6.24 COLTHREE +0.1 COLFOUR\n"
+          "Subject To\n"
+          " THISROW: +78.26 COLTWO +2.9 COLFOUR >= 92.3\n"
+          " THATROW: +0.24 COLONE +11.31 COLTHREE <= 14.8\n"
+          " LASTROW: +12.68 COLONE +0.08 COLTHREE +0.9 COLFOUR >= 4\n"
+          "Bounds\n COLONE >= 28.6\n COLFOUR >= 18\n COLFOUR <= 48.98\nEnd\n", f);
+    fclose(f);
+
+    PRIMALenv_t env = NULL; PRIMALtask_t t = NULL;
+    check_rc(PRIMAL_makeenv(&env, NULL), PRIMAL_RES_OK, "T275 env");
+    check_rc(PRIMAL_maketask(env, 0, 0, &t), PRIMAL_RES_OK, "T275 task");
+    check_rc(PRIMAL_readdataautoformat(t, path), PRIMAL_RES_OK, "T275 read");
+    int nv = 0, nc = 0;
+    PRIMAL_getnumvar(t, &nv); PRIMAL_getnumcon(t, &nc);
+    check(nv == 4, "T275 four variables, not five");
+    check(nc == 3, "T275 three constraints");
+    int idx = -1;
+    check(PRIMAL_getidxvar(t, "COLONE", &idx) == PRIMAL_RES_OK, "T275 COLONE is a name");
+    check(PRIMAL_getidxvar(t, "+COLONE", &idx) != PRIMAL_RES_OK,
+          "T275 no variable named '+COLONE'");
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T275 optimize");
+    double obj = 0.0, x[4] = {0, 0, 0, 0};
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
+    PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
+    check(fabs(obj - 31.7827586207) < 1e-6, "T275 objective = 31.78275862");
+    check(fabs(x[0] - 28.6) < 1e-6 && fabs(x[1]) < 1e-6 && fabs(x[2]) < 1e-6 &&
+          fabs(x[3] - 31.82758621) < 1e-6, "T275 x = (28.6, 0, 0, 31.8276)");
+    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     remove(path);
 }
 
@@ -19989,6 +20033,7 @@ static void test_t272(void) {
 
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t275();
     test_t274();
     test_t273();
     test_t272();

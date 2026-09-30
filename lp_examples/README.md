@@ -43,8 +43,8 @@ Each file is a complete model with its optimum written in the header.
 ```
 status  : OPTIMAL   prosta=PRIM_AND_DUAL_FEAS  solsta=OPTIMAL
 obj     : primal = 11   dual = 11
-x[0] = 3
-x[1] = 1
+x[x0] = 3
+x[x1] = 1
 ```
 
 ### `mip_knapsack.lp` — a binary knapsack (MIP, `.lp`)
@@ -57,9 +57,9 @@ x[1] = 1
 ```
 status  : INTEGER_OPTIMAL   prosta=PRIM_FEAS  solsta=INTEGER_OPTIMAL
 obj     : primal = 9   dual = 9
-x[0] = 0
-x[1] = 1
-x[2] = 1
+x[x0] = 0
+x[x1] = 1
+x[x2] = 1
 ```
 
 ### `qp_portfolio.opf` — a quadratic program (`.opf`)
@@ -72,8 +72,8 @@ x[2] = 1
 ```
 status  : OPTIMAL   prosta=PRIM_AND_DUAL_FEAS  solsta=OPTIMAL
 obj     : primal = 0.5   dual = 0.5
-x[0] = 0.5
-x[1] = 0.5
+x[x0] = 0.5
+x[x1] = 0.5
 ```
 
 ### `socp_robust.opf` — a second-order cone program (`.opf`)
@@ -86,9 +86,9 @@ x[1] = 0.5
 ```
 status  : OPTIMAL   prosta=PRIM_AND_DUAL_FEAS  solsta=OPTIMAL
 obj     : primal = 0.7071067812   dual = 0.7071067811
-x[0] = 0.7071067812     # t
-x[1] = 0.5              # x0
-x[2] = 0.5              # x1
+x[t] = 0.7071067812
+x[x0] = 0.5
+x[x1] = 0.5
 ```
 
 ### `exp_power.opf` — an exponential-cone program (`.opf`)
@@ -102,9 +102,9 @@ x[2] = 0.5              # x1
 ```
 status  : OPTIMAL   prosta=PRIM_AND_DUAL_FEAS  solsta=OPTIMAL
 obj     : primal = 2.718281828   dual = 2.718281828
-x[0] = 2.718281828      # t = e
-x[1] = 1                # u
-x[2] = 1                # v
+x[t] = 2.718281828
+x[u] = 1
+x[v] = 1
 ```
 
 ### `sdp_lmi.cbf` — a semidefinite program (`.cbf`)

@@ -98,6 +98,15 @@ static int toks_load(const char *filename, Toks *T) {
         while (*p) {
             while (*p && isspace((unsigned char)*p)) p++;
             if (!*p) break;
+            /* A sign glued to a NAME ("+COLONE", "-x") is two tokens: the LP
+             * parsers read a sign as a token of its own, and keeping it glued
+             * coined a variable literally named "+COLONE" (issue #27).  A sign
+             * glued to a NUMBER ("-3.5", "+.5") stays one token, because
+             * parse_num/strtod consume it whole. */
+            if ((*p == '+' || *p == '-') &&
+                (isalpha((unsigned char)p[1]) || p[1] == '_')) {
+                toks_push(T, p, 1); p++; continue;
+            }
             if (*p == ':') { toks_push(T, p, 1); p++; continue; }
             if (*p == '<' || *p == '>') {
                 int len = (p[1] == '=') ? 2 : 1;

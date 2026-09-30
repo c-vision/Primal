@@ -123,8 +123,8 @@ file    : diet.lp   (numvar=2  numcon=2)
 status  : OPTIMAL   prosta=PRIM_AND_DUAL_FEAS  solsta=OPTIMAL
 obj     : primal = 11   dual = 11
 viol    : primal = 0.000e+00
-x[0] = 3
-x[1] = 1
+x[x0] = 3
+x[x1] = 1
 ```
 
 It reads MPS (`.mps`), CPLEX LP (`.lp`), OPF (`.opf`) and CBF (`.cbf`) — detected
