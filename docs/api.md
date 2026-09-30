@@ -158,8 +158,8 @@ their reports match the plain ones exactly.
 
 ## Where to look next
 
-- `samples/mosek_comparison/*.c` — 48 small ports, each with its expected
+- `c_examples/mosek_comparison/*.c` — 48 small ports, each with its expected
   optimum checked
-- `samples/*.c`, `samples/finance/*.c`, `samples/books/*.c` — the larger models
+- `c_examples/*.c`, `c_examples/finance/*.c`, `c_examples/books/*.c` — the larger models
 - [certificates](certificates.md) — what a status guarantees
 - [I/O formats](io-formats.md) — MPS, LP, OPF, CBF

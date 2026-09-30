@@ -21,8 +21,8 @@ come with these environments.
 pacman -S --needed mingw-w64-x86_64-gcc make
 make                          # builds out/example_lp.exe and out/run_tests.exe
 out/run_tests.exe             # the reliability suite
-make samples                  # the 171 examples -> out/samples/<name>.exe
-out/samples/logistic_large.exe
+make samples                  # the 171 examples -> out/c_examples/<name>.exe
+out/c_examples/logistic_large.exe
 ```
 
 The Makefile is POSIX-oriented, but MSYS2 provides `make`, the shell and

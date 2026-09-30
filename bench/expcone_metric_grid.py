@@ -234,7 +234,7 @@ def sample_bin(spec, tmp, repo):
     """One sample, compiled against the same /tmp source copy the probe used."""
     out = os.path.join(tmp, os.path.basename(spec))
     subprocess.run(["gcc", "-std=c99", "-Wall", "-Wextra", "-pedantic", "-O2",
-                    "-I", tmp, os.path.join(repo, "samples", spec + ".c")]
+                    "-I", tmp, os.path.join(repo, "c_examples", spec + ".c")]
                    + [os.path.join(tmp, f"{s}.c") for s in SRC]
                    + ["-lm", "-o", out], check=True)
     return out

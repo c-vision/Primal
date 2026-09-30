@@ -1,0 +1,23 @@
+# PrimalSolver example -- a second-order cone program in OPF format.
+#
+#   minimize    t
+#   subject to  || (x0, x1) ||_2 <= t      [a quadratic cone, `quad`]
+#               x0 + x1 = 1
+#               x0 - x1 = 0
+#               x0, x1, t >= 0
+#
+# The cone `(t, x0, x1)` means t >= sqrt(x0^2 + x1^2).
+# With x0 = x1 = 0.5, t = sqrt(0.5) = 0.70710678.
+#
+# Run:  primal lp_examples/socp_robust.opf
+[objective minimize 'obj']
+t
+[/objective]
+[constraints]
+[con 'budget'] x0 + x1 = 1.0 [/con]
+[con 'neutral'] x0 - x1 = 0.0 [/con]
+[/constraints]
+[bounds]
+[b] 0 <= * [/b]
+[cone quad 'k'] t, x0, x1 [/cone]
+[/bounds]

@@ -27,7 +27,7 @@
  * main() is only a call to it and is compiled out with -DPRIMAL_NO_MAIN when
  * the file is linked into run_tests.
  *
- * Supported options: see usage() below.  Example inputs: examples/.
+ * Supported options: see usage() below.  Example inputs: lp_examples/.
  */
 
 #include <stdio.h>
@@ -76,7 +76,7 @@ static void usage(FILE *out, const char *prog) {
         "  -V, --version             print the version and exit\n"
         "\n"
         "The input format is the interface: write the model in one of the\n"
-        "formats above (examples/README.md has one of each).\n", prog);
+        "formats above (lp_examples/README.md has one of each).\n", prog);
 }
 
 /* True when s ends with the suffix suf. */

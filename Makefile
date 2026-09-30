@@ -16,7 +16,7 @@
 
 # Makefile - PrimalSolver
 # All build artifacts (objects, binaries, compiled samples) go into out/,
-# which is gitignored. Never write binaries into the repo root or samples/.
+# which is gitignored. Never write binaries into the repo root or c_examples/.
 CC      = gcc
 AR      = ar
 CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2
@@ -40,7 +40,10 @@ all: $(OUT)/example_lp $(OUT)/run_tests $(OUT)/primal
 lib: $(LIB_A)
 
 $(OUT):
-	mkdir -p $(OUT) $(OUT)/samples
+	mkdir -p $(OUT)
+
+$(OUT)/c_examples: | $(OUT)
+	mkdir -p $@
 
 $(OUT)/%.o: %.c $(HEADERS) | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -54,10 +57,10 @@ $(OUT)/example_lp: example_lp.c $(OBJS)
 $(OUT)/primal: primal.c $(LIB_A) | $(OUT)
 	$(CC) $(CFLAGS) -I. -o $@ primal.c $(LIB_A) $(LDLIBS)
 
-# Solve every model file under examples/ with the CLI (its own output check).
+# Solve every model file under lp_examples/ with the CLI (its own output check).
 .PHONY: run-examples
 run-examples: $(OUT)/primal
-	@for f in examples/*.lp examples/*.opf examples/*.cbf; do echo "== $$f =="; ./$(OUT)/primal $$f --brief || exit 1; done
+	@for f in lp_examples/*.lp lp_examples/*.opf lp_examples/*.cbf; do echo "== $$f =="; ./$(OUT)/primal $$f --brief || exit 1; done
 
 $(OUT)/primal_cli.o: primal.c $(HEADERS) | $(OUT)
 	$(CC) $(CFLAGS) -DPRIMAL_NO_MAIN -c $< -o $@
@@ -76,14 +79,17 @@ SANFLAGS = -std=c99 -Wall -Wextra -pedantic -O2 -g -fno-omit-frame-pointer
 SAN      = -fsanitize=address,undefined
 SANOBJS  = $(addprefix $(OUT)/san/,linalg.o stdform.o simplex.o ipm.o socp.o \
             sdp.o expcone.o mpsio.o cbf.o scaling.o presolve.o $(PRIMAL_OBJS))
-SAN_SAMPLES = samples/logistic_large.c samples/finance/market_impact.c \
-           samples/cvx_regression.c samples/maxcut_sdp.c samples/socp_robust.c \
-           samples/lp_large.c samples/finance/portfolio_mgmt.c \
-           samples/mosek_comparison/logistic.c samples/mosek_comparison/sdo2.c \
-           samples/mosek_comparison/qcqo1.c
+SAN_SAMPLES = c_examples/logistic_large.c c_examples/finance/market_impact.c \
+           c_examples/cvx_regression.c c_examples/maxcut_sdp.c c_examples/socp_robust.c \
+           c_examples/lp_large.c c_examples/finance/portfolio_mgmt.c \
+           c_examples/mosek_comparison/logistic.c c_examples/mosek_comparison/sdo2.c \
+           c_examples/mosek_comparison/qcqo1.c
 
 $(OUT)/san:
-	mkdir -p $(OUT)/san $(OUT)/san/samples
+	mkdir -p $(OUT)/san
+
+$(OUT)/san/c_examples: | $(OUT)/san
+	mkdir -p $@
 
 $(OUT)/san/%.o: %.c $(HEADERS) | $(OUT)/san
 	$(CC) $(SANFLAGS) $(SAN) -c $< -o $@
@@ -96,11 +102,11 @@ $(OUT)/san/run_tests: test_primal.c $(SANOBJS) | $(OUT)/san
 sanitize: $(OUT)/san/run_tests
 	ASAN_OPTIONS=detect_leaks=0 ./$(OUT)/san/run_tests
 
-sanitize-samples: $(SANOBJS) | $(OUT)/san
+sanitize-samples: $(SANOBJS) | $(OUT)/san/c_examples
 	@for f in $(SAN_SAMPLES); do \
 	  b=$$(basename $$f .c); \
-	  $(CC) $(SANFLAGS) $(SAN) -I. -o $(OUT)/san/samples/$$b $$f $(SANOBJS) $(LDLIBS) || exit 1; \
-	  ASAN_OPTIONS=detect_leaks=0 $(OUT)/san/samples/$$b || { echo "SANITIZE FAIL: $$b"; exit 1; }; \
+	  $(CC) $(SANFLAGS) $(SAN) -I. -o $(OUT)/san/c_examples/$$b $$f $(SANOBJS) $(LDLIBS) || exit 1; \
+	  ASAN_OPTIONS=detect_leaks=0 $(OUT)/san/c_examples/$$b || { echo "SANITIZE FAIL: $$b"; exit 1; }; \
 	  echo "  sanitize ok: $$b"; \
 	done
 
@@ -124,7 +130,7 @@ clean:
 
 # ---- samples ----
 # mosek_comparison/: ports of public MOSEK examples (matching optimal values)
-# samples/ (root):   larger, more complex examples that stress scaling
+# c_examples/ (root):   larger, more complex examples that stress scaling
 MOSEK_SAMPLES = lo1 qo1 mi1 sched sdo1 ceo1 pow1 hello lo2 pinfeas mil1 milo1 acc1_max \
           mioinfeas1 portfolio_1 portfolio_2 sdo2 logistic response cqo1 \
           qcqo1 callback solvebasis sos1 sos2 mil2 portfolio_3 portfolio_5 \
@@ -148,7 +154,7 @@ FINANCE_SAMPLES = markowitz_conic cvar_portfolio risk_parity market_impact \
           omf_ex410 omf_ex217 omf_bb omf_qp_grg omf_ex2001 omf_ex25 omf_dedication omf_ex21 omf_ex312 omf_financing omf_mvo omf_bl omf_workforce omf_ex411 omf_ex118 \
           omf_capital omf_appendix_d omf_duality omf_ex207 omf_nearestcorr \
           big_portfolio evar_portfolio market_neutral
-# books/: examples/exercises taken from the optimization books (AiMathWiki 09-Mosek)
+# books/: exercises taken from the optimization books (AiMathWiki 09-Mosek)
 BOOK_SAMPLES = intlo_simplex intlo_bigm intlo_transport hdb_kkt \
           boyd_lp_unique boyd_qp_box boyd_qp_box2 boyd_l1 boyd_detector \
           pca_alloc oa_feed npo_lad npo_minimax pca_cashflow \
@@ -160,7 +166,7 @@ LIBSRCS = linalg.c stdform.c simplex.c ipm.c socp.c sdp.c expcone.c mpsio.c cbf.
           primal_mip.c primal_mip_opt.c primal_conicopt.c primal_quad.c primal_solio.c primal_std.c \
           primal_verdict.c primal_optimize.c primal_misc.c primal_info.c
 
-samples: $(LIB_A) $(MOSEK_SAMPLES:%=$(OUT)/samples/%) $(COMPLEX_SAMPLES:%=$(OUT)/samples/%) $(FINANCE_SAMPLES:%=$(OUT)/samples/%) $(BOOK_SAMPLES:%=$(OUT)/samples/%)
+samples: $(LIB_A) $(MOSEK_SAMPLES:%=$(OUT)/c_examples/%) $(COMPLEX_SAMPLES:%=$(OUT)/c_examples/%) $(FINANCE_SAMPLES:%=$(OUT)/c_examples/%) $(BOOK_SAMPLES:%=$(OUT)/c_examples/%)
 
 # Archive the library once and link each sample against it. Compiling $(LIBSRCS)
 # per sample meant 171 x 34 = 5814 compilations instead of 33 + 171, and it made
@@ -171,21 +177,21 @@ $(LIB_A): $(OBJS)
 	rm -f $@
 	$(AR) rcs $@ $(OBJS)
 
-$(MOSEK_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/mosek_comparison/%.c $(LIB_A) | $(OUT)
+$(MOSEK_SAMPLES:%=$(OUT)/c_examples/%): $(OUT)/c_examples/%: c_examples/mosek_comparison/%.c $(LIB_A) | $(OUT)/c_examples
 	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
-$(COMPLEX_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/%.c $(LIB_A) | $(OUT)
+$(COMPLEX_SAMPLES:%=$(OUT)/c_examples/%): $(OUT)/c_examples/%: c_examples/%.c $(LIB_A) | $(OUT)/c_examples
 	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
-$(FINANCE_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/finance/%.c $(LIB_A) | $(OUT)
+$(FINANCE_SAMPLES:%=$(OUT)/c_examples/%): $(OUT)/c_examples/%: c_examples/finance/%.c $(LIB_A) | $(OUT)/c_examples
 	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
-$(BOOK_SAMPLES:%=$(OUT)/samples/%): $(OUT)/samples/%: samples/books/%.c $(LIB_A) | $(OUT)
+$(BOOK_SAMPLES:%=$(OUT)/c_examples/%): $(OUT)/c_examples/%: c_examples/books/%.c $(LIB_A) | $(OUT)/c_examples
 	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
 .PHONY: run-samples
 run-samples: samples
-	@for s in $(SAMPLES); do echo "== $$s =="; ./$(OUT)/samples/$$s || exit 1; done
+	@for s in $(SAMPLES); do echo "== $$s =="; ./$(OUT)/c_examples/$$s || exit 1; done
 
 # ---- benchmark harness (see bench/) ----
 bench: $(OUT)/bench/solve_mps $(OUT)/bench/conic_bench $(OUT)/bench/expcone_route_probe $(OUT)/bench/expcone_ipm_probe $(OUT)/bench/sdp_sweep

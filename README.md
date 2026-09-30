@@ -87,7 +87,7 @@ int main(void) {
 }
 ```
 
-171 runnable examples live under `samples/`, each checking its own result: 48
+171 runnable examples live under `c_examples/`, each checking its own result: 48
 ports of public MOSEK examples with identical optimal values, 63 larger
 deterministic models, 44 finance models, 16 book models.
 
@@ -133,7 +133,7 @@ automatically — and accepts `--brief`, `--full` (also the duals and slacks),
 (run `./out/primal --help`).
 
 Ready-to-run inputs for every problem class — LP, MIP, QP, SOCP, an exponential
-cone and an SDP — live in [`examples/`](examples/README.md), each with its
+cone and an SDP — live in [`lp_examples/`](lp_examples/README.md), each with its
 expected output; `make run-examples` solves them all.
 
 ## Build
@@ -294,7 +294,7 @@ measured at, where it stops. Start at [docs/README.md](docs/README.md).
 `GMB_DBG=1` prints to **stderr** the route taken with its measured termination
 triple, the worst cone or bar violation in the delivered point, each round of
 the cut loop, and the MIP search's decisions:
-`./out/samples/logistic_large 2>&1 | grep -E 'route|cones|mip'`
+`./out/c_examples/logistic_large 2>&1 | grep -E 'route|cones|mip'`
 
 ## License
 
