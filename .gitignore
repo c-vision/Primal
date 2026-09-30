@@ -29,3 +29,6 @@ __pycache__/
 
 # ralph-loop state (local, never published)
 /.opencode/ralph-loop.local.md
+
+# GitHub config (workflows/sponsors kept locally, never published)
+/.github/
