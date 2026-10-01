@@ -19876,6 +19876,121 @@ static void test_t270(void) {
  * prints the solution.  primal_main is main() without its own entry point,
  * linked into this runner with -DPRIMAL_NO_MAIN (see the Makefile). */
 extern int primal_main(int argc, char **argv, FILE *out);
+/* T278: MPS integer markers named as MIPLIB writes them ("MARK0000 'MARKER'
+ * 'INTORG'"): the first field is the marker's name, not the keyword.  A reader
+ * that wanted a literal MARKER there made MARK0000 a column and dropped the
+ * integrality.  max x + y s.t. 2x + 2y <= 3, x, y integer in [0, 5]: 1 (the
+ * LP relaxation gives 1.5); exactly two columns. */
+static void test_t278(void) {
+    cur_name = "T278 MPS: named INTORG/INTEND markers";
+    const char *path = "/tmp/mc_t278.mps";
+    FILE *f = fopen(path, "w");
+    if (!f) { check(0, "T278 write fixture"); return; }
+    fputs("NAME T278\nOBJSENSE\n    MAX\nROWS\n N obj\n L c1\nCOLUMNS\n"
+          "    MARK0000  'MARKER'                 'INTORG'\n"
+          "    x         obj       1   c1        2\n"
+          "    y         obj       1   c1        2\n"
+          "    MARK0001  'MARKER'                 'INTEND'\n"
+          "RHS\n    rhs       c1        3\nBOUNDS\n UP bnd       x         5\n"
+          " UP bnd       y         5\nENDATA\n", f);
+    fclose(f);
+    P p; pbegin(&p);
+    check_rc(primalio_read(p.task, path), PRIMAL_RES_OK, "T278 read");
+    int nv = 0;
+    PRIMAL_getnumvar(p.task, &nv);
+    check(nv == 2, "T278 the markers are not columns");
+    PRIMALvariabletypee vt = PRIMAL_VAR_TYPE_CONT;
+    PRIMAL_getvartype(p.task, 0, &vt);
+    check(vt == PRIMAL_VAR_TYPE_INT, "T278 x is integer");
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T278 optimize");
+    double po = 0.0;
+    PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po);
+    close_enough_tol(po, 1.0, 1e-6, "T278 integer optimum, not the LP's 1.5");
+    pend(&p);
+    remove(path);
+}
+
+/* T277: CBF reading of real-library layouts (CBLIB).
+ *  a) no VAR section: min <C,X>, X_ii = 1, X in S^3_+, C = -vv', v = (1,-2,0.5):
+ *     optimum -(sum |v_i|)^2 = -12.25;
+ *  b) PSDCON in the lower triangle, no CON section: min x s.t.
+ *     [[x,1],[1,x]] >= 0, optimum 1 (the constraint is H x + D >= 0, not <= 0);
+ *  c) a 4-member Q cone on CON rows: min t s.t. (t,x1,x2,x3) in Q,
+ *     x1+x2+x3 = 3, optimum sqrt(3);
+ *  e) a PSDCON position with no data is held at 0, not left free: max x s.t.
+ *     [[1,x,x],[x,1,0],[x,0,1]] >= 0 with nothing given at (2,1): 1/sqrt(2)
+ *     (with that entry free the bound would be 1);
+ *  d) a file longer than the old 8192-line buffer (9000 rows x >= i/1000):
+ *     every row is read, with the last one's bound (a truncated read dropped
+ *     the tail). */
+static void cbf_solve_obj(const char *path, const char *txt, double want, double tol,
+                          const char *what) {
+    FILE *f = fopen(path, "w");
+    if (!f) { check(0, what); return; }
+    fputs(txt, f);
+    fclose(f);
+    P p; pbegin(&p);
+    check_rc(primalio_read(p.task, path), PRIMAL_RES_OK, what);
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, what);
+    double po = 0.0;
+    PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po);
+    close_enough_tol(po, want, tol, what);
+    pend(&p);
+    remove(path);
+}
+static void test_t277(void) {
+    cur_name = "T277 CBF: no VAR, lower-triangle PSDCON, wide cones, long files";
+    cbf_solve_obj("/tmp/mc_t277a.cbf",
+        "VER\n3\n\nOBJSENSE\nMIN\n\nPSDVAR\n1\n3\n\nCON\n3 1\nL= 3\n\n"
+        "OBJFCOORD\n6\n0 0 0 -1\n0 1 0 2\n0 1 1 -4\n0 2 0 -0.5\n0 2 1 1\n0 2 2 -0.25\n\n"
+        "FCOORD\n3\n0 0 0 0 1\n1 0 1 1 1\n2 0 2 2 1\n\nBCOORD\n3\n0 -1\n1 -1\n2 -1\n",
+        -12.25, 1e-6, "T277a PSDVAR without VAR");
+    cbf_solve_obj("/tmp/mc_t277b.cbf",
+        "VER\n3\n\nOBJSENSE\nMIN\n\nVAR\n1 1\nF 1\n\nPSDCON\n1\n2\n\n"
+        "OBJACOORD\n1\n0 1\n\nHCOORD\n2\n0 0 0 0 1\n0 0 1 1 1\n\nDCOORD\n1\n0 1 0 1\n",
+        1.0, 1e-6, "T277b lower-triangle PSDCON without CON");
+    cbf_solve_obj("/tmp/mc_t277c.cbf",
+        "VER\n3\n\nOBJSENSE\nMIN\n\nVAR\n4 1\nF 4\n\nCON\n5 2\nQ 4\nL= 1\n\n"
+        "OBJACOORD\n1\n0 1\n\nACOORD\n7\n0 0 1\n1 1 1\n2 2 1\n3 3 1\n4 1 1\n4 2 1\n4 3 1\n\n"
+        "BCOORD\n1\n4 -3\n",
+        sqrt(3.0), 1e-6, "T277c Q cone of 4 members");
+    cbf_solve_obj("/tmp/mc_t277e.cbf",
+        "VER\n3\n\nOBJSENSE\nMAX\n\nVAR\n1 1\nF 1\n\nPSDCON\n1\n3\n\n"
+        "OBJACOORD\n1\n0 1\n\nHCOORD\n2\n0 0 1 0 1\n0 0 2 0 1\n\n"
+        "DCOORD\n3\n0 0 0 1\n0 1 1 1\n0 2 2 1\n",
+        1.0 / sqrt(2.0), 1e-6, "T277e PSDCON position without data is 0");
+    {
+        enum { NR = 9000 };
+        size_t cap = 64 + (size_t)NR * 40;
+        char *txt = (char *)malloc(cap);
+        if (!txt) { check(0, "T277d alloc"); return; }
+        size_t n = (size_t)sprintf(txt, "VER\n3\nOBJSENSE\nMIN\nVAR\n1 1\nF 1\n"
+                                        "CON\n%d 1\nL+ %d\nOBJACOORD\n1\n0 1\nACOORD\n%d\n",
+                                   NR, NR, NR);
+        for (int i = 0; i < NR; i++) n += (size_t)sprintf(txt + n, "%d 0 1\n", i);
+        n += (size_t)sprintf(txt + n, "BCOORD\n%d\n", NR);
+        for (int i = 0; i < NR; i++) n += (size_t)sprintf(txt + n, "%d %.3f\n", i, -i / 1000.0);
+        /* checked on the model read, not by solving it: the tail rows and
+         * their bounds are what a truncated read lost */
+        const char *path = "/tmp/mc_t277d.cbf";
+        FILE *f = fopen(path, "w");
+        if (!f) { free(txt); check(0, "T277d write fixture"); return; }
+        fputs(txt, f);
+        fclose(f);
+        free(txt);
+        P p; pbegin(&p);
+        check_rc(primalio_read(p.task, path), PRIMAL_RES_OK, "T277d file past 8192 lines");
+        int nc = 0;
+        PRIMAL_getnumcon(p.task, &nc);
+        check(nc == NR, "T277d every row read");
+        PRIMALboundkeye bk; double bl = 0.0, bu = 0.0;
+        PRIMAL_getconbound(p.task, NR - 1, &bk, &bl, &bu);
+        close_enough_tol(bl, (NR - 1) / 1000.0, 1e-12, "T277d last row's bound read");
+        pend(&p);
+        remove(path);
+    }
+}
+
 static void test_t274(void) {
     cur_name = "T274 CLI: read an LP file, solve, print the solution";
     const char *path = "/tmp/mc_t274.lp";
@@ -20131,8 +20246,10 @@ static void test_t272(void) {
 
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
-    test_t275();
+    test_t278();
+    test_t277();
     test_t276();
+    test_t275();
     test_t274();
     test_t273();
     test_t272();

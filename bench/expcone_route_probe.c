@@ -44,6 +44,7 @@
  *   gcc -std=c99 -Wall -Wextra -pedantic -O2 -I. -o out/bench/expcone_route_probe \
  *       bench/expcone_route_probe.c <the Makefile's $(LIBSRCS)> -lm
  */
+#define _POSIX_C_SOURCE 200809L  /* clock_gettime/setenv under -std=c99 on glibc */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
