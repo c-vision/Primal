@@ -34,7 +34,9 @@
 #   will operate correctly or be free of defects.
 
 """Conic cross-check: solve the SAME SOCP family as bench/conic_bench.c with
-Clarabel and SCS (optional; show N/A if not installed).
+Clarabel and SCS (optional; show N/A if not installed), and the SDP family
+likewise.  socp_cbf / sdp_cbf write both families as CBF files, the form
+SCIP (bench/scip_cbf.c) and Pajarito/Hypatia take them in.
 
 Family (conic_bench.c):  min sum_k t_k
     s.t. (t_k, x_2k, x_2k+1) in QUAD,  sum_i x_i = 1,
@@ -53,6 +55,24 @@ import numpy as np
 from scipy import sparse
 
 SIZES = [40, 120, 200]
+
+# The reference settings every harness uses (bench_all, lib_ref, here):
+#  - Clarabel without chordal decomposition: with it, 0.11.1 reports Solved at
+#    18.0568 on SDPLIB control1 (optimum 17.7846; dual residual 4e-2) and
+#    fails Pajarito's subproblems; without it, all answers check out (the
+#    cost: SDPLIB mcp100 0.39 s -> 14 s);
+#  - SCS to 1e-6: its default 1e-4 lands 1e-4..6e-4 off the optimum, outside
+#    any cross-check; 1e-6 agrees to 2.5e-5 at a few times the iterations.
+CLARABEL_SETTINGS = {"verbose": False, "chordal_decomposition_enable": False}
+SCS_SETTINGS = {"verbose": False, "eps_abs": 1e-6, "eps_rel": 1e-6, "max_iters": 10 ** 7}
+
+
+def clarabel_settings(**extra):
+    import clarabel
+    st = clarabel.DefaultSettings()
+    for k, v in dict(CLARABEL_SETTINGS, **extra).items():
+        setattr(st, k, v)
+    return st
 
 
 def build_socp(n):
@@ -83,10 +103,9 @@ def solve_clarabel(n):
     P = sparse.csc_matrix((N, N))
     cones = [clarabel.ZeroConeT(z)] + [clarabel.SecondOrderConeT(d) for d in soc]
     try:
-        st = clarabel.DefaultSettings()
-        st.verbose = False
+        st = clarabel_settings()
+        t = time.perf_counter()  # setup counts: scaling, KKT solver setup
         solver = clarabel.DefaultSolver(P, q, A, b, cones, st)
-        t = time.perf_counter()
         sol = solver.solve()
         dt = time.perf_counter() - t
         return dt, float(sol.obj_val)
@@ -104,7 +123,7 @@ def solve_scs(n):
     cone = dict(z=z, q=soc)
     try:
         t = time.perf_counter()
-        sol = scs.solve(data, cone, verbose=False)
+        sol = scs.solve(data, cone, time_limit_secs=600, **SCS_SETTINGS)
         dt = time.perf_counter() - t
         return dt, float(sol["info"]["pobj"])
     except Exception:
@@ -166,7 +185,7 @@ def solve_scs_sdp(d, seed):
     data = dict(A=A, b=b, c=c)
     try:
         t = time.perf_counter()
-        sol = scs.solve(data, dict(z=dim, s=[dim]), verbose=False)
+        sol = scs.solve(data, dict(z=dim, s=[dim]), time_limit_secs=600, **SCS_SETTINGS)
         dt = time.perf_counter() - t
         return dt, float(sol["info"]["pobj"]), expected
     except Exception:
@@ -180,16 +199,44 @@ def solve_clarabel_sdp(d, seed):
         return None, None, None
     L, c, A, b, dim, expected = sdp_data(d, seed, order="rowmajor")
     try:
-        st = clarabel.DefaultSettings()
-        st.verbose = False
+        st = clarabel_settings()
         cones = [clarabel.ZeroConeT(dim), clarabel.PSDTriangleConeT(dim)]
+        t = time.perf_counter()  # setup counts: scaling, KKT solver setup
         solver = clarabel.DefaultSolver(sparse.csc_matrix((L, L)), c, A, b, cones, st)
-        t = time.perf_counter()
         sol = solver.solve()
         dt = time.perf_counter() - t
         return dt, float(sol.obj_val), expected
     except Exception:
         return None, None, None
+
+
+def socp_cbf(n):
+    """The build_socp family as a CBF file: x (n) and t (K) free, sum x = 1,
+    (t_k, x_2k, x_2k+1) in Q, min sum t."""
+    K = n // 2
+    L = ["VER", "3", "OBJSENSE", "MIN", "VAR", "%d 1" % (n + K), "F %d" % (n + K),
+         "CON", "%d %d" % (1 + 3 * K, 1 + K), "L= 1"] + ["Q 3"] * K
+    obj = ["%d 1" % (n + k) for k in range(K)]
+    a = ["0 %d 1" % j for j in range(n)]
+    for k in range(K):
+        a += ["%d %d 1" % (1 + 3 * k, n + k), "%d %d 1" % (2 + 3 * k, 2 * k),
+              "%d %d 1" % (3 + 3 * k, 2 * k + 1)]
+    L += ["OBJACOORD", str(K)] + obj + ["ACOORD", str(len(a))] + a + ["BCOORD", "1", "0 -1"]
+    return "\n".join(L) + "\n"
+
+
+def sdp_cbf(d, seed):
+    """The sdp_data family as a CBF file: one d x d PSD variable X, X_ii = 1,
+    objective <C, X> (lower triangle, off-diagonals counted once)."""
+    g = _rng(seed)
+    v = [next(g) * 2.0 - 1.0 for _ in range(d)]
+    obj = ["0 %d %d %.17g" % (i, j, -v[i] * v[j]) for i in range(d) for j in range(i + 1)]
+    L = ["VER", "3", "", "OBJSENSE", "MIN", "", "PSDVAR", "1", str(d), "",
+         "CON", "%d 1" % d, "L= %d" % d, "",
+         "OBJFCOORD", str(len(obj))] + obj + ["", "FCOORD", str(d)]
+    L += ["%d 0 %d %d 1" % (i, i, i) for i in range(d)]
+    L += ["", "BCOORD", str(d)] + ["%d -1" % i for i in range(d)]
+    return "\n".join(L) + "\n"
 
 
 def main():
