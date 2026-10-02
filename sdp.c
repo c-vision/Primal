@@ -775,6 +775,7 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
     for (int k = 0; k < m; k++) if (fabs(b[k]) > bn) bn = fabs(b[k]);
     for (int i = 0; i < n; i++) if (fabs(c[i]) > cn) cn = fabs(c[i]);
     int status = 1;
+    const char *why = "max_iter";
     double mwin[MWIN]; int nwin = 0, iwin = 0;
     for (int it = 0; it < max_iter; it++) {
         if (primal_cb_iter_on) primal_cb_iter(34);
@@ -807,9 +808,12 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                     it, tau, kap, theta, R.mu, pri, dual, gap, R.pf, R.df, viol);
         if (isfinite(pri) && isfinite(dual) && isfinite(gap) && tau > 1e-12 &&
             pri <= rtol_pri && dual <= rtol_dual && gap <= rtol_gap) {
-            status = 0; break;
+            status = 0; why = "triple inside the declared tolerances"; break;
         }
-        if (!(R.mu > 0 && isfinite(R.mu) && tau > 1e-16 && kap > 0 && theta > 0)) break;
+        if (!(R.mu > 0 && isfinite(R.mu) && tau > 1e-16 && kap > 0 && theta > 0)) {
+            why = "left the homogeneous interior (mu/tau/kappa/theta guard)";
+            break;
+        }
         for (int j = 0; j < nb; j++) {
             int d = dims[j]; double *wj = W + (size_t)j * d2;
             sym_fun(d, X[j], 0, t1); mmul(d, t1, S[j], t2); mmul(d, t2, t1, t3);
@@ -972,11 +976,13 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                 if (sigma < 0.01) sigma = 0.01;
                 if (sigma > 1) sigma = 1;
             } else {
-                double old = R.pf + R.df + R.mu;
+                double old = R.pf / (tau * (1 + bn)) + R.df / (tau * (1 + cn)) + R.mu;
                 double ref = old;
                 for (int q = 0; q < MWIN; q++) if (q < nwin && mwin[q] > ref) ref = mwin[q];
                 ref += 1e-10 * ref + 1e-16;
                 int accepted = 0;
+                int rej_cone = 0, rej_merit = 0;
+                double last_merit = 0, last_min_tau = 0;
                 for (int bt = 0; bt < 60; bt++, alpha *= 0.5) {
                     if (alpha < 1e-14) break;
                     int ok = 1;
@@ -989,7 +995,7 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                         for (int a = 0; a < d * d; a++) t1[a] = S[j][a] + alpha * dS[off + a];
                         if (min_eig(d, t1) <= 0) ok = 0;
                     }
-                    if (!ok) continue;
+                    if (!ok) { rej_cone++; continue; }
                     for (int i = 0; i < n; i++) { xx[i] += alpha * dx[i]; ss[i] += alpha * ds[i]; }
                     for (int k = 0; k < m; k++) y[k] += alpha * dy[k];
                     for (int j = 0; j < nb; j++) {
@@ -1000,7 +1006,13 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                     hsd_stat T = hsd_measure(m, n, nb, dims, d2, A, b, c, C, AB, bb, bc, BC, bz,
                                               xx, ss, (const double *const *)X, (const double *const *)S,
                                               y, tau, kap, theta, rp, rd, rB, nu);
-                    if (isfinite(T.mu) && T.pf + T.df + T.mu <= ref) { accepted = 1; break; }
+                    double tmerit = T.pf / ((tau + alpha * dtau) * (1 + bn))
+                                  + T.df / ((tau + alpha * dtau) * (1 + cn)) + T.mu;
+                    if (isfinite(T.mu) && tmerit <= ref) { accepted = 1; break; }
+                    rej_merit++;
+                    last_merit = T.pf / ((tau + alpha * dtau) * (1 + bn))
+                               + T.df / ((tau + alpha * dtau) * (1 + cn)) + T.mu;
+                    last_min_tau = fmin(tau + alpha * dtau, fmin(kap + alpha * dkap, theta + alpha * dtheta));
                     for (int i = 0; i < n; i++) { xx[i] -= alpha * dx[i]; ss[i] -= alpha * ds[i]; }
                     for (int k = 0; k < m; k++) y[k] -= alpha * dy[k];
                     for (int j = 0; j < nb; j++) {
@@ -1010,15 +1022,18 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                     tau -= alpha * dtau; kap -= alpha * dkap; theta -= alpha * dtheta;
                 }
                 if (getenv("GMB_DBG"))
-                    fprintf(stderr, "[HSD] step it=%d alpha=%.4g sigma=%.4g dtau=%.4g dkap=%.4g dtheta=%.4g accepted=%d\n",
-                            it, alpha, sigma, dtau, dkap, dtheta, accepted);
+                    fprintf(stderr, "[HSD] step it=%d alpha=%.4g sigma=%.4g dtau=%.4g dkap=%.4g dtheta=%.4g accepted=%d"
+                                    " rej_cone=%d rej_merit=%d ref=%.4g last_merit=%.4g min_tau=%.4g dmax=%.4g\n",
+                            it, alpha, sigma, dtau, dkap, dtheta, accepted,
+                            rej_cone, rej_merit, ref, last_merit, last_min_tau,
+                            fmax(fabs(dtau), fmax(fabs(dkap), fabs(dtheta))));
                 if (accepted) { mwin[iwin] = old; iwin = (iwin + 1) % MWIN; if (nwin < MWIN) nwin++; }
-                else goto finish;
+                else { why = "merit line search exhausted every backtrack"; goto finish; }
             }
         }
     }
 finish:
-    if (getenv("GMB_DBG")) fprintf(stderr, "[HSD] finish best_viol=%.4g status=%d\n", best_viol, status);
+    if (getenv("GMB_DBG")) fprintf(stderr, "[HSD] finish best_viol=%.4g status=%d why=%s\n", best_viol, status, why);
     if (status != 0 && best_viol <= 1.0) {
         double *sp = snap;
         memcpy(xx, sp, (size_t)n * sizeof(double)); sp += n;
