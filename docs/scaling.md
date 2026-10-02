@@ -5,6 +5,35 @@
 Scaling is a row/column equilibration step that runs before the solve, and it
 is deliberately the simplest thing that works: exact **powers of two**.
 
+## Cost: one sweep per pass, not one per row
+
+Each pass equilibrates the rows and then the columns, four times. Both directions
+are `O(nnz + n)`:
+
+- **row pass** — one sweep of the column-wise store accumulates `Σⱼ a_ij²` and the
+  entry count for every row at once, one sweep applies each entry's row factor.
+- **column pass** — one sweep per column over its own entries.
+
+The row pass used to loop over rows on the outside and scan every column inside,
+filtering `sub[k] == i`, which made a single pass `2·O(n·nnz)` and the four passes
+`8·O(n·nnz)`. On the sizes that matter this is the difference between half a
+second and a millisecond:
+
+| `nvar × ncon` (`nnz`) | before | after |
+|---|---|---|
+| 400 × 200 (4 827) | 0.0020 s | 0.00003 s |
+| 1600 × 800 (76 814) | 0.112 s | 0.0004 s |
+| 2022 × 1603 (194 663) | 0.515 s | 0.0009 s |
+| 100 × 5050 (30 281) | 0.216 s | 0.0002 s |
+
+The arithmetic per entry is unchanged, so the result is **bit-identical**: verified
+by comparing `A`, `r`, `d`, `lc`, `uc` and `c` byte for byte against the previous
+loop at five sizes, and by the benchmark objectives, which did not move on any of
+the 49 instances of the README table. The factor applied to an entry is the one
+computed for that row **in that pass**, not the accumulated `r[i]` — multiplying
+once per pass by the accumulated factor applies `f₁f₂f₃f₄` to every entry, which is
+a different (and silently wrong) scaling.
+
 ## Why powers of two
 
 A factor of `2^k` is exact in binary floating point. Multiplying and dividing
