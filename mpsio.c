@@ -207,8 +207,19 @@ static void toks_free(Toks *T) {
 static int tok_is(const Toks *T, int i, const char *s) {
     return i < T->n && strcmp(T->tok[i], s) == 0;
 }
+
 /* Exact string equality. Returns 1 when equal, 0 otherwise. */
 static int teq(const char *a, const char *b) { return strcmp(a, b) == 0; }
+
+/* A COLUMNS marker line: "<name> 'MARKER' 'INTORG'|'INTEND'".  The first
+ * field is the marker's NAME (MIPLIB writes MARK0000, MARK0001, ...); the
+ * keyword is the quoted 'MARKER' in the second field.  A bare "MARKER" first
+ * token is accepted as well (the form this reader writes). */
+static int is_marker(const Toks *T, int i) {
+    if (teq(T->tok[i], "MARKER")) return 1;
+    return i + 1 < T->n && T->line[i + 1] == T->line[i] && teq(T->tok[i + 1], "'MARKER'");
+}
+
 /* Case-insensitive string equality. Returns 1 when equal, 0 otherwise. */
 static int ieq(const char *a, const char *b) {
     while (*a && *b) {
@@ -810,7 +821,7 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
         if (i == T->n) { rc = PRIMAL_RES_ERR_FILE; goto fail; }
         i++;
         while (i < T->n && !is_mps_section(T->tok[i])) {
-            if (teq(T->tok[i], "MARKER")) {
+            if (is_marker(T, i)) {
                 i++;
                 if (i < T->n && teq(T->tok[i], "'MARKER'")) i++;
                 if (i < T->n && (teq(T->tok[i], "'INTORG'") || teq(T->tok[i], "'INTEND'"))) i++;
@@ -890,7 +901,7 @@ static PRIMALrescodee mps_read(PRIMALtask_t t, const Toks *T) {
             i++;
             int inint = 0;
             while (i < T->n && !is_mps_section(T->tok[i])) {
-                if (teq(T->tok[i], "MARKER")) {
+                if (is_marker(T, i)) {
                     i++;
                     if (i < T->n && teq(T->tok[i], "'MARKER'")) i++;
                     if (i < T->n && teq(T->tok[i], "'INTORG'")) { inint = 1; i++; }

@@ -569,13 +569,9 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
         bounds_for_dom(ct, &bk, &bl, &bu);
         for (int q = 0; q < vgrp[g].size; q++)
             PRIMAL_putvarbound(t, vgrp[g].start + q, bk, bl, bu);
-        if (ct < 100) {
-            int mem[3];
-            if (vgrp[g].size > 3) return PRIMAL_RES_ERR_ARG;
-            for (int q = 0; q < vgrp[g].size; q++) mem[q] = vgrp[g].start + q;
-            if (PRIMAL_appendcone(t, (PRIMALconetypee)ct, pr, vgrp[g].size, mem)
+        if (ct < 100 &&
+            PRIMAL_appendconeseq(t, (PRIMALconetypee)ct, pr, vgrp[g].size, vgrp[g].start)
                 != PRIMAL_RES_OK) return PRIMAL_RES_ERR_ARG;
-        }
     }
     for (int k = 0; k < nint; k++)
         PRIMAL_putvartype(t, ints[k], PRIMAL_VAR_TYPE_INT);
@@ -648,70 +644,67 @@ static PRIMALrescodee build_task(PRIMALtask_t t, int sense_max,
             cone_dom(cgrp[g2].name, cgrp[g2].size, pows, npows, &ct2, &pr2);
             if (ct2 < 100) off += cgrp[g2].size;
         }
-        int mem[3];
-        if (cgrp[g].size > 3) return PRIMAL_RES_ERR_ARG;
-        for (int q = 0; q < cgrp[g].size; q++)
-            mem[q] = aux0 + off + q;
-        if (PRIMAL_appendcone(t, (PRIMALconetypee)ct, pr, cgrp[g].size, mem)
+        if (PRIMAL_appendconeseq(t, (PRIMALconetypee)ct, pr, cgrp[g].size, aux0 + off)
             != PRIMAL_RES_OK) return PRIMAL_RES_ERR_ARG;
     }
 
-    /* --- PSDCON: rows for the nonzero positions --- */
+    /* --- PSDCON: sum_j H_j x_j + D in S^mc_+ ---
+     * One bar variable S per PSDCON and one row per position (p >= q) of the
+     * triangle:  sum_j H_j[p][q] x_j - S[p][q] = -D[p][q],  so that
+     * S = sum_j H_j x_j + D.  A position without data is the row S[p][q] = 0:
+     * left out, that entry of S would be free and S could be PSD while
+     * H x + D is not.  Entries may be given in either triangle (CBF writes
+     * the lower one); they are folded onto p >= q first. */
     {
-        int nposTot = 0;
-        for (int c = 0; c < npsdcon; c++) {
-            for (int k = 0; k < nhc + ndc; k++) {
-                int p, q;
-                if (k < nhc) { if (hc[k].i != c) continue; p = hc[k].p; q = hc[k].q; }
-                else { int k2 = k - nhc; if (dc[k2].i != c) continue; p = dc[k2].p; q = dc[k2].q; }
-                int dup = 0;
-                for (int u = 0; u < k; u++) {
-                    int up, uq, uok;
-                    if (u < nhc) uok = (hc[u].i == c), up = hc[u].p, uq = hc[u].q;
-                    else { int u2 = u - nhc; uok = (dc[u2].i == c); up = dc[u2].p; uq = dc[u2].q; }
-                    if (uok && up == p && uq == q) { dup = 1; break; }
-                }
-                if (!dup) nposTot++;
-            }
-        }
-        if (nposTot > 0) PRIMAL_appendcons(t, nposTot);
         int r = m;
         for (int c = 0; c < npsdcon; c++) {
             int baridx = npsdvar + c, mc = psdcon[c];
-            for (int p = 0; p < mc; p++) {
-                for (int q = p; q < mc; q++) {
-                    /* does position (p,q) carry data? */
-                    int hasH = 0, hasD = 0;
-                    for (int k = 0; k < nhc; k++)
-                        if (hc[k].i == c && hc[k].p == p && hc[k].q == q) { hasH = 1; break; }
-                    for (int k = 0; k < ndc; k++)
-                        if (dc[k].i == c && dc[k].p == p && dc[k].q == q) { hasD = 1; break; }
-                    if (!hasH && !hasD) continue;
-                    /* baraij: <E_pq, X> = expr */
-                    int sm;
-                    if (PRIMAL_appendsparsesymmat(t, mc, 1, (int[]){p}, (int[]){q},
-                                               (double[]){1.0}, &sm) != PRIMAL_RES_OK)
-                        return PRIMAL_RES_ERR_ARG;
-                    double coef = (p == q) ? 1.0 : 0.5;
-                    if (PRIMAL_putbaraij(t, r, baridx, 1, &sm, &coef) != PRIMAL_RES_OK)
-                        return PRIMAL_RES_ERR_ARG;
-                    /* linear coefficients */
-                    RowList rl; memset(&rl, 0, sizeof(rl));
-                    for (int k = 0; k < nhc; k++)
-                        if (hc[k].i == c && hc[k].p == p && hc[k].q == q)
-                            rl_add(&rl, hc[k].j, hc[k].v);
-                    if (rl.nz > 0)
-                        PRIMAL_putarow(t, r, rl.nz, rl.sub, rl.val);
-                    free(rl.sub); free(rl.val);
-                    /* bound FX = -D[p][q] */
-                    double dsum = 0.0;
-                    for (int k = 0; k < ndc; k++)
-                        if (dc[k].i == c && dc[k].p == p && dc[k].q == q)
-                            dsum += dc[k].v;
-                    PRIMAL_putconbound(t, r, PRIMAL_BK_FX, -dsum, -dsum);
-                    r++;
+            if (mc <= 0) continue;
+            int *row = (int *)malloc((size_t)mc * (size_t)mc * sizeof(int));
+            if (!row) return PRIMAL_RES_ERR_ALLOC;
+            for (int k = 0; k < mc * mc; k++) row[k] = -1;
+            int npos = 0;
+            for (int p = 0; p < mc; p++)
+                for (int q = 0; q <= p; q++) row[p * mc + q] = npos++;
+            for (int k = 0; k < nhc + ndc; k++) {
+                const T4 *e = k < nhc ? &hc[k] : &dc[k - nhc];
+                if (e->i == c && (e->p < 0 || e->q < 0 || e->p >= mc || e->q >= mc)) {
+                    free(row); return PRIMAL_RES_ERR_ARG;
                 }
             }
+            if (PRIMAL_appendcons(t, npos) != PRIMAL_RES_OK) { free(row); return PRIMAL_RES_ERR_ALLOC; }
+            RowList *rl = (RowList *)calloc((size_t)npos, sizeof(RowList));
+            double *dsum = (double *)calloc((size_t)npos, sizeof(double));
+            if (!rl || !dsum) { free(row); free(rl); free(dsum); return PRIMAL_RES_ERR_ALLOC; }
+            for (int k = 0; k < nhc + ndc; k++) {
+                const T4 *e = k < nhc ? &hc[k] : &dc[k - nhc];
+                if (e->i != c) continue;
+                int p = e->p > e->q ? e->p : e->q, q = e->p > e->q ? e->q : e->p;
+                int w = row[p * mc + q];
+                if (k < nhc) rl_add(&rl[w], e->j, e->v);
+                else dsum[w] += e->v;
+            }
+            PRIMALrescodee prc = PRIMAL_RES_OK;
+            for (int p = 0; p < mc && prc == PRIMAL_RES_OK; p++)
+                for (int q = 0; q <= p && prc == PRIMAL_RES_OK; q++) {
+                    int w = row[p * mc + q];
+                    /* <E, S> with E symmetric and 1 at (q,p) and (p,q): S[p][q]
+                     * off the diagonal takes the coefficient 1/2 twice */
+                    int sm;
+                    prc = PRIMAL_appendsparsesymmat(t, mc, 1, (int[]){q}, (int[]){p},
+                                                    (double[]){1.0}, &sm);
+                    if (prc != PRIMAL_RES_OK) break;
+                    double coef = (p == q) ? -1.0 : -0.5;
+                    prc = PRIMAL_putbaraij(t, r + w, baridx, 1, &sm, &coef);
+                    if (prc == PRIMAL_RES_OK && rl[w].nz > 0)
+                        prc = PRIMAL_putarow(t, r + w, rl[w].nz, rl[w].sub, rl[w].val);
+                    if (prc == PRIMAL_RES_OK)
+                        prc = PRIMAL_putconbound(t, r + w, PRIMAL_BK_FX, -dsum[w], -dsum[w]);
+                }
+            for (int w = 0; w < npos; w++) { free(rl[w].sub); free(rl[w].val); }
+            free(rl); free(dsum); free(row);
+            if (prc != PRIMAL_RES_OK) return PRIMAL_RES_ERR_ARG;
+            r += npos;
         }
     }
 
@@ -1007,12 +1000,29 @@ static PRIMALrescodee read_change(PRIMALtask_t t, char **lines, int nl, int *idx
  */
 PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f) {
     if (!t || !f) return PRIMAL_RES_ERR_NULL;
-    char *lines[CBF_MAXL];
-    int nl = 0;
+    /* The whole file, one entry per significant line.  Grown as needed: a
+     * fixed cap silently dropped the tail of a longer file (the coefficient
+     * sections of most real CBLIB models) and read a different model. */
+    char **lines = NULL;
+    int nl = 0, lcap = 0;
     char buf[CBF_MAXL];
-    while (nl < CBF_MAXL && rd_line(f, buf)) {
+    while (rd_line(f, buf)) {
+        if (nl == lcap) {
+            lcap = lcap ? 2 * lcap : 1024;
+            char **nlines = (char **)realloc(lines, (size_t)lcap * sizeof(char *));
+            if (!nlines) {
+                for (int i = 0; i < nl; i++) free(lines[i]);
+                free(lines);
+                return PRIMAL_RES_ERR_ALLOC;
+            }
+            lines = nlines;
+        }
         lines[nl] = strdup(buf);
-        if (!lines[nl]) return PRIMAL_RES_ERR_ALLOC;
+        if (!lines[nl]) {
+            for (int i = 0; i < nl; i++) free(lines[i]);
+            free(lines);
+            return PRIMAL_RES_ERR_ALLOC;
+        }
         nl++;
     }
     int idx = 0;
@@ -1256,7 +1266,9 @@ PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f) {
         return PRIMAL_RES_ERR_ARG;   /* unrecognized keyword */
     }
 
-    if (!have_var || !have_con) return PRIMAL_RES_ERR_ARG;
+    /* VAR or CON may be absent: a model of PSD variables only has no scalar
+     * variables, one of PSD constraints only has no scalar rows. */
+    (void)have_var; (void)have_con;
     rc = build_task(t, sense_max, nv, vgrp, nvgrp, pows, npows,
                     ints, nint, psdvar, npsdvar, m, cgrp, ncgrp,
                     objA.d, objA.n, bobj, objF.d, objF.n,
@@ -1268,6 +1280,7 @@ PRIMALrescodee cbf_read(PRIMALtask_t t, FILE *f) {
             rc = read_change(t, lines, nl, &idx);
     }
     for (int i = 0; i < nl; i++) free(lines[i]);
+    free(lines);
     free(vgrp); free(cgrp); free(ints); free(psdvar); free(psdcon);
     free(objA.d); free(ac.d); free(bc.d); free(objF.d);
     free(fc.d); free(hc.d); free(dc.d);
