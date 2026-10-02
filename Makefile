@@ -94,8 +94,15 @@ $(OUT)/san/c_examples: | $(OUT)/san
 $(OUT)/san/%.o: %.c $(HEADERS) | $(OUT)/san
 	$(CC) $(SANFLAGS) $(SAN) -c $< -o $@
 
-$(OUT)/san/run_tests: test_primal.c $(SANOBJS) | $(OUT)/san
-	$(CC) $(SANFLAGS) $(SAN) -o $@ test_primal.c $(SANOBJS) $(LDLIBS)
+# test_primal.c calls primal_main, which lives in primal.c and is guarded by
+# -DPRIMAL_NO_MAIN (the same object $(OUT)/primal_cli.o is for the plain build).
+# Without it the sanitized suite never linked: ld: symbol(s) not found, so every
+# `make sanitize` since the split stopped at the link and the run never happened.
+$(OUT)/san/primal_cli.o: primal.c $(HEADERS) | $(OUT)/san
+	$(CC) $(SANFLAGS) $(SAN) -DPRIMAL_NO_MAIN -c $< -o $@
+
+$(OUT)/san/run_tests: test_primal.c $(SANOBJS) $(OUT)/san/primal_cli.o | $(OUT)/san
+	$(CC) $(SANFLAGS) $(SAN) -o $@ test_primal.c $(SANOBJS) $(OUT)/san/primal_cli.o $(LDLIBS)
 
 # The leak check does not exist on macOS ("LeakSanitizer is not supported"):
 # ASAN_OPTIONS=detect_leaks=0 is required or the process aborts at exit.
