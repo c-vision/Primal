@@ -729,6 +729,11 @@ static int tri3_to_csc(int ncol,const Tri3*t,int **op,int **oi,double **ov){
  * augmented sparse-LU direction (robust near the optimum).
  * ===================================================================== */
 #define NT_MAXK 32
+/* Largest diagonal shift, as a fraction of max|H|, that the NT path will accept
+ * to repair a failed H factorization before handing the iteration to the
+ * augmented LU.  Measured margins: legitimate near-singular retries need
+ * <= 2.6e-6, a genuinely indefinite H needed 0.5. */
+#define SOCP_H_SHIFT_REL 1e-4
 /* Jordan product v o w = A(v) w, written out: (v0 w0 + <vbar,wbar>, v0 wbar +
  * w0 vbar).  o may NOT alias v or w. */
 static void nt_amul(const double *v,const double *w,int k,double *o){
@@ -1020,15 +1025,32 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
               o+=kk;}}
             int *Hp,*Hi; double *Hv;
             if(tri3_to_csc(n,&tri,&Hp,&Hi,&Hv)){status=OPT_MEMORY;goto done;}
-            Hchol=spchol_factor(n,Hp,Hi,Hv);
-            { static const double regs[]={1e-10,1e-9,1e-8}; double rgu=0.0;
-              for(size_t ri=0;ri<sizeof regs/sizeof regs[0]&&!Hchol;ri++){
-                for(int i=0;i<n;i++) tri3_add(&tri,i,i,regs[ri]-rgu);
-                rgu=regs[ri];
-                free(Hp);free(Hi);free(Hv);
-                if(tri3_to_csc(n,&tri,&Hp,&Hi,&Hv)){status=OPT_MEMORY;goto done;}
-                Hchol=spchol_factor(n,Hp,Hi,Hv); } }
-            free(Hp);free(Hi);free(Hv);
+            /* H = G'Q(w)^{-1}G stops being numerically positive definite near a
+             * degenerate scaling point, and the Cholesky then refuses it.  What it
+             * refuses by is tiny: measured on the 100-cone SOCP benchmark the
+             * failing pivot is 1e-10..1e-7 of the matrix scale, because Q(w)^{-1}
+             * diverges while mu -> 0 and H's entries reach 1e12.  The old absolute
+             * retry ladder (1e-10..1e-8) was 11 orders of magnitude too small to
+             * repair that, so every one of those iterations fell back to the
+             * augmented LU, which costs ~65x an NT iteration and was 96% of the
+             * solve.  So ask the factorizer how much it needs and shift by that
+             * much: |dj| is exactly the smallest diagonal shift that makes the
+             * pivot positive.  A shift that is NOT small against the matrix scale
+             * means H is genuinely indefinite rather than nearly singular, and
+             * that is the augmented LU's job -- measured separator: the legitimate
+             * retries are <= 2.6e-6 of the scale, the indefinite one was 0.5. */
+            { double fail_dj = 0.0;
+              Hchol=spchol_factor_fail(n,Hp,Hi,Hv,&fail_dj);
+              if(!Hchol&&fail_dj!=0.0){
+                double hscale=0.0;
+                for(int p=0;p<Hp[n];p++){double a=Hv[p]<0.0?-Hv[p]:Hv[p]; if(a>hscale)hscale=a;}
+                double need=fabs(fail_dj);
+                if(hscale>0.0 && need<=SOCP_H_SHIFT_REL*hscale){
+                    for(int i=0;i<n;i++) tri3_add(&tri,i,i,need*(1.0+1e-9));
+                    free(Hp);free(Hi);free(Hv);
+                    if(tri3_to_csc(n,&tri,&Hp,&Hi,&Hv)){status=OPT_MEMORY;goto done;}
+                    Hchol=spchol_factor(n,Hp,Hi,Hv); } }
+              free(Hp);free(Hi);free(Hv); Hp=Hi=NULL; Hv=NULL; }
             if(Hchol&&spchol_cond_diag(Hchol)>1e10){spchol_free(Hchol);Hchol=NULL;}  /* ill-conditioned */
             if(!Hchol){use_nt=0;}
         }

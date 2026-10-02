@@ -92,6 +92,15 @@ typedef struct {
 /* Factor K in natural order (no fill-reducing permutation).
  * Returns NULL on allocation failure or non-positive-definite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx);
+/* Same, and on a non-positive pivot reports the pivot value that failed (the
+ * negative dj of H_jj minus the contributions of the previous columns).  That
+ * number is the smallest diagonal shift that would make the matrix positive
+ * definite, so a caller can repair the matrix by exactly that much instead of
+ * guessing a tolerance: socp.c uses it to keep the normal equations usable near
+ * a degenerate scaling point.  fail_dj may be NULL.  A NULL return with
+ * *fail_dj still 0.0 means allocation failure, not a bad pivot. */
+SpChol *spchol_factor_fail(int n, const int *Kp, const int *Ki, const double *Kx,
+                           double *fail_dj);
 /* same, with a fill-reducing AMD ordering applied internally (undone by
  * spchol_solve_ord); used by the sparse interior points, where fill matters. */
 SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx);

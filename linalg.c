@@ -477,7 +477,8 @@ static int *sym_amd(int n, const int *Ap, const int *Ai);
 
 /* Factor K in natural order with the left-looking column algorithm.
  * Returns NULL on bad input, alloc failure, or indefinite pivot. */
-static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const double *Kx) {
+static SpChol *spchol_factor_nat_ex(int n, const int *Kp, const int *Ki, const double *Kx,
+                                    double *fail_dj) {
     if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
     int **ci = (int **)calloc((size_t)n, sizeof(int *));
     double **cv = (double **)calloc((size_t)n, sizeof(double *));
@@ -522,6 +523,9 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
         }
         double dj = w[j];
         if (!(dj > 1e-300)) {   /* not positive definite */
+            /* Hand the failing pivot back: its magnitude is the smallest shift
+             * that would repair the matrix, so a caller need not guess one. */
+            if (fail_dj) *fail_dj = dj;
             for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
             free(ci); free(cv); free(cn); free(cc);
             free(ri); free(rv); free(rn); free(rc);
@@ -650,10 +654,23 @@ static int spchol_solve_nat(const SpChol *L, double *rhs) {
     return 0;
 }
 
+static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const double *Kx) {
+    return spchol_factor_nat_ex(n, Kp, Ki, Kx, NULL);
+}
+
 /* Factor K in natural column order (no permutation wrapper).
  * Returns NULL on bad input, alloc failure, or indefinite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     return spchol_factor_nat(n, Kp, Ki, Kx);
+}
+
+/* As spchol_factor, reporting the pivot that failed.  Allocation failure also
+ * returns NULL but leaves *fail_dj at 0.0, which tells the two apart. */
+SpChol *spchol_factor_fail(int n, const int *Kp, const int *Ki, const double *Kx,
+                           double *fail_dj) {
+    if (fail_dj) *fail_dj = 0.0;
+    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
+    return spchol_factor_nat_ex(n, Kp, Ki, Kx, fail_dj);
 }
 
 /* Solve K u = rhs in place through a natural-order factor.  An ordered factor
