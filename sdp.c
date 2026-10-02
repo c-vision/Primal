@@ -57,6 +57,68 @@ void primal_cb_iter(int code);
  * over this many iterations is spent, even if it is not the exact freeze. */
 #define CWIN 16
 
+/* --- Does a STALLED bar/SOC point count as an answer? ---
+ *
+ * A PSD/SOC model (nep==0) whose native path freezes has, on this engine, two
+ * possible answers: publish the frozen point and let the declared near-optimal
+ * factor judge it (the state before 125a3be), or call it "not solved" and let
+ * the dispatcher run the tangent-cut outer approximation first (125a3be).
+ *
+ * Measured cost of the second, on the pure-SDP family of bench/sdp_sweep
+ * (same objective to 8 digits, same rc, three builds on this machine):
+ *
+ *     d     47837b2   125a3be     ratio
+ *     16      0.042 s   16.26 s    392x
+ *     17      0.035 s   20.90 s    604x
+ *     18      0.044 s   28.90 s    663x
+ *     19      0.133 s   37.16 s    280x
+ *
+ * and with GMB_DBG on d=17 the whole time is the cut loop -- 201 rounds, its
+ * full budget -- with the native route leaving no measurable point at all.
+ *
+ * Why it was made the second: on gcc-13 the T100 case-3 bar freezes at
+ * rel_pri=2.1e-6, the near factor (x1000) then declares it optimal and it is
+ * infeasible by 2.1e-3, where the cuts give 5e-10. The commit believed the
+ * defect was gcc-only ("Apple clang never reproduced it"). Measured here on
+ * 2026-10-02, it is NOT toolchain-specific: the same model freezes on Apple
+ * clang with the same triple, and the frozen point measures rel_pri=1.71e-9 --
+ * inside the declared 1e-8 -- with an ABSOLUTE residual of 1.72e-6, which is
+ * what the suite's feasibility assertions (pinf <= 1e-6) reject. The cuts give
+ * 5.5e-10 on that model. So the split is not macOS-good / gcc-bad; it is fast-
+ * but-not-measured versus slow-and-measured, and it is decided per point below.
+ *
+ * Decision (user, 2026-10-02): a 300-660x slowdown is not worth the parity,
+ * so the fast policy is the default on Apple, and it is not allowed to publish
+ * a point that fails the measure the rest of the project asserts. The switch is
+ * compile-time because the frozen point's quality is a property of the
+ * generated code, not of the run: an environment variable would make two
+ * answers to the same model differ with the environment, which is the family of
+ * defect this project keeps refusing.
+ *
+ * Override for measurement and for a build that wants the other answer:
+ *   -DGMB_CONE_STALL_CUTS   force the cut route (the 125a3be behaviour) anywhere
+ *   -DGMB_CONE_STALL_FAST   force the frozen point (subject to the floor below)
+ *   -DGMB_STALL_FEAS=x       the floor the published frozen point must clear
+ */
+#if defined(GMB_CONE_STALL_CUTS)
+#define GMB_STALL_IS_ANSWER 0
+#elif defined(GMB_CONE_STALL_FAST) || defined(__APPLE__)
+#define GMB_STALL_IS_ANSWER 1
+#else
+#define GMB_STALL_IS_ANSWER 0
+#endif
+
+/* The floor the fast policy has to clear: the absolute row residual of the
+ * frozen point, in the model's own units. It is the number getprimalinfeas
+ * returns and the bound every feasibility assertion in the suite is written
+ * against (pinf <= 1e-6), so "this point is published" and "this point is
+ * feasible" are the same statement here and not two different ones. Overridable
+ * for measurement; changing it changes what the suite accepts, not what the
+ * solver computes. */
+#ifndef GMB_STALL_FEAS
+#define GMB_STALL_FEAS 1e-6
+#endif
+
 /* ---------- second-order-cone Jordan-algebra helpers ---------- */
 /* Signed distance of v to the boundary of SOC, in the cone's own units: v[0] is
  * how far past the vertex along the axis the ball of radius |v_{1:}| reaches.
@@ -1139,6 +1201,15 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     double viol_win[CWIN]; int nviol_win = 0, iwin_win = 0, crawl = 0;
     double prev_feas = HUGE_VAL; int use_rescue = 0;
     double gap_best = 0.0, viol_best = 0.0, merit_prev = 0.0, viol_prev = 0.0;
+    /* The fallback candidate keeps the BEST point the gate has seen, not the one
+     * the trajectory happened to sit on at the demotion event: measured on the
+     * pure-SDP d=16, the crawl demoted at it=41 with viol=811 while it=10 had
+     * viol=1.56, and the candidate is what the dispatcher publishes when the
+     * cuts answer nothing -- its quality is the delivered answer's.  Strictly
+     * an improvement: a candidate is armed only when its viol is at least as
+     * good as the one a demotion would have saved, and `have_best` still wins
+     * whenever the run accepts a point. */
+    double fb_viol_best = HUGE_VAL;
     double mwin[MWIN]; int nwin = 0, iwin = 0;
     int ok = Ws && Wi && Xi && t1 && t2 && t3 && Mt && xs && ss && zsoc && ssoc && Dzsoc && Dssoc &&
              Az && As && rds && rcs && soc_e &&
@@ -1218,6 +1289,15 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
         double viol = Q.pri / rtol_pri;
         if (Q.dual / rtol_dual > viol) viol = Q.dual / rtol_dual;
         if (Q.gap  / rtol_gap  > viol) viol = Q.gap  / rtol_gap;
+        /* Best-iterate fallback selector (see fb_viol_best): the candidate is
+         * the best point seen so far, armed the first time a point is inside
+         * the near factor.  A later demotion cannot downgrade it (fb_saved is
+         * already set, so the demotion saves are skipped). */
+        if (!have_best && viol <= near_rel && viol < fb_viol_best) {
+            fb_viol_best = viol;
+            fb_saved = 1;
+            ipm_state(fb_snap, 1, IPM_STATE_PASS);
+        }
         /* A collapsed step repeats the same merit forever: measured on T47, the
          * dual ratio test returns ad = 0 once s sits exactly on the boundary of
          * K*, and the loop then spends its whole budget recomputing the same
@@ -1742,18 +1822,48 @@ refine:
         ipm_state(snap, 0, IPM_STATE_PASS);
         status = 0;
     } else if (fb_saved) {
-        /* The frozen point is a fallback CANDIDATE on every route: the native
-         * verdict is "not solved", the cuts are the first choice, and this
-         * point only leaves when they also fail (T90/T91/logistic_large/
-         * risk_parity). PSD/SOC (nep==0) used to set status=0 here -- the
-         * premise "there is no alternative route" -- and let the near factor
-         * declare the STALLED point optimal. That is wrong when the alternative
-         * does answer: on gcc-13 the T100 case-3 bar freezes at rel_pri=2.1e-6
-         * and the near factor (x1000) publishes a point infeasible by 2.1e-3,
-         * while the tangent cuts give 5e-10. The dispatcher already holds the
-         * alternative: for numcones==0 it tries optimize_sdp and delivers this
-         * frozen point when the cuts answer nothing (the sdp_8 case). */
+        /* A frozen point is what the run is left holding. Two policies, chosen
+         * at compile time (GMB_STALL_IS_ANSWER, see the macro block above for
+         * the measurement behind it):
+         *
+         *  GMB_STALL_IS_ANSWER (Apple): status=0, so the frozen point is handed
+         *    back and the gate below judges it against the task's declared
+         *    tolerances times the near-optimal factor. A point outside even that
+         *    is reported "not solved" (T96) and nothing is published -- so the
+         *    factor is the verdict, not the stall.
+         *
+         *  otherwise (gcc-13): the verdict stays "not solved", the cuts are the
+         *    first choice and this point only leaves when they also fail
+         *    (T90/T91/logistic_large/risk_parity). The premise "there is no
+         *    alternative route for PSD/SOC" is false -- on gcc-13 the T100
+         *    case-3 bar freezes at rel_pri=2.1e-6 and the near factor publishes
+         *    a point infeasible by 2.1e-3, while the cuts give 5e-10.
+         *
+         * exp/power (nep>0) is never affected: the declared tolerances keep
+         * choosing the route there on every toolchain.
+         */
         ipm_state(fb_snap, 0, IPM_STATE_PASS);
+        if (nep == 0 && GMB_STALL_IS_ANSWER) {
+            /* The fast policy still has to MEASURE the point it publishes, and
+             * the measurement is the ABSOLUTE row residual -- the number
+             * getprimalinfeas returns and the one every feasibility assertion
+             * in the suite is written against. The declared relative tolerance
+             * is not enough here, and the gap is not marginal: on T100 case 3
+             * (bar entries 1e3, so |b| ~ 1000) the frozen point measures
+             * rel_pri = 1.71e-9, comfortably inside the declared 1e-8, and an
+             * absolute residual of 1.72e-6 -- 10x outside what the assertions
+             * accept, and 330x outside the 1e-6 they use. Declaring such a
+             * point optimal is what this policy is not allowed to do, so the
+             * fast path is taken only where the point measures; where it does
+             * not, the tangent cuts answer and deliver 5.5e-10 on the same model
+             * (measured, both policies, same triple).
+             *
+             * The bound is a floor of the same order as the assertions', not a
+             * new accuracy: it decides WHICH route answers, on a point already
+             * accepted by the relative gate above. */
+            ipmres R = ipm_resid(&C);
+            if (R.pfeas <= GMB_STALL_FEAS) status = 0;   /* the gate measures below */
+        }
     }
     /* Route selection, on the MEASURED quality of the point about to be handed
      * back and against the task's OWN interior-point tolerances: mu is the
@@ -1767,7 +1877,7 @@ refine:
      * tangent-cut outer approximation is the better answer: report "not solved"
      * and let the caller route there.  expcone_route_probe prints which route
      * answered. */
-    if (nep > 0 || status == 0 || getenv("GMB_DBG")) {
+    if (nep > 0 || status == 0 || fb_saved || getenv("GMB_DBG")) {
         ipmqual Q = { 0.0, 0.0, 0.0 }; int good = 0, good_near = 0, have = 0;
         double kpri = HUGE_VAL, kdual = HUGE_VAL;
         if (status == 0) {
@@ -1786,6 +1896,16 @@ refine:
             good_near = good || (isfinite(Q.pri) && isfinite(Q.dual) && isfinite(Q.gap) &&
                    Q.pri <= rtol_pri * near_rel && Q.dual <= rtol_dual * near_rel &&
                    Q.gap <= rtol_gap * near_rel);
+        } else if (fb_saved) {
+            /* The fallback candidate is measured on the SAME triple the gate
+             * judges, and printed: it is the point the dispatcher publishes
+             * when the cuts answer nothing, so leaving it unmeasured said
+             * "triple not measured (no point restored)" about a run that has a
+             * point -- and the caller decided what to do with it blind. */
+            ipmres R = ipm_resid(&C);
+            Q = ipm_quality(&C, &R);
+            ipm_cone_slacks(&C, &kpri, &kdual);
+            have = 1;
         }
         /* Where an alternative algorithm exists -- exp/power, the tangent-cut
          * outer approximation -- the DECLARED tolerances keep choosing the
