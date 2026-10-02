@@ -63,7 +63,7 @@ def solve_primal(path, timeout):
     except subprocess.TimeoutExpired:
         return "timeout", None, None
     p = out.split(",")
-    if len(p) != 5 or p[0] == "READ_ERROR":
+    if len(p) != 6 or p[0] == "READ_ERROR":
         return "error", None, None
     return "ok", float(p[4]), float(p[3])
 
@@ -81,6 +81,13 @@ def solve_highs(path, timeout):
         t = time.perf_counter()
         h.run()
         dt = time.perf_counter() - t
+        st = h.getModelStatus()
+        if st == highspy.HighsModelStatus.kTimeLimit:
+            return "timeout", None, None
+        if st == highspy.HighsModelStatus.kInfeasible:
+            return "infeasible", dt, None
+        if st != highspy.HighsModelStatus.kOptimal:
+            return "n/a", None, None
         return "ok", dt, h.getObjectiveValue()
     except Exception:
         return "n/a", None, None
@@ -168,14 +175,21 @@ def solve_scip(path, timeout):
         t = time.perf_counter()
         m.optimize()
         dt = time.perf_counter() - t
+        # a time limit leaves an incumbent behind: not a solve to report
+        if m.getStatus() == "timelimit":
+            return "timeout", None, None
+        if m.getStatus() == "infeasible":
+            return "infeasible", dt, None
+        if m.getStatus() != "optimal":
+            return "n/a", None, None
         return "ok", dt, m.getObjVal()
     except Exception:
         return "n/a", None, None
 
 
-def cell(status, t):
+def cell(status, t, timeout):
     if status != "ok":
-        return {"n/a": "N/A", "timeout": ">%ds" % 0, "not-built": "—",
+        return {"n/a": "N/A", "timeout": ">%ds" % int(timeout), "not-built": "—",
                 "error": "err"}.get(status, "—")
     return "%.3f" % t
 
@@ -206,13 +220,10 @@ def main():
             if hi - lo > 1e-4 * (1 + abs(lo)):
                 warn += 1
                 print("<!-- objective mismatch %s: %s -->" % (r["name"], objs))
-        if sp == "timeout":
-            tp_cell = ">%ds" % int(args.timeout)
-        else:
-            tp_cell = cell(sp, tp)
         print("| %s | %s | %s | %s | %s | %s | %s |" %
               (r["name"], r["vars"], r["cons"], r["nnz"],
-               tp_cell, cell(sh, th), cell(ss, ts)))
+               cell(sp, tp, args.timeout), cell(sh, th, args.timeout),
+               cell(ss, ts, args.timeout)))
     if warn:
         print("\nWARNING: %d objective mismatches" % warn, file=sys.stderr)
 

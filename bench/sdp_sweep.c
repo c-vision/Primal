@@ -25,6 +25,7 @@
  * Usage: sdp_sweep [dmin] [dmax]   (default 4 16)
  * Prints CSV: d,obj,seconds,rc,expected
  */
+#define _POSIX_C_SOURCE 200809L  /* clock_gettime/setenv under -std=c99 on glibc */
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>

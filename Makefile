@@ -223,4 +223,19 @@ $(OUT)/bench/expcone_ipm_probe: bench/expcone_ipm_probe.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench
 	$(CC) $(CFLAGS) -I. bench/expcone_ipm_probe.c $(LIB_A) $(LDLIBS) -o $@
 
-.PHONY: bench
+# SCIP / SCIP-SDP on CBF models through their C API (bench/scip_cbf.c), for
+# bench_all.py's SCIP column.  Not part of `bench`: it needs SCIP and SCIP-SDP
+# installed, e.g.
+#   make bench-scip SCIP_DIR=/opt/scip SCIPSDP_INC=/src/scipsdp/src SCIPSDP_LIB=/src/scipsdp/build/lib
+SCIP_DIR    ?= /usr/local
+SCIPSDP_INC ?= $(SCIP_DIR)/include
+SCIPSDP_LIB ?= $(SCIP_DIR)/lib
+bench-scip: $(OUT)/bench/scip_cbf
+
+$(OUT)/bench/scip_cbf: bench/scip_cbf.c | $(OUT)
+	mkdir -p $(OUT)/bench
+	$(CC) -std=c99 -O2 -Wall -Wextra -I$(SCIP_DIR)/include -I$(SCIPSDP_INC) bench/scip_cbf.c \
+	    -L$(SCIPSDP_LIB) -lscipsdp -L$(SCIP_DIR)/lib -lscip \
+	    -Wl,-rpath,$(SCIPSDP_LIB) -Wl,-rpath,$(SCIP_DIR)/lib -lm -o $@
+
+.PHONY: bench bench-scip

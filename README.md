@@ -159,7 +159,7 @@ line per example.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 4905 checks
+make test          # reliability suite: 5026 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -189,17 +189,16 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **~35× faster** in the
-  recorded SOCP case (0.0004 s against 0.014 s for `socp_200`: 100 cones,
+- **Clarabel** is the closest open conic IPM and is **~25× faster** in the
+  recorded SOCP case (0.0009 s against 0.023 s for `socp_200`: 100 cones,
   300 scalar variables). It supports PSD cones and quadratic objectives
   directly; see its [documented capabilities](https://clarabel.org/stable/).
-  These timings are indicative: the harness excludes Clarabel's solver
-  construction but includes PrimalSolver's conversion inside `PRIMAL_optimize`.
+  The timings include each solver's setup and factorization (Clarabel's and
+  SCS's solver construction, PrimalSolver's conversion inside `PRIMAL_optimize`).
 - **SCS** does PSD and exponential cones, but is first-order: it agrees with
   this solver's objective to about `1e-5`, where the IPM reaches `1e-8`.
-- **HiGHS** is faster on large LP/MILP — 0.012 s against 0.090 s on a 400×200 LP.
-  The crossover sits around 50–100 constraints; below that this solver wins on
-  fixed overhead.
+- **HiGHS** is faster on every LP/MILP here — 0.014 s against 0.123 s on a
+  400×200 LP.
 - **SDP with exponential cones and integer variables, in one dependency-free
   library**, is what nothing else permissively licensed covers. CVXOPT / SDPA /
   Sedumi have SDP but are GPL.
@@ -210,50 +209,141 @@ cone *and* an integer variable, in C, without linking anything? This is it.
 ## Benchmark
 
 Reproduce with `make bench` and a Python that has numpy/scipy plus the optional
-references (`clarabel`, `scs`, `highspy`, `pyscipopt`; a solver that is absent
-shows `N/A`). `bench/bench_all.py` prints this table and cross-checks every
-objective against the analytic value; it exits non-zero on a mismatch. LP/QP/
-MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
-`bench/conic_bench.c` and `bench/sdp_sweep.c`. The SDP sweep reaches **d = 22**;
-`d = 20` is the one block the interior point does not close on this family yet
-(`rc = 1007`, listed, not hidden).
+references (`clarabel`, `scs`, `highspy`, `pyscipopt`, `out/bench/scip_cbf` from
+`make bench-scip` against SCIP and SCIP-SDP, and Julia with the `bench/julia`
+project for Pajarito and Hypatia; a solver that is absent shows `N/A`).
+`bench/bench_all.py` prints this table and cross-checks every objective against
+the analytic value; it exits non-zero on a mismatch. LP/QP/MILP are the
+generated MPS instances, SOCP/SDP are the closed-form families of
+`bench/conic_bench.c` and `bench/sdp_sweep.c`; the SCIP column is SCIP-SDP on
+the SDP rows. The SDP sweep reaches **d = 22**. Timings: one run on an Intel
+i7-12700H (Linux, gcc 14), HiGHS 1.15.1, Clarabel 0.11.1, SCS 3.3.1, SCIP 10.0.2
+built with PaPILO 3.0.0 and Ipopt 3.14.19 (C API on CBF models, PySCIPOpt 6.2.1
+built against it on MPS files), SCIP-SDP 4.4.0 with DSDP 5.8, Pajarito 0.8.3
+(integer models, over HiGHS 1.26 and Clarabel) and Hypatia 0.11.0 (continuous
+ones) on Julia 1.13.1, timed on a second, already-compiled run.
+
+Each solver runs with one fixed configuration on every instance, its defaults
+except where a default gave wrong answers here: Clarabel without chordal
+decomposition (with it, 0.11.1 reports `Solved` at 18.0568 on SDPLIB `control1`,
+optimum 17.7846; the cost is `mcp100`, 0.39 s to 13 s); SCS to `eps` 1e-6 (its
+default 1e-4 lands 1e-4 to 6e-4 off); SCIP-SDP at a 1e-7 feasibility tolerance
+(at its default 1e-5 it returns near-feasible "optima" for infeasible SDPs and
+0.7% too good on `port`), using its LP approach on models that also have
+nonlinear cones (its SDP relaxations leave those out and never move the bound);
+Pajarito with Clarabel for its conic subproblems (with Hypatia, its outer
+approximation cuts off the optimum of `expdesign_D_12_6` and `_16_8`).
 
 <div style="font-size: 0.9em">
 
-| instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
-|---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | 0.0010 | 0.0015 | 0.0002 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | 0.0026 | 0.0017 | 0.0006 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | 0.0144 | 0.0036 | 0.0021 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | 0.0893 | 0.0118 | 0.0114 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.0016 | N/A | 0.0004 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.0069 | N/A | 0.0021 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.0442 | N/A | 0.0065 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.2894 | N/A | N/A | N/A | 0.1442 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 1.0002 | N/A | N/A | N/A | 0.2592 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 3.0181 | N/A | N/A | N/A | 1.0419 | 277.019 |
-| socp_40 | socp | 60 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
-| socp_120 | socp | 180 x 1 | - | 0.0042 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 300 x 1 | - | 0.0137 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -9.83233 |
-| sdp_5 | sdp | 5 x 5 | - | 0.0004 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
-| sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | 0.0019 | N/A | 0.0002 | 0.0004 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | 0.0013 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | 0.0020 | N/A | 0.0005 | 0.0004 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | 0.0027 | N/A | 0.0007 | 0.0007 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0035 | N/A | 0.0010 | 0.0016 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0059 | N/A | 0.0016 | 0.0008 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | 0.0050 | N/A | 0.0018 | 0.0010 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0062 | N/A | 0.0019 | 0.0009 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0092 | N/A | 0.0022 | 0.0013 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0201 | N/A | 0.0032 | 0.0014 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0171 | N/A | 0.0041 | 0.0018 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0226 | N/A | 0.0040 | 0.0022 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0667 | N/A | 0.0043 | 0.0019 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | N/A (rc=1007) | N/A | 0.0056 | 0.0026 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0311 | N/A | 0.0081 | 0.0039 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.2116 | N/A | 0.0098 | 0.0089 | N/A | -149.613 |
+| instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | Pajarito/Hypatia (s) | obj |
+|---|---|---|---|---|---|---|---|---|---|---|
+| lp_50x25 | lp | 50 x 25 | 171 | 0.0037 | 0.0395 | **0.0009** | 0.0035 | 0.0035 | 0.0033 | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | 0.0134 | **0.0021** | 0.0026 | 0.0081 | 0.0053 | 0.0068 | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.0527 | **0.0070** | 0.0071 | 0.0183 | 0.0230 | 0.0324 | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.1826 | **0.0293** | 0.0625 | 0.0518 | 0.1728 | 0.0964 | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.0126 | 0.0028 | **0.0010** | 0.0018 | 0.2322 | 0.0042 | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.0161 | 0.0056 | 0.0040 | **0.0032** | 0.6708 | 0.0103 | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.1488 | 0.0773 | 0.0328 | **0.0106** | 2.5707 | 0.0461 | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.3621 | 0.2756 | N/A | N/A | 0.3456 | **0.1503** | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 1.4953 | **0.2399** | N/A | N/A | 0.6365 | 0.2412 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | 3.5450 | 0.5603 | N/A | N/A | 2.0022 | **0.5208** | 277.019 |
+| socp_40 | socp | 40 x 1 | - | 0.0012 | N/A | **0.0002** | 0.0006 | 0.0363 | 0.0017 | 0.707107 |
+| socp_120 | socp | 120 x 1 | - | 0.0072 | N/A | **0.0015** | 0.0033 | 0.0809 | 0.0125 | 0.707107 |
+| socp_200 | socp | 200 x 1 | - | 0.0230 | N/A | **0.0019** | 0.0041 | 0.1034 | 0.0403 | 0.707107 |
+| sdp_4 | sdp | 4 x 4 | - | **0.0008** | N/A | 0.0594 | **0.0008** | 0.0055 | 0.0025 | -9.83233 |
+| sdp_5 | sdp | 5 x 5 | - | 0.0014 | N/A | **0.0005** | 0.0010 | 0.0059 | 0.0016 | -4.79948 |
+| sdp_6 | sdp | 6 x 6 | - | 0.0628 | N/A | **0.0007** | 0.0012 | 0.0048 | 0.0018 | -10.2438 |
+| sdp_7 | sdp | 7 x 7 | - | 0.8369 | N/A | **0.0007** | 0.0011 | 0.0113 | 0.0023 | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | 0.0023 | N/A | **0.0016** | 0.0023 | 0.0114 | 0.0021 | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | 0.0030 | N/A | **0.0017** | 0.0023 | 0.0102 | 0.0025 | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | 0.0040 | N/A | **0.0023** | 0.0026 | 0.0140 | 0.0030 | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0054 | N/A | 0.0043 | 0.0097 | 0.0140 | **0.0035** | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0088 | N/A | 0.0054 | **0.0034** | 0.0170 | 0.0045 | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | 4.4306 | N/A | 0.0060 | **0.0047** | 0.0188 | 0.0053 | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | 6.1125 | N/A | 0.0068 | **0.0062** | 0.0201 | 0.0063 | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | 6.2201 | N/A | 0.0108 | **0.0063** | 0.0239 | 0.0078 | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | 7.7997 | N/A | 0.0181 | **0.0074** | 0.0278 | 0.0083 | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | 10.2622 | N/A | 0.0202 | **0.0078** | 0.0365 | 0.0109 | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | 13.9289 | N/A | 0.0258 | **0.0103** | 0.0231 | 0.0139 | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | 18.3836 | N/A | 0.0196 | **0.0105** | 0.0364 | 0.0283 | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | 25.4804 | N/A | 0.0306 | **0.0174** | 0.0442 | 0.0180 | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | 32.6378 | N/A | 0.0452 | **0.0156** | 0.0535 | 0.0204 | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | 44.2064 | N/A | 0.0520 | 0.0288 | 0.0594 | **0.0264** | -149.613 |
+
+</div>
+
+### Public instances
+
+`python3 bench/fetch_instances.py` downloads a few small instances from each
+standard set (CBLIB, SDPLIB, Maros–Meszaros, Netlib, MIPLIB 2017), and
+`bench_all.py` then prints this second table. CBLIB supplies the models that
+mix PSD, exponential and power cones with integer variables. Every solver,
+PrimalSolver included, is capped at 60 s. SCIP builds the CBF models through
+its C API (`bench/scip_cbf.c`, `make bench-scip`), with SCIP-SDP for those with
+PSD parts. `obj` is the set's published optimum where it has one (SDPLIB,
+Netlib, MIPLIB; checked to the precision printed there), otherwise the value
+the solvers agree on; for `expdesign_D_12_6` and `_16_8` it is SCIP-SDP's,
+whose points we checked against the model. A ✗ marks an answer that
+disagrees with it; `fail` is a solve that ended without one (including
+Clarabel's reduced-accuracy `Almost*` statuses); `N/A` is a class the solver
+does not take. The two ✗ left are on the ill-conditioned `hinf1`, where
+Hypatia (2.03267) and SCS (2.03349) stop short; feasible points reach 2.03262
+and below.
+
+<div style="font-size: 0.9em">
+
+| instance | set | class | vars x cons | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | Pajarito/Hypatia (s) | obj |
+|---|---|---|---|---|---|---|---|---|---|---|
+| port_12_9_3_a_1 | cblib | soc+exp+psd+int | 90 x 169 | >60s | N/A | N/A | N/A | **6.1503** | 7.5615 | -0.0332208 |
+| port_12_9_3_b_1 | cblib | soc+exp+psd+int | 91 x 170 | >60s | N/A | N/A | N/A | **4.2889** | 8.0163 | -0.0347061 |
+| port_16_12_4_b_1 | cblib | soc+exp+psd+int | 120 x 232 | >60s | N/A | N/A | N/A | **20.5534** | >60s | -0.0440182 |
+| expdesign_D_8_4 | cblib | exp+psd+int | 61 x 148 | fail | N/A | N/A | N/A | 0.5673 | **0.0547** | 0.843307 |
+| expdesign_D_12_6 | cblib | exp+psd+int | 127 x 311 | fail (rc=1007) | N/A | N/A | N/A | 28.4016 | **3.6698** | -0.520253 |
+| expdesign_D_16_8 | cblib | exp+psd+int | 217 x 534 | fail (rc=1007) | N/A | N/A | N/A | >60s | fail (OTHER_ERROR) | 2.93132 |
+| kpart_diw.15.4.29 | cblib | psd+int | 105 x 255 | fail (rc=1002) | N/A | N/A | N/A | **0.2699** | >60s | -95 |
+| rt_2x4_3bars | cblib | psd+int | 64 x 190 | fail (rc=1002) | N/A | N/A | N/A | **1.8447** | 29.6921 | 3.08114 |
+| clsq_random_32_2_a | cblib | psd+int | 33 x 979 | >60s | N/A | N/A | N/A | **0.4501** | 12.9919 | 7.14855 |
+| expdesign_A_8_4 | cblib | psd+int | 29 x 134 | 0.7762 | N/A | N/A | N/A | 0.0746 | **0.0376** | 5.93682 |
+| expdesign_E_8_4 | cblib | psd+int | 26 x 50 | 0.2820 | N/A | N/A | N/A | **0.0174** | 0.0387 | -0.344045 |
+| syn05m | cblib | exp+int | 24 x 65 | 1.1054 | N/A | N/A | N/A | 0.0860 | **0.0791** | -837.732 |
+| syn10m | cblib | exp+int | 42 x 120 | 14.3409 | N/A | N/A | N/A | **0.0315** | 0.0436 | -1267.35 |
+| rsyn0805m | cblib | exp+int | 174 x 537 | >60s | N/A | N/A | N/A | **1.1153** | 2.0208 | -1296.12 |
+| batchdes | cblib | exp+int | 25 x 73 | 1.0885 | N/A | N/A | N/A | 0.0843 | **0.0272** | 167428 |
+| ex1223a | cblib | exp+int | 17 x 60 | 0.0354 | N/A | N/A | N/A | 0.0717 | **0.0188** | 4.57958 |
+| synthes2 | cblib | exp+int | 16 x 47 | 0.7448 | N/A | N/A | N/A | 0.0435 | **0.0342** | 73.0353 |
+| beck751 | cblib | exp | 80 x 59 | 0.2706 | N/A | **0.0005** | 0.0015 | 0.0425 | 0.0040 | 7.50095 |
+| demb761 | cblib | exp | 131 x 93 | 3.7235 | N/A | **0.0008** | 0.4400 | 0.2099 | 0.0050 | 22.3109 |
+| rijc781 | cblib | exp | 24 x 17 | 0.0213 | N/A | **0.0003** | 0.0011 | 0.1371 | 0.0020 | -4.41429 |
+| gp_dave_1 | cblib | exp | 705 x 988 | >60s | N/A | **0.0117** | 0.1266 | 0.3689 | 0.1399 | 5.50653 |
+| LogExpCR-n20-m400 | cblib | exp | 2022 x 1603 | >60s | N/A | **0.0528** | 0.0558 | 0.8083 | 1.5266 | 0.0164814 |
+| HMCR-n20-m400 | cblib | pow | 2022 x 1603 | >60s | N/A | **0.0444** | 0.1136 | 0.0569 | 1.2311 | 0.0345743 |
+| HMCR-n20-m800 | cblib | pow | 4022 x 3203 | >60s | N/A | fail | 0.1951 | **0.1550** | 12.2301 | 0.0390837 |
+| infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | **0.0045** | >60s | 0.0157 | fail (SLOW_PROGRESS) | infeasible |
+| infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | fail | 6.4562 | **0.0104** | fail (SLOW_PROGRESS) | infeasible |
+| weak_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | fail | >60s | **0.0070** | fail (SLOW_PROGRESS) | infeasible |
+| control1 | sdplib | sdp | 21 x 70 | fail (rc=1007) | N/A | **0.0045** | >60s | 0.0243 | 0.0063 | 17.7846 |
+| hinf1 | sdplib | sdp | 13 x 41 | fail (rc=1007) | N/A | fail | 0.1673 ✗ | **0.0122** | 0.0050 ✗ | 2.0326 |
+| theta1 | sdplib | sdp | 104 x 1275 | >60s | N/A | 1.7628 | **0.0682** | 0.1183 | 0.0770 | 23 |
+| truss1 | sdplib | sdp | 6 x 19 | 0.0373 | N/A | **0.0009** | 0.0024 | 0.0091 | 0.0035 | -9 |
+| qap5 | sdplib | sdp | 136 x 351 | >60s | N/A | 0.0845 | **0.0422** | 0.1412 | fail (ALMOST_OPTIMAL) | -436 |
+| mcp100 | sdplib | sdp | 100 x 5050 | >60s | N/A | 16.0713 | 0.6803 | **0.1803** | 0.1881 | 226.157 |
+| HS21 | maros-meszaros | qp | 2 x 1 | **0.0001** | 0.0004 | **0.0001** | 0.0003 | 0.0012 | 0.0023 | 0.0400007 |
+| HS118 | maros-meszaros | qp | 15 x 17 | 0.0024 | 0.0007 | **0.0004** | 0.0012 | 0.0090 | 0.0026 | 664.82 |
+| QAFIRO | maros-meszaros | qp | 32 x 27 | 0.0033 | 0.0012 | **0.0007** | 0.0011 | 0.0109 | 0.0031 | -1.59078 |
+| DUAL1 | maros-meszaros | qp | 85 x 1 | 0.0165 | **0.0028** | 0.0056 | 0.0037 | 0.1576 | 0.0092 | 0.035013 |
+| PRIMAL1 | maros-meszaros | qp | 325 x 85 | fail (rc=1007) | 0.0252 | 0.0065 | **0.0036** | 1.4130 | 0.0516 | -0.035013 |
+| CVXQP1_S | maros-meszaros | qp | 100 x 50 | 0.0244 | 0.0023 | **0.0019** | 0.0045 | 0.1822 | N/A | 11590.7 |
+| afiro | netlib | lp | 32 x 27 | **0.0003** | 0.0007 | 0.0006 | 0.0015 | 0.0017 | 0.0021 | -464.753 |
+| adlittle | netlib | lp | 97 x 56 | 0.0036 | 0.0012 | **0.0007** | 0.0220 | 0.0096 | 0.0050 | 225495 |
+| blend | netlib | lp | 83 x 74 | 0.0137 | 0.0046 | **0.0030** | 0.0094 | 0.0088 | 0.0032 | -30.8121 |
+| sc50a | netlib | lp | 48 x 50 | 0.0024 | 0.0020 | **0.0015** | 0.0098 | 0.0037 | 0.0277 | -64.5751 |
+| share2b | netlib | lp | 79 x 96 | 0.0170 | 0.0050 | **0.0024** | 0.0129 | 0.0086 | 0.0043 | -415.732 |
+| stocfor1 | netlib | lp | 111 x 117 | 0.0080 | 0.0025 | **0.0020** | 0.0108 | 0.0046 | 0.0048 | -41132 |
+| flugpl | miplib | milp | 18 x 18 | 1.5784 | 0.1278 | N/A | N/A | **0.0147** | 0.0960 | 1.2015e+06 |
+| p0201 | miplib | milp | 201 x 133 | >60s | 1.1003 | N/A | N/A | **0.4851** | 0.8088 | 7615 |
+| gt2 | miplib | milp | 188 x 29 | >60s | **0.0574** | N/A | N/A | 0.0630 | 0.0658 | 21166 |
+| pk1 | miplib | milp | 86 x 45 | >60s | >60s | N/A | N/A | >60s | >60s | 11 |
 
 </div>
 
