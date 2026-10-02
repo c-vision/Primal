@@ -804,8 +804,10 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
             sp[0] = tau; sp[1] = kap; sp[2] = theta;
         }
         if (getenv("GMB_DBG") && (it % 10 == 0 || it == max_iter - 1))
-            fprintf(stderr, "[HSD] it=%d tau=%.7g kap=%.7g th=%.7g mu=%.3g pri=%.3g dual=%.3g gap=%.3g pf=%.3g df=%.3g viol=%.3g\n",
-                    it, tau, kap, theta, R.mu, pri, dual, gap, R.pf, R.df, viol);
+            fprintf(stderr, "[HSD] it=%d tau=%.7g kap=%.7g th=%.7g mu=%.3g pri=%.3g dual=%.3g gap=%.3g pf=%.3g df=%.3g viol=%.3g"
+                            " p0=%.4g bz=%.4g bzth=%.4g rg=%.4g rn=%.4g bn=%.4g cn=%.4g nu=%d\n",
+                    it, tau, kap, theta, R.mu, pri, dual, gap, R.pf, R.df, viol,
+                    p0, bz, bz * theta, R.rg, R.rn, bn, cn, nu);
         if (isfinite(pri) && isfinite(dual) && isfinite(gap) && tau > 1e-12 &&
             pri <= rtol_pri && dual <= rtol_dual && gap <= rtol_gap) {
             status = 0; why = "triple inside the declared tolerances"; break;
