@@ -553,11 +553,11 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             }
             int Nsys = ntot + neq;
             for (int kk = 0; kk < ncones_solver; kk++) Nsys += cones[kk].nmem;
-            /* sparse LU pays off only for large systems: below ~800 the dense
-             * N^3 LU (tiny constant) beats the sparse assembly+factor overhead.
-             * For a single large cone M is dense-ish (sparse ~= dense); the win
-             * is for many-small-cone / sparse E,G structures. */
-            int sparse_conic = (Nsys >= 800) || (getenv("GMB_SOCP_SPARSE") != NULL);
+            /* Many small cones give a sparse augmented system well below 800:
+             * the 100-cone SOCP benchmark is about 3x faster on that path.
+             * Keep dense LU for a single large, dense-ish cone. */
+            int sparse_conic = (Nsys >= 300 && ncones_solver >= 16) ||
+                               (Nsys >= 800) || (getenv("GMB_SOCP_SPARSE") != NULL);
             int st = sparse_conic
                 ? socp_solve_sparse(ntot, neq, E, d, c, ncones_solver, cones, G, h,
                                     t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm)

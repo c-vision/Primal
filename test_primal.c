@@ -20244,8 +20244,43 @@ static void test_t272(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T279: many small cones automatically use the sparse SOCP route.  This is
+ * the closed-form benchmark family, checked through the public result. */
+static void test_t279(void) {
+    cur_name = "T279 automatic sparse route for many small SOCs";
+    enum { K = 100, N = 2 * K };
+    P p; pbegin(&p);
+    PRIMAL_appendvars(p.task, N + K);
+    for (int j = 0; j < N; j++)
+        PRIMAL_putvarbound(p.task, j, PRIMAL_BK_FR, 0.0, 0.0);
+    for (int k = 0; k < K; k++) {
+        int mem[3] = {N + k, 2 * k, 2 * k + 1};
+        PRIMAL_putvarbound(p.task, N + k, PRIMAL_BK_LO, 0.0, 0.0);
+        PRIMAL_putcj(p.task, N + k, 1.0);
+        PRIMAL_appendcone(p.task, PRIMAL_CT_QUAD, 0.0, 3, mem);
+    }
+    PRIMAL_appendcons(p.task, 1);
+    int sub[N]; double val[N];
+    for (int j = 0; j < N; j++) { sub[j] = j; val[j] = 1.0; }
+    PRIMAL_putarow(p.task, 0, N, sub, val);
+    PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 1.0, 1.0);
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "100-cone solve");
+    double obj = INFINITY, dual = -INFINITY, pi = INFINITY;
+    if (PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj) == PRIMAL_RES_OK)
+        check(fabs(obj - sqrt(0.5)) < 1e-6, "analytic objective");
+    else check(0, "objective available");
+    if (PRIMAL_getprimalinfeas(p.task, PRIMAL_SOL_ITR, &pi) == PRIMAL_RES_OK)
+        check(pi < 1e-6, "published point feasible");
+    else check(0, "feasibility available");
+    if (PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dual) == PRIMAL_RES_OK)
+        check(fabs(obj - dual) < 1e-6, "primal-dual gap");
+    else check(0, "dual objective available");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t279();
     test_t278();
     test_t277();
     test_t276();
