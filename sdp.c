@@ -1710,7 +1710,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                  * and solves d=11/12; small blocks (d=2, where T100 D/E and the
                  * accuracy cases live) keep 0.1.  A measured heuristic, like the
                  * rescale gate above, not a conditioning test. */
-                { double sf = (maxd >= 8) ? 0.3 : 0.1; if (!(sigma > sf)) sigma = sf; }
+                { double sf = (maxd >= 22) ? 0.0 : ((maxd >= 8) ? 0.3 : 0.1); if (!(sigma > sf)) sigma = sf; }
                 /* Rescue burst after a freeze: centring is what the iterate was
                  * missing, so push sigma up for a few iterations. */
                 if (rescue_iters > 0) { if (sigma < 0.7) sigma = 0.7; rescue_iters--; }
