@@ -840,11 +840,11 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
             for(int q=c->SG->rp[o+i];q<c->SG->rp[o+i+1];q++) c->b1[c->SG->ri[q]]-=c->SG->rv[q]*t;}
           o+=kk;}}
         for(int j=0;j<n;j++) c->tmp[j]=c->b1[j];
-        if(spchol_solve(c->Hchol,c->tmp)) return -1;
+        if(spchol_solve_ord(c->Hchol,c->tmp)) return -1;
         if(p>0){
             sp_row(c->SE,c->tmp,c->b2,p);
             for(int i=0;i<p;i++) c->b2[i]+=rp[i];
-            if(spchol_solve(c->Schol,c->b2)) return -1;
+            if(spchol_solve_ord(c->Schol,c->b2)) return -1;
             for(int i=0;i<p;i++) dy[i]=c->b2[i];
         }
         for(int j=0;j<n;j++){double t=c->tmp[j];for(int i=0;i<p;i++)t-=c->Z[i*n+j]*dy[i];dx[j]=t;}
@@ -1040,7 +1040,13 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
              * that is the augmented LU's job -- measured separator: the legitimate
              * retries are <= 2.6e-6 of the scale, the indefinite one was 0.5. */
             { double fail_dj = 0.0;
-              Hchol=spchol_factor_fail(n,Hp,Hi,Hv,&fail_dj);
+              /* Fill-reducing ordering first: on the many-cone benchmarks H is
+               * block-sparse and the natural order builds fill in the factor.
+               * The same lever the sparse LP IPM already uses (e073930); the
+               * pivot-based shift repair below is unchanged and still runs when
+               * the ordered factorization refuses the matrix. */
+              Hchol=spchol_factor_ord(n,Hp,Hi,Hv);
+              if(!Hchol) Hchol=spchol_factor_fail(n,Hp,Hi,Hv,&fail_dj);
               if(!Hchol&&fail_dj!=0.0){
                 double hscale=0.0;
                 for(int p=0;p<Hp[n];p++){double a=Hv[p]<0.0?-Hv[p]:Hv[p]; if(a>hscale)hscale=a;}
@@ -1060,7 +1066,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             for(int i=0;i<p;i++){
                 for(int j=0;j<n;j++) nb1[j]=0.0;
                 for(int q=SE.rp[i];q<SE.rp[i+1];q++) nb1[SE.ri[q]]=SE.rv[q];
-                if(spchol_solve(Hchol,nb1)){okz=0;break;}
+                if(spchol_solve_ord(Hchol,nb1)){okz=0;break;}
                 for(int j=0;j<n;j++) Znt[(size_t)i*n+j]=nb1[j];
             }
             if(okz){
@@ -1070,7 +1076,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
                     if(sv!=0.0) if(tri3_add(&stri,i,i2,sv)){status=OPT_MEMORY;goto done;}}
                 int *Sp,*Si; double *Sv;
                 if(tri3_to_csc(p,&stri,&Sp,&Si,&Sv)){status=OPT_MEMORY;goto done;}
-                Schol=spchol_factor(p,Sp,Si,Sv);
+                Schol=spchol_factor_ord(p,Sp,Si,Sv);
                 /* S = E H^{-1} E' must be SPD (E full row rank); if it is
                  * singular the normal equations are invalid -> fall back. */
                 free(Sp);free(Si);free(Sv);

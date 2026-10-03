@@ -906,7 +906,13 @@ PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
     else
         ipm_set_obj_cuts(-1e308, 1e308);
     cb_fire(t, PRIMAL_CALLBACK_BEGIN_OPTIMIZER);
+    if (getenv("GMB_DBG")) g_phase_t0 = clock();
     PRIMALrescodee r = opt_routes(t);
+    if (getenv("GMB_DBG")) {
+        fprintf(stderr, "  [phase] route=%.4fs\n",
+                (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
+        g_phase_t0 = clock();
+    }
     int cut_hit = ipm_obj_cut_hit();
     ipm_set_deadline(-1.0);
     ipm_set_max_cor(1);
@@ -961,6 +967,8 @@ PRIMALrescodee PRIMAL_optimize(PRIMALtask_t t) {
         intpnt_crossover_cleanup(t);
     }
     if (t) { t->last_rc = r; t->opt_time = (double)(clock() - opt_t0) / (double)CLOCKS_PER_SEC; }
+    if (getenv("GMB_DBG")) fprintf(stderr, "  [phase] verdict=%.4fs total=%.4fs\n",
+        (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC, t ? t->opt_time : 0.0);
     return r;
 }
 

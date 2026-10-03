@@ -351,6 +351,10 @@ double *ensure_dense_qobj(PRIMALtask_t t);
 PRIMALrescodee ensure_size(PRIMALtask_t t);
 /* Effective iteration cap: v <= 0 means no limit (INT_MAX). */
 int iter_cap(int v);
+/* Phase-timer anchor for the [phase] trace under GMB_DBG. Set at the start of
+ * PRIMAL_optimize and advanced after each printed phase, so every [phase] line
+ * reports the share of the phase that just ended. */
+extern clock_t g_phase_t0;
 /* Begins an iteration/solution-update callback scope for the task. */
 void iter_cb_begin(PRIMALtask_t t);
 /* Ends the iteration callback scope opened by iter_cb_begin. */

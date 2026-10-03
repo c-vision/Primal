@@ -476,6 +476,11 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
 
     int nCutAll = nCutMax + nCutPsd;
     int r_cut = r;   /* the cuts (conic + PSD) occupy [r_cut, r_cut+nCutAll) */
+    if (getenv("GMB_DBG")) {
+        fprintf(stderr, "  [phase] conic asm=%.4fs\n",
+                (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
+        g_phase_t0 = clock();
+    }
     /* R_+ cone for the cuts: after the QUAD/RQUAD cones (positional layout) */
     int cutCone = -1;
     if (nCutAll > 0) {

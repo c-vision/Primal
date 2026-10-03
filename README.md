@@ -159,7 +159,7 @@ line per example.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 4905 checks
+make test          # reliability suite: 5030 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -169,7 +169,8 @@ C99 with `gcc` or `clang` on Linux, macOS and the BSDs. There is **no MSVC
 project and no `nmake` path** — on Windows use MinGW
 ([how to build on Windows](docs/windows.md)), or compile the `LIBSRCS` list from
 the Makefile with any C99 compiler. Clean under AddressSanitizer +
-UndefinedBehaviorSanitizer on the suite and on all samples.
+UndefinedBehaviorSanitizer on all samples; on the suite, two checks (`T197`,
+the HSD opt-in) are known red under the sanitizers — see issue #11.
 
 ## How it compares
 
@@ -271,8 +272,11 @@ every other toolchain runs the tangent-cut outer approximation first. See
 
 ## Status
 
-Last full validation: **4905 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
-exit 0. Warning-free. ASan + UBSan clean.
+Last full validation at all four levels: **4905 checks, 0 failures** at `-O0`,
+`-O1`, `-O2`, `-O3`. The suite has since grown to **5030 checks, 0 failures**
+(default `-O2`, 2026-10-02). **171/171** examples
+exit 0. Warning-free. ASan + UBSan clean on the samples (the sanitized suite
+exits 1 on the two `T197` checks, issue #11).
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
 when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD

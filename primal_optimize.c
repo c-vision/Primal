@@ -20,6 +20,12 @@
  */
 #include "primal_priv.h"
 
+/* Phase timer anchor for the [phase] trace (Fase M: conversion vs solve share).
+ * Set when PRIMAL_optimize starts, reset after every printed phase so each
+ * [phase] line measures the share of the phase that just ended. Only touched
+ * when GMB_DBG is set, so the binary is untouched otherwise. */
+clock_t g_phase_t0;
+
 /* Route the task to the engine selected by its model shape (MIP, SDP, conic,
  * QP or LP/QP), after validating ranged bounds and preparing the solve
  * buffers. Returns the engine's result code. */
@@ -325,6 +331,11 @@ PRIMALrescodee opt_routes(PRIMALtask_t t) {
     double *yray  = (double *)calloc((size_t)(sf->m > 0 ? sf->m : 1), sizeof(double));
     double *xray  = (double *)calloc((size_t)(sf->n > 0 ? sf->n : 1), sizeof(double));
 
+    if (getenv("GMB_DBG")) {
+        fprintf(stderr, "  [phase] lp asm=%.4fs\n",
+                (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
+        g_phase_t0 = clock();
+    }
     if (pre) {
         double *xred = (double *)calloc((size_t)(nsolve > 0 ? nsolve : 1), sizeof(double));
         double *yred = (double *)calloc((size_t)(msolve > 0 ? msolve : 1), sizeof(double));
@@ -375,6 +386,11 @@ PRIMALrescodee opt_routes(PRIMALtask_t t) {
     free(own_y); free(own_x);
     free(x0); free(y0);
     t->has_warm = 0;
+    if (getenv("GMB_DBG")) {
+        fprintf(stderr, "  [phase] lp solve=%.4fs\n",
+                (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
+        g_phase_t0 = clock();
+    }
     {
         char pb[96];
         snprintf(pb, sizeof pb, "%s relaxation solved",
