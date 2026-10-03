@@ -276,7 +276,7 @@ every other toolchain runs the tangent-cut outer approximation first. See
 | sdp_19 | sdp | 19 x 19 | - | 0.0612 | N/A | 0.0041 | 0.0020 | N/A | -123.432 |
 | sdp_20 | sdp | 20 x 20 | - | 0.1202 | N/A | 0.0056 | 0.0026 | N/A | -140.192 |
 | sdp_21 | sdp | 21 x 21 | - | 0.0295 | N/A | 0.0080 | 0.0041 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.1993 | N/A | 0.0092 | 0.0088 | N/A | -149.613 |
+| sdp_22 | sdp | 22 x 22 | - | 0.050 | N/A | 0.0092 | 0.0088 | N/A | -149.613 |
 
 </div>
 
