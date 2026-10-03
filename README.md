@@ -190,15 +190,16 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **~35× faster** in the
-  recorded SOCP case (0.0004 s against 0.014 s for `socp_200`: 100 cones,
-  300 scalar variables). It supports PSD cones and quadratic objectives
-  directly; see its [documented capabilities](https://clarabel.org/stable/).
+- **Clarabel** is the closest open conic IPM and is **~7.7× faster** in the
+  recorded SOCP case (0.0004 s against 0.0031 s for `socp_200`: 100 cones,
+  300 scalar variables, down from 0.014 s via sparse Cholesky and ordering).
+  It supports PSD cones and quadratic objectives directly; see its
+  [documented capabilities](https://clarabel.org/stable/).
   These timings are indicative: the harness excludes Clarabel's solver
   construction but includes PrimalSolver's conversion inside `PRIMAL_optimize`.
 - **SCS** does PSD and exponential cones, but is first-order: it agrees with
   this solver's objective to about `1e-5`, where the IPM reaches `1e-8`.
-- **HiGHS** is faster on large LP/MILP — 0.012 s against 0.090 s on a 400×200 LP.
+- **HiGHS** is faster on large LP/MILP — 0.011 s against 0.081 s on a 400×200 LP.
   The crossover sits around 50–100 constraints; below that this solver wins on
   fixed overhead.
 - **SDP with exponential cones and integer variables, in one dependency-free
@@ -225,7 +226,7 @@ MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 `bench/conic_bench.c` and `bench/sdp_sweep.c`. The SDP sweep reaches **d = 22**.
 
 The sweep answers at `d = 20`, but **how long it takes is a build-time choice**:
-the same block takes **0.13 s** on an Apple build and **18.0 s** elsewhere. That is
+the same block takes **0.12 s** on an Apple build and **18.0 s** elsewhere. That is
 the stalled-point policy (`sdp.c`, `GMB_STALL_IS_ANSWER`): Apple publishes the
 frozen point when it measures within the same absolute residual the suite asserts,
 every other toolchain runs the tangent-cut outer approximation first. See
@@ -235,38 +236,38 @@ every other toolchain runs the tangent-cut outer approximation first. See
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | 0.0010 | 0.0015 | 0.0002 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | 0.0026 | 0.0017 | 0.0007 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | 0.0142 | 0.0035 | 0.0020 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | 0.0890 | 0.0122 | 0.0119 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.0016 | N/A | 0.0004 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.0068 | N/A | 0.0022 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.0443 | N/A | 0.0072 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.2810 | N/A | N/A | N/A | 0.1414 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 0.9786 | N/A | N/A | N/A | 0.2555 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 3.0476 | N/A | N/A | N/A | 1.0671 | 277.019 |
-| socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
-| socp_120 | socp | 120 x 1 | - | 0.0046 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0141 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0002 | 0.0002 | N/A | -9.83233 |
+| lp_50x25 | lp | 50 x 25 | 171 | 0.0010 | 0.0014 | 0.0002 | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | 0.0024 | 0.0016 | 0.0006 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.0134 | 0.0032 | 0.0019 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.0813 | 0.0111 | 0.0105 | N/A | N/A | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.0015 | N/A | 0.0004 | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.0064 | N/A | 0.0020 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.0411 | N/A | 0.0063 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.2675 | N/A | N/A | N/A | 0.1313 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 0.9230 | N/A | N/A | N/A | 0.2338 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | 2.7931 | N/A | N/A | N/A | 0.9225 | 277.019 |
+| socp_40 | socp | 40 x 1 | - | 0.0003 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
+| socp_120 | socp | 120 x 1 | - | 0.0016 | N/A | 0.0003 | 0.0007 | N/A | 0.707107 |
+| socp_200 | socp | 200 x 1 | - | 0.0031 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
+| sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0004 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | 0.0019 | N/A | 0.0003 | 0.0004 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | 0.0014 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | 0.0019 | N/A | 0.0005 | 0.0004 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | 0.0026 | N/A | 0.0007 | 0.0007 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0036 | N/A | 0.0010 | 0.0016 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0059 | N/A | 0.0016 | 0.0009 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | 0.0052 | N/A | 0.0018 | 0.0010 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0061 | N/A | 0.0019 | 0.0010 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0093 | N/A | 0.0025 | 0.0013 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0200 | N/A | 0.0031 | 0.0014 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0170 | N/A | 0.0039 | 0.0017 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0225 | N/A | 0.0040 | 0.0020 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0657 | N/A | 0.0040 | 0.0019 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | 0.1301 | N/A | 0.0064 | 0.0024 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0313 | N/A | 0.0088 | 0.0038 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.2150 | N/A | 0.0104 | 0.0082 | N/A | -149.613 |
+| sdp_7 | sdp | 7 x 7 | - | 0.0018 | N/A | 0.0003 | 0.0004 | N/A | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | 0.0012 | N/A | 0.0004 | 0.0004 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | 0.0018 | N/A | 0.0006 | 0.0003 | N/A | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | 0.0024 | N/A | 0.0008 | 0.0007 | N/A | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0033 | N/A | 0.0011 | 0.0018 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0053 | N/A | 0.0017 | 0.0009 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | 0.0047 | N/A | 0.0019 | 0.0009 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | 0.0056 | N/A | 0.0020 | 0.0010 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | 0.0086 | N/A | 0.0022 | 0.0013 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | 0.0184 | N/A | 0.0031 | 0.0015 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | 0.0156 | N/A | 0.0041 | 0.0018 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | 0.0207 | N/A | 0.0041 | 0.0021 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | 0.0612 | N/A | 0.0041 | 0.0020 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | 0.1202 | N/A | 0.0056 | 0.0026 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | 0.0295 | N/A | 0.0080 | 0.0041 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | 0.1993 | N/A | 0.0092 | 0.0088 | N/A | -149.613 |
 
 </div>
 
