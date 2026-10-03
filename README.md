@@ -226,6 +226,14 @@ objective against the analytic value; it exits non-zero on a mismatch. LP/QP/
 MILP are the generated MPS instances, SOCP/SDP are the closed-form families of
 `bench/conic_bench.c` and `bench/sdp_sweep.c`. The SDP sweep reaches **d = 22**.
 
+The SDP eigenvalue kernel (`dmat_eig_jacobi`, `min_eig`) now updates the
+symmetric matrix one-sided (half the arithmetic per Jacobi rotation). The
+`d = 4..22` sweep is ~**1.4×** faster overall (interleaved base/new; `d = 22`
+~1.5×, `d = 20` ~2.9×). The gain is **not uniform per size**: the ~1e-14 change
+in the eigenvalues can move which trajectory stalls, so one size can be slower
+(`d = 14`). That is the same route non-reproducibility `T81`/`T91` already
+assert as an outcome.
+
 The sweep answers at `d = 20`, but **how long it takes is a build-time choice**:
 the same block takes **0.12 s** on an Apple build and **18.0 s** elsewhere. That is
 the stalled-point policy (`sdp.c`, `GMB_STALL_IS_ANSWER`): Apple publishes the
