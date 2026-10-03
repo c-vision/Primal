@@ -440,15 +440,20 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
                 double t = (theta >= 0.0 ? 1.0 : -1.0) /
                            (fabs(theta) + sqrt(theta * theta + 1.0));
                 double c = 1.0 / sqrt(t * t + 1.0), sn = t * c;
-                for (int k = 0; k < n; k++) {   /* rows (J^T W) */
-                    double wp = W[p * n + k], wq = W[q * n + k];
-                    W[p * n + k] = c * wp - sn * wq;
-                    W[q * n + k] = sn * wp + c * wq;
-                }
-                for (int k = 0; k < n; k++) {   /* columns (W J) */
+                /* Symmetric one-sided W' = J^T W J: W stays symmetric, so the two
+                 * off-diagonal half-updates are transposes -- write one and mirror
+                 * (half the work of rows+columns).  Diagonal via h=t*a_pq; the
+                 * pivot (p,q) is the element the rotation annihilates, set to 0. */
+                double app = W[p * n + p], aqq = W[q * n + q], h = t * apq;
+                W[p * n + p] = app - h;
+                W[q * n + q] = aqq + h;
+                W[p * n + q] = 0.0; W[q * n + p] = 0.0;
+                for (int k = 0; k < n; k++) {
+                    if (k == p || k == q) continue;
                     double wp = W[k * n + p], wq = W[k * n + q];
-                    W[k * n + p] = c * wp - sn * wq;
-                    W[k * n + q] = sn * wp + c * wq;
+                    double np = c * wp - sn * wq, nq = sn * wp + c * wq;
+                    W[k * n + p] = np; W[p * n + k] = np;
+                    W[k * n + q] = nq; W[q * n + k] = nq;
                 }
                 for (int k = 0; k < n; k++) {   /* V J */
                     double vp = V[k * n + p], vq = V[k * n + q];

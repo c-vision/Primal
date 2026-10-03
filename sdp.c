@@ -240,15 +240,18 @@ static double min_eig(int d, const double *A) {
                 double theta = (W[q * d + q] - W[p * d + p]) / (2.0 * apq);
                 double t = (theta >= 0.0 ? 1.0 : -1.0) / (fabs(theta) + sqrt(theta * theta + 1.0));
                 double c = 1.0 / sqrt(t * t + 1.0), sn = t * c;
+                /* Symmetric one-sided update (see dmat_eig_jacobi): half the work
+                 * of the two-sided form, same transform. */
+                double app = W[p * d + p], aqq = W[q * d + q], h = t * apq;
+                W[p * d + p] = app - h;
+                W[q * d + q] = aqq + h;
+                W[p * d + q] = 0.0; W[q * d + p] = 0.0;
                 for (int k = 0; k < d; k++) {
-                    double wp = W[p * d + k], wq = W[q * d + k];
-                    W[p * d + k] = c * wp - sn * wq;
-                    W[q * d + k] = sn * wp + c * wq;
-                }
-                for (int k = 0; k < d; k++) {
+                    if (k == p || k == q) continue;
                     double wp = W[k * d + p], wq = W[k * d + q];
-                    W[k * d + p] = c * wp - sn * wq;
-                    W[k * d + q] = sn * wp + c * wq;
+                    double np = c * wp - sn * wq, nq = sn * wp + c * wq;
+                    W[k * d + p] = np; W[p * d + k] = np;
+                    W[k * d + q] = nq; W[q * d + k] = nq;
                 }
             }
     }
