@@ -69,6 +69,11 @@ void dmat_lu_free(LuFact *f);
  * eval[n] = eigenvalues in order of interest (ascending NOT guaranteed,
  * call site finds the minimum), evec = n x n row-major column k = eigenvector k. */
 void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec);
+/* The two-sided Jacobi update (2 row + 2 column passes per rotation), kept for
+ * the one caller whose numerics are calibrated to it rather than to the
+ * one-sided form: the experimental HSD path in sdp.c.  Same rotations, same
+ * sweep order, same tolerance as dmat_eig_jacobi. */
+void dmat_eig_jacobi_twosided(int n, const double *A, double *eval, double *evec);
 
 /* ---- sparse Cholesky  K = L L'  (K symmetric positive definite) ----
  * K in CSC: only the LOWER triangle (Ki[p] >= column). L is lower

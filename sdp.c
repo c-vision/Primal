@@ -186,13 +186,19 @@ static void soc_arrow_mul(const double *A, const double *w, int k, double *o) {
  * entry keeps the LU solvable; the divergence then shows up as a stalled
  * iterate, which the caller measures, instead of as an Inf in the matrix.
  * Leaves R untouched when the eigensolver cannot be given workspace. */
+/* The experimental HSD path (hsd_psd, opt-in GMB_SDP_HSD) was calibrated against
+ * the legacy two-sided Jacobi; the production IPM uses the faster one-sided
+ * form.  This flag is set only around the hsd_psd call, so the two paths keep
+ * their own numerics instead of sharing one that only suits one of them. */
+static int g_eig_twosided = 0;
 static void sym_fun(int d, const double *A, int kind, double *R) {
     double *ev = (double *)malloc((size_t)d * sizeof(double));
     double *V  = (double *)malloc((size_t)d * d * sizeof(double));
     double *Ac = (double *)malloc((size_t)d * d * sizeof(double));
     if (!ev || !V || !Ac) { free(ev); free(V); free(Ac); return; }
     memcpy(Ac, A, sizeof(double) * (size_t)d * d);
-    dmat_eig_jacobi(d, Ac, ev, V);
+    if (g_eig_twosided) dmat_eig_jacobi_twosided(d, Ac, ev, V);
+    else dmat_eig_jacobi(d, Ac, ev, V);
     for (int i = 0; i < d; i++) for (int j = 0; j < d; j++) {
         double s = 0.0;
         for (int k = 0; k < d; k++) {
@@ -240,18 +246,31 @@ static double min_eig(int d, const double *A) {
                 double theta = (W[q * d + q] - W[p * d + p]) / (2.0 * apq);
                 double t = (theta >= 0.0 ? 1.0 : -1.0) / (fabs(theta) + sqrt(theta * theta + 1.0));
                 double c = 1.0 / sqrt(t * t + 1.0), sn = t * c;
-                /* Symmetric one-sided update (see dmat_eig_jacobi): half the work
-                 * of the two-sided form, same transform. */
-                double app = W[p * d + p], aqq = W[q * d + q], h = t * apq;
-                W[p * d + p] = app - h;
-                W[q * d + q] = aqq + h;
-                W[p * d + q] = 0.0; W[q * d + p] = 0.0;
-                for (int k = 0; k < d; k++) {
-                    if (k == p || k == q) continue;
-                    double wp = W[k * d + p], wq = W[k * d + q];
-                    double np = c * wp - sn * wq, nq = sn * wp + c * wq;
-                    W[k * d + p] = np; W[p * d + k] = np;
-                    W[k * d + q] = nq; W[q * d + k] = nq;
+                if (g_eig_twosided) {   /* legacy form, HSD path */
+                    for (int k = 0; k < d; k++) {
+                        double wp = W[p * d + k], wq = W[q * d + k];
+                        W[p * d + k] = c * wp - sn * wq;
+                        W[q * d + k] = sn * wp + c * wq;
+                    }
+                    for (int k = 0; k < d; k++) {
+                        double wp = W[k * d + p], wq = W[k * d + q];
+                        W[k * d + p] = c * wp - sn * wq;
+                        W[k * d + q] = sn * wp + c * wq;
+                    }
+                } else {
+                    /* Symmetric one-sided update (see dmat_eig_jacobi): half the
+                     * work of the two-sided form, same transform. */
+                    double app = W[p * d + p], aqq = W[q * d + q], h = t * apq;
+                    W[p * d + p] = app - h;
+                    W[q * d + q] = aqq + h;
+                    W[p * d + q] = 0.0; W[q * d + p] = 0.0;
+                    for (int k = 0; k < d; k++) {
+                        if (k == p || k == q) continue;
+                        double wp = W[k * d + p], wq = W[k * d + q];
+                        double np = c * wp - sn * wq, nq = sn * wp + c * wq;
+                        W[k * d + p] = np; W[p * d + k] = np;
+                        W[k * d + q] = nq; W[q * d + k] = nq;
+                    }
                 }
             }
     }
@@ -1161,9 +1180,13 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     /* Opt-in homogeneous self-dual embedding, PSD+scalar only (see hsd_psd's
      * comment above): default off (unset), so this changes nothing unless
      * the caller explicitly asks for the second, unproven code path. */
-    if (getenv("GMB_SDP_HSD") && nb > 0 && nsoc == 0 && nep == 0)
-        return hsd_psd(m, n, A, b, c, nb, dims, Cbar, Abar,
-                        max_iter, rtol_pri, rtol_dual, rtol_gap, x, Xbar, y, Sbar);
+    if (getenv("GMB_SDP_HSD") && nb > 0 && nsoc == 0 && nep == 0) {
+        g_eig_twosided = 1;   /* pin the HSD to its calibrated eigensolver */
+        int rc = hsd_psd(m, n, A, b, c, nb, dims, Cbar, Abar,
+                         max_iter, rtol_pri, rtol_dual, rtol_gap, x, Xbar, y, Sbar);
+        g_eig_twosided = 0;
+        return rc;
+    }
     if (m < 0 || n < 0 || nb < 0 || nsoc < 0 || nep < 0) return 1;
     int dmax = 1; for (int j = 0; j < nb; j++) if (dims[j] > dmax) dmax = dims[j];
     int kmax = 1; for (int i = 0; i < nsoc; i++) if (socdims[i] > kmax) kmax = socdims[i];
