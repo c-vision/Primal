@@ -104,6 +104,15 @@ SpChol *spchol_factor_fail(int n, const int *Kp, const int *Ki, const double *Kx
 /* same, with a fill-reducing AMD ordering applied internally (undone by
  * spchol_solve_ord); used by the sparse interior points, where fill matters. */
 SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx);
+/* The AMD ordering of a pattern, to hand back to spchol_factor_perm.  A caller
+ * whose K pattern is fixed across iterations (an IPM whose normal-equation
+ * matrix changes only in VALUES) computes this once instead of per iteration.
+ * Caller frees; NULL on allocation failure. */
+int *spchol_order(int n, const int *Kp, const int *Ki);
+/* Same factor as spchol_factor_ord but through a CALLER-SUPPLIED permutation
+ * (copied, any permutation of 0..n-1), skipping the AMD computation. */
+SpChol *spchol_factor_perm(int n, const int *Kp, const int *Ki, const double *Kx,
+                           const int *perm);
 /* Solve through any factor, undoing its ordering when it has one.
  * Operates in place on rhs. 0 ok, -1 on NULL input or solve failure. */
 int spchol_solve_ord(const SpChol *L, double *rhs);

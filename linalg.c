@@ -768,10 +768,12 @@ int spchol_solve_all(const SpChol *L, double *B, int nrhs) {
 /* Fill-reducing wrapper: apply AMD to K, factor the permuted matrix, and keep
  * the permutation so spchol_solve_ord can undo it.  A quasi-definite KKT factored
  * in natural order can carry orders-of-magnitude more fill than the same matrix
- * ordered (Clarabel/qdldl use exactly this: static AMD + sparse factor). */
-SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx) {
-    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
-    int *perm = sym_amd(n, Kp, Ki);
+ * ordered (Clarabel/qdldl use exactly this: static AMD + sparse factor).
+ * `perm` is owned by this call (freed here on failure), so the public wrappers
+ * below decide whether it came from AMD or from the caller's cache. */
+static SpChol *spchol_factor_ordered(int n, const int *Kp, const int *Ki,
+                                     const double *Kx, int *perm) {
+    if (n <= 0 || !Kp || !Ki || !Kx) { free(perm); return NULL; }
     if (!perm) return spchol_factor_nat(n, Kp, Ki, Kx);   /* natural order */
     int *iperm = (int *)malloc((size_t)n * sizeof(int));
     int *pKp = (int *)malloc((size_t)(n + 1) * sizeof(int));
@@ -808,6 +810,28 @@ SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx)
     free(pKi); free(pKx); free(iperm); free(pKp);
     if (L) L->perm = perm; else free(perm);
     return L;
+}
+
+/* AMD-order the pattern and factor; the permutation is computed here. */
+SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx) {
+    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
+    return spchol_factor_ordered(n, Kp, Ki, Kx, sym_amd(n, Kp, Ki));
+}
+
+/* The ordering alone, so a caller can cache it across value-only updates. */
+int *spchol_order(int n, const int *Kp, const int *Ki) {
+    if (n <= 0 || !Kp || !Ki) return NULL;
+    return sym_amd(n, Kp, Ki);
+}
+
+/* Factor through a caller-supplied permutation (copied; the caller keeps theirs). */
+SpChol *spchol_factor_perm(int n, const int *Kp, const int *Ki, const double *Kx,
+                           const int *perm) {
+    if (n <= 0 || !Kp || !Ki || !Kx || !perm) return NULL;
+    int *p = (int *)malloc((size_t)n * sizeof(int));
+    if (!p) return NULL;
+    for (int k = 0; k < n; k++) p[k] = perm[k];
+    return spchol_factor_ordered(n, Kp, Ki, Kx, p);
 }
 
 /* Solve through an ordered factor, permuting rhs forth and back.

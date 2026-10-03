@@ -190,9 +190,10 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **~7.7× faster** in the
-  recorded SOCP case (0.0004 s against 0.0031 s for `socp_200`: 100 cones,
-  300 scalar variables, down from 0.014 s via sparse Cholesky and ordering).
+- **Clarabel** is the closest open conic IPM and is **~7× faster** in the
+  recorded SOCP case (0.0004 s against 0.0027 s for `socp_200`: 100 cones,
+  300 scalar variables, down from 0.014 s via sparse Cholesky, a fill-reducing
+  ordering, and caching that ordering across iterations).
   It supports PSD cones and quadratic objectives directly; see its
   [documented capabilities](https://clarabel.org/stable/).
   These timings are indicative: the harness excludes Clarabel's solver
@@ -248,7 +249,7 @@ every other toolchain runs the tangent-cut outer approximation first. See
 | milp_80x40 | milp | 80 x 40 | 460 | 2.7931 | N/A | N/A | N/A | 0.9225 | 277.019 |
 | socp_40 | socp | 40 x 1 | - | 0.0003 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
 | socp_120 | socp | 120 x 1 | - | 0.0016 | N/A | 0.0003 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0031 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
+| socp_200 | socp | 200 x 1 | - | 0.0027 | N/A | 0.0004 | 0.0011 | N/A | 0.707107 |
 | sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0004 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |

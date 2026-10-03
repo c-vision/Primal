@@ -951,7 +951,13 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     Tri3 stri={0};
     Tri3 tri={0};
     int memok=off&&xs&&ys&&s&&lm&&rd&&rp&&rg&&Asc&&Alr&&rhs&&dx&&dy&&ds&&dlm&&dxa&&dya&&dsa&&dlma&&t1&&wacc&&wst&&wtouch&&Qwi&&sinv&&wnt&&Znt&&nb1&&nb2;
+    /* The NT normal-equation matrix H = G'Q(w)^{-1}G changes with the iterate
+     * only through the VALUES of Q(w) -- its sparsity is fixed (measured: the
+     * ordered CSC of H is byte-identical from the second iteration on, on every
+     * benchmark cone family).  So the AMD ordering is computed once and reused
+     * while the pattern is unchanged, instead of once per iteration. */
     int status=OPT_MAXITER, stamp=1; int *luperm=NULL;
+    int *Hperm=NULL,*Hpat=NULL; int Hpatn=-1;
     if(!memok){status=OPT_MEMORY;goto done;}
     {int o=0;for(int k=0;k<ncones;k++){off[k]=o;o+=cones[k].nmem;}}
     {int o=0;for(int k=0;k<ncones;k++){if(cones[k].type==0)for(int i=0;i<cones[k].nmem;i++){s[o+i]=1.0;lm[o+i]=1.0;}
@@ -1045,7 +1051,19 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
                * The same lever the sparse LP IPM already uses (e073930); the
                * pivot-based shift repair below is unchanged and still runs when
                * the ordered factorization refuses the matrix. */
-              Hchol=spchol_factor_ord(n,Hp,Hi,Hv);
+              {   int same = Hperm && Hpat && Hpatn==Hp[n] &&
+                             memcmp(Hpat,Hi,(size_t)Hp[n]*sizeof(int))==0;
+                  if(!same){
+                      free(Hperm); Hperm=NULL; free(Hpat); Hpat=NULL;
+                      Hperm=spchol_order(n,Hp,Hi);
+                      if(Hperm){
+                          Hpat=(int*)malloc((size_t)(Hp[n]>0?Hp[n]:1)*sizeof(int));
+                          if(Hpat){ memcpy(Hpat,Hi,(size_t)Hp[n]*sizeof(int)); Hpatn=Hp[n]; }
+                          else { free(Hperm); Hperm=NULL; }
+                      }
+                  }
+                  Hchol=Hperm?spchol_factor_perm(n,Hp,Hi,Hv,Hperm)
+                             :spchol_factor_ord(n,Hp,Hi,Hv); }
               if(!Hchol) Hchol=spchol_factor_fail(n,Hp,Hi,Hv,&fail_dj);
               if(!Hchol&&fail_dj!=0.0){
                 double hscale=0.0;
@@ -1167,6 +1185,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     if(status==OPT_OK){for(int j=0;j<n;j++)x[j]=xs[j];for(int i=0;i<p;i++)y[i]=ys[i];for(int k=0;k<K;k++)lam[k]=lm[k];}
 done:
     free(luperm);
+    free(Hperm); free(Hpat);
     free(off);free(xs);free(ys);free(s);free(lm);free(rd);free(rp);free(rg);free(Asc);free(Alr);free(rhs);
     free(dx);free(dy);free(ds);free(dlm);free(dxa);free(dya);free(dsa);free(dlma);free(t1);
     free(wacc);free(wst);free(wtouch); free(tri.r);free(tri.c);free(tri.v);
