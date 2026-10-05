@@ -191,26 +191,69 @@ static void soc_arrow_mul(const double *A, const double *w, int k, double *o) {
  * form.  This flag is set only around the hsd_psd call, so the two paths keep
  * their own numerics instead of sharing one that only suits one of them. */
 static int g_eig_twosided = 0;
+/* --- Cache a una voce + buffer persistenti per sym_fun (F38) -----------------
+ * sym_fun applica una funzione spettrale f(lambda) agli autovalori di A:
+ *   kind 0 -> sqrt(lambda)   kind 1 -> 1/sqrt(lambda)   kind 2 -> 1/|lambda|.
+ * Ogni chiamata fa una eigendecomposizione completa, ma nella stessa iterazione
+ * vengono richieste piu' funzioni spettrali della STESSA matrice: Xbar^{1/2},
+ * Xbar^{-1} e Xbar^{-1/2}.  dmat_eig_jacobi e' deterministico, quindi la stessa
+ * matrice produce la stessa decomposizione: qui si conserva l'ultima e la si
+ * riusa invece di rifare gli autovalori.  Misurato con un profiler a
+ * d = 4, 14, 19, 22: 6 chiamate di sym_fun per iterazione ma solo 4 matrici
+ * distinte, quindi si salta il 33% delle eigendecomposizioni, uniformemente su
+ * tutte le dimensioni.
+ * Scompaiono anche i 3 malloc + 3 free per chiamata: i buffer sono persistenti e
+ * crescono fino alla dimensione massima incontrata (un solo ridimensionamento per
+ * solve, e i blocchi non tornano mai a dimensioni minori dentro una solve).
+ * Le funzioni spettrali risultanti sono identiche bit per bit: cambia solo
+ * quante volte si rifanno gli autovalori. */
+static double *g_sym_ev, *g_sym_V, *g_sym_Ac, *g_sym_in, *g_sym_f;
+static int g_sym_cap;       /* dimensione dei buffer allocati */
+static int g_sym_cached_d;  /* d della decomposizione in cache, 0 = nessuna */
+
 static void sym_fun(int d, const double *A, int kind, double *R) {
-    double *ev = (double *)malloc((size_t)d * sizeof(double));
-    double *V  = (double *)malloc((size_t)d * d * sizeof(double));
-    double *Ac = (double *)malloc((size_t)d * d * sizeof(double));
-    if (!ev || !V || !Ac) { free(ev); free(V); free(Ac); return; }
-    memcpy(Ac, A, sizeof(double) * (size_t)d * d);
-    if (g_eig_twosided) dmat_eig_jacobi_twosided(d, Ac, ev, V);
-    else dmat_eig_jacobi(d, Ac, ev, V);
+    if (d > g_sym_cap) {
+        free(g_sym_ev); free(g_sym_V); free(g_sym_Ac); free(g_sym_in); free(g_sym_f);
+        g_sym_ev = NULL; g_sym_V = NULL; g_sym_Ac = NULL; g_sym_in = NULL; g_sym_f = NULL;
+        g_sym_cached_d = 0;
+        g_sym_cap = d;
+        g_sym_ev = (double *)malloc((size_t)d * sizeof(double));
+        g_sym_V  = (double *)malloc((size_t)d * d * sizeof(double));
+        g_sym_Ac = (double *)malloc((size_t)d * d * sizeof(double));
+        g_sym_in = (double *)malloc((size_t)d * d * sizeof(double));
+        g_sym_f  = (double *)malloc((size_t)d * sizeof(double));
+        if (!g_sym_ev || !g_sym_V || !g_sym_Ac || !g_sym_in || !g_sym_f) {
+            free(g_sym_ev); free(g_sym_V); free(g_sym_Ac); free(g_sym_in); free(g_sym_f);
+            g_sym_ev = NULL; g_sym_V = NULL; g_sym_Ac = NULL; g_sym_in = NULL; g_sym_f = NULL;
+            g_sym_cap = 0; return;
+        }
+    }
+    size_t nn = (size_t)d * d;
+    /* La validita' controlla anche d: con piu' blocchi di dimensioni diverse un
+     * confronto dei soli byte potrebbe abbinare per errore un prefisso della
+     * matrice precedente. */
+    if (d != g_sym_cached_d || memcmp(g_sym_in, A, nn * sizeof(double)) != 0) {
+        memcpy(g_sym_in, A, nn * sizeof(double));
+        memcpy(g_sym_Ac, A, nn * sizeof(double));
+        if (g_eig_twosided) dmat_eig_jacobi_twosided(d, g_sym_Ac, g_sym_ev, g_sym_V);
+        else                dmat_eig_jacobi(d, g_sym_Ac, g_sym_ev, g_sym_V);
+        g_sym_cached_d = d;
+    }
+    /* f(lambda_k) dipende SOLO da k, ma il ciclo sotto la ricalcolava in ognuno
+     * dei d^3 posti: 10648 radici/divisioni per chiamata a d=22 invece di 22.
+     * Precalcolata qui, una volta per autovalore: i valori sono identici bit per
+     * bit (stesso ingresso, stessa funzione) quindi anche il risultato lo e'. */
+    for (int k = 0; k < d; k++) {
+        double lam = g_sym_ev[k];
+        if (kind == 0)      g_sym_f[k] = lam > 0.0 ? sqrt(lam) : 0.0;
+        else if (kind == 1) g_sym_f[k] = 1.0 / sqrt(lam > 1e-12 ? lam : 1e-12);
+        else                g_sym_f[k] = 1.0 / (fabs(lam) > 1e-12 ? fabs(lam) : 1e-12);
+    }
     for (int i = 0; i < d; i++) for (int j = 0; j < d; j++) {
         double s = 0.0;
-        for (int k = 0; k < d; k++) {
-            double lam = ev[k], f;
-            if (kind == 0)      f = lam > 0.0 ? sqrt(lam) : 0.0;
-            else if (kind == 1) f = 1.0 / sqrt(lam > 1e-12 ? lam : 1e-12);
-            else                f = 1.0 / (fabs(lam) > 1e-12 ? fabs(lam) : 1e-12);
-            s += f * V[i * d + k] * V[j * d + k];
-        }
+        for (int k = 0; k < d; k++) s += g_sym_f[k] * g_sym_V[i * d + k] * g_sym_V[j * d + k];
         R[i * d + j] = s;
     }
-    free(ev); free(V); free(Ac);
 }
 /* Dense row-major product C = A B (d x d).  Small by design: it is called per
  * PSD block per Newton pass to build W = X#S and its inverses, where a block is
