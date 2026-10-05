@@ -224,3 +224,22 @@ $(OUT)/bench/expcone_ipm_probe: bench/expcone_ipm_probe.c $(LIB_A) | $(OUT)
 	$(CC) $(CFLAGS) -I. bench/expcone_ipm_probe.c $(LIB_A) $(LDLIBS) -o $@
 
 .PHONY: bench
+
+# --- benchmark aggregation -------------------------------------------------
+# bench/bench_all.py takes ONE run per cell, which cannot resolve a change of a
+# few percent: the aggregation itself moves 5-13% between 3 and 5 runs, and on a
+# second aggregation of the SAME build the LP/QP/MILP families move by 10-40%.
+# tools/bench_repeat.py runs it N times, medians every cell, verifies the
+# objectives are identical across runs, and compares two tables per family.
+#
+#   make bench-repeat                        # median of 5, table to stdout
+#   make bench-repeat RUNS=9 COMPARE=old.md
+#
+# Run it with the interpreter that has numpy/scipy and the reference solvers,
+# not the default python3 (see README "Benchmark table").
+PYTHON   ?= python3
+BENCH_RUNS   ?= 5
+.PHONY: bench-repeat
+bench-repeat: bench
+	$(PYTHON) tools/bench_repeat.py --runs $(BENCH_RUNS) \
+	    $(if $(COMPARE),--compare $(COMPARE),) $(if $(OUT_MD),--out $(OUT_MD),)

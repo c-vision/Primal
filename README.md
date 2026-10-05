@@ -222,8 +222,9 @@ make bench && /Users/gaetano/ai/env-bench/bin/python3.14 bench/bench_all.py
 
 That script times **every** solver in the table (PrimalSolver, HiGHS, Clarabel,
 SCS, SCIP) and cross-checks each objective. It takes **one run per cell**, so the
-table is a single-run snapshot; the figures quoted in the text below are **medians
-of 5 runs** of the same script, and anything under ~2% is inside its noise floor.
+table it prints is a single-run snapshot. For anything finer than ~10% use
+`make bench-repeat`, which runs it N times, medians every cell and checks that
+every objective is identical across the runs.
 
 The default `python3` has **none** of them and every reference column comes out
 `N/A` -- which looks like a missing benchmark rather than a missing package. `bench/bench_all.py` prints this table and cross-checks every
@@ -249,12 +250,18 @@ equal or faster**, the SDP family total **-13.6%** (0.2826 s -> 0.2442 s), `d = 
 the same figure with **disjoint ranges** (0.037342 s -> 0.035128 s, 7 pairs, every
 new run faster than every old one). Objectives are unchanged on all 33 cases.
 
-Two honest caveats. **The 33-case total moves by about +1%**, because the SDP rows
-are only ~0.24 s of the ~4.8 s the table spends in MILP/LP/QP, which this change
-does not touch. And the table's own noise floor is **~2%**: re-running it leaves
-Clarabel at -2.0% and SCS at -1.5%, which are binaries this change cannot affect.
-So read the per-family figure, not the grand total, and treat anything under ~2% as
-noise.
+Two honest caveats. **The 33-case grand total is meaningless for this change**:
+the SDP rows are ~0.24 s of the ~4.8 s the table spends in MILP/LP/QP, which this
+change does not touch. And **the measurement uncertainty of the table itself is
+5-13%**: aggregating the *same* build with 3 runs instead of 5 moves LP by +13.0%,
+QP by +10.8% and MILP by +10.2%. The smaller figure one might read off the
+reference columns (~2%, Clarabel and SCS moving) only characterises the tiny
+conic rows, not the heavy MILP ones. So read the per-family figure against a
+**~10%** threshold, not ~2%. The SDP family's -13.6% clears it; the -1.7% to
++2.1% on the other families does not, and should be read as noise.
+
+Regenerate the table with `make bench-repeat` (medians, objective stability
+checked) rather than a single run.
 
 The sweep answers at `d = 20`, but **how long it takes is a build-time choice**:
 the same block takes **0.12 s** on an Apple build and **18.0 s** elsewhere. That is
