@@ -278,6 +278,46 @@ static double min_eig(int d, const double *A) {
     for (int k = 1; k < d; k++) if (W[k * d + k] < lo) lo = W[k * d + k];
     free(W); free(ev); return lo;
 }
+
+/* --- percorso "solo il segno" di lambda_min ---------------------------------
+ * Quasi tutti i chiamanti di min_eig() usano il VALORE solo per testare il
+ * segno (`if (e < 0 ...)`, `if (min_eig(...) <= 0)`, `if (lp < 0)`).  Per
+ * quelli basta sapere se la matrice e' definita positiva, e la Cholesky
+ * risponde a questo senza calcolare lo spettro: per Sylvester una matrice
+ * simmetrica e' PD se e solo se tutti i minori principali sono positivi, quindi
+ * la Cholesky senza pivottamento classifica esattamente PD / non-PD.
+ *
+ * Se e' PD si restituisce un valore POSITIVO fittizio (1.0): i chiamanti che
+ * testano il segno si comportano esattamente come con il minimo vero, che e'
+ * positivo.  Se NON e' PD si calcola lo spettro, perche' il chiamante usa
+ * -1/e come lunghezza di passo e ha bisogno del valore.
+ *
+ * NOTA: questa funzione NON va usata dove serve il valore vero (per esempio
+ * il margine di riga 484 sotto, che prende il minimo sui blocchi).
+ */
+static int min_eig_sign(int d, const double *A, double *emin) {
+    const int nn = d > 0 ? d : 1;
+    double *W = (double *)calloc((size_t)nn * (size_t)nn, sizeof(double));
+    if (!W) { *emin = min_eig(d, A); return 1; }
+    memcpy(W, A, sizeof(double) * (size_t)d * (size_t)d);
+    int pd = 1;
+    for (int i = 0; i < d && pd; i++) {
+        for (int j = 0; j <= i; j++) {
+            double s = W[i * d + j];
+            for (int k = 0; k < j; k++) s -= W[i * d + k] * W[j * d + k];
+            if (i == j) {
+                if (s <= 1e-300) { pd = 0; break; }
+                W[i * d + i] = sqrt(s);
+            } else {
+                W[i * d + j] = s / W[j * d + j];
+            }
+        }
+    }
+    free(W);
+    if (pd) { *emin = 1.0; return 0; }   /* segno non negativo: nessun aggiornamento */
+    *emin = min_eig(d, A);
+    return 1;
+}
 /* tr(A B) = <A,B>, the inner product the PSD cone pairs blocks with.  B is read
  * with its indices swapped, not because B is symmetric (the blocks are, but a
  * scratch product fed here is not always) but because tr(A B) is what the conic
@@ -981,9 +1021,9 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
             for (int j = 0; j < nb; j++) {
                 int d = dims[j]; size_t off = (size_t)j * d2;
                 sym_fun(d, X[j], 1, t1); mmul(d, t1, dX + off, t2); mmul(d, t2, t1, t3);
-                double e = min_eig(d, t3); if (e < 0 && -1 / e < alpha) alpha = -1 / e;
+                double e; min_eig_sign(d, t3, &e); if (e < 0 && -1 / e < alpha) alpha = -1 / e;
                 sym_fun(d, S[j], 1, t1); mmul(d, t1, dS + off, t2); mmul(d, t2, t1, t3);
-                e = min_eig(d, t3); if (e < 0 && -1 / e < alpha) alpha = -1 / e;
+                min_eig_sign(d, t3, &e); if (e < 0 && -1 / e < alpha) alpha = -1 / e;
             }
             if (alpha > 1) alpha = 1;
             alpha *= 0.99;
@@ -1015,9 +1055,9 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                     for (int j = 0; j < nb && ok; j++) {
                         int d = dims[j]; size_t off = (size_t)j * d2;
                         for (int a = 0; a < d * d; a++) t1[a] = X[j][a] + alpha * dX[off + a];
-                        if (min_eig(d, t1) <= 0) ok = 0;
+                        { double ev; min_eig_sign(d, t1, &ev); if (ev <= 0) ok = 0; }
                         for (int a = 0; a < d * d; a++) t1[a] = S[j][a] + alpha * dS[off + a];
-                        if (min_eig(d, t1) <= 0) ok = 0;
+                        { double ev; min_eig_sign(d, t1, &ev); if (ev <= 0) ok = 0; }
                     }
                     if (!ok) { rej_cone++; continue; }
                     for (int i = 0; i < n; i++) { xx[i] += alpha * dx[i]; ss[i] += alpha * ds[i]; }
@@ -1709,8 +1749,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }
                 for (int j = 0; j < nb; j++) { int d = dims[j];
-                    sym_fun(d, Xbar[j], 1, t1); mmul(d, t1, Dx + j * dmax2, t2); mmul(d, t2, t1, t3); double lp = min_eig(d, t3); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
-                    sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld = min_eig(d, t3); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
+                    sym_fun(d, Xbar[j], 1, t1); mmul(d, t1, Dx + j * dmax2, t2); mmul(d, t2, t1, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
+                    sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
@@ -1757,8 +1797,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }
                 for (int j = 0; j < nb; j++) { int d = dims[j];
-                    sym_fun(d, Xbar[j], 1, t1); mmul(d, t1, Dx + j * dmax2, t2); mmul(d, t2, t1, t3); double lp = min_eig(d, t3); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
-                    sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld = min_eig(d, t3); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
+                    sym_fun(d, Xbar[j], 1, t1); mmul(d, t1, Dx + j * dmax2, t2); mmul(d, t2, t1, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
+                    sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
@@ -1807,8 +1847,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 ref += 1e-10 * ref + 1e-16;
                 int took = 0, stalled = 0;
                 for (int bt = 0; bt < 60; bt++) { int good = 1;
-                    for (int j = 0; j < nb && good; j++) { int d = dims[j]; for (int a = 0; a < d * d; a++) t1[a] = Xbar[j][a] + ap * Dx[j * dmax2 + a]; if (min_eig(d, t1) < 0) good = 0; }
-                    for (int j = 0; j < nb && good; j++) { int d = dims[j]; for (int a = 0; a < d * d; a++) t1[a] = Sbar[j][a] + ad * Ds[j * dmax2 + a]; if (min_eig(d, t1) < 0) good = 0; }
+                    for (int j = 0; j < nb && good; j++) { int d = dims[j]; for (int a = 0; a < d * d; a++) t1[a] = Xbar[j][a] + ap * Dx[j * dmax2 + a]; { double ev; min_eig_sign(d, t1, &ev); if (ev < 0) good = 0; } }
+                    for (int j = 0; j < nb && good; j++) { int d = dims[j]; for (int a = 0; a < d * d; a++) t1[a] = Sbar[j][a] + ad * Ds[j * dmax2 + a]; { double ev; min_eig_sign(d, t1, &ev); if (ev < 0) good = 0; } }
                     for (int i = 0; i < nsoc && good; i++) { int kk = socdims[i];
                         for (int a = 0; a < kk; a++) t1[a] = Zsoc[i][a] + ap * Dzsoc[soff[i] + a];
                         if (soc_margin(t1, kk) < 0) good = 0;

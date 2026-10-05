@@ -159,7 +159,7 @@ line per example.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5030 checks
+make test          # reliability suite: 5033 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -234,6 +234,17 @@ in the eigenvalues can move which trajectory stalls, so one size can be slower
 (`d = 14`). That is the same route non-reproducibility `T81`/`T91` already
 assert as an outcome.
 
+On top of that, the nine `min_eig` call sites that only need the **sign** of the
+smallest eigenvalue now try **Cholesky first**. For Sylvester an unpivoted
+Cholesky classifies positive-definite / not exactly, so no decomposition is needed
+in the common case: `O(d^3)/3` and it exits early, against `O(d^3)` per sweep.
+On `d = 22` that is **+5.9%** (interleaved A/B, 7 pairs, **disjoint ranges**:
+0.037342 s -> 0.035128 s — every new run faster than every old one). The
+`d = 4..22` sweep keeps **19/19** identical objectives, and `conic_bench` keeps
+identical objectives and the same 25 NT + 2 LU routes. Note the single-run
+canonical table below is too noisy to show a 6% effect: use the interleaved
+number, not the table column.
+
 The sweep answers at `d = 20`, but **how long it takes is a build-time choice**:
 the same block takes **0.12 s** on an Apple build and **18.0 s** elsewhere. That is
 the stalled-point policy (`sdp.c`, `GMB_STALL_IS_ANSWER`): Apple publishes the
@@ -258,32 +269,32 @@ every other toolchain runs the tangent-cut outer approximation first. See
 | socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0009 | N/A | 0.707107 |
 | socp_120 | socp | 120 x 1 | - | 0.0016 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
 | socp_200 | socp | 200 x 1 | - | 0.0030 | N/A | 0.0004 | 0.0010 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | 0.0009 | N/A | 0.0002 | 0.0002 | N/A | -9.83233 |
+| sdp_4 | sdp | 4 x 4 | - | 0.0003 | N/A | 0.0011 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0003 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
 | sdp_7 | sdp | 7 x 7 | - | 0.0018 | N/A | 0.0003 | 0.0004 | N/A | -8.18613 |
 | sdp_8 | sdp | 8 x 8 | - | 0.0010 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
 | sdp_9 | sdp | 9 x 9 | - | 0.0016 | N/A | 0.0005 | 0.0004 | N/A | -17.0048 |
 | sdp_10 | sdp | 10 x 10 | - | 0.0021 | N/A | 0.0007 | 0.0007 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0029 | N/A | 0.0010 | 0.0016 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0056 | N/A | 0.0016 | 0.0009 | N/A | -44.5174 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0028 | N/A | 0.0010 | 0.0016 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0055 | N/A | 0.0016 | 0.0009 | N/A | -44.5174 |
 | sdp_13 | sdp | 13 x 13 | - | 0.0049 | N/A | 0.0018 | 0.0010 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0184 | N/A | 0.0020 | 0.0010 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0078 | N/A | 0.0023 | 0.0013 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0194 | N/A | 0.0032 | 0.0014 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0157 | N/A | 0.0040 | 0.0017 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0195 | N/A | 0.0043 | 0.0020 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0628 | N/A | 0.0041 | 0.0019 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | 0.0444 | N/A | 0.0064 | 0.0023 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0317 | N/A | 0.0086 | 0.0037 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.0363 | N/A | 0.0102 | 0.0081 | N/A | -149.613 |
+| sdp_14 | sdp | 14 x 14 | - | 0.0183 | N/A | 0.0019 | 0.0010 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | 0.0077 | N/A | 0.0022 | 0.0012 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | 0.0190 | N/A | 0.0030 | 0.0014 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | 0.0155 | N/A | 0.0038 | 0.0017 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | 0.0195 | N/A | 0.0042 | 0.0021 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | 0.0640 | N/A | 0.0040 | 0.0019 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | 0.0447 | N/A | 0.0061 | 0.0024 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | 0.0318 | N/A | 0.0086 | 0.0038 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | 0.0366 | N/A | 0.0097 | 0.0082 | N/A | -149.613 |
 
 </div>
 
 ## Status
 
 Last full validation at all four levels: **4905 checks, 0 failures** at `-O0`,
-`-O1`, `-O2`, `-O3`. The suite has since grown to **5030 checks, 0 failures**
+`-O1`, `-O2`, `-O3`. The suite has since grown to **5033 checks, 0 failures**
 (default `-O2`, 2026-10-02). **171/171** examples
 exit 0. Warning-free. ASan + UBSan clean on the samples (the sanitized suite
 exits 1 on the two `T197` checks, issue #11).
