@@ -240,33 +240,38 @@ in the eigenvalues can move which trajectory stalls, so one size can be slower
 (`d = 14`). That is the same route non-reproducibility `T81`/`T91` already
 assert as an outcome.
 
-On top of that, the nine `min_eig` call sites that only need the **sign** of the
-smallest eigenvalue go through a `min_eig_sign` wrapper that tries **Cholesky
-first**. **Measured on the SDP corpus the Cholesky never succeeds: 0% at
-d = 14, 19 and 22, on 106/273/112 calls.** These matrices are built to sit on the
-PSD boundary — the call sites are the step-length ratio test, which evaluates
-`X + alpha*dx` at an alpha it is still searching over — so "usually positive
-definite, skip the decomposition" is simply not the situation here. The wrapper
-falls back to the full spectrum every time.
+Two changes account for the SDP speed-up, both measured at **`-O1`, `-O2` and
+`-O3` with distinct binaries and disjoint ranges** (a gain that survives `-O1` is
+work reduction, not code generation):
 
-The speedup on `d = 22` is nonetheless real and reproducible — **-5.9%**,
-interleaved A/B, 9 pairs, **disjoint ranges** (0.036278 s -> 0.034132 s) — and the
-`d = 4..22` family is faster on **19/19** instances. But its **mechanism is not the
-one originally claimed**: both builds execute exactly the same work (172 `min_eig`
-and 224 `sym_fun` calls, measured), so the gain is a code-generation/layout effect
-of introducing the wrapper, not avoided decompositions. A wrapper that only
-delegates, with no Cholesky, measures **-0.2%** (overlapping ranges), and the gain
-**disappears at `-O1`** (0.8% slower there) while holding at `-O3` (-5.8%). Treat
-it as a `-O2`/`-O3` codegen win and re-measure it when the compiler or `CFLAGS`
-change; the `-O1` result is the reason not to call it algorithmic.
+1. **The `sym` matrices are computed once per iteration instead of twice.** The
+   ratio test evaluates `Xbar[j]` and `Sbar[j]`, and neither is assigned
+   anywhere inside `for (pass = 0; pass < 2; pass++)` — a checksum of both at
+   the two branches is identical in every iteration. Yet `sym(Xbar[j],1)` and
+   `sym(Sbar[j],1)` were recomputed on both passes: **2 of the 8 `sym_fun`
+   calls per iteration were pure repeats**. `sym_fun` is 55.4% of the SDP hot
+   loop, so removing a quarter of it is most of the win: **-8.9% / -9.1% /
+   -8.2%** at `-O1` / `-O2` / `-O3` on `d = 22`, disjoint ranges at all three.
+   `sdp_sweep 4..22` keeps **19/19** objectives identical to the last digit.
+2. **`min_eig` sign tests go through a `min_eig_sign` wrapper.** Worth
+   **-5.2% / -6.0% / -5.5%**. Its Cholesky-first attempt **never succeeds** on
+   the SDP corpus (0 of 112 calls at `d = 22`, 0 of 273 at `d = 19`, 0 of 106
+   at `d = 14`) — these matrices sit on the PSD boundary, because the call
+   sites are the step-length ratio test. **The mechanism is not identified**:
+   both builds execute the same work (172 `min_eig` and 224 `sym_fun` calls,
+   counted), so the gain is neither avoided decompositions nor a reduction in
+   calls. Treat it as measured but unexplained, and re-measure it if the
+   compiler changes.
 
-Two further caveats. **The 32-instance grand total is meaningless for this
-change**: the SDP rows are ~0.24 s of the ~4.8 s the table spends in
-MILP/LP/QP, which this change does not touch. And **the measurement uncertainty
-of the table itself is 5-13%**: aggregating the *same* build with 3 runs instead
-of 5 moves LP by +13.0%, QP by +10.8% and MILP by +10.2%; 5 runs against 1 run
-reaches +40%. So read the per-family figure against a **~10%** threshold. The SDP
-family clears it; the -1.7% to +2.1% on the other families does not.
+A build trap worth knowing: **`make` does not rebuild when only `CFLAGS`
+changes**, so comparing two optimisation levels with the same `out/` silently
+compares one binary with itself. Use a separate `OUT=` per level.
+
+Two further caveats. **The 32-instance grand total is meaningless here**: the
+SDP rows are ~0.24 s of the ~4.8 s the table spends in MILP/LP/QP, untouched by
+these changes. And **the table's own measurement uncertainty is 5-13%**:
+aggregating the *same* build with 3 runs instead of 5 moves LP by +13.0%, QP by
++10.8%, MILP by +10.2%. Read the per-family figure against a **~10%** threshold.
 
 Regenerate the table with `make bench-repeat` (medians, objective stability
 checked) rather than a single run.

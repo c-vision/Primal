@@ -1242,6 +1242,8 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     double *Ws = (double *)malloc(nbd2 * sizeof(double));
     double *Wi = (double *)malloc(nbd2 * sizeof(double));
     double *Xi = (double *)malloc(nbd2 * sizeof(double));
+    double *symX = (double *)malloc(nbd2 * sizeof(double));
+    double *symS = (double *)malloc(nbd2 * sizeof(double));
     double *t1 = (double *)malloc(tsz * sizeof(double));
     double *t2 = (double *)malloc(tsz * sizeof(double));
     double *t3 = (double *)malloc(tsz * sizeof(double));
@@ -1746,11 +1748,22 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 for (int a = 0; a < 3; a++) { double t = -rde[a]; for (int k = 0; k < m; k++) t -= Aexp[k * nep + i][a] * dy[k]; Des[3 * i + a] = t; }
             }
             if (pass == 0) {
+                for (int j = 0; j < nb; j++) { sym_fun(dims[j], Xbar[j], 1, symX + (size_t)j*dmax2);
+                                               sym_fun(dims[j], Sbar[j], 1, symS + (size_t)j*dmax2); }
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }
                 for (int j = 0; j < nb; j++) { int d = dims[j];
-                    sym_fun(d, Xbar[j], 1, t1); mmul(d, t1, Dx + j * dmax2, t2); mmul(d, t2, t1, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
-                    sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
+                    const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
+                    const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; }
+                    /* CONTRATTO IMPLICITO: nell'originale sym_fun scriveva in t1,
+                     * e dopo il loop qualcosa si aspetta che t1 contenga la matrice
+                     * DUALE (l'ultima scritta).  Senza questa copia l'obiettivo di
+                     * sdp_22 cambiava (-149.61285 -> -149.61289) e il tempo saliva
+                     * del 51.7%: non era un problema di cache ne' di aliasing di mmul,
+                     * era questa dipendenza non dichiarata.  Copiare ripristina il
+                     * comportamento byte per byte.  Renderla esplicita (o eliminarla)
+                     * e' il passo successivo. */
+                    memcpy(t1, ws, (size_t)d*d*sizeof(double)); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
@@ -1797,8 +1810,17 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }
                 for (int j = 0; j < nb; j++) { int d = dims[j];
-                    sym_fun(d, Xbar[j], 1, t1); mmul(d, t1, Dx + j * dmax2, t2); mmul(d, t2, t1, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
-                    sym_fun(d, Sbar[j], 1, t1); mmul(d, t1, Ds + j * dmax2, t2); mmul(d, t2, t1, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
+                    const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
+                    const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; }
+                    /* CONTRATTO IMPLICITO: nell'originale sym_fun scriveva in t1,
+                     * e dopo il loop qualcosa si aspetta che t1 contenga la matrice
+                     * DUALE (l'ultima scritta).  Senza questa copia l'obiettivo di
+                     * sdp_22 cambiava (-149.61285 -> -149.61289) e il tempo saliva
+                     * del 51.7%: non era un problema di cache ne' di aliasing di mmul,
+                     * era questa dipendenza non dichiarata.  Copiare ripristina il
+                     * comportamento byte per byte.  Renderla esplicita (o eliminarla)
+                     * e' il passo successivo. */
+                    memcpy(t1, ws, (size_t)d*d*sizeof(double)); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
@@ -2028,7 +2050,7 @@ done:
      * native verdict is "not solved": the caller may publish it as a
      * fallback when the cuts do not answer either. */
     if (fb_ok) *fb_ok = (status != 0 && fb_saved) ? 1 : 0;
-    free(soff); free(Ws); free(Wi); free(Xi); free(t1); free(t2); free(t3); free(Mt);
+    free(soff); free(Ws); free(Wi); free(Xi); free(symX); free(symS); free(t1); free(t2); free(t3); free(Mt);
     free(xs); free(ss); free(zsoc); free(ssoc); free(Dzsoc); free(Dssoc);
     free(Az); free(As); free(rds); free(rcs); free(soc_e);
     free(ez); free(es); free(Dez); free(Des);
