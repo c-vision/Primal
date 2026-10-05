@@ -241,24 +241,32 @@ in the eigenvalues can move which trajectory stalls, so one size can be slower
 assert as an outcome.
 
 On top of that, the nine `min_eig` call sites that only need the **sign** of the
-smallest eigenvalue now try **Cholesky first**. For Sylvester an unpivoted
-Cholesky classifies positive-definite / not exactly, so no decomposition is needed
-in the common case: `O(d^3)/3` and it exits early, against `O(d^3)` per sweep.
-Measured as the **median of 5 runs** of this table's script: **19/19 SDP instances
-equal or faster**, the SDP family total **-13.6%** (0.2826 s -> 0.2442 s), `d = 22`
-**-6.9%** (0.0375 -> 0.0349), `d = 14` -64.9%. An interleaved A/B on `d = 22` gives
-the same figure with **disjoint ranges** (0.037342 s -> 0.035128 s, 7 pairs, every
-new run faster than every old one). Objectives are unchanged on all 33 cases.
+smallest eigenvalue go through a `min_eig_sign` wrapper that tries **Cholesky
+first**. **Measured on the SDP corpus the Cholesky never succeeds: 0% at
+d = 14, 19 and 22, on 106/273/112 calls.** These matrices are built to sit on the
+PSD boundary — the call sites are the step-length ratio test, which evaluates
+`X + alpha*dx` at an alpha it is still searching over — so "usually positive
+definite, skip the decomposition" is simply not the situation here. The wrapper
+falls back to the full spectrum every time.
 
-Two honest caveats. **The 33-case grand total is meaningless for this change**:
-the SDP rows are ~0.24 s of the ~4.8 s the table spends in MILP/LP/QP, which this
-change does not touch. And **the measurement uncertainty of the table itself is
-5-13%**: aggregating the *same* build with 3 runs instead of 5 moves LP by +13.0%,
-QP by +10.8% and MILP by +10.2%. The smaller figure one might read off the
-reference columns (~2%, Clarabel and SCS moving) only characterises the tiny
-conic rows, not the heavy MILP ones. So read the per-family figure against a
-**~10%** threshold, not ~2%. The SDP family's -13.6% clears it; the -1.7% to
-+2.1% on the other families does not, and should be read as noise.
+The speedup on `d = 22` is nonetheless real and reproducible — **-5.9%**,
+interleaved A/B, 9 pairs, **disjoint ranges** (0.036278 s -> 0.034132 s) — and the
+`d = 4..22` family is faster on **19/19** instances. But its **mechanism is not the
+one originally claimed**: both builds execute exactly the same work (172 `min_eig`
+and 224 `sym_fun` calls, measured), so the gain is a code-generation/layout effect
+of introducing the wrapper, not avoided decompositions. A wrapper that only
+delegates, with no Cholesky, measures **-0.2%** (overlapping ranges), and the gain
+**disappears at `-O1`** (0.8% slower there) while holding at `-O3` (-5.8%). Treat
+it as a `-O2`/`-O3` codegen win and re-measure it when the compiler or `CFLAGS`
+change; the `-O1` result is the reason not to call it algorithmic.
+
+Two further caveats. **The 32-instance grand total is meaningless for this
+change**: the SDP rows are ~0.24 s of the ~4.8 s the table spends in
+MILP/LP/QP, which this change does not touch. And **the measurement uncertainty
+of the table itself is 5-13%**: aggregating the *same* build with 3 runs instead
+of 5 moves LP by +13.0%, QP by +10.8% and MILP by +10.2%; 5 runs against 1 run
+reaches +40%. So read the per-family figure against a **~10%** threshold. The SDP
+family clears it; the -1.7% to +2.1% on the other families does not.
 
 Regenerate the table with `make bench-repeat` (medians, objective stability
 checked) rather than a single run.
