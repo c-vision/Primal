@@ -220,6 +220,11 @@ shows `N/A`). On this machine they are all installed in one interpreter, so:
 make bench && /Users/gaetano/ai/env-bench/bin/python3.14 bench/bench_all.py
 ```
 
+That script times **every** solver in the table (PrimalSolver, HiGHS, Clarabel,
+SCS, SCIP) and cross-checks each objective. It takes **one run per cell**, so the
+table is a single-run snapshot; the figures quoted in the text below are **medians
+of 5 runs** of the same script, and anything under ~2% is inside its noise floor.
+
 The default `python3` has **none** of them and every reference column comes out
 `N/A` -- which looks like a missing benchmark rather than a missing package. `bench/bench_all.py` prints this table and cross-checks every
 objective against the analytic value; it exits non-zero on a mismatch. LP/QP/
@@ -238,12 +243,18 @@ On top of that, the nine `min_eig` call sites that only need the **sign** of the
 smallest eigenvalue now try **Cholesky first**. For Sylvester an unpivoted
 Cholesky classifies positive-definite / not exactly, so no decomposition is needed
 in the common case: `O(d^3)/3` and it exits early, against `O(d^3)` per sweep.
-On `d = 22` that is **+5.9%** (interleaved A/B, 7 pairs, **disjoint ranges**:
-0.037342 s -> 0.035128 s — every new run faster than every old one). The
-`d = 4..22` sweep keeps **19/19** identical objectives, and `conic_bench` keeps
-identical objectives and the same 25 NT + 2 LU routes. Note the single-run
-canonical table below is too noisy to show a 6% effect: use the interleaved
-number, not the table column.
+Measured as the **median of 5 runs** of this table's script: **19/19 SDP instances
+equal or faster**, the SDP family total **-13.6%** (0.2826 s -> 0.2442 s), `d = 22`
+**-6.9%** (0.0375 -> 0.0349), `d = 14` -64.9%. An interleaved A/B on `d = 22` gives
+the same figure with **disjoint ranges** (0.037342 s -> 0.035128 s, 7 pairs, every
+new run faster than every old one). Objectives are unchanged on all 33 cases.
+
+Two honest caveats. **The 33-case total moves by about +1%**, because the SDP rows
+are only ~0.24 s of the ~4.8 s the table spends in MILP/LP/QP, which this change
+does not touch. And the table's own noise floor is **~2%**: re-running it leaves
+Clarabel at -2.0% and SCS at -1.5%, which are binaries this change cannot affect.
+So read the per-family figure, not the grand total, and treat anything under ~2% as
+noise.
 
 The sweep answers at `d = 20`, but **how long it takes is a build-time choice**:
 the same block takes **0.12 s** on an Apple build and **18.0 s** elsewhere. That is
@@ -256,38 +267,38 @@ every other toolchain runs the tangent-cut outer approximation first. See
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | 0.0011 | 0.0034 | 0.0002 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | 0.0014 | 0.0018 | 0.0007 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | 0.0061 | 0.0038 | 0.0021 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | 0.0318 | 0.0122 | 0.0120 | N/A | N/A | 546.481 |
+| lp_50x25 | lp | 50 x 25 | 171 | 0.0011 | 0.0017 | 0.0002 | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | 0.0014 | 0.0020 | 0.0007 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.0059 | 0.0038 | 0.0021 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.0331 | 0.0125 | 0.0122 | N/A | N/A | 546.481 |
 | qp_50x25 | qp | 50 x 25 | 1445 | 0.0016 | N/A | 0.0004 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.0068 | N/A | 0.0022 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.0451 | N/A | 0.0074 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.2849 | N/A | N/A | N/A | 0.1507 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 1.0070 | N/A | N/A | N/A | 0.2581 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 3.0443 | N/A | N/A | N/A | 0.9893 | 277.019 |
-| socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0009 | N/A | 0.707107 |
-| socp_120 | socp | 120 x 1 | - | 0.0016 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0030 | N/A | 0.0004 | 0.0010 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | 0.0003 | N/A | 0.0011 | 0.0002 | N/A | -9.83233 |
-| sdp_5 | sdp | 5 x 5 | - | 0.0003 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.0070 | N/A | 0.0022 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.0450 | N/A | 0.0072 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.2888 | N/A | N/A | N/A | 0.1527 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 1.0333 | N/A | N/A | N/A | 0.2626 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | 3.1551 | N/A | N/A | N/A | 1.0263 | 277.019 |
+| socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.7071 |
+| socp_120 | socp | 120 x 1 | - | 0.0016 | N/A | 0.0002 | 0.0007 | N/A | 0.7071 |
+| socp_200 | socp | 200 x 1 | - | 0.0030 | N/A | 0.0004 | 0.0011 | N/A | 0.7071 |
+| sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0002 | 0.0002 | N/A | -9.8323 |
+| sdp_5 | sdp | 5 x 5 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -4.7995 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | 0.0018 | N/A | 0.0003 | 0.0004 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | 0.0010 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | 0.0016 | N/A | 0.0005 | 0.0004 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | 0.0021 | N/A | 0.0007 | 0.0007 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0028 | N/A | 0.0010 | 0.0016 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0055 | N/A | 0.0016 | 0.0009 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | 0.0049 | N/A | 0.0018 | 0.0010 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0183 | N/A | 0.0019 | 0.0010 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0077 | N/A | 0.0022 | 0.0012 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0190 | N/A | 0.0030 | 0.0014 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0155 | N/A | 0.0038 | 0.0017 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0195 | N/A | 0.0042 | 0.0021 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0640 | N/A | 0.0040 | 0.0019 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | 0.0447 | N/A | 0.0061 | 0.0024 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0318 | N/A | 0.0086 | 0.0038 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.0366 | N/A | 0.0097 | 0.0082 | N/A | -149.613 |
+| sdp_7 | sdp | 7 x 7 | - | 0.0016 | N/A | 0.0003 | 0.0004 | N/A | -8.1861 |
+| sdp_8 | sdp | 8 x 8 | - | 0.0009 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | 0.0015 | N/A | 0.0005 | 0.0004 | N/A | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | 0.0019 | N/A | 0.0007 | 0.0007 | N/A | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0027 | N/A | 0.0010 | 0.0016 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0051 | N/A | 0.0016 | 0.0009 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | 0.0046 | N/A | 0.0019 | 0.0010 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | 0.0065 | N/A | 0.0019 | 0.0010 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | 0.0073 | N/A | 0.0022 | 0.0013 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | 0.0178 | N/A | 0.0031 | 0.0014 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | 0.0146 | N/A | 0.0040 | 0.0017 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | 0.0186 | N/A | 0.0043 | 0.0020 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | 0.0531 | N/A | 0.0039 | 0.0019 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | 0.0419 | N/A | 0.0063 | 0.0024 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | 0.0302 | N/A | 0.0087 | 0.0038 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | 0.0349 | N/A | 0.0105 | 0.0082 | N/A | -149.613 |
 
 </div>
 
