@@ -36,27 +36,35 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BENCH_ALL = os.path.join(ROOT, "bench", "bench_all.py")
 
-# Columns of the table that hold a TIMING and are therefore medianed.  The
-# objective is always the LAST column and is never medianed: it must be stable.
-# "instance | class | vars x cons | nnz | Primal | HiGHS | Clarabel | SCS | SCIP | obj"
-TIME_COLS = range(4, 9)
+# Every column whose header ends in "(s)" holds a TIMING and is medianed; which
+# columns those are is read from each table's own header row, since bench_all.py
+# prints two tables (the generated families, then the public instances) with
+# different leading columns.  The objective is always the LAST column and is
+# never medianed: it must be stable.
 NOISE_PCT = 2.0
+MARK = "\u2717"                     # bench_all.py's "this answer is wrong" mark
 
 
 def _cells(line):
     return [x.strip() for x in line.strip().strip("|").split("|")]
 
 
+def _unbold(v):
+    return v[2:-2] if v.startswith("**") and v.endswith("**") else v
+
+
 def parse_table(text):
-    """Parse a markdown table into {instance: [cells]}.
+    """Parse the markdown tables into ({instance: [cells]}, [table]), where each
+    table is (header cells, [instance, ...]) in printed order.
 
     The separator row is detected structurally (every field blank/dash/colon),
     NOT by looking for a dash inside the content.  An earlier ad-hoc parser used
     `set(''.join(cells)) > set('-')`, which silently dropped every row that did not
     contain a literal dash -- 11 of 33 rows, i.e. all of LP, QP and MILP, because
     only SOCP/SDP carry a `-` in the nnz column.  See README guide section 6.2.
+    Bold (the fastest cell) is stripped; aggregate() re-marks it.
     """
-    rows = {}
+    rows, tables = {}, []
     for line in text.splitlines():
         if not line.startswith("|"):
             continue
@@ -64,11 +72,19 @@ def parse_table(text):
         if not c or not c[0]:
             continue
         if c[0].lower() == "instance":
+            tables.append((c, []))
             continue
         if all(set(x) <= set("-: ") for x in c):
             continue
-        rows[c[0]] = c
-    return rows
+        if not tables:
+            continue
+        rows[c[0]] = [_unbold(x) for x in c]
+        tables[-1][1].append(c[0])
+    return rows, tables
+
+
+def time_cols(header):
+    return [i for i, h in enumerate(header) if h.endswith("(s)")]
 
 
 def _num(v):
@@ -76,6 +92,38 @@ def _num(v):
         return float(v)
     except ValueError:
         return None
+
+
+def _cell_value(v):
+    """(seconds, wrong) for a timed cell -- +inf for a time-out -- or None for
+    a cell that is no time at all (N/A, fail, ...)."""
+    wrong = v.endswith(MARK)
+    v = v[:-len(MARK)].strip() if wrong else v
+    if re.fullmatch(r">\d+s", v):
+        return float("inf"), wrong
+    t = _num(v)
+    return (t, wrong) if t is not None else None
+
+
+def median_cell(cells):
+    vals = [_cell_value(v) for v in cells]
+    if any(x is None for x in vals):
+        # a status rather than a time in some run: report the commonest cell
+        return max(set(cells), key=cells.count)
+    m = statistics.median(t for t, _ in vals)
+    if m == float("inf"):
+        return next(v for v in cells if _cell_value(v)[0] == m)
+    return "%.4f" % m + (" " + MARK if any(w for _, w in vals) else "")
+
+
+def bold_fastest(row, cols):
+    times = {i: float(row[i]) for i in cols if re.fullmatch(r"\d+\.\d+", row[i])}
+    if times:
+        best = min(times.values())
+        for i, t in times.items():
+            if t == best:
+                row[i] = "**%s**" % row[i]
+    return row
 
 
 def run_once(python, timeout):
@@ -88,33 +136,31 @@ def run_once(python, timeout):
 
 def aggregate(python, runs, timeout):
     tabs = [run_once(python, timeout) for _ in range(runs)]
-    base = tabs[0]
-    for i, t in enumerate(tabs[1:], start=2):
+    base, tables = tabs[0]
+    for i, (t, _) in enumerate(tabs[1:], start=2):
         if set(t) != set(base):
             sys.exit("run %d has a different instance set than run 1; "
                      "the build changed under us" % i)
     out = {}
-    for k, cells in base.items():
-        row = []
-        for i, v in enumerate(cells):
-            if i in TIME_COLS and i < len(cells):
-                vals = [_num(t[k][i]) for t in tabs]
-                if any(x is None for x in vals):
-                    row.append(v)                      # e.g. "N/A" in every run
-                else:
-                    row.append("%.4f" % statistics.median(vals))
-            else:
-                row.append(v)                          # objective: never medianed
-        out[k] = row
+    for header, names in tables:
+        cols = time_cols(header)
+        for k in names:
+            row = [median_cell([t[k][i] for t, _ in tabs]) if i in cols else v
+                   for i, v in enumerate(base[k])]  # objective: never medianed
+            out[k] = bold_fastest(row, cols)
     # objectives must be identical across runs; that is the correctness signal
-    unstable = [k for k in base if len({t[k][-1] for t in tabs}) > 1]
-    return out, unstable
+    unstable = [k for k in base if len({t[k][-1] for t, _ in tabs}) > 1]
+    return out, tables, unstable
+
+
+def _primal(c):
+    return _num(_unbold(c[4]))
 
 
 def family_totals(rows):
     fam = {}
     for k, c in rows.items():
-        t = _num(c[4])
+        t = _primal(c)
         if t is None:
             continue
         a = fam.setdefault(c[1], [0.0, 0, 0])
@@ -146,7 +192,7 @@ def compare(old, new):
     for k in old:
         if k not in new:
             continue
-        a, b = _num(old[k][4]), _num(new[k][4])
+        a, b = _primal(old[k]), _primal(new[k])
         if not a or not b:
             continue
         if b > a * thr:
@@ -187,7 +233,7 @@ def main():
         # the methods table and the Class/Route table as well.
         start = txt.index("| instance | class | vars x cons |")
         end = txt.index("</div>", start)
-        rows = parse_table(txt[start:end])
+        rows, _ = parse_table(txt[start:end])
         fams = sorted({c[1] for c in rows.values()})
         print("README benchmark table: %d data rows parsed" % len(rows))
         print("families:", fams)
@@ -201,7 +247,7 @@ def main():
     if args.runs < 1:
         sys.exit("--runs must be >= 1")
 
-    rows, unstable = aggregate(args.python, args.runs, args.timeout)
+    rows, tables, unstable = aggregate(args.python, args.runs, args.timeout)
     if not rows:
         sys.exit("no rows parsed from bench_all.py output")
     print("aggregated %d instances over %d runs" % (len(rows), args.runs))
@@ -209,7 +255,10 @@ def main():
         sys.exit("OBJECTIVES UNSTABLE across runs: %s" % unstable)
     print("objectives identical in all %d runs" % args.runs)
 
-    text = "\n".join("| " + " | ".join(c) + " |" for c in rows.values()) + "\n"
+    text = "\n".join(
+        "\n".join(["| " + " | ".join(h) + " |", "|" + "---|" * len(h)] +
+                  ["| " + " | ".join(rows[k]) + " |" for k in names])
+        for h, names in tables) + "\n"
     if args.out:
         open(args.out, "w").write(text)
         print("wrote %s" % args.out)
@@ -217,7 +266,7 @@ def main():
         print(text)
 
     if args.compare:
-        compare(parse_table(open(args.compare).read()), rows)
+        compare(parse_table(open(args.compare).read())[0], rows)
     return 0
 
 
