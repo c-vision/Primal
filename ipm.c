@@ -426,7 +426,8 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
  * (re)allocated to *kcap. Returns the factor or NULL. */
 static SpChol *factor_K(const int *Aptr, const int *Arow, const double *Aval,
                         const double *theta, int m, int n, double delta,
-                        double *Kd, int *Kp, int *kcap, int **Ki, double **Kx) {
+                        double *Kd, int *Kp, int *kcap, int **Ki, double **Kx,
+                        int **Kperm, int **Kpat, int *Kpatn) {
     memset(Kd, 0, (size_t)m * (size_t)m * sizeof(double));
     for (int j = 0; j < n; j++) {
         double th = theta[j];
@@ -462,6 +463,25 @@ static SpChol *factor_K(const int *Aptr, const int *Arow, const double *Aval,
             double v = Kd[i1 * m + i2];
             if (v != 0.0) { (*Ki)[w] = i1; (*Kx)[w] = v; w++; }
         }
+    }
+    /* Reuse the fill-reducing ordering while K's pattern is unchanged.  K =
+     * A Theta A' + delta I has a fixed structure (Theta and delta touch values
+     * only), so AMD is paid once per solve instead of once per factor_K call --
+     * measured: sym_amd dominates this IPM (lp_400x200 profile). */
+    {
+        int nnz = Kp[m];
+        int same = (*Kperm) && (*Kpat) && (*Kpatn) == nnz &&
+                   memcmp(*Kpat, *Ki, (size_t)nnz * sizeof(int)) == 0;
+        if (!same) {
+            free(*Kperm); *Kperm = NULL; free(*Kpat); *Kpat = NULL;
+            *Kperm = spchol_order(m, Kp, *Ki);
+            if (*Kperm) {
+                *Kpat = (int *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(int));
+                if (*Kpat) { memcpy(*Kpat, *Ki, (size_t)nnz * sizeof(int)); *Kpatn = nnz; }
+                else { free(*Kperm); *Kperm = NULL; }
+            }
+        }
+        if (*Kperm) return spchol_factor_perm(m, Kp, *Ki, *Kx, *Kperm);
     }
     return spchol_factor_ord(m, Kp, *Ki, *Kx);
 }
@@ -543,6 +563,8 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
     int *Ki = NULL;
     double *Kx = NULL;
     int kcap = 0;
+    int *Kperm = NULL, *Kpat = NULL;   /* cached AMD ordering of K's pattern */
+    int Kpatn = -1;
     int memfail = 0;
     if (!rp || !rd || !tmpn || !tmpm || !dyA || !dxA || !dzA || !dxC || !dzC ||
         !theta || !g || !Ag || !Kd || !rptr || !ridx || !rval || !Kp) memfail = 1;
@@ -551,7 +573,7 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
     free(rp); free(rd); free(tmpn); free(tmpm); free(dyA); \
     free(dxA); free(dzA); free(dxC); free(dzC); free(theta); free(g); \
     free(Ag); free(Kd); free(rptr); free(ridx); free(rval); free(Kp); \
-    free(Ki); free(Kx); } while (0)
+    free(Ki); free(Kx); free(Kperm); free(Kpat); } while (0)
 
     if (memfail) { IPMSP_FREE(); return IPM_MEMORY; }
 
@@ -593,7 +615,8 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
         SpChol *L0 = NULL;
         double delta0 = 1e-9;
         for (int tries = 0; tries < 6 && !L0; tries++) {
-            L0 = factor_K(Aptr, Arow, Aval, theta, m, n, delta0, Kd, Kp, &kcap, &Ki, &Kx);
+            L0 = factor_K(Aptr, Arow, Aval, theta, m, n, delta0, Kd, Kp, &kcap, &Ki, &Kx,
+                          &Kperm, &Kpat, &Kpatn);
             if (!L0) delta0 *= 100.0;
         }
         if (!L0) { IPMSP_FREE(); return IPM_SINGULAR; }
@@ -695,7 +718,8 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
         /* ---- factor K (delta escalated) ---- */
         SpChol *L = NULL;
         for (int tries = 0; tries < 6 && !L; tries++) {
-            L = factor_K(Aptr, Arow, Aval, theta, m, n, delta, Kd, Kp, &kcap, &Ki, &Kx);
+            L = factor_K(Aptr, Arow, Aval, theta, m, n, delta, Kd, Kp, &kcap, &Ki, &Kx,
+                         &Kperm, &Kpat, &Kpatn);
             if (!L) { delta *= 100.0; if (delta > 1e4) break; }
         }
         if (!L) { status = IPM_SINGULAR; break; }
@@ -802,7 +826,8 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
  * The factor may carry a fill-reducing ordering, so it is solved with
  * spchol_solve_ord, which undoes it. */
 static SpChol *spchol_from_dense(const double *Kd, int m,
-                                 int *Kp, int *kcap, int **Ki, double **Kx) {
+                                 int *Kp, int *kcap, int **Ki, double **Kx,
+                                 int **Kperm, int **Kpat, int *Kpatn) {
     /* Count the lower triangle first: a full one needs no fill-reducing order
      * and no sparse machinery, just the dense factor. */
     {
@@ -841,6 +866,21 @@ static SpChol *spchol_from_dense(const double *Kd, int m,
     long long half = (long long)m * (m + 1) / 2;
     if ((long long)Kp[m] * 4 > half)
         return spchol_factor(m, Kp, *Ki, *Kx);
+    {
+        int nnz = Kp[m];
+        int same = (*Kperm) && (*Kpat) && (*Kpatn) == nnz &&
+                   memcmp(*Kpat, *Ki, (size_t)nnz * sizeof(int)) == 0;
+        if (!same) {
+            free(*Kperm); *Kperm = NULL; free(*Kpat); *Kpat = NULL;
+            *Kperm = spchol_order(m, Kp, *Ki);
+            if (*Kperm) {
+                *Kpat = (int *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(int));
+                if (*Kpat) { memcpy(*Kpat, *Ki, (size_t)nnz * sizeof(int)); *Kpatn = nnz; }
+                else { free(*Kperm); *Kperm = NULL; }
+            }
+        }
+        if (*Kperm) return spchol_factor_perm(m, Kp, *Ki, *Kx, *Kperm);
+    }
     return spchol_factor_ord(m, Kp, *Ki, *Kx);
 }
 
@@ -918,13 +958,15 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
     int *diagpos = (int *)malloc((size_t)n * sizeof(int));
     int *Kp = (int *)malloc((size_t)(m + 1) * sizeof(int));
     int *Ki = NULL; double *Kx = NULL; int kcap = 0;
+    int *Kperm = NULL, *Kpat = NULL;   /* cached AMD ordering of K's pattern */
+    int Kpatn = -1;
     int memfail = 0;
     if (!rp||!rd||!Qx||!tmpn||!tmpm||!dyA||!dxA||!dzA||!dxC||!dzC||!D||!u||!Atdy||
         !Mval||!W||!Kd||!rptr||!ridx||!rval||!diagpos||!Kp) memfail = 1;
 
 #define IPMQP_FREE() do { free(rp);free(rd);free(Qx);free(tmpn);free(tmpm);free(dyA);\
     free(dxA);free(dzA);free(dxC);free(dzC);free(D);free(u);free(Atdy);free(Mval);\
-    free(W);free(Kd);free(rptr);free(ridx);free(rval);free(diagpos);free(Kp);free(Ki);free(Kx);} while(0)
+    free(W);free(Kd);free(rptr);free(ridx);free(rval);free(diagpos);free(Kp);free(Ki);free(Kx);free(Kperm);free(Kpat);} while(0)
     if (memfail) { IPMQP_FREE(); return IPM_MEMORY; }
 
     /* CSR of A */
@@ -966,7 +1008,8 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int j = 0; j < n; j++) D[j] = 1.0;   /* theta = I */
         SpChol *L0 = NULL; double d0 = 1e-9;
         for (int tr = 0; tr < 6 && !L0; tr++) {
-            L0 = factor_K(Aptr, Arow, Aval, D, m, n, d0, Kd, Kp, &kcap, &Ki, &Kx);
+            L0 = factor_K(Aptr, Arow, Aval, D, m, n, d0, Kd, Kp, &kcap, &Ki, &Kx,
+                          &Kperm, &Kpat, &Kpatn);
             if (!L0) d0 *= 100.0;
         }
         if (!L0) { IPMQP_FREE(); return IPM_SINGULAR; }
@@ -1067,7 +1110,7 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
                 int j = ridx[p]; double a = rval[p]; const double *Wj = &W[(size_t)j * m];
                 for (int k = 0; k < m; k++) Kd[(size_t)i * m + k] += a * Wj[k];
             }
-        SpChol *Lk = spchol_from_dense(Kd, m, Kp, &kcap, &Ki, &Kx);
+        SpChol *Lk = spchol_from_dense(Kd, m, Kp, &kcap, &Ki, &Kx, &Kperm, &Kpat, &Kpatn);
         if (!Lk) { spchol_free(Lm); status = IPM_SINGULAR; break; }
 
         /* ---- affine predictor (target = -xz) ---- */

@@ -99,10 +99,39 @@ mixed SDP/SOC ellipse) on `b4799b0` and `7e2ea11` and it **passes** from
 `6735a28` on, so that one was a primary-path convergence issue already fixed by
 the centring rescue, not an HSD issue.
 
+## Attempt 2026-10-01 — the step made literal does NOT reproduce the 5/7
+
+Read algorithm 6.2 from the paper (`pdftotext -layout`, lines 1343-1400 of the
+extract) and compared it with `hsd_step`. The prototype deviates in **four**
+places, plus one missing constraint:
+
+1. affine dual-Hessian coefficient `μ H*(z)` is **0** in the probe (paper: `μ`);
+2. corrector coefficient is `σμ` (paper: `μ` — the coefficient is the same in
+   both steps, only the RHS changes);
+3. combined linear RHS is the **full** residual (paper: **`(1-σ)·`** residual);
+4. the Mehrotra corrections are absent (`η(Δs_a,Δz_a)` and `Δτ_aΔκ_a`);
+5. `α` never limits `Δz`, so the step can push the **dual** iterate out of `K*`
+   (paper: `α` keeps `(s,z,τ,κ)` in `F`, so `z + αΔz ≥ 0` too).
+
+Making the step literal (1-4) regresses the probe: `min -x0`, `x0+x1=1` goes
+from `OPTIMAL (1,0)` to DUAL INFEASIBLE; the 3-var case returns a wrong
+`obj=-17.3` with negative `x`. Adding the `z ≥ 0` limit on top, or applying it
+alone to the original RHS, makes it unstable (`tau`/`kap` → `nan`/`1e60`).
+
+**Conclusion (measured, both variants reverted):** the prototype's 5/7 is **not**
+a rigorous base — its four deviations are *compensating*, so "fixing" the step
+toward the paper breaks it. Tuning the step against the whole solve is exactly
+the loop the handoff warns against. The next move is the **unit test on the
+single step**: given a point, verify the affine direction satisfies
+`μH*(z)Δz + Δs = −s` and the linearized rows to machine precision, and the
+combined satisfies the paper's RHS — *then* re-tune. That test would have
+caught deviation 1 immediately.
+
 ## Next steps
 
-1. Fix the scale handling / degenerate-feasible branch selection in the probe.
-2. Generalize `K` to SOC/SDP/exp, reusing the barriers and scalings already in
+1. Unit-test the single step (see above) before touching the solve again.
+2. Fix the scale handling / degenerate-feasible branch selection in the probe.
+3. Generalize `K` to SOC/SDP/exp, reusing the barriers and scalings already in
    `sdp.c` / `expcone.c`.
-3. Add the `(tau, kappa)` row to the unified conic KKT in `sdp.c` as route
+4. Add the `(tau, kappa)` row to the unified conic KKT in `sdp.c` as route
    `CONIC2`, out of the default until it matches on the corpus.

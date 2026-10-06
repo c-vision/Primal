@@ -410,7 +410,8 @@ void dmat_lu_free(LuFact *f) {
 /* ---------------- Jacobi eigenvalue (symmetric) ---------------- */
 /* Symmetric eigendecomposition with Jacobi rotations (cyclic, sweep).
  * Convergence: off-diagonal drops quadratically; tolerance 1e-14. */
-void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
+static void dmat_eig_jacobi_core(int n, const double *A, double *eval, double *evec,
+                                 int twosided) {
     int nn = n > 0 ? n : 1;
     double *W = (double *)calloc((size_t)nn * (size_t)nn, sizeof(double));
     double *V = (double *)calloc((size_t)nn * (size_t)nn, sizeof(double));
@@ -440,15 +441,36 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
                 double t = (theta >= 0.0 ? 1.0 : -1.0) /
                            (fabs(theta) + sqrt(theta * theta + 1.0));
                 double c = 1.0 / sqrt(t * t + 1.0), sn = t * c;
-                for (int k = 0; k < n; k++) {   /* rows (J^T W) */
-                    double wp = W[p * n + k], wq = W[q * n + k];
-                    W[p * n + k] = c * wp - sn * wq;
-                    W[q * n + k] = sn * wp + c * wq;
-                }
-                for (int k = 0; k < n; k++) {   /* columns (W J) */
-                    double wp = W[k * n + p], wq = W[k * n + q];
-                    W[k * n + p] = c * wp - sn * wq;
-                    W[k * n + q] = sn * wp + c * wq;
+                if (twosided) {
+                    /* Legacy two-sided update: 2 row passes + 2 column passes.
+                     * Reproduces the pre-2026-10-03 rounding exactly (the HSD
+                     * path pins it). */
+                    for (int k = 0; k < n; k++) {   /* rows (J^T W) */
+                        double wp = W[p * n + k], wq = W[q * n + k];
+                        W[p * n + k] = c * wp - sn * wq;
+                        W[q * n + k] = sn * wp + c * wq;
+                    }
+                    for (int k = 0; k < n; k++) {   /* columns (W J) */
+                        double wp = W[k * n + p], wq = W[k * n + q];
+                        W[k * n + p] = c * wp - sn * wq;
+                        W[k * n + q] = sn * wp + c * wq;
+                    }
+                } else {
+                    /* Symmetric one-sided W' = J^T W J: W stays symmetric, so the
+                     * two off-diagonal half-updates are transposes -- write one and
+                     * mirror (half the work).  Diagonal via h=t*a_pq; the pivot
+                     * (p,q) is the element the rotation annihilates, set to 0. */
+                    double app = W[p * n + p], aqq = W[q * n + q], h = t * apq;
+                    W[p * n + p] = app - h;
+                    W[q * n + q] = aqq + h;
+                    W[p * n + q] = 0.0; W[q * n + p] = 0.0;
+                    for (int k = 0; k < n; k++) {
+                        if (k == p || k == q) continue;
+                        double wp = W[k * n + p], wq = W[k * n + q];
+                        double np = c * wp - sn * wq, nq = sn * wp + c * wq;
+                        W[k * n + p] = np; W[p * n + k] = np;
+                        W[k * n + q] = nq; W[q * n + k] = nq;
+                    }
                 }
                 for (int k = 0; k < n; k++) {   /* V J */
                     double vp = V[k * n + p], vq = V[k * n + q];
@@ -464,6 +486,14 @@ void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
     free(W); free(V);
 }
 
+/* Fast one-sided Jacobi (default) and the legacy two-sided form (HSD path). */
+void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec) {
+    dmat_eig_jacobi_core(n, A, eval, evec, 0);
+}
+void dmat_eig_jacobi_twosided(int n, const double *A, double *eval, double *evec) {
+    dmat_eig_jacobi_core(n, A, eval, evec, 1);
+}
+
 /* ---------------- sparse Cholesky (left-looking) ----------------
  * K = L L', K symmetric positive definite given in CSC (lower
  * triangle: column j with rows i >= j). For each column j:
@@ -477,7 +507,8 @@ static int *sym_amd(int n, const int *Ap, const int *Ai);
 
 /* Factor K in natural order with the left-looking column algorithm.
  * Returns NULL on bad input, alloc failure, or indefinite pivot. */
-static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const double *Kx) {
+static SpChol *spchol_factor_nat_ex(int n, const int *Kp, const int *Ki, const double *Kx,
+                                    double *fail_dj) {
     if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
     int **ci = (int **)calloc((size_t)n, sizeof(int *));
     double **cv = (double **)calloc((size_t)n, sizeof(double *));
@@ -522,6 +553,9 @@ static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const doub
         }
         double dj = w[j];
         if (!(dj > 1e-300)) {   /* not positive definite */
+            /* Hand the failing pivot back: its magnitude is the smallest shift
+             * that would repair the matrix, so a caller need not guess one. */
+            if (fail_dj) *fail_dj = dj;
             for (int q = 0; q < n; q++) { free(ci[q]); free(cv[q]); free(ri[q]); free(rv[q]); }
             free(ci); free(cv); free(cn); free(cc);
             free(ri); free(rv); free(rn); free(rc);
@@ -650,10 +684,23 @@ static int spchol_solve_nat(const SpChol *L, double *rhs) {
     return 0;
 }
 
+static SpChol *spchol_factor_nat(int n, const int *Kp, const int *Ki, const double *Kx) {
+    return spchol_factor_nat_ex(n, Kp, Ki, Kx, NULL);
+}
+
 /* Factor K in natural column order (no permutation wrapper).
  * Returns NULL on bad input, alloc failure, or indefinite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx) {
     return spchol_factor_nat(n, Kp, Ki, Kx);
+}
+
+/* As spchol_factor, reporting the pivot that failed.  Allocation failure also
+ * returns NULL but leaves *fail_dj at 0.0, which tells the two apart. */
+SpChol *spchol_factor_fail(int n, const int *Kp, const int *Ki, const double *Kx,
+                           double *fail_dj) {
+    if (fail_dj) *fail_dj = 0.0;
+    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
+    return spchol_factor_nat_ex(n, Kp, Ki, Kx, fail_dj);
 }
 
 /* Solve K u = rhs in place through a natural-order factor.  An ordered factor
@@ -751,10 +798,12 @@ int spchol_solve_all(const SpChol *L, double *B, int nrhs) {
 /* Fill-reducing wrapper: apply AMD to K, factor the permuted matrix, and keep
  * the permutation so spchol_solve_ord can undo it.  A quasi-definite KKT factored
  * in natural order can carry orders-of-magnitude more fill than the same matrix
- * ordered (Clarabel/qdldl use exactly this: static AMD + sparse factor). */
-SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx) {
-    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
-    int *perm = sym_amd(n, Kp, Ki);
+ * ordered (Clarabel/qdldl use exactly this: static AMD + sparse factor).
+ * `perm` is owned by this call (freed here on failure), so the public wrappers
+ * below decide whether it came from AMD or from the caller's cache. */
+static SpChol *spchol_factor_ordered(int n, const int *Kp, const int *Ki,
+                                     const double *Kx, int *perm) {
+    if (n <= 0 || !Kp || !Ki || !Kx) { free(perm); return NULL; }
     if (!perm) return spchol_factor_nat(n, Kp, Ki, Kx);   /* natural order */
     int *iperm = (int *)malloc((size_t)n * sizeof(int));
     int *pKp = (int *)malloc((size_t)(n + 1) * sizeof(int));
@@ -791,6 +840,28 @@ SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx)
     free(pKi); free(pKx); free(iperm); free(pKp);
     if (L) L->perm = perm; else free(perm);
     return L;
+}
+
+/* AMD-order the pattern and factor; the permutation is computed here. */
+SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx) {
+    if (n <= 0 || !Kp || !Ki || !Kx) return NULL;
+    return spchol_factor_ordered(n, Kp, Ki, Kx, sym_amd(n, Kp, Ki));
+}
+
+/* The ordering alone, so a caller can cache it across value-only updates. */
+int *spchol_order(int n, const int *Kp, const int *Ki) {
+    if (n <= 0 || !Kp || !Ki) return NULL;
+    return sym_amd(n, Kp, Ki);
+}
+
+/* Factor through a caller-supplied permutation (copied; the caller keeps theirs). */
+SpChol *spchol_factor_perm(int n, const int *Kp, const int *Ki, const double *Kx,
+                           const int *perm) {
+    if (n <= 0 || !Kp || !Ki || !Kx || !perm) return NULL;
+    int *p = (int *)malloc((size_t)n * sizeof(int));
+    if (!p) return NULL;
+    for (int k = 0; k < n; k++) p[k] = perm[k];
+    return spchol_factor_ordered(n, Kp, Ki, Kx, p);
 }
 
 /* Solve through an ordered factor, permuting rhs forth and back.

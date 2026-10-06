@@ -159,7 +159,7 @@ line per example.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5026 checks
+make test          # reliability suite: 5033 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -169,7 +169,8 @@ C99 with `gcc` or `clang` on Linux, macOS and the BSDs. There is **no MSVC
 project and no `nmake` path** — on Windows use MinGW
 ([how to build on Windows](docs/windows.md)), or compile the `LIBSRCS` list from
 the Makefile with any C99 compiler. Clean under AddressSanitizer +
-UndefinedBehaviorSanitizer on the suite and on all samples.
+UndefinedBehaviorSanitizer on all samples; on the suite, two checks (`T197`,
+the HSD opt-in) are known red under the sanitizers — see issue #11.
 
 ## How it compares
 
@@ -189,16 +190,19 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **~25× faster** in the
-  recorded SOCP case (0.0009 s against 0.023 s for `socp_200`: 100 cones,
-  300 scalar variables). It supports PSD cones and quadratic objectives
-  directly; see its [documented capabilities](https://clarabel.org/stable/).
-  The timings include each solver's setup and factorization (Clarabel's and
-  SCS's solver construction, PrimalSolver's conversion inside `PRIMAL_optimize`).
+- **Clarabel** is the closest open conic IPM and is **~7× faster** in the
+  recorded SOCP case (0.0004 s against 0.0027 s for `socp_200`: 100 cones,
+  300 scalar variables, down from 0.014 s via sparse Cholesky, a fill-reducing
+  ordering, and caching that ordering across iterations).
+  It supports PSD cones and quadratic objectives directly; see its
+  [documented capabilities](https://clarabel.org/stable/).
+  These timings are indicative: the harness excludes Clarabel's solver
+  construction but includes PrimalSolver's conversion inside `PRIMAL_optimize`.
 - **SCS** does PSD and exponential cones, but is first-order: it agrees with
   this solver's objective to about `1e-5`, where the IPM reaches `1e-8`.
-- **HiGHS** is faster on every LP/MILP here — 0.014 s against 0.123 s on a
-  400×200 LP.
+- **HiGHS** is faster on large LP/MILP — 0.011 s against 0.030 s on a 400×200 LP.
+  The crossover sits around 50–100 constraints; below that this solver wins on
+  fixed overhead.
 - **SDP with exponential cones and integer variables, in one dependency-free
   library**, is what nothing else permissively licensed covers. CVXOPT / SDPA /
   Sedumi have SDP but are GPL.
@@ -223,6 +227,12 @@ built against it on MPS files), SCIP-SDP 4.4.0 with DSDP 5.8, Pajarito 0.8.3
 (integer models, over HiGHS 1.26 and Clarabel) and Hypatia 0.11.0 (continuous
 ones) on Julia 1.13.1, timed on a second, already-compiled run.
 
+That script times **every** solver in the table (PrimalSolver, HiGHS, Clarabel,
+SCS, SCIP, Pajarito/Hypatia) and cross-checks each objective. It takes **one run per cell**, so the
+table it prints is a single-run snapshot. For anything finer than ~10% use
+`make bench-repeat`, which runs it N times, medians every cell and checks that
+every objective is identical across the runs.
+
 Each solver runs with one fixed configuration on every instance, its defaults
 except where a default gave wrong answers here: Clarabel without chordal
 decomposition (with it, 0.11.1 reports `Solved` at 18.0568 on SDPLIB `control1`,
@@ -233,6 +243,90 @@ default 1e-4 lands 1e-4 to 6e-4 off); SCIP-SDP at a 1e-7 feasibility tolerance
 nonlinear cones (its SDP relaxations leave those out and never move the bound);
 Pajarito with Clarabel for its conic subproblems (with Hypatia, its outer
 approximation cuts off the optimum of `expdesign_D_12_6` and `_16_8`).
+
+The SDP eigenvalue kernel (`dmat_eig_jacobi`, `min_eig`) now updates the
+symmetric matrix one-sided (half the arithmetic per Jacobi rotation). The
+`d = 4..22` sweep is ~**1.4×** faster overall (interleaved base/new; `d = 22`
+~1.5×, `d = 20` ~2.9×). The gain is **not uniform per size**: the ~1e-14 change
+in the eigenvalues can move which trajectory stalls, so one size can be slower
+(`d = 14`). That is the same route non-reproducibility `T81`/`T91` already
+assert as an outcome.
+
+**Four changes account for the SDP speed-up**. On the Apple build they were
+measured on, the SDP family went **23.3% faster** (0.2442 s ->
+0.1873 s, medians of 5), and **no instance is slower** (27 faster, 0 slower);
+`d = 22` goes 0.0349 s -> 0.0277 s. Each was measured at **`-O1`, `-O2` and `-O3` with distinct binaries**
+and interleaved pairs — a gain that survives `-O1` is work reduction, not code
+generation:
+
+1. **`sym_fun` shares one eigendecomposition per matrix, and `f(λ)` is hoisted
+   out of its `O(d³)` loop.** `sym_fun` is a spectral function: it takes an
+   eigendecomposition of `A` and applies `f` to the eigenvalues (`kind 0` →
+   √λ, `1` → 1/√λ, `2` → 1/|λ|). A profiler over the ratio test showed **6
+   calls per iteration but only 4 distinct input matrices**: `Xbar^1/2`,
+   `Xbar^-1` and `Xbar^-1/2` are three spectral functions of the *same* `Xbar`,
+   and `dmat_eig_jacobi` is deterministic, so the decomposition is kept and
+   reused — **33% of the eigendecompositions skipped**, uniformly at `d` = 4, 14,
+   19, 22. Separately, `f(λ_k)` depends only on `k` but was recomputed in every
+   one of the `d³` positions: **10648 square roots or divisions per call at
+   `d = 22` where 22 suffice**. Together **-9.8% / -10.9% / -5.3%** at `-O1` /
+   `-O2` / `-O3`, disjoint ranges at all three, 11 of 11 pairs faster at each.
+   The persistent buffers also remove 3 `malloc` + 3 `free` per call.
+2. **The `sym` matrices are computed once per iteration instead of twice.** The
+   ratio test evaluates `Xbar[j]` and `Sbar[j]`, and neither is assigned
+   anywhere inside `for (pass = 0; pass < 2; pass++)` — a checksum of both at
+   the two branches is identical in every iteration. Yet `sym(Xbar[j],1)` and
+   `sym(Sbar[j],1)` were recomputed on both passes: **2 of the 8 `sym_fun`
+   calls per iteration were pure repeats**. `sym_fun` is 55.4% of the SDP hot
+   loop, so removing a quarter of it is most of the win: **-9.0% / -10.3% /
+   -7.5%** at `-O1` / `-O2` / `-O3` on `d = 22`. `sdp_sweep 4..22` keeps
+   **19/19** objectives identical to the last digit.
+3. **`min_eig` sign tests go through a `min_eig_sign` wrapper.** Worth
+   **-5.2% / -6.0% / -5.5%**. Its Cholesky-first attempt **never succeeds** on
+   the SDP corpus (0 of 112 calls at `d = 22`, 0 of 273 at `d = 19`, 0 of 106
+   at `d = 14`) — these matrices sit on the PSD boundary, because the call
+   sites are the step-length ratio test. **The mechanism is not identified**:
+   both builds execute the same work (172 `min_eig` and 224 `sym_fun` calls,
+   counted), so the gain is neither avoided decompositions nor a reduction in
+   calls. Treat it as measured but unexplained, and re-measure it if the
+   compiler changes.
+4. **The eigenvalue kernel updates the symmetric matrix one-sided** (described
+   above), worth ~1.4x on the sweep.
+
+Change 1 is the one place where results are **not** bit-identical, and it is worth
+being precise about. Objectives are bit-identical at `-O1` and `-O3`. At `-O2`
+three instances move by at most **5.7e-7** relative (`d=12` -44.517447 →
+-44.517445, `d=13` -38.721146 → -38.721155, `d=14` -74.212068 → -74.212062);
+nothing in the family exceeds 1e-6. The cause is **FMA contraction, not
+arithmetic**: compiled with `-ffp-contract=off` the two versions are
+bit-identical, so they are the same computation and differ only in how the
+compiler groups the multiply-add once `f` is a load rather than a computed value.
+The suite passes at `-O2`, which is the level that differs.
+
+LP, QP, MILP and SOCP move by -3.4% to +0.2% in the same comparison, which is
+noise: those routes are untouched, and a change confined to one code path cannot
+move a family it does not call. The **grand total is not a useful figure here** —
+the SDP rows are a fraction of the time the table spends in MILP/LP/QP.
+
+A build trap worth knowing: **`make` does not rebuild when only `CFLAGS`
+changes**, so comparing two optimisation levels with the same `out/` silently
+compares one binary with itself -- and that mistake is what produced a *false*
+explanation once already. Use a separate `OUT=` per level, and check the two
+binaries differ before measuring.
+
+And **the table's own measurement uncertainty is 5-13%**: aggregating the
+*same* build with 3 runs instead of 5 moves LP by +13.0%, QP by +10.8%, MILP by
++10.2%. Read the per-family figure against a **~10%** threshold.
+
+Regenerate the table with `make bench-repeat` (medians, objective stability
+checked) rather than a single run.
+
+The sweep answers at `d = 20`, but **how long it takes is a build-time choice**:
+the same block takes **0.12 s** on an Apple build and **18.0 s** elsewhere. That is
+the stalled-point policy (`sdp.c`, `GMB_STALL_IS_ANSWER`): Apple publishes the
+frozen point when it measures within the same absolute residual the suite asserts,
+every other toolchain runs the tangent-cut outer approximation first. See
+`docs/interior-point.md`; the two policies are both green on the suite.
 
 <div style="font-size: 0.9em">
 
@@ -349,8 +443,11 @@ and below.
 
 ## Status
 
-Last full validation: **4905 checks, 0 failures** at `-O0`, `-O1`, `-O2`, `-O3`. **171/171** examples
-exit 0. Warning-free. ASan + UBSan clean.
+Last full validation at all four levels: **4905 checks, 0 failures** at `-O0`,
+`-O1`, `-O2`, `-O3`. The suite has since grown to **5033 checks, 0 failures**
+(default `-O2`, 2026-10-02). **171/171** examples
+exit 0. Warning-free. ASan + UBSan clean on the samples (the sanitized suite
+exits 1 on the two `T197` checks, issue #11).
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
 when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD

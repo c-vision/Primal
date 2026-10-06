@@ -729,6 +729,11 @@ static int tri3_to_csc(int ncol,const Tri3*t,int **op,int **oi,double **ov){
  * augmented sparse-LU direction (robust near the optimum).
  * ===================================================================== */
 #define NT_MAXK 32
+/* Largest diagonal shift, as a fraction of max|H|, that the NT path will accept
+ * to repair a failed H factorization before handing the iteration to the
+ * augmented LU.  Measured margins: legitimate near-singular retries need
+ * <= 2.6e-6, a genuinely indefinite H needed 0.5. */
+#define SOCP_H_SHIFT_REL 1e-4
 /* Jordan product v o w = A(v) w, written out: (v0 w0 + <vbar,wbar>, v0 wbar +
  * w0 vbar).  o may NOT alias v or w. */
 static void nt_amul(const double *v,const double *w,int k,double *o){
@@ -835,11 +840,11 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
             for(int q=c->SG->rp[o+i];q<c->SG->rp[o+i+1];q++) c->b1[c->SG->ri[q]]-=c->SG->rv[q]*t;}
           o+=kk;}}
         for(int j=0;j<n;j++) c->tmp[j]=c->b1[j];
-        if(spchol_solve(c->Hchol,c->tmp)) return -1;
+        if(spchol_solve_ord(c->Hchol,c->tmp)) return -1;
         if(p>0){
             sp_row(c->SE,c->tmp,c->b2,p);
             for(int i=0;i<p;i++) c->b2[i]+=rp[i];
-            if(spchol_solve(c->Schol,c->b2)) return -1;
+            if(spchol_solve_ord(c->Schol,c->b2)) return -1;
             for(int i=0;i<p;i++) dy[i]=c->b2[i];
         }
         for(int j=0;j<n;j++){double t=c->tmp[j];for(int i=0;i<p;i++)t-=c->Z[i*n+j]*dy[i];dx[j]=t;}
@@ -946,7 +951,13 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     Tri3 stri={0};
     Tri3 tri={0};
     int memok=off&&xs&&ys&&s&&lm&&rd&&rp&&rg&&Asc&&Alr&&rhs&&dx&&dy&&ds&&dlm&&dxa&&dya&&dsa&&dlma&&t1&&wacc&&wst&&wtouch&&Qwi&&sinv&&wnt&&Znt&&nb1&&nb2;
+    /* The NT normal-equation matrix H = G'Q(w)^{-1}G changes with the iterate
+     * only through the VALUES of Q(w) -- its sparsity is fixed (measured: the
+     * ordered CSC of H is byte-identical from the second iteration on, on every
+     * benchmark cone family).  So the AMD ordering is computed once and reused
+     * while the pattern is unchanged, instead of once per iteration. */
     int status=OPT_MAXITER, stamp=1; int *luperm=NULL;
+    int *Hperm=NULL,*Hpat=NULL; int Hpatn=-1;
     if(!memok){status=OPT_MEMORY;goto done;}
     {int o=0;for(int k=0;k<ncones;k++){off[k]=o;o+=cones[k].nmem;}}
     {int o=0;for(int k=0;k<ncones;k++){if(cones[k].type==0)for(int i=0;i<cones[k].nmem;i++){s[o+i]=1.0;lm[o+i]=1.0;}
@@ -1020,15 +1031,50 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
               o+=kk;}}
             int *Hp,*Hi; double *Hv;
             if(tri3_to_csc(n,&tri,&Hp,&Hi,&Hv)){status=OPT_MEMORY;goto done;}
-            Hchol=spchol_factor(n,Hp,Hi,Hv);
-            { static const double regs[]={1e-10,1e-9,1e-8}; double rgu=0.0;
-              for(size_t ri=0;ri<sizeof regs/sizeof regs[0]&&!Hchol;ri++){
-                for(int i=0;i<n;i++) tri3_add(&tri,i,i,regs[ri]-rgu);
-                rgu=regs[ri];
-                free(Hp);free(Hi);free(Hv);
-                if(tri3_to_csc(n,&tri,&Hp,&Hi,&Hv)){status=OPT_MEMORY;goto done;}
-                Hchol=spchol_factor(n,Hp,Hi,Hv); } }
-            free(Hp);free(Hi);free(Hv);
+            /* H = G'Q(w)^{-1}G stops being numerically positive definite near a
+             * degenerate scaling point, and the Cholesky then refuses it.  What it
+             * refuses by is tiny: measured on the 100-cone SOCP benchmark the
+             * failing pivot is 1e-10..1e-7 of the matrix scale, because Q(w)^{-1}
+             * diverges while mu -> 0 and H's entries reach 1e12.  The old absolute
+             * retry ladder (1e-10..1e-8) was 11 orders of magnitude too small to
+             * repair that, so every one of those iterations fell back to the
+             * augmented LU, which costs ~65x an NT iteration and was 96% of the
+             * solve.  So ask the factorizer how much it needs and shift by that
+             * much: |dj| is exactly the smallest diagonal shift that makes the
+             * pivot positive.  A shift that is NOT small against the matrix scale
+             * means H is genuinely indefinite rather than nearly singular, and
+             * that is the augmented LU's job -- measured separator: the legitimate
+             * retries are <= 2.6e-6 of the scale, the indefinite one was 0.5. */
+            { double fail_dj = 0.0;
+              /* Fill-reducing ordering first: on the many-cone benchmarks H is
+               * block-sparse and the natural order builds fill in the factor.
+               * The same lever the sparse LP IPM already uses (e073930); the
+               * pivot-based shift repair below is unchanged and still runs when
+               * the ordered factorization refuses the matrix. */
+              {   int same = Hperm && Hpat && Hpatn==Hp[n] &&
+                             memcmp(Hpat,Hi,(size_t)Hp[n]*sizeof(int))==0;
+                  if(!same){
+                      free(Hperm); Hperm=NULL; free(Hpat); Hpat=NULL;
+                      Hperm=spchol_order(n,Hp,Hi);
+                      if(Hperm){
+                          Hpat=(int*)malloc((size_t)(Hp[n]>0?Hp[n]:1)*sizeof(int));
+                          if(Hpat){ memcpy(Hpat,Hi,(size_t)Hp[n]*sizeof(int)); Hpatn=Hp[n]; }
+                          else { free(Hperm); Hperm=NULL; }
+                      }
+                  }
+                  Hchol=Hperm?spchol_factor_perm(n,Hp,Hi,Hv,Hperm)
+                             :spchol_factor_ord(n,Hp,Hi,Hv); }
+              if(!Hchol) Hchol=spchol_factor_fail(n,Hp,Hi,Hv,&fail_dj);
+              if(!Hchol&&fail_dj!=0.0){
+                double hscale=0.0;
+                for(int p=0;p<Hp[n];p++){double a=Hv[p]<0.0?-Hv[p]:Hv[p]; if(a>hscale)hscale=a;}
+                double need=fabs(fail_dj);
+                if(hscale>0.0 && need<=SOCP_H_SHIFT_REL*hscale){
+                    for(int i=0;i<n;i++) tri3_add(&tri,i,i,need*(1.0+1e-9));
+                    free(Hp);free(Hi);free(Hv);
+                    if(tri3_to_csc(n,&tri,&Hp,&Hi,&Hv)){status=OPT_MEMORY;goto done;}
+                    Hchol=spchol_factor(n,Hp,Hi,Hv); } }
+              free(Hp);free(Hi);free(Hv); Hp=Hi=NULL; Hv=NULL; }
             if(Hchol&&spchol_cond_diag(Hchol)>1e10){spchol_free(Hchol);Hchol=NULL;}  /* ill-conditioned */
             if(!Hchol){use_nt=0;}
         }
@@ -1038,7 +1084,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             for(int i=0;i<p;i++){
                 for(int j=0;j<n;j++) nb1[j]=0.0;
                 for(int q=SE.rp[i];q<SE.rp[i+1];q++) nb1[SE.ri[q]]=SE.rv[q];
-                if(spchol_solve(Hchol,nb1)){okz=0;break;}
+                if(spchol_solve_ord(Hchol,nb1)){okz=0;break;}
                 for(int j=0;j<n;j++) Znt[(size_t)i*n+j]=nb1[j];
             }
             if(okz){
@@ -1048,7 +1094,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
                     if(sv!=0.0) if(tri3_add(&stri,i,i2,sv)){status=OPT_MEMORY;goto done;}}
                 int *Sp,*Si; double *Sv;
                 if(tri3_to_csc(p,&stri,&Sp,&Si,&Sv)){status=OPT_MEMORY;goto done;}
-                Schol=spchol_factor(p,Sp,Si,Sv);
+                Schol=spchol_factor_ord(p,Sp,Si,Sv);
                 /* S = E H^{-1} E' must be SPD (E full row rank); if it is
                  * singular the normal equations are invalid -> fall back. */
                 free(Sp);free(Si);free(Sv);
@@ -1139,6 +1185,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     if(status==OPT_OK){for(int j=0;j<n;j++)x[j]=xs[j];for(int i=0;i<p;i++)y[i]=ys[i];for(int k=0;k<K;k++)lam[k]=lm[k];}
 done:
     free(luperm);
+    free(Hperm); free(Hpat);
     free(off);free(xs);free(ys);free(s);free(lm);free(rd);free(rp);free(rg);free(Asc);free(Alr);free(rhs);
     free(dx);free(dy);free(ds);free(dlm);free(dxa);free(dya);free(dsa);free(dlma);free(t1);
     free(wacc);free(wst);free(wtouch); free(tri.r);free(tri.c);free(tri.v);

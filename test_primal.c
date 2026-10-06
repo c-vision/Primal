@@ -20244,8 +20244,83 @@ static void test_t272(void) {
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
 }
 
+/* T279: many small cones automatically use the sparse SOCP route.  This is
+ * the closed-form benchmark family, checked through the public result. */
+static void test_t279(void) {
+    cur_name = "T279 automatic sparse route for many small SOCs";
+    enum { K = 100, N = 2 * K };
+    P p; pbegin(&p);
+    PRIMAL_appendvars(p.task, N + K);
+    for (int j = 0; j < N; j++)
+        PRIMAL_putvarbound(p.task, j, PRIMAL_BK_FR, 0.0, 0.0);
+    for (int k = 0; k < K; k++) {
+        int mem[3] = {N + k, 2 * k, 2 * k + 1};
+        PRIMAL_putvarbound(p.task, N + k, PRIMAL_BK_LO, 0.0, 0.0);
+        PRIMAL_putcj(p.task, N + k, 1.0);
+        PRIMAL_appendcone(p.task, PRIMAL_CT_QUAD, 0.0, 3, mem);
+    }
+    PRIMAL_appendcons(p.task, 1);
+    int sub[N]; double val[N];
+    for (int j = 0; j < N; j++) { sub[j] = j; val[j] = 1.0; }
+    PRIMAL_putarow(p.task, 0, N, sub, val);
+    PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 1.0, 1.0);
+    check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "100-cone solve");
+    double obj = INFINITY, dual = -INFINITY, pi = INFINITY;
+    if (PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &obj) == PRIMAL_RES_OK)
+        check(fabs(obj - sqrt(0.5)) < 1e-6, "analytic objective");
+    else check(0, "objective available");
+    if (PRIMAL_getprimalinfeas(p.task, PRIMAL_SOL_ITR, &pi) == PRIMAL_RES_OK)
+        check(pi < 1e-6, "published point feasible");
+    else check(0, "feasibility available");
+    if (PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dual) == PRIMAL_RES_OK)
+        check(fabs(obj - dual) < 1e-6, "primal-dual gap");
+    else check(0, "dual objective available");
+    pend(&p);
+}
+
+/* ---------------- T280: a conic relaxation gets no LP-derived cuts ----------
+ * mip_build_cuts reads only the SCALAR part of a row (t->cols), so a cut it
+ * derives from a row that also carries a bar (or quadratic) term is not a
+ * consequence of the model: on CBLIB `kpart_diw.15.4.29` (SDP + integer, whose
+ * continuous relaxation is OPTIMAL) the 210 such cuts made the conic relaxation
+ * fail at it=0 and the tree declared a feasible model infeasible.  The guard in
+ * optimize_mip skips LP-derived cuts when the node relaxation is conic or
+ * quadratic.  This model, read here, is small enough to derive by hand: with
+ * <E00,X> = 1 fixed, the row `2 z0 - <E00,X> <= 3.5` gives 2 z0 <= 4.5, i.e.
+ * z0 <= 2; the scalar-only CG cut `2 z0 <= 3` would wrongly give z0 <= 1. */
+static void test_t280(void) {
+    cur_name = "T280 SDP MIP: no LP-derived cuts on a conic relaxation";
+    PRIMALenv_t env; PRIMAL_makeenv(&env, NULL);
+    PRIMALtask_t t; PRIMAL_maketask(env, 0, 0, &t);
+    PRIMAL_appendvars(t, 1);
+    PRIMAL_putcj(t, 0, -1.0);                       /* min -z0 == max z0 */
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_RA, 0.0, 4.0);
+    PRIMAL_putvartype(t, 0, PRIMAL_VAR_TYPE_INT);
+    int dim[1] = {1};
+    PRIMAL_appendbarvars(t, 1, dim);
+    PRIMAL_appendcons(t, 2);
+    int mE = -1;
+    PRIMAL_appendsparsesymmat(t, 1, 1, (int[]){0}, (int[]){0}, (double[]){1.0}, &mE);
+    /* C0: <E00,X> = 1 */
+    PRIMAL_putbaraij(t, 0, 0, 1, &mE, (double[]){1.0});
+    PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
+    /* C1: 2 z0 - <E00,X> <= 3.5  (bar term on the same row) */
+    PRIMAL_putarow(t, 1, 1, (int[]){0}, (double[]){2.0});
+    PRIMAL_putbaraij(t, 1, 0, 1, &mE, (double[]){-1.0});
+    PRIMAL_putconbound(t, 1, PRIMAL_BK_UP, -INFINITY, 3.5);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve bar row + integer");
+    double x[1] = {0}; PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
+    close_enough_tol(x[0], 2.0, 1e-6, "z0 = 2 (the scalar-only CG cut gives 1)");
+    double po = 0; PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    close_enough_tol(po, -2.0, 1e-6, "obj = -2");
+    PRIMAL_deletetask(&t);
+    PRIMAL_deleteenv(&env);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t280();
+    test_t279();
     test_t278();
     test_t277();
     test_t276();

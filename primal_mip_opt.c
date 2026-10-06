@@ -43,26 +43,37 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
      * here (lc0/uc0 over ncon), because the B&B lx/ux/lc/uc do not exist yet. */
     PRIMALtask_t tc = NULL;
     double *lc0 = NULL, *uc0 = NULL;
-    if (getenv("GMB_MIP_CONFLICT") && !getenv("GMB_NO_MIP_CUTS") && ncon > 0) {
-        lc0 = (double *)malloc((size_t)ncon * sizeof(double));
-        uc0 = (double *)malloc((size_t)ncon * sizeof(double));
-        if (lc0 && uc0) {
-            for (int i = 0; i < ncon; i++)
-                bound_range(t->bkc[i], t->blc[i], t->buc[i], &lc0[i], &uc0[i]);
-        } else { free(lc0); free(uc0); lc0 = NULL; uc0 = NULL; }
-    }
-    int cfcuts = 0;
-    int cgcuts = mip_build_cuts(t, s, lc0, uc0, &tc, &cfcuts);   /* TOTAL, conflicts included */
-    free(lc0); free(uc0);
-    int gocuts = 0;
-    if (!getenv("GMB_NO_MIP_CUTS")) {
-        /* Gomory cuts from the tableau: a clone is needed (even with no CG
-         * cuts) to leave the user model untouched. */
-        if (!tc && mip_gomory_applicable(t)) {
-            if (PRIMAL_clonetask(t, &tc) != PRIMAL_RES_OK) tc = NULL;
+    int cfcuts = 0, cgcuts = 0, gocuts = 0;
+    /* LP-derived cuts (Chvatal-Gomory, cover, clique, conflict; Gomory from the
+     * simplex tableau) are only consequences of an LP relaxation.  A model whose
+     * node relaxation is conic or quadratic -- a PSD block, a cone, or a
+     * quadratic row -- has no such tableau, and adding those cuts to the conic
+     * relaxation is unsound: on CBLIB `kpart_diw.15.4.29` (SDP + integer, whose
+     * continuous relaxation is OPTIMAL at -105.77) the 210 cuts made the root
+     * relaxation fail (merit=inf at it=0) and the tree declared a feasible model
+     * infeasible.  Skip them there: the cut-free tree is weaker but correct. */
+    if (!use_conic) {
+        if (getenv("GMB_MIP_CONFLICT") && !getenv("GMB_NO_MIP_CUTS") && ncon > 0) {
+            lc0 = (double *)malloc((size_t)ncon * sizeof(double));
+            uc0 = (double *)malloc((size_t)ncon * sizeof(double));
+            if (lc0 && uc0) {
+                for (int i = 0; i < ncon; i++)
+                    bound_range(t->bkc[i], t->blc[i], t->buc[i], &lc0[i], &uc0[i]);
+            } else { free(lc0); free(uc0); lc0 = NULL; uc0 = NULL; }
         }
-        if (tc) gocuts = mip_gomory_round(tc, s);
+        cgcuts = mip_build_cuts(t, s, lc0, uc0, &tc, &cfcuts);   /* TOTAL, conflicts included */
+        if (!getenv("GMB_NO_MIP_CUTS")) {
+            /* Gomory cuts from the tableau: a clone is needed (even with no CG
+             * cuts) to leave the user model untouched. */
+            if (!tc && mip_gomory_applicable(t)) {
+                if (PRIMAL_clonetask(t, &tc) != PRIMAL_RES_OK) tc = NULL;
+            }
+            if (tc) gocuts = mip_gomory_round(tc, s);
+        }
+    } else if (getenv("GMB_DBG")) {
+        fprintf(stderr, "  [mip] conic/quadratic relaxation: LP-derived cuts skipped\n");
     }
+    free(lc0); free(uc0);
     int ncuts = cgcuts + gocuts;
     int nrelax = ncon + ncuts;
     PRIMALtask_t trelax = tc ? tc : t;

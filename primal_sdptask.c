@@ -315,6 +315,10 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             for (int p = 0; p < vN[v]; p++) E2[(size_t)r * nv2 + vIdx[2*v+p]] -= sg * vCoef[2*v+p];
         }
     }
+    if (getenv("GMB_DBG")) {
+        fprintf(stderr, "  [phase] sdp_ipm conv=%.4fs\n", (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
+        g_phase_t0 = clock();
+    }
 
     /* ---- solve ---- */
     double *x2 = (double *)calloc((size_t)(nv2 > 0 ? nv2 : 1), sizeof(double));
@@ -382,6 +386,11 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
                          iter_cap(t->max_iter_intpnt), 1e-7, t->tol_co_pfeas, t->tol_co_dfeas, t->tol_co_gap,
                          t->tol_near_rel,
                          x2, Xb, y2, Sb, Zsoc, Ssoc, Zexp, Sexp, xwarm2, ywarm2, &fb);
+        if (getenv("GMB_DBG")) {
+                fprintf(stderr, "  [phase] sdp_ipm solve=%.4fs\n",
+                    (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
+            g_phase_t0 = clock();
+        }
         /* Retain SOC duals only for a successful native answer. A subsequent
          * fallback must not inherit the certificate of a different point. */
         if (st == 0 && nsoc == t->numcones && nsoc > 0) {

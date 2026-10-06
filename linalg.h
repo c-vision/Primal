@@ -69,6 +69,11 @@ void dmat_lu_free(LuFact *f);
  * eval[n] = eigenvalues in order of interest (ascending NOT guaranteed,
  * call site finds the minimum), evec = n x n row-major column k = eigenvector k. */
 void dmat_eig_jacobi(int n, const double *A, double *eval, double *evec);
+/* The two-sided Jacobi update (2 row + 2 column passes per rotation), kept for
+ * the one caller whose numerics are calibrated to it rather than to the
+ * one-sided form: the experimental HSD path in sdp.c.  Same rotations, same
+ * sweep order, same tolerance as dmat_eig_jacobi. */
+void dmat_eig_jacobi_twosided(int n, const double *A, double *eval, double *evec);
 
 /* ---- sparse Cholesky  K = L L'  (K symmetric positive definite) ----
  * K in CSC: only the LOWER triangle (Ki[p] >= column). L is lower
@@ -92,9 +97,27 @@ typedef struct {
 /* Factor K in natural order (no fill-reducing permutation).
  * Returns NULL on allocation failure or non-positive-definite pivot. */
 SpChol *spchol_factor(int n, const int *Kp, const int *Ki, const double *Kx);
+/* Same, and on a non-positive pivot reports the pivot value that failed (the
+ * negative dj of H_jj minus the contributions of the previous columns).  That
+ * number is the smallest diagonal shift that would make the matrix positive
+ * definite, so a caller can repair the matrix by exactly that much instead of
+ * guessing a tolerance: socp.c uses it to keep the normal equations usable near
+ * a degenerate scaling point.  fail_dj may be NULL.  A NULL return with
+ * *fail_dj still 0.0 means allocation failure, not a bad pivot. */
+SpChol *spchol_factor_fail(int n, const int *Kp, const int *Ki, const double *Kx,
+                           double *fail_dj);
 /* same, with a fill-reducing AMD ordering applied internally (undone by
  * spchol_solve_ord); used by the sparse interior points, where fill matters. */
 SpChol *spchol_factor_ord(int n, const int *Kp, const int *Ki, const double *Kx);
+/* The AMD ordering of a pattern, to hand back to spchol_factor_perm.  A caller
+ * whose K pattern is fixed across iterations (an IPM whose normal-equation
+ * matrix changes only in VALUES) computes this once instead of per iteration.
+ * Caller frees; NULL on allocation failure. */
+int *spchol_order(int n, const int *Kp, const int *Ki);
+/* Same factor as spchol_factor_ord but through a CALLER-SUPPLIED permutation
+ * (copied, any permutation of 0..n-1), skipping the AMD computation. */
+SpChol *spchol_factor_perm(int n, const int *Kp, const int *Ki, const double *Kx,
+                           const int *perm);
 /* Solve through any factor, undoing its ordering when it has one.
  * Operates in place on rhs. 0 ok, -1 on NULL input or solve failure. */
 int spchol_solve_ord(const SpChol *L, double *rhs);

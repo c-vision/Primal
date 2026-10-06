@@ -94,8 +94,15 @@ $(OUT)/san/c_examples: | $(OUT)/san
 $(OUT)/san/%.o: %.c $(HEADERS) | $(OUT)/san
 	$(CC) $(SANFLAGS) $(SAN) -c $< -o $@
 
-$(OUT)/san/run_tests: test_primal.c $(SANOBJS) | $(OUT)/san
-	$(CC) $(SANFLAGS) $(SAN) -o $@ test_primal.c $(SANOBJS) $(LDLIBS)
+# test_primal.c calls primal_main, which lives in primal.c and is guarded by
+# -DPRIMAL_NO_MAIN (the same object $(OUT)/primal_cli.o is for the plain build).
+# Without it the sanitized suite never linked: ld: symbol(s) not found, so every
+# `make sanitize` since the split stopped at the link and the run never happened.
+$(OUT)/san/primal_cli.o: primal.c $(HEADERS) | $(OUT)/san
+	$(CC) $(SANFLAGS) $(SAN) -DPRIMAL_NO_MAIN -c $< -o $@
+
+$(OUT)/san/run_tests: test_primal.c $(SANOBJS) $(OUT)/san/primal_cli.o | $(OUT)/san
+	$(CC) $(SANFLAGS) $(SAN) -o $@ test_primal.c $(SANOBJS) $(OUT)/san/primal_cli.o $(LDLIBS)
 
 # The leak check does not exist on macOS ("LeakSanitizer is not supported"):
 # ASAN_OPTIONS=detect_leaks=0 is required or the process aborts at exit.
@@ -231,4 +238,25 @@ $(OUT)/bench/scip_cbf: bench/scip_cbf.c | $(OUT)
 	    -L$(SCIPSDP_LIB) -lscipsdp -L$(SCIP_DIR)/lib -lscip \
 	    -Wl,-rpath,$(SCIPSDP_LIB) -Wl,-rpath,$(SCIP_DIR)/lib -lm -o $@
 
-.PHONY: bench bench-scip
+.PHONY: bench-scip
+
+.PHONY: bench
+
+# --- benchmark aggregation -------------------------------------------------
+# bench/bench_all.py takes ONE run per cell, which cannot resolve a change of a
+# few percent: the aggregation itself moves 5-13% between 3 and 5 runs, and on a
+# second aggregation of the SAME build the LP/QP/MILP families move by 10-40%.
+# tools/bench_repeat.py runs it N times, medians every cell, verifies the
+# objectives are identical across runs, and compares two tables per family.
+#
+#   make bench-repeat                        # median of 5, table to stdout
+#   make bench-repeat RUNS=9 COMPARE=old.md
+#
+# Run it with the interpreter that has numpy/scipy and the reference solvers,
+# not the default python3 (see README "Benchmark table").
+PYTHON   ?= python3
+BENCH_RUNS   ?= 5
+.PHONY: bench-repeat
+bench-repeat: bench
+	$(PYTHON) tools/bench_repeat.py --runs $(BENCH_RUNS) \
+	    $(if $(COMPARE),--compare $(COMPARE),) $(if $(OUT_MD),--out $(OUT_MD),)
