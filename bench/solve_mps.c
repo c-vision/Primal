@@ -35,7 +35,7 @@
 
 /* solve_mps.c - PrimalSolver benchmark driver.
  * Reads an MPS / CPLEX LP / CBF file, solves it, prints one CSV line:
- *   rc,nvar,ncon,obj,seconds
+ *   rc,nvar,ncon,obj,seconds,solsta/prosta
  * Timing covers PRIMAL_optimize only (model I/O excluded). */
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,9 +57,10 @@ int main(int argc, char **argv) {
     PRIMALtask_t t = NULL;
     if (PRIMAL_maketask(env, 0, 0, &t) != PRIMAL_RES_OK) return 2;
 
-    PRIMALrescodee rc = PRIMAL_readdata(t, argv[1]);
+    /* any format the library reads (MPS/QPS, LP, OPF, CBF), told by content */
+    PRIMALrescodee rc = PRIMAL_readdataautoformat(t, argv[1]);
     if (rc != PRIMAL_RES_OK) {
-        printf("READ_ERROR,%d,0,0,0\n", (int)rc);
+        printf("READ_ERROR,%d,0,0,0,READ_ERROR\n", (int)rc);
         PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
         return 1;
     }
@@ -76,7 +77,15 @@ int main(int argc, char **argv) {
 
     double obj = 0.0;
     if (rc == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
-    printf("%d,%d,%d,%.10g,%.6f\n", (int)rc, nv, nc, obj, sec);
+    /* the verdict too: an infeasibility certificate is an answer, not a failure */
+    PRIMALsolstae solsta = PRIMAL_SOL_STA_UNKNOWN;
+    PRIMALprostae prosta = PRIMAL_PRO_STA_UNKNOWN;
+    char ss[64] = "", ps[64] = "";
+    PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &solsta);
+    PRIMAL_getprosta(t, PRIMAL_SOL_ITR, &prosta);
+    PRIMAL_solstatostr(t, solsta, ss);
+    PRIMAL_prostatostr(t, prosta, ps);
+    printf("%d,%d,%d,%.10g,%.6f,%s/%s\n", (int)rc, nv, nc, obj, sec, ss, ps);
     if (getenv("GMB_BENCH_DIAG")) {
         double pinf = -1.0, dobj = 0.0;
         PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pinf);

@@ -11,6 +11,9 @@
 /README.full.md
 /COMPARISON.md
 
+# public benchmark instances: fetched by bench/fetch_instances.py, not redistributed
+/bench/instances/lib/
+
 # python bytecode (created importing bench/*.py)
 __pycache__/
 *.pyc
