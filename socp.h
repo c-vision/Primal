@@ -51,4 +51,17 @@ int socp_solve_sparse(int n, int p,
                       double tol_gap, double tol_feas, int max_iter,
                       double *x /*n*/, double *y /*p*/, double *lam /*K*/);
 
+/* Internal symmetric NT linear system, independent of IPM iteration policy.
+ * [0 E' -G'; E 0 0; -G 0 -Q]. Q is block diagonal; each cone block starts
+ * at offset*stride in blocks and is nmem x nmem row-major. R+ blocks use
+ * only their diagonal. Pattern/ordering/workspace are retained by the handle.
+ * Solve refines against the original unregularized matrix and rejects a
+ * direction whose relative RHS residual exceeds 1e-8, leaving rhs untouched. */
+typedef struct SocpKkt SocpKkt;
+SocpKkt *socp_kkt_create(int n, int p, const double *E, int ncones,
+                        const SocpCone *cones, const double *G);
+int socp_kkt_update(SocpKkt *F, const double *blocks, int stride);
+int socp_kkt_solve(SocpKkt *F, double *rhs);
+void socp_kkt_free(SocpKkt *F);
+
 #endif /* SOCP_H */

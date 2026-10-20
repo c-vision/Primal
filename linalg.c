@@ -1225,6 +1225,153 @@ int splu_solve(const SpluFact *F, double *rhs) {
     return 0;
 }
 
+/* Reusable left-looking LDL on an elimination tree. Quasi-definiteness,
+ * supplied by the caller's signed diagonal shift, allows fixed 1x1 pivots.
+ * This is deliberately separate from the general static 2x2 LDL backend. */
+struct SpQd {
+    int n, nz, ready;
+    int *ap, *ai, *map, *perm, *parent, *lp, *li, *count, *mark, *path, *pattern;
+    int *sign;
+    double *ax, *lx, *d, *scale, *work;
+};
+
+void spqd_free(SpQd *F) {
+    if (!F) return;
+    free(F->ap); free(F->ai); free(F->map); free(F->perm); free(F->parent);
+    free(F->lp); free(F->li); free(F->count); free(F->mark); free(F->path);
+    free(F->pattern); free(F->sign); free(F->ax); free(F->lx); free(F->d);
+    free(F->scale); free(F->work); free(F);
+}
+
+SpQd *spqd_analyze(int n, const int *Ap, const int *Ai, const int *sign) {
+    if (n <= 0 || !Ap || !Ai || !sign || Ap[0] != 0) return NULL;
+    for (int j = 0; j < n; j++) {
+        if (Ap[j+1] < Ap[j] || (sign[j] != 1 && sign[j] != -1)) return NULL;
+        int diagonal = 0;
+        for (int p = Ap[j]; p < Ap[j+1]; p++) {
+            if (Ai[p] < 0 || Ai[p] > j) return NULL;
+            if (Ai[p] == j) diagonal++;
+        }
+        if (diagonal != 1) return NULL;
+    }
+    SpQd *F = (SpQd *)calloc(1, sizeof(*F));
+    if (!F) return NULL;
+    F->n = n; F->nz = Ap[n];
+    F->perm = sym_amd_order(n, Ap, Ai);
+    F->ap = (int *)calloc((size_t)n+1, sizeof(int));
+    F->ai = (int *)malloc((size_t)F->nz*sizeof(int));
+    F->map = (int *)malloc((size_t)F->nz*sizeof(int));
+    F->ax = (double *)malloc((size_t)F->nz*sizeof(double));
+    F->parent = (int *)malloc((size_t)n*sizeof(int));
+    F->lp = (int *)malloc(((size_t)n+1)*sizeof(int));
+    F->count = (int *)calloc((size_t)n, sizeof(int));
+    F->mark = (int *)malloc((size_t)n*sizeof(int));
+    F->path = (int *)malloc((size_t)n*sizeof(int));
+    F->pattern = (int *)malloc((size_t)n*sizeof(int));
+    F->sign = (int *)malloc((size_t)n*sizeof(int));
+    F->d = (double *)malloc((size_t)n*sizeof(double));
+    F->scale = (double *)malloc((size_t)n*sizeof(double));
+    F->work = (double *)calloc((size_t)n, sizeof(double));
+    if (!F->perm || !F->ap || !F->ai || !F->map || !F->ax || !F->parent ||
+        !F->lp || !F->count || !F->mark || !F->path || !F->pattern ||
+        !F->sign || !F->d || !F->scale || !F->work) { spqd_free(F); return NULL; }
+    /* path is inverse permutation here, count is the insertion cursor. */
+    for (int k = 0; k < n; k++) {
+        F->path[F->perm[k]] = k; F->sign[k] = sign[F->perm[k]];
+    }
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j+1]; p++) {
+        int a = F->path[Ai[p]], b = F->path[j];
+        F->ap[(a > b ? a : b)+1]++;
+    }
+    for (int j = 0; j < n; j++) { F->ap[j+1] += F->ap[j]; F->count[j] = F->ap[j]; }
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j+1]; p++) {
+        int a = F->path[Ai[p]], b = F->path[j], col = a > b ? a : b;
+        int q = F->count[col]++;
+        F->ai[q] = a < b ? a : b; F->map[p] = q;
+    }
+    /* Symbolic reach counts the later rows of each column of L. */
+    for (int j = 0; j < n; j++) { F->parent[j] = -1; F->mark[j] = -1; F->count[j] = 0; }
+    for (int k = 0; k < n; k++) {
+        F->mark[k] = k;
+        for (int p = F->ap[k]; p < F->ap[k+1]; p++) {
+            int i = F->ai[p];
+            while (F->mark[i] != k) {
+                if (F->parent[i] < 0) F->parent[i] = k;
+                F->count[i]++; F->mark[i] = k; i = F->parent[i];
+            }
+        }
+    }
+    F->lp[0] = 0;
+    for (int j = 0; j < n; j++) {
+        if (F->count[j] > 2147483647-F->lp[j]) { spqd_free(F); return NULL; }
+        F->lp[j+1] = F->lp[j]+F->count[j];
+    }
+    size_t lnz = (size_t)(F->lp[n] > 0 ? F->lp[n] : 1);
+    F->li = (int *)malloc(lnz*sizeof(int));
+    F->lx = (double *)malloc(lnz*sizeof(double));
+    if (!F->li || !F->lx) { spqd_free(F); return NULL; }
+    return F;
+}
+
+int spqd_factor(SpQd *F, const double *Ax, double regularization) {
+    if (!F) return -1;
+    F->ready = 0;
+    if (!Ax || !(regularization >= 0.0) || !isfinite(regularization)) return -1;
+    int n = F->n;
+    for (int j = 0; j < n; j++) F->scale[j] = 0.0;
+    for (int p = 0; p < F->nz; p++) {
+        if (!isfinite(Ax[p])) return -1;
+        F->ax[F->map[p]] = Ax[p];
+    }
+    for (int j = 0; j < n; j++) for (int p = F->ap[j]; p < F->ap[j+1]; p++) {
+        int i = F->ai[p]; double a = fabs(F->ax[p]);
+        if (a > F->scale[j]) F->scale[j] = a;
+        if (a > F->scale[i]) F->scale[i] = a;
+    }
+    for (int j = 0; j < n; j++) {
+        double a = F->scale[j]; F->scale[j] = a > 0.0 ? 1.0/sqrt(a) : 1.0;
+        F->count[j] = 0; F->mark[j] = -1; F->work[j] = 0.0;
+    }
+    for (int k = 0; k < n; k++) {
+        int top = n; F->mark[k] = k;
+        for (int p = F->ap[k]; p < F->ap[k+1]; p++) {
+            int i = F->ai[p], len = 0;
+            F->work[i] += F->ax[p]*F->scale[i]*F->scale[k];
+            while (F->mark[i] != k) {
+                F->path[len++] = i; F->mark[i] = k; i = F->parent[i];
+            }
+            while (len) F->pattern[--top] = F->path[--len];
+        }
+        double dk = F->work[k]+F->sign[k]*regularization;
+        F->work[k] = 0.0;
+        while (top < n) {
+            int i = F->pattern[top++], end = F->lp[i]+F->count[i];
+            double yi = F->work[i]; F->work[i] = 0.0;
+            for (int p = F->lp[i]; p < end; p++) F->work[F->li[p]] -= F->lx[p]*yi;
+            double lki = yi/F->d[i]; dk -= lki*yi;
+            F->li[end] = k; F->lx[end] = lki; F->count[i]++;
+        }
+        if (!(F->sign[k]*dk > 1e-300) || !isfinite(dk)) return -1;
+        F->d[k] = dk;
+    }
+    F->ready = 1;
+    return 0;
+}
+
+int spqd_solve(SpQd *F, double *rhs) {
+    if (!F || !F->ready || !rhs) return -1;
+    int n = F->n;
+    for (int k = 0; k < n; k++) F->work[k] = rhs[F->perm[k]]*F->scale[k];
+    for (int j = 0; j < n; j++) for (int p = F->lp[j]; p < F->lp[j+1]; p++)
+        F->work[F->li[p]] -= F->lx[p]*F->work[j];
+    for (int j = 0; j < n; j++) F->work[j] /= F->d[j];
+    for (int j = n-1; j >= 0; j--) for (int p = F->lp[j]; p < F->lp[j+1]; p++)
+        F->work[j] -= F->lx[p]*F->work[F->li[p]];
+    for (int j = 0; j < n; j++) if (!isfinite(F->work[j]*F->scale[j])) return -1;
+    for (int j = 0; j < n; j++) rhs[F->perm[j]] = F->work[j]*F->scale[j];
+    return 0;
+}
+
 /* NULL-safe, and safe on a HALF-BUILT struct: splu_factor calloc's the record
  * and calls this on its error paths, where only some of the arrays exist.  A
  * new field added to SpluFact has to be released here as well, or every one of

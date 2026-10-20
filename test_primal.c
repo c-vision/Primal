@@ -20427,8 +20427,183 @@ static void test_t283(void) {
     }
 }
 
+/* T284: symbolic LDL reuse on a quasi-definite matrix with mixed-sign
+ * diagonal blocks, structural zeros, off-block fill and a known solution. */
+static void test_t284(void) {
+    cur_name = "T284 reusable quasi-definite sparse LDL";
+    enum { N = 12, P = 5 };
+    int ap[N+1], ai[N*N], sign[N], nz = 0;
+    double a[N*N] = {0}, ax[N*N], rhs[N], ref[N];
+    for (int j = 0; j < N; j++) {
+        sign[j] = j < P ? 1 : -1;
+        ap[j] = nz;
+        for (int i = 0; i <= j; i++)
+            if (i == j || (i < P && j >= P && (i+j)%3 != 0)) ai[nz++] = i;
+    }
+    ap[N] = nz;
+    SpQd *f = spqd_analyze(N, ap, ai, sign);
+    check(f != NULL, "symbolic factor exists");
+    if (!f) return;
+    check(spqd_solve(f, rhs) != 0, "solve rejects an unfactored analysis");
+    for (int variant = 0; variant < 3; variant++) {
+        memset(a, 0, sizeof(a));
+        for (int j = 0; j < N; j++) for (int p = ap[j]; p < ap[j+1]; p++) {
+            int i = ai[p];
+            double v = i == j ? sign[j]*(1.0+j*.1) : ((i*7+j+variant)%5-2)*.3;
+            if (variant == 2) v *= pow(10.0, (i%3+j%3)-2);
+            a[i*N+j] = a[j*N+i] = ax[p] = v;
+        }
+        for (int i = 0; i < N; i++) {
+            rhs[i] = 0;
+            for (int j = 0; j < N; j++) rhs[i] += a[i*N+j]*(j*.25-1);
+            ref[i] = rhs[i];
+        }
+        LuFact *dense = dmat_lu_factor(a, N);
+        check(dense && dmat_lu_solve(dense, ref) == 0, "dense oracle solved");
+        check(spqd_factor(f, ax, 0.0) == 0, "numeric refactor with same symbolic pattern");
+        check(spqd_solve(f, rhs) == 0, "sparse triangular solves");
+        double err = 0, residual = 0;
+        for (int i = 0; i < N; i++) {
+            err = fmax(err, fabs(rhs[i]-(i*.25-1)));
+            err = fmax(err, fabs(rhs[i]-ref[i]));
+            double r = 0;
+            for (int j = 0; j < N; j++) r += a[i*N+j]*(rhs[j]-(j*.25-1));
+            residual = fmax(residual, fabs(r));
+        }
+        check(err < 1e-10, "known point and dense oracle agree");
+        check(residual < 1e-10, "original unscaled system residual");
+        dmat_lu_free(dense);
+    }
+    ax[0] = NAN;
+    check(spqd_factor(f, ax, 0.0) != 0, "nonfinite factor rejected");
+    check(spqd_solve(f, rhs) != 0, "failed refactor invalidates old factors");
+    spqd_free(f);
+    int badap[2] = {0, 1}, badi[1] = {1}, badsign[1] = {1};
+    check(spqd_analyze(1, badap, badi, badsign) == NULL, "invalid upper triangle rejected");
+}
+
+/* T285: verify the symmetric NT equations before plugging them into an IPM.
+ * Mixed R+/SOC blocks, nontrivial E and G, two RHS and reused numerical data. */
+static void test_t285(void) {
+    cur_name = "T285 symmetric NT KKT against original equations";
+    enum { N = 4, P = 2, K = 5, M = N+P+K, STRIDE = 3 };
+    double E[P*N] = {1,2,0,0, 0,0,1,-1};
+    double G[K*N] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1, 1,0,0,1};
+    SocpCone cones[2] = {{0,2,NULL}, {1,3,NULL}};
+    SocpKkt *f = socp_kkt_create(N,P,E,2,cones,G);
+    check(f != NULL, "symbolic symmetric NT system built");
+    if (!f) return;
+    for (int variant = 0; variant < 3; variant++) {
+        double blocks[K*STRIDE] = {0}, a[M*M] = {0};
+        blocks[0] = 1.5; blocks[3] = 2.5;
+        double v[3] = {2, variant*.2, -.3};
+        double vv = v[0]*v[0]+v[1]*v[1]+v[2]*v[2];
+        for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+            blocks[6+i*3+j] = (i==0 && j==0) ? vv :
+                (i==0 || j==0) ? 2*v[0]*v[i+j] :
+                2*v[i]*v[j]+(i==j ? 2*v[0]*v[0]-vv : 0);
+        for (int i = 0; i < P; i++) for (int j = 0; j < N; j++)
+            a[j*M+N+i] = a[(N+i)*M+j] = E[i*N+j];
+        for (int i = 0; i < K; i++) for (int j = 0; j < N; j++)
+            a[j*M+N+P+i] = a[(N+P+i)*M+j] = -G[i*N+j];
+        a[(N+P)*M+N+P] = -blocks[0];
+        a[(N+P+1)*M+N+P+1] = -blocks[3];
+        for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+            a[(N+P+2+i)*M+N+P+2+j] = -blocks[6+i*3+j];
+        check(socp_kkt_update(f,blocks,STRIDE) == 0, "numeric update keeps symbolic structure");
+        for (int pass = 0; pass < 2; pass++) {
+            double b[M] = {0}, ref[M], original[M];
+            for (int i = 0; i < M; i++) {
+                for (int j = 0; j < M; j++) b[i] += a[i*M+j]*(j*.1-1+pass);
+                ref[i] = original[i] = b[i];
+            }
+            LuFact *dense = dmat_lu_factor(a,M);
+            check(dense && dmat_lu_solve(dense,ref) == 0, "dense symmetric-system oracle");
+            check(socp_kkt_solve(f,b) == 0, "refined symmetric NT solve");
+            double err = 0, residual = 0;
+            for (int i = 0; i < M; i++) {
+                err = fmax(err,fabs(b[i]-(i*.1-1+pass)));
+                err = fmax(err,fabs(b[i]-ref[i]));
+                double r = -original[i];
+                for (int j = 0; j < M; j++) r += a[i*M+j]*b[j];
+                residual = fmax(residual,fabs(r));
+            }
+            check(err < 1e-7, "known direction and dense oracle agree");
+            check(residual < 1e-7, "all original unregularized NT equations hold");
+            dmat_lu_free(dense);
+        }
+    }
+    double nonfinite[M] = {0}; nonfinite[0] = INFINITY;
+    check(socp_kkt_solve(f,nonfinite) != 0 && isinf(nonfinite[0]),
+          "nonfinite RHS rejected without overwriting it");
+    double bad[K*STRIDE] = {NAN}, rhs[M];
+    for (int i = 0; i < M; i++) rhs[i] = i+1;
+    check(socp_kkt_update(f,bad,STRIDE) != 0, "nonfinite cone metric rejected");
+    check(socp_kkt_solve(f,rhs) != 0 && rhs[0] == 1 && rhs[M-1] == M,
+          "failed update cannot publish a stale direction");
+    socp_kkt_free(f);
+}
+
+/* T286: public quality of the opt-in symmetric route, with unequal costs,
+ * two coupling equalities, and rotated cones. Old/new need the same optimum
+ * and KKT quality, rather than the same point on a degenerate optimal face. */
+static void test_t286(void) {
+    cur_name = "T286 symmetric SOC route public quality and rotated cones";
+    const char *old = getenv("GMB_SOCP_LDL");
+    char *saved = NULL;
+    if (old) { saved = (char *)malloc(strlen(old)+1); if (saved) strcpy(saved,old); }
+    check(!old || saved != NULL, "saved routing preference");
+    if (old && !saved) return;
+    double values[2][3] = {{0}};
+    for (int route = 0; route < 2; route++) {
+        if (route) setenv("GMB_SOCP_LDL","1",1); else unsetenv("GMB_SOCP_LDL");
+        for (int variant = 0; variant < 3; variant++) {
+            int nb = variant == 2 ? 20 : 60, n = 3*nb;
+            P p; pbegin(&p);
+            PRIMAL_appendvars(p.task,n);
+            for (int j = 0; j < n; j++) PRIMAL_putvarbound(p.task,j,PRIMAL_BK_FR,0,0);
+            for (int k = 0; k < nb; k++) {
+                int mem[3] = {3*k,3*k+1,3*k+2};
+                PRIMAL_putvarbound(p.task,mem[0],PRIMAL_BK_LO,0,0);
+                PRIMAL_putcj(p.task,mem[0],variant == 1 ? 1+k*.01 : 1);
+                if (variant == 2) {
+                    PRIMAL_putvarbound(p.task,mem[1],PRIMAL_BK_LO,0,0);
+                    PRIMAL_putcj(p.task,mem[1],1);
+                }
+                PRIMAL_appendcone(p.task,variant == 2 ? PRIMAL_CT_RQUAD : PRIMAL_CT_QUAD,0,3,mem);
+            }
+            int rows = variant == 2 ? 1 : 2;
+            PRIMAL_appendcons(p.task,rows);
+            int sub[60]; double val[60];
+            for (int i = 0; i < rows; i++) {
+                for (int k = 0; k < nb; k++) { sub[k] = 3*k+(variant == 2 ? 2 : 1+i); val[k] = 1; }
+                PRIMAL_putarow(p.task,i,nb,sub,val);
+                PRIMAL_putconbound(p.task,i,PRIMAL_BK_FX,i ? .5 : 1,i ? .5 : 1);
+            }
+            check_rc(PRIMAL_optimize(p.task),PRIMAL_RES_OK,"coupled-cone optimize");
+            double po = INFINITY, d = -INFINITY, pr = INFINITY, pv = INFINITY;
+            double pc = INFINITY, dc = INFINITY, dv = INFINITY, dcon = INFINITY;
+            check_rc(PRIMAL_getsolutioninfo(p.task,PRIMAL_SOL_ITR,&po,&pr,&pv,NULL,&pc,NULL,
+                                           &d,&dcon,&dv,NULL,&dc),PRIMAL_RES_OK,"public solution quality");
+            double expected = variant == 2 ? sqrt(2.0) : sqrt(1.25);
+            check(fabs(po-expected) < 2e-6,"analytic optimum");
+            check(fmax(pr,fmax(pv,pc)) < 2e-6,"rows, bounds and cones feasible");
+            check(fmax(dcon,fmax(dv,dc)) < 2e-6,"dual rows, variables and cones feasible");
+            check(fabs(po-d) < 2e-6,"public primal-dual gap");
+            values[route][variant] = po;
+            pend(&p);
+        }
+    }
+    for (int k = 0; k < 3; k++) check(fabs(values[0][k]-values[1][k]) < 2e-6,"legacy/direct objective parity");
+    if (saved) { setenv("GMB_SOCP_LDL",saved,1); free(saved); }
+    else unsetenv("GMB_SOCP_LDL");
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t286();
+    test_t285();
+    test_t284();
     test_t283();
     test_t282();
     test_t281();

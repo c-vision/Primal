@@ -709,6 +709,139 @@ static int tri3_to_csc(int ncol,const Tri3*t,int **op,int **oi,double **ov){
     *op=ptr;*oi=ri;*ov=vv; return 0;
 }
 
+/* Cached symmetric NT KKT. The lower right block is -Q(w), so adding
+ * +delta to primal variables and -delta elsewhere is quasi-definite when
+ * Q(w) is positive definite. The solve gate measures the UNSHIFTED matrix. */
+struct SocpKkt {
+    int N, ncones, ready;
+    int *ap, *ai, *slotrow, *slotcol, *off, *dim;
+    double *ax, *b, *x, *res;
+    SpQd *factor;
+};
+
+void socp_kkt_free(SocpKkt *F) {
+    if (!F) return;
+    free(F->ap); free(F->ai); free(F->slotrow); free(F->slotcol);
+    free(F->off); free(F->dim); free(F->ax); free(F->b); free(F->x); free(F->res);
+    spqd_free(F->factor); free(F);
+}
+
+static SocpKkt *socp_kkt_create_sp(int n, int p, const SpMat *E, int ncones,
+                                  const SocpCone *cones, const SpMat *G) {
+    int K = 0;
+    for (int k = 0; k < ncones; k++) K += cones[k].nmem;
+    int N = n+p+K;
+    if (N <= 0) return NULL;
+    SocpKkt *F = (SocpKkt *)calloc(1, sizeof(*F));
+    Tri3 tri = {0};
+    int *sign = (int *)malloc((size_t)N*sizeof(int));
+    if (!F || !sign) { free(F); free(sign); return NULL; }
+    F->N = N; F->ncones = ncones;
+    F->off = (int *)malloc((size_t)(ncones > 0 ? ncones : 1)*sizeof(int));
+    F->dim = (int *)malloc((size_t)(ncones > 0 ? ncones : 1)*sizeof(int));
+    F->b = (double *)malloc((size_t)N*sizeof(double));
+    F->x = (double *)malloc((size_t)N*sizeof(double));
+    F->res = (double *)malloc((size_t)N*sizeof(double));
+    if (!F->off || !F->dim || !F->b || !F->x || !F->res) goto fail;
+    for (int j = 0; j < N; j++) {
+        sign[j] = j < n ? 1 : -1;
+        if (tri3_add(&tri, j, j, 0.0)) goto fail;
+    }
+    for (int i = 0; i < p; i++) for (int q = E->rp[i]; q < E->rp[i+1]; q++)
+        if (tri3_add(&tri, E->ri[q], n+i, E->rv[q])) goto fail;
+    for (int i = 0; i < K; i++) for (int q = G->rp[i]; q < G->rp[i+1]; q++)
+        if (tri3_add(&tri, G->ri[q], n+p+i, -G->rv[q])) goto fail;
+    int off = 0;
+    for (int k = 0; k < ncones; k++) {
+        int d = cones[k].nmem; F->off[k] = off; F->dim[k] = d;
+        if (cones[k].type != 0)
+            for (int j = 0; j < d; j++) for (int i = 0; i < j; i++)
+                if (tri3_add(&tri, n+p+off+i, n+p+off+j, 0.0)) goto fail;
+        off += d;
+    }
+    if (tri3_to_csc(N, &tri, &F->ap, &F->ai, &F->ax)) goto fail;
+    int nz = F->ap[N];
+    F->slotrow = (int *)malloc((size_t)nz*sizeof(int));
+    F->slotcol = (int *)malloc((size_t)nz*sizeof(int));
+    if (!F->slotrow || !F->slotcol) goto fail;
+    int cone = 0;
+    for (int j = 0; j < N; j++) {
+        while (cone+1 < ncones && j >= n+p+F->off[cone]+F->dim[cone]) cone++;
+        for (int q = F->ap[j]; q < F->ap[j+1]; q++) {
+            F->slotrow[q] = -1; F->slotcol[q] = 0;
+            if (F->ai[q] >= n+p) {
+                int o = F->off[cone], d = F->dim[cone];
+                F->slotrow[q] = o;
+                F->slotcol[q] = (F->ai[q]-n-p-o)*d + j-n-p-o;
+            }
+        }
+    }
+    F->factor = spqd_analyze(N, F->ap, F->ai, sign);
+    if (!F->factor) goto fail;
+    free(sign); free(tri.r); free(tri.c); free(tri.v);
+    return F;
+fail:
+    free(sign); free(tri.r); free(tri.c); free(tri.v); socp_kkt_free(F); return NULL;
+}
+
+SocpKkt *socp_kkt_create(int n, int p, const double *E, int ncones,
+                        const SocpCone *cones, const double *G) {
+    if (n < 0 || p < 0 || ncones < 0 || (ncones && !cones)) return NULL;
+    int K = 0;
+    for (int k = 0; k < ncones; k++) {
+        if (cones[k].nmem <= 0) return NULL;
+        K += cones[k].nmem;
+    }
+    if ((p && n && !E) || (K && n && !G)) return NULL;
+    SpMat SE = {0}, SG = {0};
+    if (spmat_init(&SE, E, p, n) || spmat_init(&SG, G, K, n)) {
+        spmat_free(&SE); spmat_free(&SG); return NULL;
+    }
+    SocpKkt *F = socp_kkt_create_sp(n, p, &SE, ncones, cones, &SG);
+    spmat_free(&SE); spmat_free(&SG); return F;
+}
+
+int socp_kkt_update(SocpKkt *F, const double *blocks, int stride) {
+    if (!F) return -1;
+    F->ready = 0;
+    if (!blocks) return -1;
+    for (int k = 0; k < F->ncones; k++) if (stride < F->dim[k]) return -1;
+    for (int q = 0; q < F->ap[F->N]; q++) if (F->slotrow[q] >= 0)
+        F->ax[q] = -blocks[(size_t)F->slotrow[q]*stride + F->slotcol[q]];
+    F->ready = spqd_factor(F->factor, F->ax, 1e-10) == 0;
+    return F->ready ? 0 : -1;
+}
+
+int socp_kkt_solve(SocpKkt *F, double *rhs) {
+    if (!F || !F->ready || !rhs) return -1;
+    int N = F->N;
+    for (int j = 0; j < N; j++) if (!isfinite(rhs[j])) return -1;
+    memcpy(F->b, rhs, (size_t)N*sizeof(double));
+    memcpy(F->x, rhs, (size_t)N*sizeof(double));
+    if (spqd_solve(F->factor, F->x)) return -1;
+    double norm = 1.0+maxabs(F->b, N), prev = INFINITY;
+    for (int round = 0; round < 5; round++) {
+        memcpy(F->res, F->b, (size_t)N*sizeof(double));
+        for (int j = 0; j < N; j++) for (int q = F->ap[j]; q < F->ap[j+1]; q++) {
+            int i = F->ai[q]; double a = F->ax[q];
+            F->res[i] -= a*F->x[j];
+            if (i != j) F->res[j] -= a*F->x[i];
+        }
+        for (int j = 0; j < N; j++) if (!isfinite(F->res[j])) return -1;
+        double err = maxabs(F->res, N)/norm;
+        if (!isfinite(err)) return -1;
+        if (err <= 1e-8) { memcpy(rhs, F->x, (size_t)N*sizeof(double)); return 0; }
+        if (!(err < prev) || round == 4) {
+            if(getenv("GMB_DBG_NT")) fprintf(stderr,"socp QD residual=%.3g round=%d\n",err,round);
+            return -1;
+        }
+        prev = err;
+        if (spqd_solve(F->factor, F->res)) return -1;
+        for (int j = 0; j < N; j++) F->x[j] += F->res[j];
+    }
+    return -1;
+}
+
 /* =====================================================================
  * Nesterov-Todd (NT) scaling for the second-order cone (SOC), used by the
  * sparse conic IPM below.
@@ -805,6 +938,7 @@ static int nt_setup(const double *s,const double *lam,int k,double *w,double *Qw
     if(!(det>1e-12*nn)) return -1;                 /* near cone boundary */
     if(nt_invsqrt(Qal,k,bis)) return -1;
     nt_Qapp(a,bis,k,w);
+    if(!Qwi) return nt_inv(s,k,sinv);
     nt_Qmat(w,k,Q);
     /* Q(w)^{-1} by Gauss-Jordan on [Q | I] held in one 2k-wide array; the right
      * half ends up the inverse.  A zero pivot is the same degeneracy the det
@@ -828,6 +962,7 @@ typedef struct {
     const double *Qwi,*sinv;          /* NT per-cone Q(w)^{-1} blocks / s^{-1} */
     SpChol *Hchol,*Schol; double *Z;  /* NT: H=L L', S=E H^{-1}E', Z=H^{-1}E' */
     SpluFact *lu;                     /* LU: augmented KKT */
+    SocpKkt *qd; const double *Qw;    /* optional symmetric augmented NT KKT */
     double *b1,*b2,*tmp,*rhs;
 } DirCtx;
 /* One Newton step (dx, dy, ds, dlam) of the conic KKT at a given (sigma, mu).
@@ -843,7 +978,29 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
                      const double *lm,const double *rg,const double *rd,const double *rp,
                      const double *Asc,const double *Alr,double *dx,double *dy,double *ds,double *dlm){
     int n=c->n,p=c->p,K=c->K;
-    if(c->use_nt){
+    if(c->qd){
+        for(int j=0;j<n;j++) c->rhs[j]=-rd[j];
+        for(int i=0;i<p;i++) c->rhs[n+i]=-rp[i];
+        int o=0;
+        for(int k=0;k<c->ncones;k++){
+            int kk=c->cones[k].nmem;
+            for(int i=0;i<kk;i++){
+                double t=rg[o+i];
+                for(int j=0;j<kk;j++)
+                    t+=c->Qw[(size_t)o*c->maxk+i*kk+j]*(lm[o+j]-sigma*mu*c->sinv[o+j]);
+                c->rhs[n+p+o+i]=t;
+            }
+            o+=kk;
+        }
+        if(socp_kkt_solve(c->qd,c->rhs)) return -1;
+        for(int j=0;j<n;j++) dx[j]=c->rhs[j];
+        for(int i=0;i<p;i++) dy[i]=c->rhs[n+i];
+        for(int i=0;i<K;i++) dlm[i]=c->rhs[n+p+i];
+        sp_row(c->SG,dx,ds,K);
+        for(int i=0;i<K;i++) ds[i]+=rg[i];
+        /* The direct NT formulation is certified in Q(w) coordinates by
+         * socp_kkt_solve; it never forms the numerical inverse Qwi. */
+    } else if(c->use_nt){
         for(int a=0;a<n;a++) c->b1[a]=-rd[a];
         {int o=0;for(int k=0;k<c->ncones;k++){int kk=c->cones[k].nmem;
           for(int i=0;i<kk;i++){double t=lm[o+i]-sigma*mu*c->sinv[o+i];
@@ -969,7 +1126,17 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
      * while the pattern is unchanged, instead of once per iteration. */
     int status=OPT_MAXITER, stamp=1; int *luperm=NULL;
     int *Hperm=NULL,*Hpat=NULL; int Hpatn=-1;
+    SocpKkt *qd=NULL;
+    double *Qw=NULL;
+    int qd_enabled=getenv("GMB_SOCP_LDL")!=NULL;
     if(!memok){status=OPT_MEMORY;goto done;}
+    for(int k=0;k<ncones;k++)
+        if(cones[k].type!=0&&cones[k].nmem>NT_MAXK) qd_enabled=0;
+    if(qd_enabled){
+        qd=socp_kkt_create_sp(n,p,&SE,ncones,cones,&SG);
+        Qw=(double*)malloc((size_t)(K>0?K:1)*(size_t)maxk*sizeof(double));
+        if(!qd||!Qw) qd_enabled=0; /* existing engine remains available */
+    }
     {int o=0;for(int k=0;k<ncones;k++){off[k]=o;o+=cones[k].nmem;}}
     {int o=0;for(int k=0;k<ncones;k++){if(cones[k].type==0)for(int i=0;i<cones[k].nmem;i++){s[o+i]=1.0;lm[o+i]=1.0;}
         else{s[o]=1.0;lm[o]=1.0;for(int i=1;i<cones[k].nmem;i++){s[o+i]=0.0;lm[o+i]=0.0;}}o+=cones[k].nmem;}}
@@ -1002,7 +1169,28 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         /* ---- choose direction: NT (symmetric, sparse Cholesky) with an
          * augmented sparse-LU fallback near the cone boundary ---- */
         int use_nt = (n>0) && !getenv("GMB_NO_NT");
-        if(use_nt){
+        int use_qd=0;
+        if(use_nt&&qd_enabled){
+            int ok=1, o=0;
+            for(int k=0;k<ncones&&ok;k++){
+                int kk=cones[k].nmem; double *block=Qw+(size_t)o*maxk;
+                if(cones[k].type==0){
+                    memset(block,0,(size_t)kk*kk*sizeof(double));
+                    for(int i=0;i<kk;i++){
+                        if(!(s[o+i]>1e-300)||!(lm[o+i]>1e-300)){ok=0;break;}
+                        block[i*kk+i]=s[o+i]/lm[o+i];sinv[o+i]=1.0/s[o+i];
+                    }
+                } else {
+                    if(nt_setup(s+o,lm+o,kk,wnt+o,NULL,sinv+o)){ok=0;break;}
+                    nt_Qmat(wnt+o,kk,block);
+                }
+                for(int i=0;i<kk*kk;i++)if(!isfinite(block[i]))ok=0;
+                for(int i=0;i<kk;i++)if(!isfinite(sinv[o+i]))ok=0;
+                o+=kk;
+            }
+            if(ok)use_qd=socp_kkt_update(qd,Qw,maxk)==0;
+        }
+        if(use_nt&&!use_qd){
             int o=0;
             for(int k=0;k<ncones&&use_nt;k++){int kk=cones[k].nmem;
                 double amax=0.0;
@@ -1027,7 +1215,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             }
         }
         SpChol *Hchol=NULL,*Schol=NULL; SpluFact *f=NULL; int *Mp=NULL,*Mi=NULL; double *Mv=NULL;
-        if(use_nt){
+        if(use_nt&&!use_qd){
             /* H = G' Q(w)^{-1} G  (SPD; upper triangle in CSC) */
             tri.n=0;
             {int o=0;for(int k=0;k<ncones;k++){int kk=cones[k].nmem;
@@ -1089,7 +1277,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             if(Hchol&&spchol_cond_diag(Hchol)>1e10){spchol_free(Hchol);Hchol=NULL;}  /* ill-conditioned */
             if(!Hchol){use_nt=0;}
         }
-        if(use_nt&&p>0){
+        if(use_nt&&!use_qd&&p>0){
             /* Z = H^{-1} E' (n x p),  S = E H^{-1} E' (p x p, SPD) */
             int okz=1;
             for(int i=0;i<p;i++){
@@ -1158,13 +1346,20 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             if(!f){free(Mp);free(Mi);free(Mv);status=OPT_SINGULAR;goto done;}
         }
         DirCtx dctx; memset(&dctx,0,sizeof(dctx));
-        if(getenv("GMB_DBG_NT")) fprintf(stderr,"socp_sp it=%d dir=%s n=%d p=%d K=%d nc=%d\n",it,use_nt?"NT":"LU",n,p,K,ncones);
+        if(getenv("GMB_DBG_NT")) fprintf(stderr,"socp_sp it=%d dir=%s n=%d p=%d K=%d nc=%d\n",it,use_qd?"QD":use_nt?"NT":"LU",n,p,K,ncones);
         dctx.n=n; dctx.p=p; dctx.K=K; dctx.use_nt=use_nt; dctx.ncones=ncones; dctx.maxk=maxk;
         dctx.cones=cones; dctx.SE=&SE; dctx.SG=&SG; dctx.Qwi=Qwi; dctx.sinv=sinv;
         dctx.Hchol=Hchol; dctx.Schol=Schol; dctx.Z=Znt; dctx.lu=f;
+        dctx.qd=use_qd?qd:NULL; dctx.Qw=Qw;
         dctx.b1=nb1; dctx.b2=nb2; dctx.tmp=t1; dctx.rhs=rhs;
         /* affine predictor */
-        if(conic_dir(&dctx,0.0,mu,lm,rg,rd,rp,Asc,Alr,dxa,dya,dsa,dlma)){status=OPT_SINGULAR;goto done;}
+        if(conic_dir(&dctx,0.0,mu,lm,rg,rd,rp,Asc,Alr,dxa,dya,dsa,dlma)){
+            if(use_qd){qd_enabled=0;it--;continue;}
+            if(Hchol)spchol_free(Hchol);
+            if(Schol)spchol_free(Schol);
+            if(f)splu_free(f);
+            free(Mp);free(Mi);free(Mv);status=OPT_SINGULAR;goto done;
+        }
         double ap=1,ad=1;{int o=0;for(int k=0;k<ncones;k++){double a=step_len(&s[o],&dsa[o],cones[k].type,cones[k].nmem);if(a<ap)ap=a;
             a=step_len(&lm[o],&dlma[o],cones[k].type,cones[k].nmem);if(a<ad)ad=a;o+=cones[k].nmem;}}
         double mu_aff=0;{int o=0;for(int k=0;k<ncones;k++){for(int i=0;i<cones[k].nmem;i++)mu_aff+=(s[o+i]+ap*dsa[o+i])*(lm[o+i]+ad*dlma[o+i]);o+=cones[k].nmem;}}
@@ -1172,6 +1367,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         double sigma=(mu>0)?(mu_aff/mu):0;sigma=sigma*sigma*sigma;if(!(sigma>1e-8))sigma=1e-8;if(sigma>1)sigma=1;
         /* corrector: same factors, only the cone rhs changes (sigma > 0) */
         if(conic_dir(&dctx,sigma,mu,lm,rg,rd,rp,Asc,Alr,dx,dy,ds,dlm)){
+            if(use_qd){qd_enabled=0;it--;continue;}
             if(Hchol)spchol_free(Hchol);
             if(Schol)spchol_free(Schol);
             if(f)splu_free(f);
@@ -1195,6 +1391,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     }
     if(status==OPT_OK){for(int j=0;j<n;j++)x[j]=xs[j];for(int i=0;i<p;i++)y[i]=ys[i];for(int k=0;k<K;k++)lam[k]=lm[k];}
 done:
+    socp_kkt_free(qd);free(Qw);
     free(luperm);
     free(Hperm); free(Hpat);
     free(off);free(xs);free(ys);free(s);free(lm);free(rd);free(rp);free(rg);free(Asc);free(Alr);free(rhs);

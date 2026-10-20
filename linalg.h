@@ -201,6 +201,17 @@ int spldl_solve(const SpLdl *L, double *rhs);
 /* Release a sparse LDL' factor. NULL-safe. */
 void spldl_free(SpLdl *L);
 
+/* Reusable sparse LDL for a quasi-definite symmetric matrix. Input is the
+ * UPPER triangle, CSC, unique positions including every diagonal. Analyze
+ * copies the pattern; sign[j] is +1 or -1 for diagonal regularization.
+ * Numerical factorization equilibrates and shifts in scaled coordinates.
+ * The pattern is fixed until free; factor must succeed before solve. */
+typedef struct SpQd SpQd;
+SpQd *spqd_analyze(int n, const int *Ap, const int *Ai, const int *sign);
+int spqd_factor(SpQd *F, const double *Ax, double regularization);
+int spqd_solve(SpQd *F, double *rhs);
+void spqd_free(SpQd *F);
+
 
 /* ---- dense LDL^T with Bunch-Kaufman pivoting (1x1 and 2x2 blocks) ----
  * For a symmetric INDEFINITE matrix with zero-diagonal rows (the conic KKT

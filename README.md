@@ -338,6 +338,14 @@ missed the predeclared 5% minimum. This optimization **does not reach Clarabel**
 in the refreshed table SOCP 200 is about **4.6×** slower (rounded timings).
 SDP convergence remains a separate unresolved gap.
 
+**Experimental symmetric SOCP KKT (2026-10-21).** Setting `GMB_SOCP_LDL=1`
+enables a direct NT system with sparse LDL and reusable symbolic analysis.
+It retains the existing solver as fallback and leaves default routing unchanged.
+The first 31 alternating pairs give SOCP 120: 1.566 → 1.185 ms, and SOCP 200:
+2.820 → 1.087 ms. These targeted timings do not update the canonical table
+below. Full-suite and sanitizer validation are pending at this checkpoint.
+[Equations, numerical gates and limitations](docs/socp-symmetric-kkt.md).
+
 **SOC scaling update (2026-10-20).** The quadratic representation now computes
 the nonzero products of the arrow matrix directly in O(k²), preserving their
 summation order. In seven alternating pairs of 200,000 scaling setups, the
