@@ -746,12 +746,23 @@ static void nt_amul(const double *v,const double *w,int k,double *o){
  * arrays of that size -- every caller tests k first and treats -1 as
  * "this block is not NT-solvable". */
 static void nt_Qmat(const double *v,int k,double *Q){
-    double A[NT_MAXK*NT_MAXK],A2[NT_MAXK*NT_MAXK],vv[NT_MAXK];
+    double vv[NT_MAXK];
     nt_amul(v,v,k,vv);
-    memset(A,0,sizeof(double)*k*k);
-    A[0]=v[0]; for(int i=1;i<k;i++){A[i]=v[i];A[i*k]=v[i];A[i*k+i]=v[0];}
-    for(int i=0;i<k;i++)for(int j=0;j<k;j++){double s=0;for(int z=0;z<k;z++)s+=A[i*k+z]*A[z*k+j];A2[i*k+j]=s;}
-    for(int i=0;i<k;i++)for(int j=0;j<k;j++){double a=(i==0&&j==0)?vv[0]:(i==0)?vv[j]:(j==0)?vv[i]:(i==j?vv[0]:0.0);Q[i*k+j]=2*A2[i*k+j]-a;}
+    /* A(v) is arrow-shaped. Keep the nonzero products in their original
+     * z order, including the final subtraction (rather than simplifying it),
+     * so finite cone data follow the same rounding as the dense product. */
+    Q[0]=2*vv[0]-vv[0];
+    for(int i=1;i<k;i++){
+        double a=0.0; a+=v[0]*v[i]; a+=v[i]*v[0];
+        Q[i]=2*a-vv[i];
+        a=0.0; a+=v[i]*v[0]; a+=v[0]*v[i];
+        Q[i*k]=2*a-vv[i];
+        for(int j=1;j<k;j++){
+            a=0.0; a+=v[i]*v[j];
+            if(i==j) a+=v[0]*v[0];
+            Q[i*k+j]=2*a-(i==j?vv[0]:0.0);
+        }
+    }
 }
 /* Applies Q(v) to w without forming Q (dense k x k row-major scratch).
  * Uses nt_Qmat internally; o holds the Jordan quadratic image. */

@@ -20317,8 +20317,121 @@ static void test_t280(void) {
     PRIMAL_deleteenv(&env);
 }
 
+/* T281: pivot slots must follow row swaps, including absent entries and fill.
+ * Both column orders solve a system with a known solution. */
+static void test_t281(void) {
+    cur_name = "T281 sparse LU pivot slots after row swaps";
+    const double a[16] = {0,2,0,1, 3,0,4,0, 0,5,6,0, 7,0,0,8};
+    int ap[5], ai[16], nz = 0, order[4] = {3,1,0,2};
+    double ax[16];
+    ap[0] = 0;
+    for (int j = 0; j < 4; j++) {
+        for (int i = 0; i < 4; i++) if (a[4*i+j] != 0) {
+            ai[nz] = i; ax[nz++] = a[4*i+j];
+        }
+        ap[j+1] = nz;
+    }
+    for (int ordered = 0; ordered < 2; ordered++) {
+        SpluFact *f = splu_factor_ord(4, ap, ai, ax, ordered ? order : NULL);
+        check(f != NULL, "pivoted factor exists");
+        for (int rhs = 0; rhs < 2; rhs++) {
+            double b[4] = {0}, err = 0;
+            for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+                b[i] += a[4*i+j] * (j+1+rhs);
+            check(f && splu_solve(f, b) == 0, "solve with row and column permutations");
+            for (int j = 0; j < 4; j++) err = fmax(err, fabs(b[j]-(j+1+rhs)));
+            check(err < 1e-12, "known solution after pivot swaps and fill");
+        }
+        splu_free(f);
+    }
+}
+
+/* T282: active-row LU with signature collisions (columns 0 and 64),
+ * row pivoting, column ordering and fill. A is a row permutation of a
+ * strictly diagonally dominant banded matrix, so singularity is not expected. */
+static void test_t282(void) {
+    cur_name = "T282 sparse LU active rows and column signature collisions";
+    enum { N = 70 };
+    double a[N*N] = {0}, ax[N*N], b[N];
+    int ap[N+1], ai[N*N], order[N], nz = 0;
+    for (int i = 0; i < N; i++) {
+        int r = (i+17)%N;
+        a[r*N+i] = 6;
+        a[r*N+(i+1)%N] = -1;
+        a[r*N+(i+64)%N] = 2;
+        order[i] = N-1-i;
+    }
+    ap[0] = 0;
+    for (int j = 0; j < N; j++) {
+        for (int i = 0; i < N; i++) if (a[i*N+j] != 0) {
+            ai[nz] = i; ax[nz++] = a[i*N+j];
+        }
+        ap[j+1] = nz;
+    }
+    for (int ord = 0; ord < 2; ord++) {
+        SpluFact *f = splu_factor_ord(N, ap, ai, ax, ord ? order : NULL);
+        check(f != NULL, "nonsingular factor with colliding column signatures");
+        for (int rhs = 0; rhs < 2; rhs++) {
+            for (int i = 0; i < N; i++) {
+                b[i] = 0;
+                for (int j = 0; j < N; j++) b[i] += a[i*N+j]*((j%7)-3+rhs);
+            }
+            check(f && splu_solve(f, b) == 0, "solve using active row storage");
+            double err = 0;
+            for (int j = 0; j < N; j++) err = fmax(err, fabs(b[j]-((j%7)-3+rhs)));
+            check(err < 1e-11, "known solution with fill and signature collisions");
+        }
+        splu_free(f);
+    }
+}
+
+/* T283: SOC scaling across dimensions, including the NT stack-buffer limit.
+ * min t with the transverse coordinates fixed has t = ||u||. Check the
+ * dense oracle and the sparse direction, plus stationarity and cone duality. */
+static void test_t283(void) {
+    cur_name = "T283 SOC scaling dimensions 1, 3, 8, 32";
+    const int dims[] = {1, 3, 8, 32};
+    for (int z = 0; z < 4; z++) {
+        int n = dims[z], p = n - 1;
+        double E[31*32] = {0}, G[32*32] = {0}, d[31] = {0};
+        double c[32] = {0}, h[32] = {0};
+        double xd[32] = {0}, yd[31] = {0}, ld[32] = {0};
+        double xs[32] = {0}, ys[31] = {0}, ls[32] = {0};
+        SocpCone cone = {1, n, NULL};
+        double norm = 0;
+        c[0] = 1;
+        for (int j = 0; j < n; j++) G[j*n+j] = 1;
+        for (int i = 0; i < p; i++) {
+            E[i*n+i+1] = 1;
+            d[i] = (i%3 - 1)*0.25;
+            norm += d[i]*d[i];
+        }
+        norm = sqrt(norm);
+        int rd = socp_solve(n,p,E,d,c,1,&cone,G,h,1e-9,1e-9,200,xd,yd,ld);
+        int rs = socp_solve_sparse(n,p,E,d,c,1,&cone,G,h,1e-9,1e-9,200,xs,ys,ls);
+        check(rd == 0 && rs == 0, "dense and sparse solved");
+        check(fabs(xs[0]-norm) < 1e-7, "closed-form cone norm");
+        double err = 0, station = fabs(1-ls[0]), dualnorm = 0;
+        for (int j = 0; j < n; j++) err = fmax(err,fabs(xs[j]-xd[j]));
+        for (int i = 0; i < p; i++) {
+            err = fmax(err,fabs(xs[i+1]-d[i]));
+            station = fmax(station,fabs(ys[i]-ls[i+1]));
+            dualnorm += ls[i+1]*ls[i+1];
+        }
+        double dobj = 0;
+        for (int i = 0; i < p; i++) dobj -= d[i]*ys[i];
+        check(err < 1e-7, "dense parity and equality feasibility");
+        check(station < 1e-7, "dual stationarity");
+        check(ls[0]+1e-7 >= sqrt(dualnorm), "dual cone feasibility");
+        check(fabs(xs[0]-dobj) < 1e-7, "primal-dual gap");
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t283();
+    test_t282();
+    test_t281();
     test_t280();
     test_t279();
     test_t278();
