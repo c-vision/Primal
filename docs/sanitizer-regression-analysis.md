@@ -212,3 +212,29 @@ causa è una perdita di centralità (`mu` scende molto più in fretta dei
 residui); la correzione di principio è una salvaguardia che non lasci scendere
 il bersaglio `sigma*mu` sotto una frazione dei residui. Cambia però le
 traiettorie di tutto il SOCP legacy e va progettata e verificata a parte.
+
+## T286 senza FMA: recupero di bordo (2026-10-21)
+
+Misura prima della scelta: la centralità per cono, `sqrt(det s * det lam)/mu`
+(1 sul cammino centrale; per R+ `s_i*lam_i/mu`), con `det` calcolato come
+`(v0-|v|)(v0+|v|)`. Con FMA resta sopra 0.02 fino alla convergenza; senza FMA
+il primo passo LU (it=5) porta un blocco a `det <= 0` prima della convergenza.
+Toccare il bordo di per sé è comune e innocuo: nella suite con FMA 10 delle
+16 soluzioni SOCP sparse lo fanno almeno una volta (fino a 3 iterazioni) e
+convergono tutte. Una salvaguardia sul passo avrebbe quindi cambiato 10 casi
+sani; lo stallo vero ha invece una firma propria: passo nullo ripetuto.
+
+Correzione in `socp_solve_sparse`: dopo **due passi bloccati consecutivi**
+(lunghezza primale o duale `<= 1e-13`) senza convergenza, i blocchi schiacciati
+(scarto dal bordo `<=` soglia) vengono riportati dentro di
+`10*max|residuo| + 1e-9*(1+|v0|)` (primale da `rg`, duale da `rd`), poi
+l'iterazione riparte; al massimo cinque volte per soluzione. Sulla sonda di
+T286 senza FMA scatta una volta a it=8 (180 blocchi, spinta `1.3e-7`) e la
+soluzione converge (`rc=0`, obiettivo 1.118033974 contro `sqrt(1.25)`).
+
+Verifica, albero isolato `c2ab91f` + `socp.c`: **5196/0** a O0/O1/O2/O3,
+**senza FMA**, sotto ASan, UBSan e ASan+UBSan, con e senza `GMB_SOCP_LDL`;
+build senza warning, nessuna diagnostica. Il recupero non scatta mai nella
+suite con FMA né nei 171 esempi (output identici a `c2ab91f`, salvo il tempo
+di `regression_ls`); senza FMA scatta due volte, entrambe sulle varianti a 60
+coni di T286 (la variante 1 prima convergeva dopo 7 iterazioni sul bordo).

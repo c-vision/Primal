@@ -155,6 +155,28 @@ built by the CI. **53 runnable examples** live in
 [`examples/python/`](examples/python/README.md) — installation, usage, and one
 line per example.
 
+## Julia
+
+Package **`Primal`** in [`julia/`](julia/) — native Julia bindings over the C
+library via `ccall`, exposing the full public `PRIMAL_*` API:
+
+```sh
+# from the PrimalSolver checkout
+julia --project=julia -e 'include("julia/deps/build.jl"); using Pkg; Pkg.instantiate()'
+julia --project=julia -e 'using Primal; println(Primal.version())'
+```
+
+**125 runnable examples** live in [`examples/julia/`](examples/julia/) — each checks its
+own result and exits non-zero on failure. Run them all with:
+
+```sh
+julia --project=julia julia/runtests.jl
+```
+
+The Julia package lives in this same repository under `julia/`; it compiles the C
+shared library into `julia/deps/` on first use (no system compiler needed beyond
+`gcc`/`clang`, already required to build the C library).
+
 ## Build
 
 ```sh
@@ -168,11 +190,9 @@ Everything the build produces goes to `out/` (gitignored). **Portability**: POSI
 C99 with `gcc` or `clang` on Linux, macOS and the BSDs. There is **no MSVC
 project and no `nmake` path** — on Windows use MinGW
 ([how to build on Windows](docs/windows.md)), or compile the `LIBSRCS` list from
-the Makefile with any C99 compiler. The full suite passes at `-O0` to `-O3`
-and under ASan + UBSan with no diagnostic. One known exception: without FMA
-contraction (`-ffp-contract=off`, which is what plain gcc on x86-64 does), the
-seven `T286` checks of the legacy SOCP route fail on a 60-cone model — see
-Status. The default macOS/clang build is not affected.
+the Makefile with any C99 compiler. The full suite passes at `-O0` to `-O3`,
+without FMA contraction (`-ffp-contract=off`, which is what plain gcc on
+x86-64 does) and under ASan + UBSan, with no sanitizer diagnostic.
 
 ## How it compares
 
@@ -459,11 +479,20 @@ model, and the native SDP publisher now reports scalar reduced costs
 **5196 checks**: **0 failures** at `-O0`, `-O1`, `-O2`, `-O3`, under ASan,
 UBSan and ASan + UBSan, with both SOCP backends — the first fully green
 sanitized run — warning-free, no sanitizer diagnostic. **171/171** examples
-exit 0 with unchanged output. Open: without FMA (`-ffp-contract=off`) the 7
-`T286` checks fail on the legacy SOCP route (a 60-cone model stalls with
-`mu=1e-17` and the primal point numerically on the cone boundary). This was
-already the case before the HSD fix; a centrality safeguard is the planned
-remedy. See [causal evidence](docs/sanitizer-regression-analysis.md).
+exit 0 with unchanged output.
+
+**Boundary recovery in the legacy SOCP solver (2026-10-21).** Without FMA
+(`-ffp-contract=off`) the 7 `T286` checks used to fail: on a 60-cone model
+the LU fallback direction took `mu` from 1e-12 to 5e-17 in one step, a cone
+block then sat on its boundary to within rounding, every later step had
+length 0 and the solve stalled at `feas_p=1e-8` until the iteration limit.
+After two consecutive blocked steps without convergence, the flattened blocks
+are now pushed back inside by about ten times the current residual and the
+solve continues. The suite now passes **5196/0 at every level, without FMA,
+and under ASan + UBSan**, with both SOCP backends. The recovery never fires
+in the FMA suite or in the 171 examples, whose output is unchanged; without
+FMA it fires only on `T286`'s 60-cone variants. See
+[causal evidence](docs/sanitizer-regression-analysis.md).
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
 when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD

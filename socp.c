@@ -1155,7 +1155,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     for(int i=0;i<p;i++){double a=fabs(d[i]);if(a>dnorm)dnorm=a;}
     for(int k=0;k<K;k++){double a=fabs(h[k]);if(a>hnorm)hnorm=a;}
     for(int j=0;j<n;j++){double a=fabs(c[j]);if(a>cnorm)cnorm=a;}
-    int no_progress=0;
+    int no_progress=0, blocked=0, recoveries=0;
     for(int it=0;it<max_iter;it++){
         if(primal_cb_iter_on) primal_cb_iter(34);
         if(p>0){sp_row(&SE,xs,rp,p);for(int i=0;i<p;i++)rp[i]-=d[i];}
@@ -1389,6 +1389,33 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         free(Mp);free(Mi);free(Mv); Mp=Mi=NULL;Mv=NULL;
         double apm=1,adm=1;{int o=0;for(int k=0;k<ncones;k++){double a=socp_step_len(&s[o],&ds[o],cones[k].type,cones[k].nmem);if(a<apm)apm=a;
             a=socp_step_len(&lm[o],&dlm[o],cones[k].type,cones[k].nmem);if(a<adm)adm=a;o+=cones[k].nmem;}}
+        /* Boundary recovery.  Once mu is ~1e-17 a cone block can sit on its
+         * boundary to within rounding (det = v0^2 - |v|^2 below the error of
+         * computing it), and then no direction -- not even pure centering --
+         * moves it: the ratio test returns 0.  Measured on T286's 60 coupled
+         * cones without FMA (gcc on plain x86-64): the LU direction took mu
+         * from 1e-12 to 5e-17 in one step, from it=7 the primal step was 0,
+         * and the solve stalled at feas_p=1e-8, gap=2e-7 until MAX_ITER.
+         * Two consecutive blocked steps without convergence push the flattened
+         * blocks back inside by about ten times the current residual (relative
+         * floor 1e-9) and re-solve from there.  A solve that is never blocked
+         * twice in a row -- every one in the suite with FMA -- is unchanged. */
+        if(apm<=1e-13||adm<=1e-13) blocked++; else blocked=0;
+        if(blocked>=2&&recoveries<5){
+            double bp=10.0*maxabs(rg,K), bd=10.0*maxabs(rd,n);
+            int o=0, pushed=0;
+            for(int k=0;k<ncones;k++){int kk=cones[k].nmem;
+                for(int side=0;side<2;side++){double *v=side?&lm[o]:&s[o], br=side?bd:bp;
+                    if(cones[k].type==0){
+                        for(int i=0;i<kk;i++){double b=br+1e-9*(1.0+fabs(v[i])); if(v[i]<=b){v[i]+=b;pushed++;}}
+                    } else {
+                        double nv=0; for(int i=1;i<kk;i++) nv+=v[i]*v[i]; nv=sqrt(nv);
+                        double b=br+1e-9*(1.0+fabs(v[0])); if(v[0]-nv<=b){v[0]=nv+b;pushed++;}
+                    }}
+                o+=kk;}
+            if(getenv("GMB_DBG")) fprintf(stderr,"socp_sp it=%d boundary recovery: %d blocks pushed (bp=%.3g bd=%.3g)\n",it,pushed,bp,bd);
+            blocked=0; recoveries++; continue;
+        }
         double tau=1.0-mu*0.01;if(tau<0.99)tau=0.99;if(tau>0.99995)tau=0.99995;
         double apf=tau*apm,adf=tau*adm;if(apf>1)apf=1;if(adf>1)adf=1;
         if(apf<0.1*(tau*ap)||adf<0.1*(tau*ad)){apf=tau*ap;if(apf>1)apf=1;adf=tau*ad;if(adf>1)adf=1;

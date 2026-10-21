@@ -32,3 +32,4 @@ __pycache__/
 
 # GitHub config (workflows/sponsors kept locally, never published)
 /.github/
+/julia/deps/libprimal.*

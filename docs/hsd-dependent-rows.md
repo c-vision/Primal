@@ -66,9 +66,10 @@ nelle righe originali, poi verifica il rifiuto del duplicato incoerente.
   sotto ASan, UBSan e ASan+UBSan (con e senza `GMB_SOCP_LDL`), build senza
   warning e nessuna diagnostica sanitizer. È la prima suite sanitizzata
   completamente verde.
-- Senza FMA (`-ffp-contract=off`): **5189/7**, i sette check di T286 sulla
-  rotta SOCP legacy. Il fallimento esiste già in `5f02cb2` senza questa patch
-  ed è descritto in `sanitizer-regression-analysis.md`; non riguarda l'HSD.
+- Senza FMA (`-ffp-contract=off`): **5189/7** a questo checkpoint, i sette
+  check di T286 sulla rotta SOCP legacy, già rossi in `5f02cb2` e non legati
+  all'HSD. Risolti dopo dal recupero di bordo in `socp.c`; vedi
+  `sanitizer-regression-analysis.md`.
 - 171/171 esempi a exit 0, con output identici a `5f02cb2` (l'unica
   differenza è il tempo stampato da `regression_ls`).
 
