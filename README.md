@@ -401,20 +401,42 @@ and primal-dual gap. The 64 targeted checks pass before and after; no full
 suite or sanitizer run was performed for this update. The canonical table
 below predates this scaling change.
 
-The **Primal** column below was refreshed on **2026-10-21** at `e90c614`,
-with medians of **five** rounds of the C harness alone (`out/bench/solve_mps`
-on the ten MPS instances, `out/bench/conic_bench`, `out/bench/sdp_sweep 4 22`):
-every one of the 32 cells returned `rc=0` in all five rounds, and every
-objective was identical across rounds and equal to the `obj` column. Against
-the 2026-10-20 column every cell moves within −8.1% … +11.0%, inside the
-table's own 5–13% measurement uncertainty, so the HSD, boundary-recovery and
-direction-check changes of 2026-10-21 cost nothing measurable here. The
-**reference columns** (HiGHS, Clarabel, SCS, SCIP) are still the
+The **Primal** column below was refreshed on **2026-10-21** at `e90c614`
+(the solver code there is that of `ee1081e`), with the C harness alone
+(`out/bench/solve_mps` on the ten MPS instances, `out/bench/conic_bench`,
+`out/bench/sdp_sweep 4 22`): medians of **11 rounds, interleaved** with the
+previous version `2a71577` in the same session, the order alternating every
+round. All 704 runs returned `rc=0`, and every objective is identical between
+the two versions and equal to the `obj` column.
+
+**Performance is unchanged by the 2026-10-21 work** (symmetric SOCP KKT opt-in,
+direction check, boundary recovery, HSD fix):
+
+| family | `2a71577` (s) | current (s) | change |
+|---|---:|---:|---:|
+| LP (4) | 0.0425 | 0.0420 | −1.2% |
+| QP (3) | 0.0540 | 0.0540 | +0.1% |
+| MILP (3) | 4.4179 | 4.4105 | −0.2% |
+| SOCP (3) | 0.0037 | 0.0037 | +1.1% |
+| SDP (19) | 0.1925 | 0.1938 | +0.7% |
+| **total** | **4.7106** | **4.7040** | **−0.1%** |
+
+Single cells move between −3.5% and +6.2% (the latter `sdp_4`, 0.16 ms, at
+the timer's resolution), most within ±2%. The only detectable effect is
+SDP's +0.7%: the current version is slower in 122 and faster in 82 of the
+204 paired SDP runs. Its cause is not identified (the direction check is
+inactive on the sweep, which has no scalar variables). A first refresh of
+this column, five non-interleaved rounds taken in a slower machine state,
+had suggested up to +11% on `sdp_19`..`sdp_21`; set against the 2026-10-20
+column from another session, that was machine drift, not code — the
+interleaved measurement gives +0.2%, +0.8%, +0.9% there. Compare versions
+only within one session.
+
+The **reference columns** (HiGHS, Clarabel, SCS, SCIP) are still the
 **2026-10-20** snapshot: they need `bench_all.py` with the reference solvers'
 Python packages, which was not run for this refresh. Read cross-solver ratios
-as indicative; the two columns were not measured in the same session.
-These absolute timings are a machine snapshot, not a before/after comparison
-with older tables. Use the interleaved measurements above for the LU gain.
+as indicative; the two sides were not measured in the same session.
+Use the interleaved measurements above for the LU gain.
 The Apple stalled-point policy described above remains in effect.
 
 The exp/power grid's October 9 result remains **SELECTOR OK but REJECTED**:
@@ -426,38 +448,38 @@ failure is not counted as a green validation.
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | 0.0011 | 0.0022 | 0.0002 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | 0.0017 | 0.0020 | 0.0007 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | 0.0066 | 0.0039 | 0.0022 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | 0.0370 | 0.0138 | 0.0133 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.0017 | N/A | 0.0004 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.0073 | N/A | 0.0025 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.0500 | N/A | 0.0083 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.3024 | N/A | N/A | N/A | 0.1644 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 1.1003 | N/A | N/A | N/A | 0.2863 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 3.2657 | N/A | N/A | N/A | 1.1389 | 277.019 |
+| lp_50x25 | lp | 50 x 25 | 171 | 0.0010 | 0.0022 | 0.0002 | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | 0.0014 | 0.0020 | 0.0007 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.0062 | 0.0039 | 0.0022 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.0333 | 0.0138 | 0.0133 | N/A | N/A | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.0016 | N/A | 0.0004 | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.0071 | N/A | 0.0025 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.0453 | N/A | 0.0083 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.2933 | N/A | N/A | N/A | 0.1644 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 1.0270 | N/A | N/A | N/A | 0.2863 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | 3.0903 | N/A | N/A | N/A | 1.1389 | 277.019 |
 | socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
-| socp_120 | socp | 120 x 1 | - | 0.0014 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0025 | N/A | 0.0005 | 0.0012 | N/A | 0.707107 |
+| socp_120 | socp | 120 x 1 | - | 0.0012 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
+| socp_200 | socp | 200 x 1 | - | 0.0021 | N/A | 0.0005 | 0.0012 | N/A | 0.707107 |
 | sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0002 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
-| sdp_6 | sdp | 6 x 6 | - | 0.0005 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | 0.0014 | N/A | 0.0003 | 0.0004 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | 0.0008 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | 0.0013 | N/A | 0.0006 | 0.0004 | N/A | -17.0048 |
+| sdp_6 | sdp | 6 x 6 | - | 0.0004 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
+| sdp_7 | sdp | 7 x 7 | - | 0.0013 | N/A | 0.0003 | 0.0004 | N/A | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | 0.0007 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | 0.0012 | N/A | 0.0006 | 0.0004 | N/A | -17.0048 |
 | sdp_10 | sdp | 10 x 10 | - | 0.0015 | N/A | 0.0008 | 0.0007 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0022 | N/A | 0.0010 | 0.0017 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0044 | N/A | 0.0017 | 0.0010 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | 0.0040 | N/A | 0.0019 | 0.0011 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0048 | N/A | 0.0021 | 0.0011 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0064 | N/A | 0.0023 | 0.0014 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0155 | N/A | 0.0034 | 0.0015 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0126 | N/A | 0.0044 | 0.0018 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0160 | N/A | 0.0044 | 0.0024 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0472 | N/A | 0.0046 | 0.0021 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | 0.0374 | N/A | 0.0065 | 0.0027 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0275 | N/A | 0.0095 | 0.0042 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.0301 | N/A | 0.0110 | 0.0091 | N/A | -149.613 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0020 | N/A | 0.0010 | 0.0017 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0040 | N/A | 0.0017 | 0.0010 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | 0.0039 | N/A | 0.0019 | 0.0011 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | 0.0042 | N/A | 0.0021 | 0.0011 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | 0.0058 | N/A | 0.0023 | 0.0014 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | 0.0141 | N/A | 0.0034 | 0.0015 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | 0.0116 | N/A | 0.0044 | 0.0018 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | 0.0145 | N/A | 0.0044 | 0.0024 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | 0.0419 | N/A | 0.0046 | 0.0021 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | 0.0331 | N/A | 0.0065 | 0.0027 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | 0.0245 | N/A | 0.0095 | 0.0042 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | 0.0288 | N/A | 0.0110 | 0.0091 | N/A | -149.613 |
 
 </div>
 
