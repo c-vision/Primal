@@ -1347,6 +1347,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
     LuFact *pc_factor = NULL;
     double *pc_matrix = NULL;
     int pc_size = 0;
+    int aug_guard = 0;   /* R_+ block switched to augmented form, see redo_dir */
     if (!ok) { status = 2; goto done; }
 
     /* Starting point: strictly inside every cone at once, because the barrier
@@ -1563,6 +1564,7 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
              * R_+ and PSD enter via their normal-equations Schur complement Kpp;
              * each SOC block keeps its cone equation A(s)dz + A(z)ds = rc in the
              * arrow-matrix form used by socp.c (robust at the cone boundary). */
+redo_dir:
             {
                 /* SECANT mode: R_+ block in AUGMENTED form (exp/power, no PSD):
                  * dx stays an unknown, with row  -(s/x) dx + A' dy = -g,
@@ -1578,8 +1580,9 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                  * error of a split pair falls along dx+ + dx-, which A
                  * annihilates (|rp + A d| back to 1e-12 on every iteration).
                  * Not the default: alone it loses logistic (mosek_comparison),
-                 * which the elimination solves. */
-                int augx = secant && nep > 0 && nb == 0 && n > 0;
+                 * which the elimination solves.  Also switched on, for the
+                 * rest of the solve, by the direction check after Des below. */
+                int augx = n > 0 && ((secant && nep > 0 && nb == 0) || aug_guard);
                 int bx = m + K + Ke;
                 int Nsys = bx + (augx ? n : 0);
                 double *Sys = (double *)calloc((size_t)Nsys * (size_t)Nsys, sizeof(double));
@@ -1789,6 +1792,42 @@ static int sdp_ipm_run(int secant, int m, int n, const double *A, const double *
                 for (int a = 0; a < 3; a++) rde[a] = -Cexp[i][a] + es[3 * i + a];
                 for (int k = 0; k < m; k++) { const double *ak = Aexp[k * nep + i]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a]; }
                 for (int a = 0; a < 3; a++) { double t = -rde[a]; for (int k = 0; k < m; k++) t -= Aexp[k * nep + i][a] * dy[k]; Des[3 * i + a] = t; }
+            }
+            /* The direction must satisfy the primal rows it linearises,
+             * A d = -rp.  Eliminating R_+ into A diag(x/s) A' cannot promise
+             * that once a split free pair runs away: on T244 (Lowner-John,
+             * built at -O0/-O1 or under UBSan, i.e. without vectorised sums)
+             * x reached 4.8e6 with s = 7e-16, x/s = 6.6e21, the equilibrated
+             * row was solved to 3e-21 but meant 0.026 in true units, and the
+             * direction gave |rp + A d| = 0.056 against |rp| = 1e-12 -- a
+             * full step then threw pfeas from 1e-12 to 2.8e-2 and the solve
+             * never recovered (MAX_ITER on the fallback).  Such a direction is
+             * recomputed with the R_+ block augmented (as in SECANT mode), and
+             * the augmented form is kept for the rest of the solve.  A
+             * direction that satisfies its rows is left untouched, so every
+             * trajectory that does not break this way is unchanged. */
+            if (!aug_guard && n > 0 && !(secant && nep > 0 && nb == 0)) {
+                double lr = 0.0, rpm = 0.0;
+                for (int k = 0; k < m; k++) { double t = rp[k];
+                    for (int i = 0; i < n; i++) t += A[k * n + i] * dx[i];
+                    for (int j = 0; j < nb; j++) t += trAB(dims[j], Abar[k * nb + j], Dx + j * dmax2);
+                    for (int i = 0; i < nsoc; i++) { const double *ak = Asoc[k * nsoc + i];
+                        for (int a = 0; a < socdims[i]; a++) t += ak[a] * Dzsoc[soff[i] + a]; }
+                    for (int i = 0; i < nep; i++) { const double *ak = Aexp[k * nep + i];
+                        for (int a = 0; a < 3; a++) t += ak[a] * Dez[3 * i + a]; }
+                    if (fabs(t) > lr) lr = fabs(t);
+                    if (fabs(rp[k]) > rpm) rpm = fabs(rp[k]); }
+                if (!(lr <= 10.0 * rpm + 1e-10 * (1.0 + C.bn))) {
+                    if (getenv("GMB_DBG")) fprintf(stderr,
+                        "  [augx] it=%d pass=%d |rp+Ad|=%.3g |rp|=%.3g: R_+ block augmented\n",
+                        it, pass, lr, rpm);
+                    aug_guard = 1;
+                    if (pass == 0) {   /* the predictor stored its factor for reuse */
+                        dmat_lu_free(pc_factor); pc_factor = NULL;
+                        free(pc_matrix); pc_matrix = NULL; pc_size = 0;
+                    }
+                    goto redo_dir;
+                }
             }
             if (pass == 0) {
                 for (int j = 0; j < nb; j++) { sym_fun(dims[j], Xbar[j], 1, symX + (size_t)j*dmax2);

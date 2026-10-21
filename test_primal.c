@@ -3708,10 +3708,14 @@ static void test_t83(void) {
             double wu = (c == 0) ? 1.5 : 2.0;
             check(t83_native == 1, "T83 A the native path answered");
             /* c==1: u>=-1 with the cone, the optimum sits at u=2 where the
-             * objective u*exp(2/u) is flat (derivative zero), so the gate
-             * promises the variable only to O(sqrt(mu)) ~ a few 1e-6 (the same
-             * reasoning as the boundary case of T81); c==0 pins u on the cap. */
-            close_enough_tol(x[1], wu, (c == 0) ? 1e-6 : 1e-5,
+             * objective f(u) = u*exp(2/u) is flat (f'(2) = 0), so u is fixed
+             * only to sqrt(2*df/f''(2)), f''(2) = e/2, by the objective error
+             * df -- floored at the declared 1e-8 relative gap.  The old fixed
+             * 1e-5 held with FMA contraction (|u-2| = 3e-9) and broke without
+             * it (-ffp-contract=off: df = 3.4e-9, |u-2| = 6.1e-5, predicted
+             * 7e-5): a promise the math does not make.  c==0 pins u on the cap. */
+            double df = fmax(fabs(po - wu * exp(2.0 / wu)), 1e-8 * fabs(po));
+            close_enough_tol(x[1], wu, (c == 0) ? 1e-6 : 2.0 * sqrt(2.0 * df / (exp(1.0) / 2.0)),
                              "T83 A u == the bound that solves it");
             close_enough_tol(x[0], wu * exp(2.0 / wu), 1e-6, "T83 A t == u*exp(v/u)");
             close_enough_tol(po, x[0], 1e-6, "T83 A pobj");
@@ -6645,15 +6649,18 @@ static void test_t111(void) {
               "a QUAD/RQUAD cone is not a reason to call the native one");
         pend(&p);
     }
-    /* D. the same model at the DEFAULT declaration: the value is identical.
-     *    The first native pass stops above 1e-8 (measured: rel_gap 4.97e-07) and
-     *    the gate would reject it; the second SECANT-mode attempt of
-     *    sdp_ipm (augmented R_+, primal-dual secant scaling, common step)
-     *    brings it below, so at 1e-8 the native path answers.  The
-     *    original D contrast remains as a MEASURED negative control: with
-     *    GMB_NO_EXP_RETRY=1 the gate hands off to cuts and the witness stays silent --
-     *    widening the tolerance (A) and the second attempt are two distinct
-     *    routes to the same answer, and neither moves the point. */
+    /* D. the same model at the DEFAULT declaration: the value is identical,
+     *    and at 1e-8 the native path answers.  History of the measurement:
+     *    the first native pass used to stop above 1e-8 (rel_gap 4.97e-07,
+     *    later 1.23e-07) and only the second SECANT-mode attempt of sdp_ipm
+     *    brought it below.  Since the direction check of sdp_ipm_run (a
+     *    direction that breaks its own primal rows is recomputed with the R_+
+     *    block augmented) the FIRST pass already answers: at it=9 the
+     *    eliminated direction gave |rp + A d| = 4.4e-9 against |rp| = 9.3e-12,
+     *    and the pass now ends status=0 at 4.55e-13/5.03e-15/2.49e-10.  D'
+     *    pins that: with GMB_NO_EXP_RETRY=1 the native path still answers, so
+     *    it is the first pass, not the retry, that solves this model now --
+     *    and neither moves the point. */
     {
         cur_name = "T111 D default declaration: same value, another path";
         P p; pbegin(&p);
@@ -6662,19 +6669,19 @@ static void test_t111(void) {
         double po = 0.0;
         t111_expect(p.task, 0, &po);
         check(t111_native == 1,
-              "at 1e-8 the second secant attempt makes the native one answer");
+              "at 1e-8 the native path answers");
         pend(&p);
     }
     {
-        cur_name = "T111 D' GMB_NO_EXP_RETRY: same value, the ladder answers";
+        cur_name = "T111 D' GMB_NO_EXP_RETRY: same value, the first pass answers";
         P p; pbegin(&p);
         unsetenv("GMB_NO_EXP_IPM");
         setenv("GMB_NO_EXP_RETRY", "1", 1);
         t111_model(p.task, 0);
         double po = 0.0;
         t111_expect(p.task, 0, &po);
-        check(t111_native == 0,
-              "without the second attempt the gate hands off to cuts: the native one stays silent");
+        check(t111_native == 1,
+              "without the second attempt the first native pass answers (direction check)");
         unsetenv("GMB_NO_EXP_RETRY");
         pend(&p);
     }

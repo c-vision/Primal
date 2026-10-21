@@ -68,6 +68,29 @@ slower; it was replaced rather than accepted with a looser tolerance.
 In the first 31 alternating before/after pairs, at `-O2`, SOCP 120 changed
 from 1.566 to 1.185 ms and SOCP 200 from 2.820 to 1.087 ms. These are
 targeted measurements, not a refreshed canonical benchmark table or proof
-of parity with Clarabel. Full-suite and sanitizer results are pending at
-this prototype checkpoint. Default routing must be evaluated after those
-checks and on less symmetric problem families.
+of parity with Clarabel.
+
+On checkpoint `5f7c3c1`, both default and opt-in full suites pass 5168 checks.
+The opt-in full ASan+UBSan run passed 5162 and failed six numerical checks,
+four in T244 and two in T197, without an ASan/UBSan diagnostic; they also
+failed with `socp.c` and `linalg.c` rebuilt from `2a71577`, so they did not
+originate in this backend. Their cause is rounding-dependence: the same
+checks fail at `-O0`/`-O1` and without vectorised or fused sums.
+
+T286 itself exposed one more case when built without FMA
+(`-ffp-contract=off`): its **legacy-route** run of the 60 coupled cones
+diverged, because the R+/SOC ratio test returned negative steps once a
+coordinate had rounded below zero. With that fixed (`step_len` returns 0),
+the T244 fix in `sdp.c` (augmented R+ block when a direction misses its own
+primal rows) and the T83 tolerance derived from the objective error, the
+opt-in ASan+UBSan suite passes 5166/5168: only T197 (opt-in HSD, issue #11)
+remains, on the builds listed in the README. ASan alone passes 5168/0.
+
+A separate 31-pair confirmation gives SOCP 120: 1.736 → 1.307 ms and SOCP
+200: 3.151 → 1.125 ms. A contemporaneous 21-run comparison against Clarabel
+0.11.1, including its solver construction, gives 1.357 vs 0.582 ms on SOCP
+120 and 1.138 vs 0.864 ms on SOCP 200. The corresponding Clarabel solve-only
+medians are 0.292 and 0.565 ms. Primal's maximum measured row/cone violations
+on SOCP 200 are 2.62e-10/2.60e-10, measured dual violations are zero, and the
+absolute objective gap is below 1.7e-8. These results concern this family;
+they do not establish general parity. Default routing remains unchanged.

@@ -159,7 +159,7 @@ line per example.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5033 checks
+make test          # reliability suite: 5168 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -168,9 +168,12 @@ Everything the build produces goes to `out/` (gitignored). **Portability**: POSI
 C99 with `gcc` or `clang` on Linux, macOS and the BSDs. There is **no MSVC
 project and no `nmake` path** — on Windows use MinGW
 ([how to build on Windows](docs/windows.md)), or compile the `LIBSRCS` list from
-the Makefile with any C99 compiler. Clean under AddressSanitizer +
-UndefinedBehaviorSanitizer on all samples; on the suite, two checks (`T197`,
-the HSD opt-in) are known red under the sanitizers — see issue #11.
+the Makefile with any C99 compiler. No ASan or UBSan diagnostic anywhere in the
+suite. Two numerical checks, both in `T197` (the opt-in HSD path, issue #11),
+fail on builds that do not vectorise or fuse the floating-point sums: `-O0`,
+`-O1`, `-ffp-contract=off` (what plain gcc on x86-64 does) and the UBSan build.
+That test passes only along one rounding trajectory; the default routes do not
+depend on it.
 
 ## How it compares
 
@@ -343,8 +346,30 @@ enables a direct NT system with sparse LDL and reusable symbolic analysis.
 It retains the existing solver as fallback and leaves default routing unchanged.
 The first 31 alternating pairs give SOCP 120: 1.566 → 1.185 ms, and SOCP 200:
 2.820 → 1.087 ms. These targeted timings do not update the canonical table
-below. Full-suite and sanitizer validation are pending at this checkpoint.
+below. Both default and opt-in full suites pass **5168/0**, and so does ASan;
+ASan+UBSan reports **5166/2**, the two `T197` checks described above.
 [Equations, numerical gates and limitations](docs/socp-symmetric-kkt.md).
+
+**Rounding-independence fixes (2026-10-21).** Building the suite without FMA
+contraction or without vectorised sums exposed three defects that the default
+macOS/clang `-O2` build was masking:
+- the SOC/R+ ratio test of the legacy SOCP solver returned a *negative* step
+  once a coordinate had rounded below zero, and the iterate was moved
+  backwards out of the cone (T286 without FMA diverged to `feas_p=3.5e+260`);
+  it now returns 0;
+- in the unified conic IPM a split free variable pair could run away
+  (`x/s = 6.6e21` on T244 at `-O0`), and the R+ normal-equations elimination
+  then produced a direction with `|rp + A d| = 0.056` against `|rp| = 1e-12`.
+  A direction that misses its own primal rows by more than `10|rp| +
+  1e-10(1+|b|)` is now recomputed with the R+ block in augmented form, which
+  stays on for the rest of the solve. This fixes T244 at every level and also
+  lets the first pass of T111's PPOW model answer on its own. The check fires
+  in 25 of the 171 examples; nine print a different last digit (all still
+  within tolerance: `qcqp_sdo_relaxation` −0.19999997 → −0.20000000,
+  `risk_parity` spread 3.3e-4 → 6.2e-5, `mle_density` objective error
+  4e-10 → 9e-10);
+- `T83 A` asked for `u` to 1e-5 at an optimum where the objective is flat;
+  the tolerance is now derived from the objective error, `sqrt(2 df / f'')`.
 
 **SOC scaling update (2026-10-20).** The quadratic representation now computes
 the nonzero products of the arrow matrix directly in O(k²), preserving their
@@ -411,10 +436,11 @@ failure is not counted as a green validation.
 ## Status
 
 Last full validation at all four levels: **4905 checks, 0 failures** at `-O0`,
-`-O1`, `-O2`, `-O3`. The suite has since grown to **5033 checks, 0 failures**
-(default `-O2`, 2026-10-02). **171/171** examples
-exit 0. Warning-free. ASan + UBSan clean on the samples (the sanitized suite
-exits 1 on the two `T197` checks, issue #11).
+`-O1`, `-O2`, `-O3`. The suite has since grown to **5168 checks**
+(2026-10-21): 0 failures at `-O2` and `-O3`, with the default and the opt-in
+SOCP route, and under ASan; 2 failures (`T197`, opt-in HSD) at `-O0`, `-O1`,
+without FMA, and under UBSan or ASan+UBSan, with no sanitizer diagnostic.
+**171/171** examples exit 0. Warning-free build at all four levels.
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
 when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD

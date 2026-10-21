@@ -58,7 +58,13 @@ static double step_len(const double *v, const double *dv, int type, int k) {
         double a = 1.0;
         for (int i = 0; i < k; i++)
             if (dv[i] < 0.0) { double t = -v[i] / dv[i]; if (t < a) a = t; }
-        return a;
+        /* A coordinate already below zero (rounding, once mu has collapsed to
+         * ~1e-19) makes -v/dv NEGATIVE: the caller would step BACKWARD, out of
+         * the cone.  Measured on T286's 60 coupled cones without FMA
+         * (-ffp-contract=off, i.e. gcc on plain x86-64): steps of -2, -32.6,
+         * -538, and the legacy route diverged to feas_p=3.5e+260.  No step is
+         * the only admissible answer there. */
+        return a > 0.0 ? a : 0.0;
     }
     double n2 = 0.0, nd2 = 0.0, cross = 0.0;
     for (int i = 1; i < k; i++) {
@@ -68,7 +74,9 @@ static double step_len(const double *v, const double *dv, int type, int k) {
     double B = 2.0 * (cross - v[0] * dv[0]);
     double C = n2 - v[0] * v[0];   /* < 0 strictly inside */
     if (fabs(A) < 1e-300) {
-        if (B < -1e-300) { double t = -C / B; return t < 1.0 ? t : 1.0; }
+        if (B < -1e-300) {   /* C > 0 (already outside): same rule as R+ */
+            double t = -C / B; if (t < 0.0) t = 0.0; return t < 1.0 ? t : 1.0;
+        }
         return 1.0;
     }
     double disc = B * B - 4.0 * A * C;
