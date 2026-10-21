@@ -15655,7 +15655,7 @@ static double t197_hcoef(const int p[4], int m, int n) {
     return 0.5 * (f + g);
 }
 /* builds and solves the degree-3 M1 SDP with HSD on; writes the margin. */
-static int t197_solve(double *margin) {
+static int t197_solve(double *margin, int reverse) {
     static const double M0[4][4] = {
         {2.0 / 3, -4, 12, -10}, {-4, 84, -270, 210}, {12, -270, 840, -630}, {-10, 210, -630, 462}};
     static const double FP[4][3] = {{1, 0, 0}, {-3, 1, 0}, {0, -1, 1}, {0, 0, -1}};
@@ -15683,6 +15683,7 @@ static int t197_solve(double *margin) {
     PRIMAL_appendcons(p.task, NM);
     int s_sub[T197_NP + 1]; double s_val[T197_NP + 1]; int b_sub[6]; double b_val[6];
     for (int r = 0; r < NM; r++) {
+        int dest = reverse ? NM - 1 - r : r;
         int mi = mm[r], ni = nn[r];
         double mx = fabs(M0[mi][ni]);
         int nb = 0, ns = 0;
@@ -15700,16 +15701,26 @@ static int t197_solve(double *margin) {
         }
         double rhs = M0[mi][ni];
         if (mx > 0) { rhs /= mx; for (int k = 0; k < nb; k++) b_val[k] /= mx; for (int k = 0; k < ns; k++) s_val[k] /= mx; }
-        if (nb > 0) PRIMAL_putbaraij(p.task, r, 0, nb, b_sub, b_val);
-        if (ns > 0) PRIMAL_putarow(p.task, r, ns, s_sub, s_val);
-        PRIMAL_putconbound(p.task, r, PRIMAL_BK_FX, rhs, rhs);
+        if (nb > 0) PRIMAL_putbaraij(p.task, dest, 0, nb, b_sub, b_val);
+        if (ns > 0) PRIMAL_putarow(p.task, dest, ns, s_sub, s_val);
+        PRIMAL_putconbound(p.task, dest, PRIMAL_BK_FX, rhs, rhs);
     }
     PRIMAL_putintparam(p.task, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1000);
     setenv("GMB_SDP_HSD", "1", 1);
     PRIMALrescodee rc = PRIMAL_optimize(p.task);
     unsetenv("GMB_SDP_HSD");
     int ok = (rc == PRIMAL_RES_OK);
-    if (ok) PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, margin);
+    double pi = INFINITY, di = INFINITY, po = 0.0, dobj = 0.0;
+    int measured = ok && PRIMAL_getprimalinfeas(p.task, PRIMAL_SOL_ITR, &pi) == PRIMAL_RES_OK
+        && PRIMAL_getdualinfeas(p.task, PRIMAL_SOL_ITR, &di) == PRIMAL_RES_OK
+        && PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po) == PRIMAL_RES_OK
+        && PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dobj) == PRIMAL_RES_OK;
+    if (measured) *margin = po;
+    check(measured, "T197 public quality getters available");
+    check(measured && pi <= 2e-8 && di <= 2e-8,
+          "T197 original model primal and dual violations meet declared tolerances");
+    check(measured && fabs(po-dobj)/(1.0+fabs(po)+fabs(dobj)) <= 1e-8,
+          "T197 public objective gap meets declared tolerance");
     pend(&p);
     return ok;
 }
@@ -15717,9 +15728,13 @@ static int t197_solve(double *margin) {
 static void test_t197(void) {
     cur_name = "T197 HSD opt-in on M1 degree 3 (jcpaik/p2-kkt-flag-sos)";
     double margin = 0.0;
-    int ok = t197_solve(&margin);
+    int ok = t197_solve(&margin, 0);
     check(ok, "T197 GMB_SDP_HSD solves M1 degree 3");
     check(ok && fabs(margin - (-0.85506573)) < 1e-4, "T197 margin within 1e-4 of the reference -0.85506573");
+    ok = t197_solve(&margin, 1);
+    check(ok, "T197 reversed equality order solves");
+    check(ok && fabs(margin - (-0.85506573)) < 1e-4,
+          "T197 reversed equality order preserves reference margin");
 }
 
 /* T198 - Lovasz theta as an upper bound for max-clique (port of
@@ -20606,7 +20621,6 @@ static void test_t286(void) {
     else unsetenv("GMB_SOCP_LDL");
 }
 
-/* test runner: executes all tests and prints the pass/fail summary. */
 /* T287: exact cone geometry, independent of an IPM rounding trajectory. */
 static void test_t287(void) {
     cur_name = "T287 cone ratio test geometry";
@@ -20633,7 +20647,57 @@ static void test_t287(void) {
           "linear SOC test refuses an already exterior point");
 }
 
+/* T288: HSD redundant equalities preserve the original primal/dual model.
+ * The inconsistent duplicate is a negative control against dropping b. */
+static void test_t288(void) {
+    cur_name = "T288 HSD dependent equality rows";
+    int dim = 2;
+    double A[] = {1, 0, 2, 0}, b[] = {2, 1, 4, 3}, c[] = {1};
+    double zero[] = {0,0,0,0}, I[] = {1,0,0,1}, I3[] = {3,0,0,3};
+    const double *C[] = {I}, *AB[] = {zero,I,zero,I3};
+    double X[4], S[4], x[1], y[4], *xp[] = {X}, *sp[] = {S};
+    setenv("GMB_SDP_HSD", "1", 1);
+    int rc = sdp_ipm(4,1,A,b,c,1,&dim,C,AB,0,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,
+                      200,1e-8,1e-8,1e-8,1e-8,1,x,xp,y,sp,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+    check(rc == 0, "dependent but consistent model solves in HSD directly");
+    double po = rc ? INFINITY : x[0]+X[0]+X[3], dobj = 0.0;
+    double pri = 0.0, dual = 0.0;
+    if (rc == 0) {
+        for (int k=0;k<4;k++) {
+            double v = A[k]*x[0]+AB[k][0]*X[0]+AB[k][1]*X[2]
+                       +AB[k][2]*X[1]+AB[k][3]*X[3]-b[k];
+            if (fabs(v)>pri) pri=fabs(v);
+            dobj += b[k]*y[k];
+        }
+        for (int a=0;a<4;a++) {
+            double v = S[a]-I[a];
+            for (int k=0;k<4;k++) v += AB[k][a]*y[k];
+            if (fabs(v)>dual) dual=fabs(v);
+        }
+    }
+    check(rc == 0 && fabs(x[0]-2.0) < 1e-7, "scalar primal value is 2");
+    check(rc == 0 && fabs(X[0]+X[3]-1.0) < 1e-7, "PSD trace is 1");
+    check(rc == 0 && fabs(po-3.0) < 1e-7, "known objective is 3");
+    check(rc == 0 && pri/5.0 <= 1e-8, "all four ORIGINAL primal rows measure");
+    check(rc == 0 && dual/2.0 <= 1e-8, "lifted dual satisfies PSD stationarity");
+    check(rc == 0 && fabs(po-dobj)/(1.0+fabs(po)+fabs(dobj)) <= 1e-8,
+          "lifted original dual objective measures");
+    check(rc == 0 && 1.0-y[0]-2.0*y[2] >= -2e-8,
+          "scalar reduced cost is nonnegative");
+    check(rc == 0 && X[0]>=0 && X[3]>=0 && X[0]*X[3]-X[1]*X[2]>=-1e-8,
+          "published primal matrix is PSD");
+    check(rc == 0 && S[0]>=-2e-8 && S[3]>=-2e-8
+          && S[0]*S[3]-S[1]*S[2]>=-1e-8, "published dual matrix is PSD");
+    b[2] = 5.0; /* x=2 and 2*x=5 cannot both hold. */
+    rc = sdp_ipm(4,1,A,b,c,1,&dim,C,AB,0,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,
+                  200,1e-8,1e-8,1e-8,1e-8,1,x,xp,y,sp,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+    check(rc != 0, "inconsistent dependent coefficients are not dropped with their RHS");
+    unsetenv("GMB_SDP_HSD");
+}
+
+/* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t288();
     test_t287();
     test_t286();
     test_t285();

@@ -184,3 +184,31 @@ output con differenze numeriche (un decimo differisce solo per il tempo).
 Nei log conservati il gate `[augx]` si attiva in **24** esempi, non 25;
 il README è allineato a questa evidenza. I sorgenti testati coincidono col
 checkpoint, ma non si tratta di una nuova esecuzione dei sample dopo T287.
+
+## Chiusura di T197 e difetto aperto senza FMA (2026-10-21)
+
+**T197 è risolto** dalla patch descritta in `hsd-dependent-rows.md`: righe
+dipendenti eliminate solo nel percorso HSD, KKT aumentato con direzioni
+scalari e PSD esplicite, arresto misurato sul modello originale, costi ridotti
+scalari pubblicati dal publisher SDP. Matrice completa su `5f02cb2` più i tre
+file: **5196/0** a O0, O1, O2, O3, sotto ASan, UBSan e ASan+UBSan, con e senza
+`GMB_SOCP_LDL`; nessuna diagnostica; 171/171 esempi con output invariati.
+
+**Resta T286 senza FMA** (`-ffp-contract=off`, come gcc su x86-64 senza
+`-march`): 7 check, sempre la rotta SOCP legacy sulla variante con 60 coni
+accoppiati, `rc=1007`. Era nascosto dal troncamento a zero di `472dfbb`, che
+nel ramo lineare usava il segno sbagliato di `B`; `5f02cb2` ha corretto la
+geometria (giusto) e il caso è riapparso. Traccia: a it=5 la direzione NT
+viene rifiutata con `mu=1e-12`, la direzione LU porta `mu` a `5e-17` in un
+passo (frazione di passo 0.99995), e da it=7 il passo primale è 0 perché il
+punto è numericamente sul bordo: con `mu~1e-17` la distanza `v0^2-|v|^2` è
+sotto l'arrotondamento con cui la si calcola. L'infeasibilità primale resta
+a `1e-8`, il gap a `2e-7`, fino al limite di iterazioni.
+
+Tentativo scartato: frazione 0.99 sul solo ramo LU. Risolve la sonda isolata,
+ma nella suite completa T286 resta rosso, T279 diventa rosso senza FMA (4
+check) e `logcontrast_lasso` cambia beta alla quinta cifra anche con FMA. La
+causa è una perdita di centralità (`mu` scende molto più in fretta dei
+residui); la correzione di principio è una salvaguardia che non lasci scendere
+il bersaglio `sigma*mu` sotto una frazione dei residui. Cambia però le
+traiettorie di tutto il SOCP legacy e va progettata e verificata a parte.

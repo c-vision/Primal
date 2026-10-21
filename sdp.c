@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 #include <stdio.h>
 #include "sdp.h"
 #include "linalg.h"
@@ -824,22 +825,27 @@ static hsd_stat hsd_measure(int m, int n, int nb, const int *dims, size_t d2,
     return R;
 }
 
-/* PSD+scalar homogeneous self-dual IPM.  N = m + 2 (multiplier block plus
- * tau, theta columns); kappa is eliminated in closed form from the tau row,
+/* PSD+scalar homogeneous self-dual IPM (multiplier block plus
+ * tau, theta, scalar and PSD direction columns); kappa is eliminated from the tau row,
  * same as the primary path eliminates ds/dz from dy.  Mehrotra predictor
  * (pass 0, sigma=0) then corrector (pass 1) exactly like sdp_ipm's main loop;
  * the corrector's own direction gets up to 5 rounds of double-double
  * iterative refinement (mirroring the primary path's refine_on loop, but in
  * dd arithmetic throughout rather than compensated residual + double
  * solve). Accept/backtrack on the same pf+df+mu merit as sdp_ipm. */
-static int hsd_psd(int m, int n, const double *A, const double *b, const double *c,
+static int hsd_psd_core(int m, int n, const double *A, const double *b, const double *c,
         int nb, const int *dims, const double *const *C, const double *const *AB,
         int max_iter, double rtol_pri, double rtol_dual, double rtol_gap,
         double *x, double *const *X, double *y, double *const *S) {
     int dmax = 1, nu = n + 1;
     for (int j = 0; j < nb; j++) { if (dims[j] > dmax) dmax = dims[j]; nu += dims[j]; }
     size_t d2 = (size_t)dmax * dmax, bd2 = (size_t)nb * d2;
-    int N = m + 2;
+    /* Keep scalar and symmetric PSD directions explicit. With dependent
+     * equalities removed by hsd_psd, this avoids squaring their conditioning
+     * in the Schur complement before the double-double solve. */
+    int nq = 0;
+    for (int j = 0; j < nb; j++) nq += dims[j] * (dims[j] + 1) / 2;
+    int N = m + 2 + n + nq;
     double *xx = (double *)calloc((size_t)n, sizeof(double)), *ss = (double *)calloc((size_t)n, sizeof(double));
     double *bb = (double *)calloc((size_t)m, sizeof(double)), *bc = (double *)calloc((size_t)n, sizeof(double));
     double *BC = (double *)calloc(bd2, sizeof(double)), *rp = (double *)calloc((size_t)m, sizeof(double));
@@ -887,7 +893,22 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
         hsd_stat R = hsd_measure(m, n, nb, dims, d2, A, b, c, C, AB, bb, bc, BC, bz,
                                   xx, ss, (const double *const *)X, (const double *const *)S,
                                   y, tau, kap, theta, rp, rd, rB, nu);
-        double pri = R.pf / (tau * (1 + bn)), dual = R.df / (tau * (1 + cn));
+        /* The embedding residual alone is insufficient while theta != 0:
+         * remove its artificial offsets when judging the original model.
+         * Keep the embedding equations in the maximum as well. */
+        double pf_model=R.pf,df_model=R.df;
+        for(int k=0;k<m;k++) pf_model=fmax(pf_model,fabs(rp[k]-bb[k]*theta));
+        for(int i=0;i<n;i++) df_model=fmax(df_model,fabs(rd[i]-bc[i]*theta));
+        for(int j=0;j<nb;j++) for(int a=0;a<dims[j]*dims[j];a++)
+            df_model=fmax(df_model,fabs(rB[(size_t)j*d2+a]-BC[(size_t)j*d2+a]*theta));
+        double pri = pf_model / (tau * (1 + bn)), dual = df_model / (tau * (1 + cn));
+        /* A relative aggregate gap may close before a scalar bound's
+         * complementary product meets the public dual-quality criterion.
+         * Judge each product in the original units x/tau, s/tau as well. */
+        for (int i = 0; i < n; i++) {
+            double comp = fabs((xx[i] / tau) * (ss[i] / (tau + ss[i])));
+            if (comp > dual) dual = comp;
+        }
         double gap = fabs(R.pobj - R.dobj) / (tau + fabs(R.pobj) + fabs(R.dobj));
         double viol = pri / rtol_pri;
         if (dual / rtol_dual > viol) viol = dual / rtol_dual;
@@ -940,49 +961,44 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                 mmul(d, W + off, q, t1); mmul(d, t1, W + off, q);
             }
             for (int k = 0; k < m; k++) {
-                double v = -rp[k], ht = -b[k], hq = bb[k];
-                for (int i = 0; i < n; i++) {
-                    double t = xx[i] / ss[i], gi = rd[i] - ss[i] + sigma * R.mu / xx[i];
-                    v -= A[(size_t)k * n + i] * t * gi;
-                    ht -= A[(size_t)k * n + i] * t * c[i]; hq += A[(size_t)k * n + i] * t * bc[i];
-                }
-                for (int j = 0; j < nb; j++) {
-                    int d = dims[j]; size_t off = (size_t)j * d2;
-                    v -= trAB(d, AB[(size_t)k * nb + j], base + off);
-                    ht -= trAB(d, AB[(size_t)k * nb + j], WC + off);
-                    hq += trAB(d, AB[(size_t)k * nb + j], WB + off);
-                }
-                rhs[k] = v; K[(size_t)k * N + m] = ht; K[(size_t)k * N + m + 1] = hq;
-                for (int l = 0; l < m; l++) {
-                    double z = 0;
-                    for (int i = 0; i < n; i++) z += A[(size_t)k * n + i] * (xx[i] / ss[i]) * A[(size_t)l * n + i];
-                    for (int j = 0; j < nb; j++) z += trAB(dims[j], AB[(size_t)k * nb + j], WA + ((size_t)l * nb + j) * d2);
-                    K[(size_t)k * N + l] = z;
-                }
+                rhs[k] = -rp[k];
+                K[(size_t)k * N + m] = -b[k];
+                K[(size_t)k * N + m+1] = bb[k];
+                K[(size_t)m * N + k] = -b[k];
+                K[(size_t)(m+1) * N + k] = bb[k];
             }
             rhs[m] = -R.rg - (sigma * R.mu - tau * kap) / tau;
-            rhs[m + 1] = -R.rn;
-            K[(size_t)m * N + m] = -kap / tau; K[(size_t)m * N + m + 1] = bz;
-            K[(size_t)(m + 1) * N + m] = -bz;
-            for (int k = 0; k < m; k++) { K[(size_t)m * N + k] = -b[k]; K[(size_t)(m + 1) * N + k] = bb[k]; }
-            for (int i = 0; i < n; i++) {
-                double t = xx[i] / ss[i], gi = rd[i] - ss[i] + sigma * R.mu / xx[i];
-                rhs[m] -= c[i] * t * gi; rhs[m + 1] += bc[i] * t * gi;
-                K[(size_t)m * N + m] -= c[i] * t * c[i]; K[(size_t)m * N + m + 1] += c[i] * t * bc[i];
-                K[(size_t)(m + 1) * N + m] += bc[i] * t * c[i]; K[(size_t)(m + 1) * N + m + 1] -= bc[i] * t * bc[i];
-                for (int k = 0; k < m; k++) {
-                    K[(size_t)m * N + k] += c[i] * t * A[(size_t)k * n + i];
-                    K[(size_t)(m + 1) * N + k] -= bc[i] * t * A[(size_t)k * n + i];
-                }
+            rhs[m+1] = -R.rn;
+            K[(size_t)m*N+m] = -kap/tau;
+            K[(size_t)m*N+m+1] = bz;
+            K[(size_t)(m+1)*N+m] = -bz;
+            for (int i=0;i<n;i++) {
+                int r=m+2+i;
+                rhs[r] = -(rd[i]-ss[i]+sigma*R.mu/xx[i]);
+                K[(size_t)r*N+r] = -ss[i]/xx[i];
+                K[(size_t)r*N+m] = -c[i];
+                K[(size_t)r*N+m+1] = bc[i];
+                K[(size_t)m*N+r] = c[i];
+                K[(size_t)(m+1)*N+r] = -bc[i];
+                for(int k=0;k<m;k++) K[(size_t)k*N+r]=K[(size_t)r*N+k]=A[(size_t)k*n+i];
             }
-            for (int j = 0; j < nb; j++) {
-                int d = dims[j]; size_t off = (size_t)j * d2;
-                rhs[m] -= trAB(d, C[j], base + off); rhs[m + 1] += trAB(d, BC + off, base + off);
-                K[(size_t)m * N + m] -= trAB(d, C[j], WC + off); K[(size_t)m * N + m + 1] += trAB(d, C[j], WB + off);
-                K[(size_t)(m + 1) * N + m] += trAB(d, BC + off, WC + off); K[(size_t)(m + 1) * N + m + 1] -= trAB(d, BC + off, WB + off);
-                for (int k = 0; k < m; k++) {
-                    K[(size_t)m * N + k] += trAB(d, C[j], WA + ((size_t)k * nb + j) * d2);
-                    K[(size_t)(m + 1) * N + k] -= trAB(d, BC + off, WA + ((size_t)k * nb + j) * d2);
+            /* PSD directions use lower-triangle coordinates. Trace rows
+             * count off-diagonals twice; cone equations use each entry once. */
+            int r=m+2+n;
+            for (int j=0;j<nb;j++) {
+                int d=dims[j];size_t off=(size_t)j*d2;
+                for(int u=0;u<d;u++) for(int v=0;v<=u;v++,r++) {
+                    int uv=u*d+v;double w=u==v?1.0:2.0;
+                    rhs[r]=base[off+uv];
+                    K[(size_t)r*N+r]=1.0;
+                    K[(size_t)r*N+m]=WC[off+uv];
+                    K[(size_t)r*N+m+1]=-WB[off+uv];
+                    K[(size_t)m*N+r]=w*C[j][uv];
+                    K[(size_t)(m+1)*N+r]=-w*BC[off+uv];
+                    for(int k=0;k<m;k++) {
+                        K[(size_t)k*N+r]=w*AB[(size_t)k*nb+j][uv];
+                        K[(size_t)r*N+k]=-WA[((size_t)k*nb+j)*d2+uv];
+                    }
                 }
             }
             for (int k = 0; k < m; k++) {
@@ -1002,19 +1018,23 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
             if (hsd_ddsolve(K, rhs, N)) goto finish;
             for (int k = 0; k < N; k++) rhs[k] *= col[k];
             for (int k = 0; k < m; k++) dy[k] = rhs[k];
+            for (int i=0;i<n;i++) dx[i]=rhs[m+2+i];
+            r=m+2+n;
+            for (int j=0;j<nb;j++) {
+                int d=dims[j];size_t off=(size_t)j*d2;
+                for(int u=0;u<d;u++) for(int v=0;v<=u;v++,r++)
+                    dX[off+u*d+v]=dX[off+v*d+u]=rhs[r];
+            }
             double dtau = rhs[m], dtheta = rhs[m + 1], dkap = (sigma * R.mu - tau * kap - kap * dtau) / tau;
             for (int ir = 0; ir < 5; ir++) {
                 for (int i = 0; i < n; i++) {
-                    double v = rd[i] - ss[i] + sigma * R.mu / xx[i] - c[i] * dtau + bc[i] * dtheta;
-                    for (int k = 0; k < m; k++) v += A[(size_t)k * n + i] * dy[k];
-                    dx[i] = (xx[i] / ss[i]) * v;
                     ds[i] = -(ss[i] / xx[i]) * dx[i] - ss[i] + sigma * R.mu / xx[i];
                 }
                 for (int j = 0; j < nb; j++) {
                     int d = dims[j]; size_t off = (size_t)j * d2;
                     for (int a = 0; a < d * d; a++) g[a] = rB[off + a] - S[j][a] + sigma * R.mu * Xi[off + a] - C[j][a] * dtau + BC[off + a] * dtheta;
                     for (int k = 0; k < m; k++) for (int a = 0; a < d * d; a++) g[a] += AB[(size_t)k * nb + j][a] * dy[k];
-                    mmul(d, W + off, g, t1); mmul(d, t1, W + off, dX + off);
+                    /* dX is solved explicitly in the augmented system. */
                     /* dS = -Wi dX Wi - S + sigma*mu*Xi algebraically simplifies to
                      * -g - S + sigma*mu*Xi when Wi is EXACTLY W's inverse (dX = W g
                      * W, so Wi dX Wi = Wi W g W Wi = g).  Computing it via the
@@ -1047,9 +1067,34 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
                 for (int i = 0; i < n; i++) en -= bc[i] * dx[i];
                 for (int j = 0; j < nb; j++) en -= trAB(dims[j], BC + (size_t)j * d2, dX + (size_t)j * d2);
                 rhs[m + 1] = -en * row[m + 1]; if (fabs(en) > maxerr) maxerr = fabs(en);
+                for(int i=0;i<n;i++) {
+                    double v=rd[i]-ss[i]+sigma*R.mu/xx[i]-(ss[i]/xx[i])*dx[i]-c[i]*dtau+bc[i]*dtheta;
+                    for(int k=0;k<m;k++) v+=A[(size_t)k*n+i]*dy[k];
+                    rhs[m+2+i]=-v*row[m+2+i];
+                    if(fabs(v)>maxerr)maxerr=fabs(v);
+                }
+                r=m+2+n;
+                for(int j=0;j<nb;j++) {
+                    int d=dims[j];size_t off=(size_t)j*d2;
+                    for(int u=0;u<d;u++) for(int v=0;v<=u;v++,r++) {
+                        int uv=u*d+v;
+                        double e=dX[off+uv]-base[off+uv]+WC[off+uv]*dtau-WB[off+uv]*dtheta;
+                        for(int k=0;k<m;k++) e-=WA[((size_t)k*nb+j)*d2+uv]*dy[k];
+                        rhs[r]=-e*row[r];if(fabs(e)>maxerr)maxerr=fabs(e);
+                    }
+                }
                 if (maxerr < 1e-13 || ir == 4) break;
                 if (hsd_ddsolve(K, rhs, N)) goto finish;
                 for (int k = 0; k < m; k++) dy[k] += rhs[k] * col[k];
+                for(int i=0;i<n;i++) dx[i]+=rhs[m+2+i]*col[m+2+i];
+                r=m+2+n;
+                for(int j=0;j<nb;j++) {
+                    int d=dims[j];size_t off=(size_t)j*d2;
+                    for(int u=0;u<d;u++) for(int v=0;v<=u;v++,r++) {
+                        dX[off+u*d+v]+=rhs[r]*col[r];
+                        dX[off+v*d+u]=dX[off+u*d+v];
+                    }
+                }
                 dtau += rhs[m] * col[m]; dtheta += rhs[m + 1] * col[m + 1];
                 dkap = (sigma * R.mu - tau * kap - kap * dtau) / tau;
             }
@@ -1170,6 +1215,94 @@ fail:
     free(dx); free(ds); free(dX); free(dS); free(dy); free(K); free(rhs);
     free(t1); free(t2); free(t3); free(g); free(row); free(col); free(snap);
     return 2;
+}
+
+/* Remove dependent equality rows only on the experimental HSD path.
+ * Include b in the rank test, so inconsistent equalities stay distinct.
+ * Rank tolerance selects a basis, never relaxes acceptance on the model. */
+static int hsd_psd(int m, int n, const double *A, const double *b, const double *c,
+        int nb, const int *dims, const double *const *C, const double *const *AB,
+        int max_iter, double rtol_pri, double rtol_dual, double rtol_gap,
+        double *x, double *const *X, double *y, double *const *S) {
+    size_t width=(size_t)n+1;
+    for(int j=0;j<nb;j++) width+=(size_t)dims[j]*dims[j];
+    double *Q=(double*)calloc((size_t)(m>0?m:1)*width,sizeof(double));
+    int *pick=(int*)malloc((size_t)(m>0?m:1)*sizeof(int));
+    if(!Q||!pick){free(Q);free(pick);return 2;}
+    for(int k=0;k<m;k++) {
+        double *q=Q+(size_t)k*width;size_t pos=0;
+        for(int i=0;i<n;i++)q[pos++]=A[(size_t)k*n+i];
+        for(int j=0;j<nb;j++) for(int a=0;a<dims[j]*dims[j];a++)q[pos++]=AB[(size_t)k*nb+j][a];
+        q[pos]=b[k];double norm=0;
+        for(size_t a=0;a<width;a++)norm=hypot(norm,q[a]);
+        if(!isfinite(norm)){free(Q);free(pick);return 1;}
+        if(norm>0)for(size_t a=0;a<width;a++)q[a]/=norm;
+        pick[k]=k;
+    }
+    int rank=0;
+    double eps=64.0*DBL_EPSILON*fmax((double)width,(double)m);
+    for(int k=0;k<m;k++) {
+        int best=k;double norm=0;
+        for(int j=k;j<m;j++) {
+            double v=0;for(size_t a=0;a<width;a++)v=hypot(v,Q[(size_t)j*width+a]);
+            if(v>norm){norm=v;best=j;}
+        }
+        if(norm<=eps)break;
+        if(best!=k) {
+            int t=pick[k];pick[k]=pick[best];pick[best]=t;
+            for(size_t a=0;a<width;a++){double t1=Q[(size_t)k*width+a];Q[(size_t)k*width+a]=Q[(size_t)best*width+a];Q[(size_t)best*width+a]=t1;}
+        }
+        double *q=Q+(size_t)k*width;
+        for(size_t a=0;a<width;a++)q[a]/=norm;
+        for(int j=k+1;j<m;j++)for(int repeat=0;repeat<2;repeat++) {
+            double *v=Q+(size_t)j*width,dot=0;
+            for(size_t a=0;a<width;a++)dot+=q[a]*v[a];
+            for(size_t a=0;a<width;a++)v[a]-=dot*q[a];
+        }
+        rank++;
+    }
+    free(Q);
+    if(rank==m){free(pick);return hsd_psd_core(m,n,A,b,c,nb,dims,C,AB,max_iter,rtol_pri,rtol_dual,rtol_gap,x,X,y,S);}
+    double *Ar=(double*)malloc((size_t)(rank>0?rank:1)*(size_t)(n>0?n:1)*sizeof(double));
+    double *br=(double*)malloc((size_t)(rank>0?rank:1)*sizeof(double));
+    double *yr=(double*)calloc((size_t)(rank>0?rank:1),sizeof(double));
+    const double **ABr=(const double**)malloc((size_t)(rank>0?rank:1)*(size_t)(nb>0?nb:1)*sizeof(double*));
+    if(!Ar||!br||!yr||!ABr){free(pick);free(Ar);free(br);free(yr);free(ABr);return 2;}
+    for(int k=0;k<rank;k++) {
+        memcpy(Ar+(size_t)k*n,A+(size_t)pick[k]*n,(size_t)n*sizeof(double));br[k]=b[pick[k]];
+        for(int j=0;j<nb;j++)ABr[(size_t)k*nb+j]=AB[(size_t)pick[k]*nb+j];
+    }
+    int rc=hsd_psd_core(rank,n,Ar,br,c,nb,dims,C,ABr,max_iter,rtol_pri,rtol_dual,rtol_gap,x,X,yr,S);
+    memset(y,0,(size_t)m*sizeof(double));for(int k=0;k<rank;k++)y[pick[k]]=yr[k];
+    free(pick);free(Ar);free(br);free(yr);free(ABr);
+    if(rc)return rc;
+    double bn=0,cn=0,pri=0,dual=0,po=0,doo=0;
+    for(int k=0;k<m;k++) {
+        double v=-b[k];if(fabs(b[k])>bn)bn=fabs(b[k]);
+        for(int i=0;i<n;i++)v+=A[(size_t)k*n+i]*x[i];
+        for(int j=0;j<nb;j++)v+=trAB(dims[j],AB[(size_t)k*nb+j],X[j]);
+        if(!isfinite(v))return 1;if(fabs(v)>pri)pri=fabs(v);doo+=b[k]*y[k];
+    }
+    for(int i=0;i<n;i++) {
+        double v=c[i];po+=c[i]*x[i];if(fabs(c[i])>cn)cn=fabs(c[i]);
+        for(int k=0;k<m;k++)v-=A[(size_t)k*n+i]*y[k];
+        if(!isfinite(x[i])||!isfinite(v))return 1;
+        if(-x[i]>pri)pri=-x[i];if(-v>dual)dual=-v;
+    }
+    for(int j=0;j<nb;j++) {
+        int d=dims[j];po+=trAB(d,C[j],X[j]);
+        for(int a=0;a<d*d;a++) {
+            double v=S[j][a]-C[j][a];
+            for(int k=0;k<m;k++)v+=AB[(size_t)k*nb+j][a]*y[k];
+            if(!isfinite(v)||!isfinite(X[j][a]))return 1;
+            if(fabs(v)>dual)dual=fabs(v);
+        }
+        double v=min_eig(d,X[j]);if(-v>pri)pri=-v;
+        v=min_eig(d,S[j]);if(-v>dual)dual=-v;
+    }
+    pri/=1+bn;dual/=1+cn;
+    double gap=fabs(po-doo)/(1+fabs(po)+fabs(doo));
+    return isfinite(pri)&&isfinite(dual)&&isfinite(gap)&&pri<=rtol_pri&&dual<=rtol_dual&&gap<=rtol_gap?0:1;
 }
 
 

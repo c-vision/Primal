@@ -88,7 +88,7 @@ int main(void) {
 }
 ```
 
-171 runnable examples live under `c_examples/`, each checking its own result: 48
+171 runnable examples live under `examples/c/`, each checking its own result: 48
 ports of public MOSEK examples with identical optimal values, 63 larger
 deterministic models, 44 finance models, 16 book models.
 
@@ -135,7 +135,7 @@ automatically — and accepts `--brief`, `--full` (also the duals and slacks),
 (run `./out/primal --help`).
 
 Ready-to-run inputs for every problem class — LP, MIP, QP, SOCP, an exponential
-cone and an SDP — live in [`lp_examples/`](lp_examples/README.md), each with its
+cone and an SDP — live in [`examples/lp/`](examples/lp/README.md), each with its
 expected output; `make run-examples` solves them all.
 
 ## Python
@@ -152,7 +152,7 @@ Wheels for macOS (universal2) and Linux (x86_64/aarch64) are published to PyPI a
 also attached to the [latest
 release](https://github.com/c-vision/Primal/releases/latest); Windows wheels are
 built by the CI. **53 runnable examples** live in
-[`python_examples/`](python_examples/README.md) — installation, usage, and one
+[`examples/python/`](examples/python/README.md) — installation, usage, and one
 line per example.
 
 ## Build
@@ -168,12 +168,11 @@ Everything the build produces goes to `out/` (gitignored). **Portability**: POSI
 C99 with `gcc` or `clang` on Linux, macOS and the BSDs. There is **no MSVC
 project and no `nmake` path** — on Windows use MinGW
 ([how to build on Windows](docs/windows.md)), or compile the `LIBSRCS` list from
-the Makefile with any C99 compiler. No ASan or UBSan diagnostic anywhere in the
-suite. Two numerical checks, both in `T197` (the opt-in HSD path, issue #11),
-fail on builds that do not vectorise or fuse the floating-point sums: `-O0`,
-`-O1`, `-ffp-contract=off` (what plain gcc on x86-64 does) and the UBSan build.
-That test passes only along one rounding trajectory; the default routes do not
-depend on it.
+the Makefile with any C99 compiler. The full suite passes at `-O0` to `-O3`
+and under ASan + UBSan with no diagnostic. One known exception: without FMA
+contraction (`-ffp-contract=off`, which is what plain gcc on x86-64 does), the
+seven `T286` checks of the legacy SOCP route fail on a 60-cone model — see
+Status. The default macOS/clang build is not affected.
 
 ## How it compares
 
@@ -346,10 +345,8 @@ enables a direct NT system with sparse LDL and reusable symbolic analysis.
 It retains the existing solver as fallback and leaves default routing unchanged.
 The first 31 alternating pairs give SOCP 120: 1.566 → 1.185 ms, and SOCP 200:
 2.820 → 1.087 ms. These targeted timings do not update the canonical table
-below. On checkpoint `472dfbb`, both default and opt-in full suites pass
-**5168/0**, and so does ASan; ASan+UBSan reports **5166/2**, the two `T197`
-checks described above. The subsequent ratio-test review adds eight checks;
-see the current validation note under Status.
+below. Both backends pass the full suite at every level and under
+ASan + UBSan; see the current validation note under Status.
 [Equations, numerical gates and limitations](docs/socp-symmetric-kkt.md).
 
 **Rounding-independence fixes (2026-10-21).** Building the suite without FMA
@@ -453,7 +450,20 @@ T197 checks fail, with no sanitizer diagnostic. The eight new geometry
 checks also pass at O0/O1/O3, without FMA and under ASan+UBSan.
 The earlier full build matrix and 171-example results above belong to
 `472dfbb`; they were not all rerun after this follow-up.
-See [causal evidence and remaining HSD defect](docs/sanitizer-regression-analysis.md).
+
+**Current validation (2026-10-21, HSD dependent-row fix).** `T197` is fixed:
+dependent equalities are removed on the opt-in HSD path, its KKT keeps the
+scalar and PSD directions explicit, its stop rule measures the original
+model, and the native SDP publisher now reports scalar reduced costs
+([details](docs/hsd-dependent-rows.md); `T288` added). The suite has
+**5196 checks**: **0 failures** at `-O0`, `-O1`, `-O2`, `-O3`, under ASan,
+UBSan and ASan + UBSan, with both SOCP backends — the first fully green
+sanitized run — warning-free, no sanitizer diagnostic. **171/171** examples
+exit 0 with unchanged output. Open: without FMA (`-ffp-contract=off`) the 7
+`T286` checks fail on the legacy SOCP route (a 60-cone model stalls with
+`mu=1e-17` and the primal point numerically on the cone boundary). This was
+already the case before the HSD fix; a centrality safeguard is the planned
+remedy. See [causal evidence](docs/sanitizer-regression-analysis.md).
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
 when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD
@@ -506,7 +516,7 @@ measured at, where it stops. Start at [docs/README.md](docs/README.md).
 `GMB_DBG=1` prints to **stderr** the route taken with its measured termination
 triple, the worst cone or bar violation in the delivered point, each round of
 the cut loop, and the MIP search's decisions:
-`./out/c_examples/logistic_large 2>&1 | grep -E 'route|cones|mip'`
+`./out/examples/c/logistic_large 2>&1 | grep -E 'route|cones|mip'`
 
 ## License
 

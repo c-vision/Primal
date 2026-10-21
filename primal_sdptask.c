@@ -425,6 +425,28 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             for (int k = 0; k < ncon; k++) t->y[k] = (rowOf[k] >= 0) ? -s * y2[rowOf[k]] : 0.0;
             for (int j = 0; j < nb; j++) { int d = t->barDim[j];
                 for (int a = 0; a < d * d; a++) t->barsj[j][a] = Sb[j][a]; }
+            /* Publish the scalar reduced costs as well as the matrix duals.
+             * The public stationarity convention is c + A'y + z = 0 in the
+             * task's original sense. A cone member's dual stays in its cone,
+             * so it has no separate scalar reduced cost here. */
+            for (int k = 0; k < ncon; k++) {
+                t->slc[k] = t->y[k] < 0.0 ? t->y[k] : 0.0;
+                t->suc[k] = t->y[k] > 0.0 ? t->y[k] : 0.0;
+            }
+            for (int i = 0; i < nvar; i++) {
+                int member = 0;
+                for (int k = 0; k < t->numcones && !member; k++)
+                    for (int a = 0; a < t->cone_nmem[k]; a++)
+                        if (t->cone_mem[k][a] == i) { member = 1; break; }
+                double z = 0.0;
+                if (!member) {
+                    z = -t->c[i];
+                    const Col *col = &t->cols[i];
+                    for (int k = 0; k < col->nz; k++) z -= col->val[k] * t->y[col->sub[k]];
+                }
+                t->slx[i] = z < 0.0 ? z : 0.0;
+                t->sux[i] = z > 0.0 ? z : 0.0;
+            }
             double pobj = t->cfix;
             for (int i = 0; i < nvar; i++) pobj += t->c[i] * t->x[i];
             for (int k = 0; k < t->nbarC; k++) {
