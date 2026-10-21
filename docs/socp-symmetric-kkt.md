@@ -86,6 +86,15 @@ primal rows) and the T83 tolerance derived from the objective error, the
 opt-in ASan+UBSan suite passes 5166/5168: only T197 (opt-in HSD, issue #11)
 remains, on the builds listed in the README. ASan alone passes 5168/0.
 
+A follow-up review corrects another ratio-test defect: for a linear SOC
+boundary equation `B*a+C <= 0`, an upper step bound exists when `B>0`.
+T287 covers inward/outward directions with exact known steps, quadratic
+crossings and the rounded-negative R+ guard. The full O2 suite now passes
+5176 checks with both backends; full ASan+UBSan runs pass 5174 and fail
+only the two T197 checks with either backend, without sanitizer diagnostics.
+See the independent validation and remaining
+HSD diagnosis in [the regression analysis](sanitizer-regression-analysis.md).
+
 A separate 31-pair confirmation gives SOCP 120: 1.736 → 1.307 ms and SOCP
 200: 3.151 → 1.125 ms. A contemporaneous 21-run comparison against Clarabel
 0.11.1, including its solver construction, gives 1.357 vs 0.582 ms on SOCP

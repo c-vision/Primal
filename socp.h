@@ -33,6 +33,10 @@ typedef struct {
     int *mem;   /* SOC: member variable indices (mem[0] = t) */
 } SocpCone;
 
+/* Internal cone ratio test, shared by both engines; exposed for exact
+ * geometric regression tests. type 0 = R+, type 1 = SOC. */
+double socp_step_len(const double *v, const double *dv, int type, int k);
+
 int socp_solve(int n, int p,
                const double *E, const double *d, const double *c,
                int ncones, const SocpCone *cones,

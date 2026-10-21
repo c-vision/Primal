@@ -37,6 +37,7 @@ per ogni commit. Nessuna tolleranza di accettazione è stata modificata.
 |---|---:|---:|
 | `1acd29b`, primo commit | 4 | 0 |
 | `7d0ef74` | 4 | 0 |
+| `57dfe14`, figlio diretto di `7d0ef74` | 4 | 2 |
 | `95f1c32`, 2 ottobre | 0 | 2 |
 | `557d501`, padre di `edd355b` | 0 | 2 |
 | `edd355b`, 3 ottobre | 4 | 2 |
@@ -46,6 +47,13 @@ per ogni commit. Nessuna tolleranza di accettazione è stata modificata.
 
 La storia di T244 non è monotona: era rosso nella radice, è diventato verde,
 poi è ricomparso con `edd355b`. T197 va attribuito separatamente.
+
+Il confine di T197 è `7d0ef74` → `57dfe14` (28 settembre). L'unico file
+modificato è `linalg.c`: il criterio Jacobi assoluto `off < 1e-30` diventa
+relativo, `off <= 1e-28 * ||A||F²`. Con la stessa toolchain sanitizer il padre
+termina con `best_viol=0.9653`, il figlio con `best_viol=3.532` e due check
+rossi. Questo identifica il cambiamento che espone la fragilità numerica;
+non giustifica un ritorno globale al criterio assoluto.
 
 ## T244: rotazioni Jacobi di `edd355b`
 
@@ -81,7 +89,7 @@ L'indagine sopra non cambia sorgenti di produzione o soglie; la correzione
 
 ## Causa radice e correzione (2026-10-21)
 
-**Nessuno dei sei è un errore di memoria o di UB.** Compilando la suite con
+**Le prove non rilevano errori di memoria o di UB associati ai sei check.** Compilando la suite con
 sanitizer singoli: ASan da solo passa tutto; T244 fallisce con quattro
 sotto-verifiche UBSan indipendenti (`alignment`, `null`, `pointer-overflow`,
 `signed-integer-overflow`), nessuna delle quali segnala nulla. Hanno in comune
@@ -116,3 +124,63 @@ robusto è lavoro sull'HSD (issue #11), non una correzione di questo giro.
 Stato misurato: 5168/0 a `-O2`, `-O3`, con e senza `GMB_SOCP_LDL`, e sotto
 ASan; 5166/2 (solo T197) a `-O0`, `-O1`, senza FMA, sotto UBSan e ASan+UBSan;
 nessuna diagnostica sanitizer; 171/171 esempi a exit 0.
+
+## Revisione indipendente del commit `472dfbb`
+
+Le misure del paragrafo precedente sono dell'altra sessione. Su uno spazio
+di build separato sono stati riconfermati 5168/0 a O2, default e opt-in, e
+5166/2 sotto ASan+UBSan opt-in, senza diagnostiche. I sorgenti del suo
+snapshot di verifica coincidono con quelli committati per `sdp.c`, `socp.c`
+e `test_primal.c`.
+
+La revisione ha trovato un ulteriore errore nel ramo lineare del ratio test
+SOC. Per `A*a²+B*a+C <= 0`, con `A=0`, il limite superiore esiste per
+`B>0`, non per `B<0`. Dal punto `(1,0)`:
+
+| Direzione | Risultato di `472dfbb` | Passo esatto |
+|---|---:|---:|
+| `(1,1)` | 0 | 1 |
+| `(-1,1)` | 1 | 0.5 |
+
+Il ramo è corretto e T287 verifica questi due casi geometrici, la permanenza
+nel foglio positivo del cono, due attraversamenti quadratici e le guardie
+R+/SOC fuori dal dominio. La funzione è esposta nel solo header interno
+`socp.h`, non nell'API pubblica `primal.h`.
+
+Per T197 sono state provate esclusivamente in `out/review_hsd/`:
+
+| Variante isolata | Migliore violazione normalizzata ASan+UBSan | Esito |
+|---|---:|---|
+| baseline `472dfbb` | 2.098 | max_iter, 2 check rossi |
+| denominatore del merito con tau del trial | 2.098 | invariato |
+| scalari R+ espliciti nel KKT HSD | 1.499 | ricerca di linea esaurita |
+| precedente + ripristino per copia dei trial rifiutati e tau corretto | 9.011 | peggiore |
+
+Nessuna di queste varianti è promossa nei sorgenti. Una sonda della baseline
+ha misurato residui delle equazioni Newton ancora intorno a `1e-6` dopo le
+cinque rifiniture (1978 direzioni oltre `1e-13`). È un limite concreto della
+direzione numerica HSD, non soltanto l'osservazione che cambia arrotondamento.
+Non è stata dimostrata una correzione robusta di T197. Nessuna soglia del
+solver è stata allentata e nessun test è stato saltato.
+
+T287 isolato passa 8/0 a O0/O1/O2/O3, senza FMA e sotto ASan+UBSan,
+con compilazione senza warning. Controllo negativo: lo stesso test con la
+funzione di `472dfbb` produce 4/4, inclusi il passo nullo verso l'interno e
+il passo che attraversa il bordo. Risultati locali in
+`out/review_final/geometry/results.json` e `negative.log`.
+
+La suite completa finale O2 passa **5176/0** con entrambi i backend. La
+matrice completa O0/O1/O3/no-FMA e i 171 sample restano le misure dell'altra
+sessione sul checkpoint `472dfbb`: non sono stati rieseguiti integralmente
+dopo il successivo fix del ratio test. Le nuove prove sugli altri livelli
+riguardano specificamente la geometria di T287.
+
+Verifica finale ASan+UBSan: **5174 PASS / 2 FAIL** con entrambi i backend,
+runner exit 1; i soli due errori sono T197 e non ci sono diagnostiche
+ASan/UBSan. Build senza warning. Log in `out/review_final/`.
+
+L'ispezione dei log sample dell'altra AI conferma **171/171 exit 0** e nove
+output con differenze numeriche (un decimo differisce solo per il tempo).
+Nei log conservati il gate `[augx]` si attiva in **24** esempi, non 25;
+il README è allineato a questa evidenza. I sorgenti testati coincidono col
+checkpoint, ma non si tratta di una nuova esecuzione dei sample dopo T287.

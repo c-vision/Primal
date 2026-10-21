@@ -159,7 +159,7 @@ line per example.
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5168 checks
+make test          # reliability suite: 5176 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -346,8 +346,10 @@ enables a direct NT system with sparse LDL and reusable symbolic analysis.
 It retains the existing solver as fallback and leaves default routing unchanged.
 The first 31 alternating pairs give SOCP 120: 1.566 → 1.185 ms, and SOCP 200:
 2.820 → 1.087 ms. These targeted timings do not update the canonical table
-below. Both default and opt-in full suites pass **5168/0**, and so does ASan;
-ASan+UBSan reports **5166/2**, the two `T197` checks described above.
+below. On checkpoint `472dfbb`, both default and opt-in full suites pass
+**5168/0**, and so does ASan; ASan+UBSan reports **5166/2**, the two `T197`
+checks described above. The subsequent ratio-test review adds eight checks;
+see the current validation note under Status.
 [Equations, numerical gates and limitations](docs/socp-symmetric-kkt.md).
 
 **Rounding-independence fixes (2026-10-21).** Building the suite without FMA
@@ -364,7 +366,7 @@ macOS/clang `-O2` build was masking:
   1e-10(1+|b|)` is now recomputed with the R+ block in augmented form, which
   stays on for the rest of the solve. This fixes T244 at every level and also
   lets the first pass of T111's PPOW model answer on its own. The check fires
-  in 25 of the 171 examples; nine print a different last digit (all still
+  in 24 of the 171 examples in the retained run logs; nine print a different last digit (all still
   within tolerance: `qcqp_sdo_relaxation` −0.19999997 → −0.20000000,
   `risk_parity` spread 3.3e-4 → 6.2e-5, `mle_density` objective error
   4e-10 → 9e-10);
@@ -436,11 +438,22 @@ failure is not counted as a green validation.
 ## Status
 
 Last full validation at all four levels: **4905 checks, 0 failures** at `-O0`,
-`-O1`, `-O2`, `-O3`. The suite has since grown to **5168 checks**
+`-O1`, `-O2`, `-O3`. At checkpoint `472dfbb` the suite has **5168 checks**
 (2026-10-21): 0 failures at `-O2` and `-O3`, with the default and the opt-in
 SOCP route, and under ASan; 2 failures (`T197`, opt-in HSD) at `-O0`, `-O1`,
 without FMA, and under UBSan or ASan+UBSan, with no sanitizer diagnostic.
 **171/171** examples exit 0. Warning-free build at all four levels.
+
+A subsequent independent review corrects the linear SOC ratio-test sign:
+from `(1,0)`, direction `(1,1)` permits step 1, whereas `(-1,1)` stops at
+0.5. T287 checks these exact crossings and R+ guards. The updated suite
+has **5176 checks**, all passing at O2 with both backends. Full ASan+UBSan
+runs report **5174 passes / 2 failures** with both backends: only the two
+T197 checks fail, with no sanitizer diagnostic. The eight new geometry
+checks also pass at O0/O1/O3, without FMA and under ASan+UBSan.
+The earlier full build matrix and 171-example results above belong to
+`472dfbb`; they were not all rerun after this follow-up.
+See [causal evidence and remaining HSD defect](docs/sanitizer-regression-analysis.md).
 
 The SDP predictor/corrector change reuses LU factors within an iteration only
 when the equilibrated matrices are identical. T272 covers a mixed SOC/PSD

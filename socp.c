@@ -53,7 +53,7 @@ enum { OPT_OK = 0, OPT_MAXITER, OPT_MEMORY, OPT_SINGULAR };
  * the same A t^2 + B t + C that sdp.c's soc_step solves.  A discriminant below
  * zero, or a first crossing that is not positive, means the direction does not
  * meet the boundary inside the unit step, which is t = 1. */
-static double step_len(const double *v, const double *dv, int type, int k) {
+double socp_step_len(const double *v, const double *dv, int type, int k) {
     if (type == 0) {
         double a = 1.0;
         for (int i = 0; i < k; i++)
@@ -74,7 +74,10 @@ static double step_len(const double *v, const double *dv, int type, int k) {
     double B = 2.0 * (cross - v[0] * dv[0]);
     double C = n2 - v[0] * v[0];   /* < 0 strictly inside */
     if (fabs(A) < 1e-300) {
-        if (B < -1e-300) {   /* C > 0 (already outside): same rule as R+ */
+        /* B*a+C <= 0 has an UPPER bound only when B is positive.
+         * For B <= 0 an interior point moves farther into the cone. */
+        if (C > 0.0 || v[0] < 0.0) return 0.0;
+        if (B > 1e-300) {
             double t = -C / B; if (t < 0.0) t = 0.0; return t < 1.0 ? t : 1.0;
         }
         return 1.0;
@@ -513,9 +516,9 @@ int socp_solve(int n, int p,
         {
             int o = 0;
             for (int k = 0; k < ncones; k++) {
-                double a = step_len(&s[o], &ds_aff[o], cones[k].type, cones[k].nmem);
+                double a = socp_step_len(&s[o], &ds_aff[o], cones[k].type, cones[k].nmem);
                 if (a < ap) ap = a;
-                a = step_len(&lm[o], &dlm_aff[o], cones[k].type, cones[k].nmem);
+                a = socp_step_len(&lm[o], &dlm_aff[o], cones[k].type, cones[k].nmem);
                 if (a < ad) ad = a;
                 o += cones[k].nmem;
             }
@@ -575,9 +578,9 @@ int socp_solve(int n, int p,
         {
             int o = 0;
             for (int k = 0; k < ncones; k++) {
-                double a = step_len(&s[o], &ds[o], cones[k].type, cones[k].nmem);
+                double a = socp_step_len(&s[o], &ds[o], cones[k].type, cones[k].nmem);
                 if (a < apm) apm = a;
-                a = step_len(&lm[o], &dlm[o], cones[k].type, cones[k].nmem);
+                a = socp_step_len(&lm[o], &dlm[o], cones[k].type, cones[k].nmem);
                 if (a < adm) adm = a;
                 o += cones[k].nmem;
             }
@@ -1368,8 +1371,8 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
             if(f)splu_free(f);
             free(Mp);free(Mi);free(Mv);status=OPT_SINGULAR;goto done;
         }
-        double ap=1,ad=1;{int o=0;for(int k=0;k<ncones;k++){double a=step_len(&s[o],&dsa[o],cones[k].type,cones[k].nmem);if(a<ap)ap=a;
-            a=step_len(&lm[o],&dlma[o],cones[k].type,cones[k].nmem);if(a<ad)ad=a;o+=cones[k].nmem;}}
+        double ap=1,ad=1;{int o=0;for(int k=0;k<ncones;k++){double a=socp_step_len(&s[o],&dsa[o],cones[k].type,cones[k].nmem);if(a<ap)ap=a;
+            a=socp_step_len(&lm[o],&dlma[o],cones[k].type,cones[k].nmem);if(a<ad)ad=a;o+=cones[k].nmem;}}
         double mu_aff=0;{int o=0;for(int k=0;k<ncones;k++){for(int i=0;i<cones[k].nmem;i++)mu_aff+=(s[o+i]+ap*dsa[o+i])*(lm[o+i]+ad*dlma[o+i]);o+=cones[k].nmem;}}
         mu_aff/=(double)(K>0?K:1);
         double sigma=(mu>0)?(mu_aff/mu):0;sigma=sigma*sigma*sigma;if(!(sigma>1e-8))sigma=1e-8;if(sigma>1)sigma=1;
@@ -1384,8 +1387,8 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         if(Schol){spchol_free(Schol);Schol=NULL;}
         if(f){splu_free(f);f=NULL;}
         free(Mp);free(Mi);free(Mv); Mp=Mi=NULL;Mv=NULL;
-        double apm=1,adm=1;{int o=0;for(int k=0;k<ncones;k++){double a=step_len(&s[o],&ds[o],cones[k].type,cones[k].nmem);if(a<apm)apm=a;
-            a=step_len(&lm[o],&dlm[o],cones[k].type,cones[k].nmem);if(a<adm)adm=a;o+=cones[k].nmem;}}
+        double apm=1,adm=1;{int o=0;for(int k=0;k<ncones;k++){double a=socp_step_len(&s[o],&ds[o],cones[k].type,cones[k].nmem);if(a<apm)apm=a;
+            a=socp_step_len(&lm[o],&dlm[o],cones[k].type,cones[k].nmem);if(a<adm)adm=a;o+=cones[k].nmem;}}
         double tau=1.0-mu*0.01;if(tau<0.99)tau=0.99;if(tau>0.99995)tau=0.99995;
         double apf=tau*apm,adf=tau*adm;if(apf>1)apf=1;if(adf>1)adf=1;
         if(apf<0.1*(tau*ap)||adf<0.1*(tau*ad)){apf=tau*ap;if(apf>1)apf=1;adf=tau*ad;if(adf>1)adf=1;

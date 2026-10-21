@@ -20607,7 +20607,34 @@ static void test_t286(void) {
 }
 
 /* test runner: executes all tests and prints the pass/fail summary. */
+/* T287: exact cone geometry, independent of an IPM rounding trajectory. */
+static void test_t287(void) {
+    cur_name = "T287 cone ratio test geometry";
+    double v[2] = {1.0, 0.0};
+    double inward[2] = {1.0, 1.0}, outward[2] = {-1.0, 1.0};
+    double transverse[2] = {0.0, 2.0}, axial[2] = {-2.0, 0.0};
+    close_enough_tol(socp_step_len(v, inward, 1, 2), 1.0, 1e-15,
+                     "linear inward direction takes a full step");
+    double a = socp_step_len(v, outward, 1, 2);
+    close_enough_tol(a, 0.5, 1e-15, "linear outward direction stops at cone boundary");
+    check(fabs(v[1] + a*outward[1]) <= v[0] + a*outward[0],
+          "linear step remains in the positive SOC sheet");
+    close_enough_tol(socp_step_len(v, transverse, 1, 2), 0.5, 1e-15,
+                     "quadratic crossing");
+    close_enough_tol(socp_step_len(v, axial, 1, 2), 0.5, 1e-15,
+                     "axial direction stops at the apex");
+    double positive[1] = {2.0}, negative[1] = {-1e-16}, down[1] = {-4.0};
+    close_enough_tol(socp_step_len(positive, down, 0, 1), 0.5, 1e-15,
+                     "R+ ratio test");
+    check(socp_step_len(negative, down, 0, 1) == 0.0,
+          "rounded negative R+ coordinate cannot produce a backward step");
+    double outside[2] = {0.5, 1.0};
+    check(socp_step_len(outside, inward, 1, 2) == 0.0,
+          "linear SOC test refuses an already exterior point");
+}
+
 int main(void) {
+    test_t287();
     test_t286();
     test_t285();
     test_t284();
