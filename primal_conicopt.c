@@ -32,8 +32,10 @@ static double conic_aij(PRIMALtask_t t, int i, int j) {
 /* kinds of R_+ rows / equalities (for dual mapping) */
 enum { CR_ROWLO = 0, CR_ROWUP = 1, CR_VARLO = 2, CR_VARUP = 3,
        CR_VARNEG = 4, CR_CUT = 5, CR_UNUSED = 6, CR_PSDCUT = 7,
-       EQ_FXROW = 0, EQ_FXVAR = 1, EQ_RQUAD_U = 2, EQ_RQUAD_V = 3,
-       EQ_RQUAD_W = 4, EQ_RQUAD_T = 5, EQ_RQUAD_R = 6, EQ_LINK = 7 };
+       /* RQUAD head rows on the members, rowIdx = the user cone k:
+        * T = (u+v)/sqrt2, R = (u-v)/sqrt2 */
+       CR_RQUAD_T = 8, CR_RQUAD_R = 9,
+       EQ_FXROW = 0, EQ_FXVAR = 1, EQ_LINK = 7 };
 
 /* ---- nonlinear cones (PEXP/DEXP/PPOW/RPOW): tangent cuts ----
  * The PEXP/DEXP/PPOW/RPOW branch is not handled by a native conic solver:
@@ -191,7 +193,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         if (t->cone_type[k] == PRIMAL_CT_QUAD) {
             nSocTot += m;
         } else if (t->cone_type[k] == PRIMAL_CT_RQUAD) {
-            naux += m + 2;  neq += m + 2;  nSocTot += m;
+            nSocTot += m;   /* rows written on the members: no aux, no equalities */
         } else {
             /* nonlinear: 3 auxiliary variables (signed members), 3
              * link equalities, 2 sign rows on the auxiliaries, tangent cuts on
@@ -387,9 +389,8 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     nNlin = 0;
     /* auxiliary base for ALL cones, in order of appearance */
     for (int k = 0; k < t->numcones; k++) {
-        int ct = t->cone_type[k], m = t->cone_nmem[k];
-        if (ct == PRIMAL_CT_RQUAD) { auxBase[k] = nvar + nauxDone; nauxDone += m + 2; }
-        else if (ct == PRIMAL_CT_QUAD) auxBase[k] = -1;
+        int ct = t->cone_type[k];
+        if (ct == PRIMAL_CT_QUAD || ct == PRIMAL_CT_RQUAD) auxBase[k] = -1;
         else { auxBase[k] = nvar + nauxDone; nauxDone += 3; }
     }
     nauxDone = 0;
@@ -436,37 +437,32 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             }
             ncones_solver++;
         } else if (t->cone_type[k] == PRIMAL_CT_RQUAD) {
-            /* RQUAD members: u=mem[0], v=mem[1], w_i=mem[2+i]
-             * aux vars: U=nvar+nauxDone, V=+1, W_i=+2.., T=+m, R=+m+1 */
-            int U = auxBase[k], V = U + 1, W0 = U + 2;
-            int T = W0 + (m - 2), R = T + 1;
-            /* equalities: U-u, V-v, W_i-w_i, sqrt2*T-u-v, sqrt2*R-u+v */
-            eqKind[e] = EQ_RQUAD_U; eqIdx[e] = mem[0];
-            E[e * ntot + U] = 1.0; E[e * ntot + mem[0]] = -1.0; d[e] = 0.0; e++;
-            eqKind[e] = EQ_RQUAD_V; eqIdx[e] = mem[1];
-            E[e * ntot + V] = 1.0; E[e * ntot + mem[1]] = -1.0; d[e] = 0.0; e++;
-            for (int i = 2; i < m; i++) {
-                eqKind[e] = EQ_RQUAD_W; eqIdx[e] = mem[i];
-                E[e * ntot + W0 + i - 2] = 1.0; E[e * ntot + mem[i]] = -1.0; d[e] = 0.0; e++;
-            }
-            eqKind[e] = EQ_RQUAD_T; eqIdx[e] = -1;
-            E[e * ntot + T] = sqrt(2.0); E[e * ntot + U] = -1.0; E[e * ntot + V] = -1.0; d[e] = 0.0; e++;
-            eqKind[e] = EQ_RQUAD_R; eqIdx[e] = -1;
-            E[e * ntot + R] = sqrt(2.0); E[e * ntot + U] = -1.0; E[e * ntot + V] = 1.0; d[e] = 0.0; e++;
-            /* SOC over (T, R, W_1..W_{m-2}) with identity G rows */
+            /* RQUAD members u=mem[0], v=mem[1], w_i=mem[2+i]: 2uv >= |w|^2,
+             * u,v >= 0.  With T=(u+v)/sqrt2 and R=(u-v)/sqrt2, T^2-R^2 = 2uv,
+             * so the block is the SOC (T, R, w) written DIRECTLY on the
+             * members -- an orthogonal transform of two slack rows, exactly
+             * like QUAD's identity rows.  It used to go through m+2 auxiliary
+             * copies and m+2 link equalities; the members then had no cone row
+             * of their own, H = G'Q(w)^-1 G was singular, NT was refused at
+             * every iteration and the whole solve ran on the augmented LU
+             * (SOCP 200 rotated: n=800, p=501, 6/6 LU steps, ~20 ms against
+             * 0.5 ms for the same size unrotated).  The member duals are the
+             * same: the old link multipliers were y_U=(lam_T+lam_R)/sqrt2,
+             * y_V=(lam_T-lam_R)/sqrt2, y_W=lam_W, which is G'lam here. */
+            double r2 = 1.0 / sqrt(2.0);
             cones[ncones_solver].type = 1;
             cones[ncones_solver].nmem = m;
             cones[ncones_solver].mem = cmem + co;
-            cmem[co] = T;
-            G[r * ntot + T] = 1.0; h[r] = 0.0;
-            rowKind[r] = CR_VARLO; rowIdx[r] = T; r++; co++;
-            cmem[co] = R;
-            G[r * ntot + R] = 1.0; h[r] = 0.0;
-            rowKind[r] = CR_VARLO; rowIdx[r] = R; r++; co++;
+            cmem[co] = mem[0];
+            G[r * ntot + mem[0]] += r2; G[r * ntot + mem[1]] += r2; h[r] = 0.0;
+            rowKind[r] = CR_RQUAD_T; rowIdx[r] = k; r++; co++;
+            cmem[co] = mem[1];
+            G[r * ntot + mem[0]] += r2; G[r * ntot + mem[1]] -= r2; h[r] = 0.0;
+            rowKind[r] = CR_RQUAD_R; rowIdx[r] = k; r++; co++;
             for (int i = 2; i < m; i++) {
-                cmem[co] = W0 + i - 2;
-                G[r * ntot + W0 + i - 2] = 1.0; h[r] = 0.0;
-                rowKind[r] = CR_VARLO; rowIdx[r] = W0 + i - 2; r++; co++;
+                cmem[co] = mem[i];
+                G[r * ntot + mem[i]] = 1.0; h[r] = 0.0;
+                rowKind[r] = CR_VARLO; rowIdx[r] = mem[i]; r++; co++;
             }
             ncones_solver++;
         }
@@ -568,6 +564,22 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
                                     t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm)
                 : socp_solve(ntot, neq, E, d, c, ncones_solver, cones, G, h,
                              t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm);
+            /* A dense solve that fails gets one sparse attempt on the same
+             * system before the round gives up; only a SUCCESS replaces its
+             * status, so a model the dense path cannot answer (an infeasible
+             * one, T101 C) keeps the code its verdict is built on.  Measured on
+             * the MISOCP T212 (k-means, RQUAD + DJC): 5 of 25 dense node
+             * relaxations stalled at gap ~0.1 with the auxiliary RQUAD form and
+             * 10 of 32 with the direct one -- the branch-and-bound found the
+             * optimum only by chance before and lost it after (2.0 for 1.0);
+             * the sparse engine answers every one of them.  A dense solve
+             * that succeeds is untouched.  The rescue uses the production
+             * NT/LU engines only: with the opt-in GMB_SOCP_LDL backend one
+             * T212 node still failed at -O0 and under sanitizers. */
+            if (st != 0 && !sparse_conic &&
+                socp_solve_sparse_production(ntot, neq, E, d, c, ncones_solver, cones, G, h,
+                                  t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm) == 0)
+                st = 0;
             if (st != 0) {
                 /* No point is published here. The iterate socp_solve left in
                  * xs/ys/lm is copied into t->x/barx/barsj by the publication
@@ -723,7 +735,16 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     }
     for (int q = 0; q < r; q++) {
         double lam = lm[q];
-        if (lam == 0.0 || rowIdx[q] >= nvar) continue;  /* aux rows: dual discarded */
+        if (lam == 0.0) continue;
+        if (rowKind[q] == CR_RQUAD_T || rowKind[q] == CR_RQUAD_R) {
+            /* zmin -= G'lam on the two head members (rowIdx = cone index) */
+            const int *mem = t->cone_mem[rowIdx[q]];
+            double r2 = 1.0 / sqrt(2.0);
+            zmin[mem[0]] -= r2 * lam;
+            zmin[mem[1]] -= (rowKind[q] == CR_RQUAD_T ? r2 : -r2) * lam;
+            continue;
+        }
+        if (rowIdx[q] >= nvar) continue;  /* aux rows: dual discarded */
         switch (rowKind[q]) {
             case CR_ROWLO: ymin[rowIdx[q]] -= lam; break;
             case CR_ROWUP: ymin[rowIdx[q]] += lam; break;
@@ -761,10 +782,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
                 zmin[eqAux[q]] += ye;
                 zmin[eqIdx[q]] -= ye;
                 break;
-            case EQ_RQUAD_U: zmin[eqIdx[q]] -= ye; break;
-            case EQ_RQUAD_V: zmin[eqIdx[q]] -= ye; break;
-            case EQ_RQUAD_W: zmin[eqIdx[q]] -= ye; break;
-            default: break;  /* T,R equalities: aux only */
+            default: break;
         }
     }
     /* FX rows: ymin_i = +y_eq (E row = a_i) */

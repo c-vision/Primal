@@ -1135,9 +1135,26 @@ static double spchol_cond_diag(const SpChol *L){
  *
  *       GMB_NO_NT environment variable forces the LU path.
  */
+static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,const double *c,
+                      int ncones,const SocpCone *cones,const double *G,const double *h,
+                      double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam,
+                      int allow_qd);
 int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *c,
                       int ncones,const SocpCone *cones,const double *G,const double *h,
                       double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam)
+{
+    return socp_solve_sparse_impl(n,p,E,d,c,ncones,cones,G,h,tol_gap,tol_feas,max_iter,x,y,lam,1);
+}
+int socp_solve_sparse_production(int n,int p,const double *E,const double *d,const double *c,
+                      int ncones,const SocpCone *cones,const double *G,const double *h,
+                      double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam)
+{
+    return socp_solve_sparse_impl(n,p,E,d,c,ncones,cones,G,h,tol_gap,tol_feas,max_iter,x,y,lam,0);
+}
+static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,const double *c,
+                      int ncones,const SocpCone *cones,const double *G,const double *h,
+                      double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam,
+                      int allow_qd)
 {
     if(n<0||p<0||ncones<0) return OPT_MAXITER;
     int K=0; for(int k=0;k<ncones;k++) K+=cones[k].nmem;
@@ -1179,7 +1196,7 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     int *Hperm=NULL,*Hpat=NULL; int Hpatn=-1;
     SocpKkt *qd=NULL;
     double *Qw=NULL;
-    int qd_enabled=getenv("GMB_SOCP_LDL")!=NULL;
+    int qd_enabled=allow_qd&&getenv("GMB_SOCP_LDL")!=NULL;
     if(!memok){status=OPT_MEMORY;goto done;}
     for(int k=0;k<ncones;k++)
         if(cones[k].type!=0&&cones[k].nmem>NT_MAXK) qd_enabled=0;

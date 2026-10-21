@@ -18,7 +18,7 @@ exponential/power cones *and* mixed-integer variables with an interior-point
 method, in C, with no dependencies and no licence server.
 
 It is not a replacement for HiGHS on large LP/MIP. Conic performance depends
-on the family; rotated SOCP still trails Clarabel and SDP trails SCS. [How it compares](#how-it-compares) says by
+on the family; SOCP (rotated cones included) still trails Clarabel and SDP trails SCS. [How it compares](#how-it-compares) says by
 how much.
 
 ## What it solves
@@ -464,7 +464,45 @@ flat objective, its own checks still pass). The comparison with Clarabel
 needs `tools/socp_compare.py` and the reference Python environment; it
 reports SOCP 120/200 at 0.253 / 0.491 ms against Clarabel construction+solve
 0.333 / 0.612 ms, a measurement taken by the previous session and not
-repeated here. Rotated cones remain far slower than Clarabel.
+repeated here.
+
+**Rotated cones written on their members (2026-10-21).** A rotated cone
+`2uv >= |w|^2` used to reach the SOCP solver through `m+2` auxiliary copies of
+its members and `m+2` link equalities, with the cone rows on the copies. The
+members then had no cone row of their own, the NT matrix `G'Q(w)^-1 G` was
+singular and every iteration ran on the augmented LU (SOCP 200 rotated:
+n = 800, p = 501, 6 of 6 steps LU). The block is now the SOC
+`((u+v)/sqrt2, (u-v)/sqrt2, w)` written directly on the members — an
+orthogonal transform of two rows, like QUAD's identity rows — so the same
+model is n = 300, p = 1 and runs on NT (6 NT + 2 LU steps). The published
+member duals are the same (`G'lambda` reproduces the old link multipliers
+exactly). Measured with the C worker, 21 rounds interleaved with `0180c52`:
+
+| case | before | after | change | after faster |
+|---|---:|---:|---:|---:|
+| SOCP 120, rotated cones | 6.105 ms | 1.658 ms | **−72.8%** | 21/21 |
+| SOCP 200, rotated cones | 19.715 ms | 3.797 ms | **−80.7%** | 21/21 |
+| SOCP 40 / 120 / 200, canonical | 0.364 / 0.292 / 0.528 ms | 0.366 / 0.290 / 0.530 ms | within ±1% | — |
+| SOCP 200, unequal costs | 0.571 ms | 0.576 ms | +0.9% | 11/21 |
+
+Both versions end `OPTIMAL` on the rotated cases with objectives equal to
+~1e-9; the gap gets tighter (SOCP 120 rotated 4.4e-9 → 4.8e-12). The table's
+SOCP rows are unchanged (that family has no rotated cone). Against Clarabel
+the rotated cases move from ~15× / ~32× to roughly ~4× / ~6× slower — derived
+from the previous session's Clarabel timings (~0.41 / ~0.62 ms), not
+re-measured, so indicative only.
+
+The smaller model also exposed the dense SOCP solver used for small
+relaxations: on the MISOCP `T212` (k-means, rotated cones + disjunctions) 5 of
+25 node relaxations already stalled before (the optimum was found by chance)
+and 10 of 32 after, losing it (2.0 for 1.0). A dense solve that fails now gets
+one attempt with the sparse production engines (`socp_solve_sparse_production`,
+never the opt-in LDL backend) before the round gives up; only a success
+replaces its status, so infeasible models keep their verdict (`T101 C`). `T212`
+then answers every node. Suite 5233/0 at `-O0`..`-O3`, without FMA and under
+ASan + UBSan, with both SOCP backends at every level; 171/171 examples exit 0,
+with last-digit changes in `lsq_l1_penalty` and `primal_svm`, and `rank_one`
+returning the other of its two symmetric optima `b = (3/2, 0)`.
 
 The **reference columns** (HiGHS, Clarabel, SCS, SCIP) are still the
 **2026-10-20** snapshot: they need `bench_all.py` with the reference solvers'
@@ -578,7 +616,7 @@ Open algorithmic work, largest first:
 - **Symmetric KKT in the SOCP route**, so the sparse symmetric factorization can
   replace the sparse LU there.
 - **Large-scale conic performance.** The second-order SOCP corrector reduces
-  the canonical-family gap; rotated cones remain much slower than Clarabel.
+  the canonical-family gap and direct rotated-cone rows the rotated one.
 - **MIP.** No conflict analysis, no pseudo-cost propagation, no Gomory
   mixed-integer cuts.
 - **Parameter coverage.** 31 declared, all but one wired to behaviour

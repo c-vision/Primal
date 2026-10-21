@@ -58,6 +58,15 @@ int socp_solve_sparse(int n, int p,
                       const double *G, const double *h,
                       double tol_gap, double tol_feas, int max_iter,
                       double *x /*n*/, double *y /*p*/, double *lam /*K*/);
+/* Same, with the production NT/LU engines only: the opt-in GMB_SOCP_LDL
+ * backend is not used even when the variable is set.  For rescue solves,
+ * which must not depend on an experimental engine. */
+int socp_solve_sparse_production(int n, int p,
+                      const double *E, const double *d, const double *c,
+                      int ncones, const SocpCone *cones,
+                      const double *G, const double *h,
+                      double tol_gap, double tol_feas, int max_iter,
+                      double *x /*n*/, double *y /*p*/, double *lam /*K*/);
 
 /* Internal symmetric NT linear system, independent of IPM iteration policy.
  * [0 E' -G'; E 0 0; -G 0 -Q]. Q is block diagonal; each cone block starts
