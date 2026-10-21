@@ -20695,8 +20695,52 @@ static void test_t288(void) {
     unsetenv("GMB_SDP_HSD");
 }
 
+/* T289: independent matrix square root oracle for the balanced SOC
+ * second-order complementarity correction. No IPM trajectory is assumed. */
+static void test_t289(void) {
+    cur_name = "T289 balanced SOC Mehrotra correction";
+    for (int r=0;r<16;r++) {
+        double w[3]={1.3+.05*r,.2,-.12},lam[3]={2,.1*r/16,-.2};
+        double da[3]={.2,-.15,.07},db[3]={-.1,.04,.15};
+        double s[3]={0},shift[3],Q[9],W[9]={0},Wi[9]={0},ev[3],V[9];
+        double det=w[0]*w[0]-w[1]*w[1]-w[2]*w[2];
+        for(int i=0;i<3;i++)for(int j=0;j<3;j++)
+            Q[3*i+j]=i==0&&j==0 ? 2*w[0]*w[0]-det :
+                (i==0||j==0) ? 2*w[0]*w[i+j] : 2*w[i]*w[j]+(i==j?det:0);
+        for(int i=0;i<3;i++)for(int j=0;j<3;j++)s[i]+=Q[3*i+j]*lam[j];
+        dmat_eig_jacobi(3,Q,ev,V);
+        for(int i=0;i<3;i++)for(int j=0;j<3;j++)for(int k=0;k<3;k++) {
+            W[3*i+j]+=V[3*i+k]*sqrt(ev[k])*V[3*j+k];
+            Wi[3*i+j]+=V[3*i+k]/sqrt(ev[k])*V[3*j+k];
+        }
+        int rc=socp_nt_corrector(1,3,w,s,lam,da,db,shift);
+        check(rc==0,"balanced correction exists for interior points");
+        if(rc)continue;
+        double a[3]={0},b[3]={0},v[3]={0},c[3]={0};
+        for(int i=0;i<3;i++)for(int j=0;j<3;j++) {
+            a[i]+=Wi[3*i+j]*da[j];b[i]+=W[3*i+j]*db[j];
+            v[i]+=W[3*i+j]*lam[j];c[i]+=W[3*i+j]*shift[j];
+        }
+        double res[3]={v[0]*c[0]+v[1]*c[1]+v[2]*c[2]
+                              +a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
+                       v[0]*c[1]+v[1]*c[0]+a[0]*b[1]+a[1]*b[0],
+                       v[0]*c[2]+v[2]*c[0]+a[0]*b[2]+a[2]*b[0]};
+        check(isfinite(res[0])&&isfinite(res[1])&&isfinite(res[2])
+              && fmax(fabs(res[0]),fmax(fabs(res[1]),fabs(res[2])))<1e-10,
+              "A(v) W shift cancels the independent affine Jordan product");
+    }
+    double s[2]={2,4},da[2]={1,-2},db[2]={-3,.5},shift[2];
+    check(socp_nt_corrector(0,2,NULL,s,NULL,da,db,shift)==0,"R+ correction exists");
+    close_enough_tol(shift[0],1.5,1e-15,"R+ first second-order product");
+    close_enough_tol(shift[1],.25,1e-15,"R+ second second-order product");
+    s[0]=0;
+    check(socp_nt_corrector(0,2,NULL,s,NULL,da,db,shift)!=0,"R+ boundary rejected");
+    check(socp_nt_corrector(1,33,NULL,NULL,NULL,NULL,NULL,NULL)!=0,"oversized block rejected");
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t289();
     test_t288();
     test_t287();
     test_t286();

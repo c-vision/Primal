@@ -965,6 +965,41 @@ static int nt_setup(const double *s,const double *lam,int k,double *w,double *Qw
     if(nt_inv(s,k,sinv)) return -1;
     return 0;
 }
+
+/* Second-order complementarity correction in balanced NT coordinates.
+ * W=Q(sqrt(w)), v=W*lambda=W^-1*s. The returned dual shift satisfies
+ * A(v) W shift = -(W^-1 ds_aff) o (W dlambda_aff). */
+int socp_nt_corrector(int type,int k,const double *w,const double *s,
+                      const double *lam,const double *dsa,const double *dla,double *shift){
+    if(type==0){
+        for(int i=0;i<k;i++){
+            if(!(s[i]>0))return -1;
+            shift[i]=-dsa[i]*dla[i]/s[i];
+            if(!isfinite(shift[i]))return -1;
+        }
+        return 0;
+    }
+    if(k<2||k>NT_MAXK)return -1;
+    double root[NT_MAXK],invroot[NT_MAXK],v[NT_MAXK];
+    double a[NT_MAXK],b[NT_MAXK],prod[NT_MAXK],q[NT_MAXK];
+    nt_sqrt(w,k,root);
+    if(nt_inv(root,k,invroot))return -1;
+    nt_Qapp(root,lam,k,v);
+    nt_Qapp(invroot,dsa,k,a);
+    nt_Qapp(root,dla,k,b);
+    nt_amul(a,b,k,prod);
+    double det=v[0]*v[0],dot=0;
+    for(int i=1;i<k;i++){det-=v[i]*v[i];dot+=v[i]*prod[i];}
+    if(!(det>0)||!(v[0]>0))return -1;
+    q[0]=(v[0]*prod[0]-dot)/det;
+    for(int i=1;i<k;i++)q[i]=(prod[i]-v[i]*q[0])/v[0];
+    nt_Qapp(invroot,q,k,shift);
+    for(int i=0;i<k;i++){
+        shift[i]=-shift[i];
+        if(!isfinite(shift[i]))return -1;
+    }
+    return 0;
+}
 /* direction context: either the NT Cholesky factors or the sparse-LU factor */
 typedef struct {
     int n,p,K,use_nt,ncones,maxk;
@@ -974,6 +1009,7 @@ typedef struct {
     SpChol *Hchol,*Schol; double *Z;  /* NT: H=L L', S=E H^{-1}E', Z=H^{-1}E' */
     SpluFact *lu;                     /* LU: augmented KKT */
     SocpKkt *qd; const double *Qw;    /* optional symmetric augmented NT KKT */
+    const double *correction;
     double *b1,*b2,*tmp,*rhs;
 } DirCtx;
 /* One Newton step (dx, dy, ds, dlam) of the conic KKT at a given (sigma, mu).
@@ -1014,7 +1050,8 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
     } else if(c->use_nt){
         for(int a=0;a<n;a++) c->b1[a]=-rd[a];
         {int o=0;for(int k=0;k<c->ncones;k++){int kk=c->cones[k].nmem;
-          for(int i=0;i<kk;i++){double t=lm[o+i]-sigma*mu*c->sinv[o+i];
+          for(int i=0;i<kk;i++){double t=lm[o+i]-sigma*mu*c->sinv[o+i]
+              -(c->correction?c->correction[o+i]:0.0);
             for(int i2=0;i2<kk;i2++) t+=c->Qwi[o*c->maxk+i*kk+i2]*rg[o+i2];
             for(int q=c->SG->rp[o+i];q<c->SG->rp[o+i+1];q++) c->b1[c->SG->ri[q]]-=c->SG->rv[q]*t;}
           o+=kk;}}
@@ -1030,7 +1067,8 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
         sp_row(c->SG,dx,ds,K);
         for(int k=0;k<K;k++) ds[k]+=rg[k];
         {int o=0;for(int k=0;k<c->ncones;k++){int kk=c->cones[k].nmem;
-          for(int i=0;i<kk;i++){double t=-lm[o+i]+sigma*mu*c->sinv[o+i];
+          for(int i=0;i<kk;i++){double t=-lm[o+i]+sigma*mu*c->sinv[o+i]
+              +(c->correction?c->correction[o+i]:0.0);
             for(int i2=0;i2<kk;i2++) t-=c->Qwi[o*c->maxk+i*kk+i2]*ds[o+i2];
             dlm[o+i]=t;}
           o+=kk;}}
@@ -1042,6 +1080,7 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
           if(c->cones[k].type==0) for(int i=0;i<kk;i++) c->rhs[o+i]=-Asc[o+i]+sigma*mu-Alr[o+i];
           else { c->rhs[o]=-Asc[o]+sigma*mu-Alr[o]; for(int i=1;i<kk;i++) c->rhs[o+i]=-Asc[o+i]-Alr[o+i]; }
           o+=kk;}}
+        if(c->correction)for(int i=0;i<K;i++)c->rhs[i]+=c->correction[i];
         for(int i=0;i<p;i++) c->rhs[K+i]=-rp[i];
         for(int j=0;j<n;j++) c->rhs[K+p+j]=-rd[j];
         if(splu_solve(c->lu,c->rhs)) return -1;
@@ -1123,13 +1162,14 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
     int maxk=1; for(int k=0;k<ncones;k++) if(cones[k].nmem>maxk) maxk=cones[k].nmem;
     double *Qwi=(double*)malloc((size_t)(K>0?K:1)*(size_t)maxk*sizeof(double));
     double *sinv=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));
+    double *correction=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));
     double *wnt=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));
     double *Znt=(double*)malloc((size_t)(n>0?n:1)*(size_t)(p>0?p:1)*sizeof(double));
     double *nb1=(double*)malloc((size_t)(n>0?n:1)*sizeof(double));
     double *nb2=(double*)malloc((size_t)(p>0?p:1)*sizeof(double));
     Tri3 stri={0};
     Tri3 tri={0};
-    int memok=off&&xs&&ys&&s&&lm&&rd&&rp&&rg&&Asc&&Alr&&rhs&&dx&&dy&&ds&&dlm&&dxa&&dya&&dsa&&dlma&&t1&&wacc&&wst&&wtouch&&Qwi&&sinv&&wnt&&Znt&&nb1&&nb2;
+    int memok=off&&xs&&ys&&s&&lm&&rd&&rp&&rg&&Asc&&Alr&&rhs&&dx&&dy&&ds&&dlm&&dxa&&dya&&dsa&&dlma&&t1&&wacc&&wst&&wtouch&&Qwi&&sinv&&wnt&&Znt&&nb1&&nb2&&correction;
     /* The NT normal-equation matrix H = G'Q(w)^{-1}G changes with the iterate
      * only through the VALUES of Q(w) -- its sparsity is fixed (measured: the
      * ordered CSC of H is byte-identical from the second iteration on, on every
@@ -1377,6 +1417,19 @@ int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *
         mu_aff/=(double)(K>0?K:1);
         double sigma=(mu>0)?(mu_aff/mu):0;sigma=sigma*sigma*sigma;if(!(sigma>1e-8))sigma=1e-8;if(sigma>1)sigma=1;
         /* corrector: same factors, only the cone rhs changes (sigma > 0) */
+        /* The experimental QD engine retains its centering-only corrector:
+         * the balanced second-order step can stagnate there without FMA
+         * (T72 at tol=1e-10). Enable it only for the production NT/LU engines. */
+        {int o=0,ok=!use_qd;
+         for(int k=0;k<ncones&&ok;k++){
+            int kk=cones[k].nmem;
+            if(use_nt) ok=socp_nt_corrector(cones[k].type,kk,wnt+o,s+o,lm+o,dsa+o,dlma+o,correction+o)==0;
+            else if(cones[k].type==0)
+                for(int i=0;i<kk;i++)correction[o+i]=-dsa[o+i]*dlma[o+i];
+            else {arrow_mul(dsa+o,dlma+o,kk,correction+o);for(int i=0;i<kk;i++)correction[o+i]=-correction[o+i];}
+            o+=kk;
+         }
+         if(ok)dctx.correction=correction;}
         if(conic_dir(&dctx,sigma,mu,lm,rg,rd,rp,Asc,Alr,dx,dy,ds,dlm)){
             if(use_qd){qd_enabled=0;it--;continue;}
             if(Hchol)spchol_free(Hchol);
@@ -1435,7 +1488,7 @@ done:
     free(off);free(xs);free(ys);free(s);free(lm);free(rd);free(rp);free(rg);free(Asc);free(Alr);free(rhs);
     free(dx);free(dy);free(ds);free(dlm);free(dxa);free(dya);free(dsa);free(dlma);free(t1);
     free(wacc);free(wst);free(wtouch); free(tri.r);free(tri.c);free(tri.v);
-    free(Qwi);free(sinv);free(wnt);free(Znt);free(nb1);free(nb2);
+    free(Qwi);free(sinv);free(wnt);free(Znt);free(nb1);free(nb2);free(correction);
     free(stri.r);free(stri.c);free(stri.v);
     spmat_free(&SE);spmat_free(&SG);
     return status;

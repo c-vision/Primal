@@ -17,8 +17,8 @@ a permissive licence, none other does semidefinite programming *and*
 exponential/power cones *and* mixed-integer variables with an interior-point
 method, in C, with no dependencies and no licence server.
 
-It is not a replacement for HiGHS on large LP/MIP, and it is slower than
-Clarabel on SOCP and SCS on SDP. [How it compares](#how-it-compares) says by
+It is not a replacement for HiGHS on large LP/MIP. Conic performance depends
+on the family; rotated SOCP still trails Clarabel and SDP trails SCS. [How it compares](#how-it-compares) says by
 how much.
 
 ## What it solves
@@ -181,7 +181,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5176 checks
+make test          # reliability suite: 5233 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -212,8 +212,8 @@ Capability, licence and accuracy class — **not** speed.
 
 The rows that decide it:
 
-- **Clarabel** is the closest open conic IPM and is **~7× faster** in the
-  recorded SOCP case (0.0004 s against 0.0027 s for `socp_200`: 100 cones,
+- **Clarabel** is the closest open conic IPM. It was **~7× faster** in the
+  historical SOCP case (0.0004 s against 0.0027 s for `socp_200`: 100 cones,
   300 scalar variables, down from 0.014 s via sparse Cholesky, a fill-reducing
   ordering, and caching that ordering across iterations).
   It supports PSD cones and quadratic objectives directly; see its
@@ -407,9 +407,12 @@ The **Primal** column below was refreshed on **2026-10-21** at `e90c614`
 `out/bench/sdp_sweep 4 22`): medians of **11 rounds, interleaved** with the
 previous version `2a71577` in the same session, the order alternating every
 round. All 704 runs returned `rc=0`, and every objective is identical between
-the two versions and equal to the `obj` column.
+the two versions and equal to the `obj` column. The three **SOCP rows** were
+then re-measured after the second-order SOCP corrector, the same way
+(`conic_bench`, 11 interleaved rounds against `aa6b378`): see below.
 
-**Performance is unchanged by the 2026-10-21 work** (symmetric SOCP KKT opt-in,
+**Historical comparison before the second-order SOCP corrector:** performance
+is unchanged by the earlier 2026-10-21 work (symmetric SOCP KKT opt-in,
 direction check, boundary recovery, HSD fix):
 
 | family | `2a71577` (s) | current (s) | change |
@@ -431,6 +434,37 @@ had suggested up to +11% on `sdp_19`..`sdp_21`; set against the 2026-10-20
 column from another session, that was machine drift, not code — the
 interleaved measurement gives +0.2%, +0.8%, +0.9% there. Compare versions
 only within one session.
+
+**SOCP second-order corrector (2026-10-21).** The Mehrotra corrector of the
+sparse SOCP solver used to change only the centering target `sigma*mu`; it
+now also carries the affine second-order term `-ds_aff o dlambda_aff`, in
+balanced NT coordinates on the NT engine and as the raw Jordan product on the
+augmented-LU engine ([derivation, oracle and limits](docs/socp-mehrotra-correction.md);
+`T289` checks the formula against an independent eigendecomposition). The
+opt-in `GMB_SOCP_LDL` backend keeps its previous corrector. Measured with the
+C worker `bench/socp_compare.c` (`PRIMAL_optimize` only), 21 rounds
+interleaved with `aa6b378`, medians:
+
+| case | before | after | change | after faster |
+|---|---:|---:|---:|---:|
+| SOCP 40 | 0.362 ms | 0.370 ms | +2.2% | 7/21 |
+| SOCP 120 | 1.165 ms | 0.296 ms | **−74.6%** | 21/21 |
+| SOCP 200 | 2.066 ms | 0.536 ms | **−74.1%** | 21/21 |
+| SOCP 200, unequal costs, 2 equalities | 0.655 ms | 0.586 ms | −10.6% | 21/21 |
+| SOCP 200, rotated cones | 24.70 ms | 20.09 ms | −18.6% | 21/21 |
+
+Every run ends `OPTIMAL` with primal/dual residuals and gap below `1e-8`; the
+canonical cases stop slightly earlier (`SOCP 120` gap 5e-12 → 4.4e-10), the
+rotated case finishes tighter (3.3e-9 → 1.3e-11). In the table the three SOCP
+rows become 0.0004 / 0.0003 / 0.0006 s (`conic_bench`, 11 interleaved rounds,
+from 0.0004 / 0.0013 / 0.0023). Suite 5233/0 at `-O0`..`-O3`, without FMA and
+under ASan + UBSan, with both SOCP backends; 171/171 examples exit 0, only
+`logcontrast_lasso` prints different digits (β moves in the 4th decimal on a
+flat objective, its own checks still pass). The comparison with Clarabel
+needs `tools/socp_compare.py` and the reference Python environment; it
+reports SOCP 120/200 at 0.253 / 0.491 ms against Clarabel construction+solve
+0.333 / 0.612 ms, a measurement taken by the previous session and not
+repeated here. Rotated cones remain far slower than Clarabel.
 
 The **reference columns** (HiGHS, Clarabel, SCS, SCIP) are still the
 **2026-10-20** snapshot: they need `bench_all.py` with the reference solvers'
@@ -459,8 +493,8 @@ failure is not counted as a green validation.
 | milp_60x30 | milp | 60 x 30 | 260 | 1.0270 | N/A | N/A | N/A | 0.2863 | 200.846 |
 | milp_80x40 | milp | 80 x 40 | 460 | 3.0903 | N/A | N/A | N/A | 1.1389 | 277.019 |
 | socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
-| socp_120 | socp | 120 x 1 | - | 0.0012 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0021 | N/A | 0.0005 | 0.0012 | N/A | 0.707107 |
+| socp_120 | socp | 120 x 1 | - | 0.0003 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
+| socp_200 | socp | 200 x 1 | - | 0.0006 | N/A | 0.0005 | 0.0012 | N/A | 0.707107 |
 | sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0002 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0004 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
@@ -543,8 +577,8 @@ Open algorithmic work, largest first:
   validated; it is not wired in yet.
 - **Symmetric KKT in the SOCP route**, so the sparse symmetric factorization can
   replace the sparse LU there.
-- **Large-scale conic performance.** The gap to Clarabel is architectural — an
-  interior-point method without tuned sparse kernels.
+- **Large-scale conic performance.** The second-order SOCP corrector reduces
+  the canonical-family gap; rotated cones remain much slower than Clarabel.
 - **MIP.** No conflict analysis, no pseudo-cost propagation, no Gomory
   mixed-integer cuts.
 - **Parameter coverage.** 31 declared, all but one wired to behaviour

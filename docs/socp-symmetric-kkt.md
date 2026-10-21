@@ -6,6 +6,10 @@ and SOC blocks of at most 32 coordinates, the existing NT scaling limit.
 Larger SOC blocks retain the existing path. This does not change the SDP
 solver or implement a homogeneous embedding.
 
+The default NT/LU speedup from the second-order corrector is described in
+[socp-mehrotra-correction.md](socp-mehrotra-correction.md). It does not promote
+this experimental backend; QD retains its prior centering-only corrector.
+
 ## Linear equations
 
 With residuals `rd = c + E'y - G'lambda`, `rp = Ex-d`, and

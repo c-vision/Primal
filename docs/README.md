@@ -22,6 +22,7 @@ for a specific route.
 | [simplex.md](simplex.md) | LP / QP — two-phase primal simplex, source of both Farkas rays |
 | [interior-point.md](interior-point.md) | LP / QP — Mehrotra, dense augmented or sparse normal equations |
 | [conic-socp.md](conic-socp.md) | SOCP — NT scaling, sparse Cholesky, dense-LU fallback |
+| [socp-mehrotra-correction.md](socp-mehrotra-correction.md) | SOCP second-order corrector, independent oracle and performance criteria |
 | [sdp.md](sdp.md) | SDP and the unified conic path (PSD + SOC + exp in one KKT) |
 | [exp-power-cones.md](exp-power-cones.md) | exponential and power cones, natively |
 | [tangent-cuts.md](tangent-cuts.md) | the outer-approximation fallback |

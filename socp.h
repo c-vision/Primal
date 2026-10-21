@@ -36,6 +36,10 @@ typedef struct {
 /* Internal cone ratio test, shared by both engines; exposed for exact
  * geometric regression tests. type 0 = R+, type 1 = SOC. */
 double socp_step_len(const double *v, const double *dv, int type, int k);
+/* Internal Mehrotra shift in dual NT coordinates; -1 means unavailable. */
+int socp_nt_corrector(int type, int k, const double *w, const double *s,
+                      const double *lambda, const double *ds_aff,
+                      const double *dlambda_aff, double *shift);
 
 int socp_solve(int n, int p,
                const double *E, const double *d, const double *c,
