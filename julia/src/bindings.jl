@@ -1042,13 +1042,6 @@ function getnumintvar(a1, a2)
     )
 end
 
-function putcfix(a1, a2)
-    _fn = Libdl.dlsym(_lib(), "PRIMAL_putcfix")
-    ccall(_fn, Cint, (Ptr{Cvoid}, Cdouble),
-        a1, a2
-    )
-end
-
 function putintparam(a1, a2, a3)
     _fn = Libdl.dlsym(_lib(), "PRIMAL_putintparam")
     ccall(_fn, Cint, (Ptr{Cvoid}, Cint, Cint),
@@ -3871,7 +3864,7 @@ function wchartoutf8(a1, a2, a3, a4, a5)
 end
 
 ###############################################################################
-# End of bindings (546 functions bound, 2 variadic skipped)
+# End of bindings (545 functions bound, 2 variadic skipped)
 ###############################################################################
 
 # Export all public (non-underscore) names so `using .Bindings` brings them into scope.

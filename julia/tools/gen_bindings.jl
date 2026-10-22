@@ -12,9 +12,10 @@ using Printf
 
 const PRIMAL_C_SRC = get(ENV, "PRIMAL_C_SRC", nothing)
 const HERE = @__DIR__
-const ROOT = dirname(dirname(dirname(HERE))) # .../julia/Primal/tools -> .../PrimalSolver
-const HEADER = something(PRIMAL_C_SRC, joinpath(ROOT, "primal.h"))
-const PKG_ROOT = dirname(HERE)               # .../julia/Primal
+const ROOT = dirname(dirname(HERE))          # .../PrimalSolver/julia/tools -> .../PrimalSolver
+# PRIMAL_C_SRC names the C source directory, as in deps/build.jl and the usage above.
+const HEADER = joinpath(something(PRIMAL_C_SRC, ROOT), "primal.h")
+const PKG_ROOT = dirname(HERE)               # .../PrimalSolver/julia
 const OUT = joinpath(PKG_ROOT, "src", "bindings.jl")
 
 isfile(HEADER) || error("primal.h not found at $HEADER (set PRIMAL_C_SRC)")
@@ -191,6 +192,10 @@ function main()
             end
         end
 
+        # A prototype the header repeats (legal C, e.g. PRIMAL_putcfix) is
+        # bound once: Julia >= 1.12 refuses a method overwritten during
+        # precompilation, so a duplicate made the whole package unloadable.
+        any(p -> p[1] == name, protos) && continue
         push!(protos, (name, ret_raw, args, variadic))
     end
 

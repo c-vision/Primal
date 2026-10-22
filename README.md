@@ -166,6 +166,36 @@ julia --project=julia -e 'include("julia/deps/build.jl"); using Pkg; Pkg.instant
 julia --project=julia -e 'using Primal; println(Primal.version())'
 ```
 
+### JuMP
+
+`Primal.Optimizer` is a [MathOptInterface](https://github.com/jump-dev/MathOptInterface.jl)
+solver, so Primal can be used from [JuMP](https://jump.dev) as any other:
+
+```julia
+using JuMP, Primal
+
+model = Model(Primal.Optimizer)
+@variable(model, 0 <= x <= 3.5)
+@variable(model, y >= 0)
+@constraint(model, c, x + y <= 4)
+@objective(model, Max, 3x + 2y)
+optimize!(model)
+value(x), value(y), objective_value(model), shadow_price(c)   # (3.5, 0.5, 11.5, 2.0)
+```
+
+It accepts linear and convex quadratic objectives, linear constraints, binary and
+integer variables, and the second-order, rotated second-order, exponential and power
+cones (primal and dual); JuMP's bridges reformulate the rest (norm cones, geometric
+mean, relative entropy, quadratic constraints). `set_silent`, `set_time_limit_sec`
+and `set_attribute(model, "PRIMAL_IPAR_INTPNT_MAX_ITERATIONS", 500)` (any
+`PRIMAL_IPAR_*` / `PRIMAL_DPAR_*` parameter of `primal.h`) set the solver options.
+The wrapper passes MathOptInterface's conformance suite (571 tests; one excluded and
+five at a looser tolerance, each documented in `julia/test/MOI_wrapper.jl`):
+
+```sh
+julia --project=julia -e 'using Pkg; Pkg.test()'
+```
+
 **125 runnable examples** live in [`examples/julia/`](examples/julia/) — each checks its
 own result and exits non-zero on failure. Run them all with:
 

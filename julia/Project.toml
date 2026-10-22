@@ -1,10 +1,12 @@
 name = "Primal"
-uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-authors = ["Gaetano Minardi"]
+uuid = "9217f390-80c0-41a2-8a72-19c64bb28d66"
 version = "0.1.2"
+authors = ["Gaetano Minardi"]
 
 [deps]
-Libdl = "8f3d8d51-6f82-5e47-90f7-6f02f3a1e7e1"
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [compat]
-julia = "1.6"
+MathOptInterface = "1.54.0"
+julia = "1.10"

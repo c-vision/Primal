@@ -14,15 +14,15 @@
 
 const PRIMAL_C_SRC = get(ENV, "PRIMAL_C_SRC", nothing)
 const HERE = @__DIR__
-const PKG_ROOT = dirname(HERE)                       # .../julia/Primal
-const ROOT = dirname(PKG_ROOT)                       # .../julia -> .../PrimalSolver ... wait
+const PKG_ROOT = dirname(HERE)                       # .../PrimalSolver/julia
 
-# deps/ is inside julia/Primal/.  julia/Primal/ is inside julia/.  julia/ is inside
-# the PrimalSolver repo root.  So:
-#   HERE       = .../julia/Primal/deps
-#   PKG_ROOT   = .../julia/Primal
-#   REPO_ROOT  = .../PrimalSolver   (= dirname(dirname(PKG_ROOT)))
-const REPO_ROOT = dirname(dirname(PKG_ROOT))
+# The package is julia/ at the root of the PrimalSolver repository:
+#   HERE       = .../PrimalSolver/julia/deps
+#   PKG_ROOT   = .../PrimalSolver/julia
+#   REPO_ROOT  = .../PrimalSolver   (= dirname(PKG_ROOT))
+# (It used to live one level deeper, in julia/Primal/; the examples
+# reorganisation moved it and this path was left pointing above the repo.)
+const REPO_ROOT = dirname(PKG_ROOT)
 const SRC_DIR = something(PRIMAL_C_SRC, REPO_ROOT)
 
 isfile(joinpath(SRC_DIR, "primal.h")) ||

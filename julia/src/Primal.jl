@@ -102,6 +102,19 @@ struct Result
     rc::Int
 end
 
+"""
+    Primal.version() -> VersionNumber
+
+Version of the loaded C library (PRIMAL_getversion).
+"""
+function version()
+    major, minor, rev = Ref{Cint}(0), Ref{Cint}(0), Ref{Cint}(0)
+    rc = ccall(Libdl.dlsym(_lib(), "PRIMAL_getversion"), Cint,
+               (Ptr{Cint}, Ptr{Cint}, Ptr{Cint}), major, minor, rev)
+    rc == 0 || error("PRIMAL_getversion failed (rc=$rc)")
+    return VersionNumber(major[], minor[], rev[])
+end
+
 # ---- High-level Model (convenience wrapper, like the Python Model) ---------
 include("Model.jl")
 
@@ -114,10 +127,17 @@ for _n in names(Primal, all=true)
         push!(_export_names, _s)
     end
 end
-# Always export the main types
-push!(_export_names, "Model", "Result", "BK", "SENSE", "CT", "VAR_TYPE", "SOL", "SOLSTA", "RC", "INF")
+# Always export the main types.  Model is NOT exported: JuMP exports its own,
+# and `using JuMP, Primal` must leave `Model(Primal.Optimizer)` unambiguous --
+# the low-level wrapper is used qualified, as Primal.Model.
+push!(_export_names, "Result", "BK", "SENSE", "CT", "VAR_TYPE", "SOL", "SOLSTA", "RC", "INF")
 if !isempty(_export_names)
     @eval export $(Symbol.(_export_names)...)
 end
+
+# ---- MathOptInterface wrapper: Model(Primal.Optimizer) in JuMP ---------------
+# Included after the export block on purpose: Optimizer is used qualified,
+# as Primal.Optimizer, like every other MOI solver.
+include("MOI_wrapper.jl")
 
 end  # module Primal
