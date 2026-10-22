@@ -37,6 +37,89 @@ enum { CR_ROWLO = 0, CR_ROWUP = 1, CR_VARLO = 2, CR_VARUP = 3,
        CR_RQUAD_T = 8, CR_RQUAD_R = 9,
        EQ_FXROW = 0, EQ_FXVAR = 1, EQ_LINK = 7 };
 
+/* Exact substitution of fixed scalar variables. Removing their opposite
+ * R+ rows restores a strict interior; retaining them makes the IPM approach
+ * two incompatible interiors. Only successful reduced solves are used. */
+typedef int (*ConicSolve)(int,int,const double*,const double*,const double*,
+    int,const SocpCone*,const double*,const double*,double,double,int,double*,double*,double*);
+static int conic_solve_fixed(PRIMALtask_t t, ConicSolve solve,
+    int n,int p,const double *E,const double *d,const double *c,
+    int nc,const SocpCone *cones,const double *G,const double *h,
+    const int *kind,const int *idx,double tg,double tf,int maxit,
+    double *x,double *y,double *lm) {
+    int nf=0,K=0;
+    for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)nf++;
+    for(int k=0;k<nc;k++)K+=cones[k].nmem;
+    if(!nf||nf>=n) return solve(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm);
+    int nr=n-nf,pr=0,kr=0,ncr=0,rc=-1;
+    int *cols=malloc((size_t)nr*sizeof(int)),*rows=malloc((size_t)(p?p:1)*sizeof(int));
+    int *crow=malloc((size_t)K*sizeof(int));
+    double *Er=calloc((size_t)(p?p:1)*nr,sizeof(double)),*dr=malloc((size_t)(p?p:1)*sizeof(double));
+    double *Gr=malloc((size_t)K*nr*sizeof(double)),*hr=malloc((size_t)K*sizeof(double));
+    double *cr=malloc((size_t)nr*sizeof(double)),*xr=malloc((size_t)nr*sizeof(double));
+    double *yr=malloc((size_t)(p?p:1)*sizeof(double)),*lr=malloc((size_t)K*sizeof(double));
+    SocpCone *cc=calloc((size_t)nc,sizeof(SocpCone));
+    if(!cols||!rows||!crow||!Er||!dr||!Gr||!hr||!cr||!xr||!yr||!lr||!cc)goto done;
+    int q=0;double offset=0,do_=0,drn=0,ho=0,hrn=0;
+    for(int j=0;j<n;j++) {
+        if(j<t->numvar&&t->bkx[j]==PRIMAL_BK_FX)offset+=c[j]*t->blx[j];
+        else {cols[q]=j;cr[q++]=c[j];}
+    }
+    for(int i=0;i<p;i++) {
+        double b=d[i];int nz=0;
+        if(fabs(b)>do_)do_=fabs(b);
+        for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)b-=E[(size_t)i*n+j]*t->blx[j];
+        for(int j=0;j<nr;j++){double a=E[(size_t)i*n+cols[j]];Er[(size_t)pr*nr+j]=a;if(a!=0)nz=1;}
+        if(!nz){if(b!=0)goto done;continue;}
+        rows[pr]=i;dr[pr++]=b;if(fabs(b)>drn)drn=fabs(b);
+    }
+    int o=0;
+    for(int k=0;k<nc;k++) {
+        int start=kr;
+        for(int i=0;i<cones[k].nmem;i++,o++) {
+            if(fabs(h[o])>ho)ho=fabs(h[o]);
+            if(cones[k].type==0&&(kind[o]==CR_VARLO||kind[o]==CR_VARUP)
+               &&idx[o]>=0&&idx[o]<t->numvar&&t->bkx[idx[o]]==PRIMAL_BK_FX)continue;
+            double b=h[o];
+            for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)b+=G[(size_t)o*n+j]*t->blx[j];
+            for(int j=0;j<nr;j++)Gr[(size_t)kr*nr+j]=G[(size_t)o*n+cols[j]];
+            crow[kr]=o;hr[kr++]=b;if(fabs(b)>hrn)hrn=fabs(b);
+        }
+        if(kr>start){cc[ncr].type=cones[k].type;cc[ncr++].nmem=kr-start;}
+    }
+    if(!ncr||!isfinite(offset)||!isfinite(drn)||!isfinite(hrn))goto done;
+    /* A translation can increase a relative residual's denominator. Tighten
+     * the reduced tolerances so success implies the original criteria. */
+    double fr=fmin(1.0,fmin((1+do_)/(1+drn),(1+ho)/(1+hrn)));
+    rc=solve(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,tg/(1+fabs(offset)),tf*fr,maxit,xr,yr,lr);
+    if(rc==0) {
+        for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)x[j]=t->blx[j];
+        for(int j=0;j<nr;j++)x[cols[j]]=xr[j];
+        for(int i=0;i<p;i++)y[i]=0;
+        for(int i=0;i<pr;i++)y[rows[i]]=yr[i];
+        for(int i=0;i<K;i++)lm[i]=0;
+        for(int i=0;i<kr;i++)lm[crow[i]]=lr[i];
+        /* Fixed-coordinate stationarity determines the difference of the
+         * bound multipliers. Their common nonnegative part is immaterial. */
+        for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX) {
+            double r=c[j];
+            for(int i=0;i<p;i++)r+=E[(size_t)i*n+j]*y[i];
+            for(int i=0;i<K;i++)r-=G[(size_t)i*n+j]*lm[i];
+            o=0;
+            for(int k=0;k<nc;k++) {
+                for(int i=0;i<cones[k].nmem;i++,o++)if(cones[k].type==0&&idx[o]==j) {
+                    if(kind[o]==CR_VARLO)lm[o]=fmax(r,0);
+                    if(kind[o]==CR_VARUP)lm[o]=fmax(-r,0);
+                }
+            }
+        }
+    }
+done:
+    free(cols);free(rows);free(crow);free(Er);free(dr);free(Gr);free(hr);
+    free(cr);free(xr);free(yr);free(lr);free(cc);
+    return rc==0?0:solve(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm);
+}
+
 /* ---- nonlinear cones (PEXP/DEXP/PPOW/RPOW): tangent cuts ----
  * The PEXP/DEXP/PPOW/RPOW branch is not handled by a native conic solver:
  * their set is {phi(x) <= 0} with phi convex (hypograph), so it is
@@ -560,10 +643,11 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             int sparse_conic = (Nsys >= 300 && ncones_solver >= 16) ||
                                (Nsys >= 800) || (getenv("GMB_SOCP_SPARSE") != NULL);
             int st = sparse_conic
-                ? socp_solve_sparse(ntot, neq, E, d, c, ncones_solver, cones, G, h,
-                                    t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm)
-                : socp_solve(ntot, neq, E, d, c, ncones_solver, cones, G, h,
-                             t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm);
+                ? conic_solve_fixed(t,socp_solve_sparse,
+                    ntot,neq,E,d,c,ncones_solver,cones,G,h,rowKind,rowIdx,
+                    t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm)
+                : socp_solve(ntot,neq,E,d,c,ncones_solver,cones,G,h,
+                    t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm);
             /* A dense solve that fails gets one sparse attempt on the same
              * system before the round gives up; only a SUCCESS replaces its
              * status, so a model the dense path cannot answer (an infeasible

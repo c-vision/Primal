@@ -6,6 +6,7 @@ The main boundary is PRIMAL_optimize versus Clarabel setup+solve.
 Model assembly is excluded from both. Raw observations are saved as JSON.
 """
 import argparse
+import ctypes
 import hashlib
 import json
 import math
@@ -79,11 +80,25 @@ def reference_data(n, variant):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--target", choices=("canonical", "rotated"), default="canonical",
+                    help="predeclared acceptance profile; canonical compares to pre-corrector baseline")
+    ap.add_argument("--small-fixed", action="store_true", help="also guard small dense rotated models")
     ap.add_argument("--runs", type=int, default=31)
     ap.add_argument("--out", type=Path, default=ROOT/"out/socp_compare")
     ap.add_argument("--baseline-worker", type=Path,
                     help="preserved worker linked to the unchanged baseline")
+    ap.add_argument("--baseline-archive", type=Path,
+                    help="preserved libprimal.a; compare isolated libraries in one process")
+    ap.add_argument("--sham", action="store_true",
+                    help="calibrate identical libraries from the baseline archive")
     args = ap.parse_args()
+    if args.baseline_worker and args.baseline_archive:
+        ap.error("select either a baseline worker or an archive")
+    if args.sham and not args.baseline_archive:
+        ap.error("--sham requires --baseline-archive")
+    baseline_input = args.baseline_archive or args.baseline_worker
+    if args.small_fixed:
+        CASES.extend([(2,2),(10,2),(40,2)])
     if args.runs < 1:
         ap.error("--runs must be positive")
     args.out = args.out.resolve()
@@ -102,8 +117,28 @@ def main():
                         "-I"+str(ROOT), str(ROOT/"bench/socp_compare.c"),
                         str(build/"libprimal.a"), "-lm", "-o", str(binary)],
                        stdout=log, stderr=subprocess.STDOUT, check=True)
+        if args.baseline_archive:
+            archives = {"baseline": args.baseline_archive.resolve(),
+                        "candidate": args.baseline_archive.resolve() if args.sham else build/"libprimal.a"}
+            for label, archive in archives.items():
+                shared = ["-dynamiclib"] if sys.platform == "darwin" else ["-shared", "-Wl,-Bsymbolic"]
+                subprocess.run(["gcc", "-std=c99", "-Wall", "-Wextra", "-pedantic", "-O2",
+                                *shared, "-DSOCP_COMPARE_LIBRARY", "-I"+str(ROOT),
+                                str(ROOT/"bench/socp_compare.c"), str(archive), "-lm",
+                                "-o", str(build/(label+".dylib"))],
+                               stdout=log, stderr=subprocess.STDOUT, check=True)
     workers = {}
-    for mode in (["baseline"] if args.baseline_worker else []) + ["default", "ldl"]:
+    libraries = {}
+    for mode in (["baseline"] if baseline_input else []) + ["default", "ldl"]:
+        if args.baseline_archive:
+            label = "baseline" if mode == "baseline" else "candidate"
+            lib = ctypes.CDLL(str(build/(label+".dylib")), mode=os.RTLD_LOCAL|os.RTLD_NOW)
+            fn = lib.socp_compare_json
+            fn.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t]
+            fn.restype = ctypes.c_int
+            libraries[mode] = lib
+            workers[mode] = fn
+            continue
         env = {k: v for k, v in os.environ.items() if not k.startswith("GMB_")}
         if mode == "ldl":
             env["GMB_SOCP_LDL"] = "1"
@@ -124,6 +159,8 @@ def main():
                     order.reverse()
                 for mode in order:
                     if mode == "clarabel":
+                        if args.baseline_archive:
+                            clarabel.DefaultSolver(*data, settings).solve()
                         start = time.perf_counter()
                         solver = clarabel.DefaultSolver(*data, settings)
                         ready = time.perf_counter()
@@ -136,10 +173,22 @@ def main():
                         if str(sol.status) != "Solved":
                             raise RuntimeError(f"Clarabel did not solve {n}/{variant}: {row}")
                     else:
-                        p = workers[mode]
-                        p.stdin.write(f"{n} {variant}\n")
-                        p.stdin.flush()
-                        row = json.loads(p.stdout.readline())
+                        if args.baseline_archive:
+                            for key in list(os.environ):
+                                if key.startswith("GMB_"): del os.environ[key]
+                            if mode == "ldl": os.environ["GMB_SOCP_LDL"] = "1"
+                            buffer = ctypes.create_string_buffer(2048)
+                            # Both images get an immediate untimed warmup;
+                            # candidate/default otherwise shares hot code with LDL.
+                            for _ in range(2):
+                                if workers[mode](n, variant, buffer, len(buffer)):
+                                    raise RuntimeError("C benchmark adapter failed")
+                            row = json.loads(buffer.value)
+                        else:
+                            p = workers[mode]
+                            p.stdin.write(f"{n} {variant}\n")
+                            p.stdin.flush()
+                            row = json.loads(p.stdout.readline())
                         if not row["valid"] or row["status"] != 1:
                             raise RuntimeError(f"Primal did not solve {mode}/{n}/{variant}: {row}")
                     expected = (1/math.sqrt(2) if variant == 0 else
@@ -159,14 +208,15 @@ def main():
                    for m in workers.keys() | {"clarabel"}}
             print(n, variant, {k: round(v*1000, 4) for k, v in med.items()}, flush=True)
     finally:
-        for p in workers.values():
-            p.stdin.close()
-            p.wait()
+        if not args.baseline_archive:
+            for p in workers.values():
+                p.stdin.close()
+                p.wait()
         expected = args.runs*len(CASES)*(len(workers)+1)
         complete = len(observations) == expected
         summary = summarize(observations)
         gates = None
-        if complete and args.baseline_worker:
+        if complete and baseline_input:
             def ratio(n, v=0):
                 r=summary[f"{n}/{v}"]
                 return r["default"]["median"]/r["baseline"]["median"]
@@ -176,13 +226,24 @@ def main():
                          socp120_gain=ratio(120)<=0.8,
                          socp40_regression=ratio(40)<=1.05,
                          controls_no_regression=all(ratio(n,v)<=1.05 for n,v in CASES if v))
+            if args.target == "rotated":
+                rr=summary["200/2"]
+                gates=dict(rquad200_gain=ratio(200,2)<=0.7,
+                           rquad200_vs_clarabel=rr["default"]["median"]<=3*rr["clarabel"]["median"],
+                           other_cases_no_regression=all(ratio(n,v)<=1.05 for n,v in CASES if (n,v)!=(200,2)))
+            if args.sham:
+                gates = dict(identical_libraries=all(1/1.05<=ratio(n,v)<=1.05 for n,v in CASES))
             gates["all"] = all(gates.values())
         (args.out/"results.json").write_text(json.dumps(dict(
             revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
             source_hashes=source_hashes,
             baseline_worker=str(args.baseline_worker) if args.baseline_worker else None,
             baseline_sha256=hashlib.sha256(args.baseline_worker.resolve().read_bytes()).hexdigest() if args.baseline_worker else None,
-            clarabel=clarabel.__version__, runs=args.runs, complete=complete,
+            baseline_archive=str(args.baseline_archive) if args.baseline_archive else None,
+            archive_sha256=hashlib.sha256(args.baseline_archive.resolve().read_bytes()).hexdigest() if args.baseline_archive else None,
+            measurement="same_process" if args.baseline_archive else "separate_processes", sham=args.sham,
+            immediate_warmup=bool(args.baseline_archive),
+            clarabel=clarabel.__version__, runs=args.runs, target=args.target, cases=CASES, complete=complete,
             observations=observations, summary=summary, gates=gates), indent=2))
     changed = [p for p, digest in source_hashes.items()
                if hashlib.sha256((ROOT/p).read_bytes()).hexdigest() != digest]

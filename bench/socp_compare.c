@@ -1,20 +1,28 @@
 /* Persistent worker for tools/socp_compare.py. Model construction and public
  * quality getters are outside the PRIMAL_optimize timer. Build under out/. */
+#define _POSIX_C_SOURCE 200809L
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
+#include <time.h>
+#ifdef __APPLE__
+#include <mach/mach_time.h>
+#endif
 #include "primal.h"
 
 static double now(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return tv.tv_sec + 1e-6 * tv.tv_usec;
+#ifdef __APPLE__
+    static mach_timebase_info_data_t scale;
+    if(!scale.denom)mach_timebase_info(&scale);
+    return (double)mach_absolute_time()*((double)scale.numer/scale.denom)*1e-9;
+#else
+    struct timespec ts;
+    if(clock_gettime(CLOCK_MONOTONIC,&ts))abort();
+    return ts.tv_sec + 1e-9 * ts.tv_nsec;
+#endif
 }
 
-int main(void) {
-    int n, variant;
-    while (scanf("%d %d", &n, &variant) == 2) {
+int socp_compare_json(int n, int variant, char *buffer, size_t capacity) {
         if (n < 2 || n % 2 || variant < 0 || variant > 2) return 2;
         int K = n/2;
         PRIMALenv_t env = NULL;
@@ -53,14 +61,25 @@ int main(void) {
             && !PRIMAL_getdualobj(t,PRIMAL_SOL_ITR,&dobj)
             && !PRIMAL_getprimalinfeas(t,PRIMAL_SOL_ITR,&pri)
             && !PRIMAL_getdualinfeas(t,PRIMAL_SOL_ITR,&dual);
-        printf("{\"n\":%d,\"variant\":%d,\"seconds\":%.9g,\"rc\":%d,"
+        int written=snprintf(buffer,capacity,"{\"n\":%d,\"variant\":%d,\"seconds\":%.9g,\"rc\":%d,"
                "\"status\":%d,\"valid\":%d,\"objective\":%.17g,\"dual_objective\":%.17g,"
                "\"primal\":%.17g,\"dual\":%.17g,\"gap\":%.17g}\n",
                n,variant,elapsed,rc,(int)status,valid,obj,dobj,pri,dual,
                fabs(obj-dobj)/(1+fabs(obj)+fabs(dobj)));
-        fflush(stdout);
         PRIMAL_deletetask(&t);
         PRIMAL_deleteenv(&env);
+        return written<0||(size_t)written>=capacity?1:0;
+}
+
+#ifndef SOCP_COMPARE_LIBRARY
+int main(void) {
+    int n, variant;
+    while (scanf("%d %d", &n, &variant) == 2) {
+        char buffer[2048];
+        if(socp_compare_json(n,variant,buffer,sizeof buffer))return 2;
+        fputs(buffer,stdout);
+        fflush(stdout);
     }
     return 0;
 }
+#endif

@@ -20738,8 +20738,93 @@ static void test_t289(void) {
     check(socp_nt_corrector(1,33,NULL,NULL,NULL,NULL,NULL,NULL)!=0,"oversized block rejected");
 }
 
+/* T290: exact column incidence must follow fill and physical row swaps
+ * across bitset word boundaries (63/64 and 127/128). */
+static void test_t290(void) {
+    cur_name="T290 sparse LU incidence across row swaps and word boundaries";
+    enum { n=130 };
+    int ap[n+1],ai[3*n],perm[n];double av[3*n],b[n],rhs[n],truth[n];
+    for(int i=0;i<n;i++)truth[i]=(i%7-3)*.125;
+    memset(b,0,sizeof b);
+    for(int j=0;j<n;j++) {
+        ap[j]=3*j;perm[j]=n-1-j;
+        ai[3*j]=(j+1)%n;av[3*j]=4+(j%5)*.1;
+        ai[3*j+1]=(j+64)%n;av[3*j+1]=-.3;
+        ai[3*j+2]=(j+127)%n;av[3*j+2]=.2;
+        for(int q=3*j;q<3*j+3;q++)b[ai[q]]+=av[q]*truth[j];
+    }
+    ap[n]=3*n;
+    for(int route=0;route<2;route++) {
+        SpluFact *f=splu_factor_ord(n,ap,ai,av,route?perm:NULL);
+        check(f!=NULL,"factor with cyclic row swaps and sparse fill");
+        if(!f)continue;
+        memcpy(rhs,b,sizeof b);
+        check(splu_solve(f,rhs)==0,"solve permuted sparse factor");
+        double err=0,res[n];memcpy(res,b,sizeof b);
+        for(int j=0;j<n;j++) {
+            if(fabs(rhs[j]-truth[j])>err)err=fabs(rhs[j]-truth[j]);
+            for(int q=ap[j];q<ap[j+1];q++)res[ai[q]]-=av[q]*rhs[j];
+        }
+        double mr=0;for(int i=0;i<n;i++)if(fabs(res[i])>mr)mr=fabs(res[i]);
+        check(err<1e-12,"solution agrees with known vector across word boundaries");
+        check(mr<1e-12,"residual measured in original CSC matrix");
+        splu_free(f);
+    }
+}
+
+/* T291: fixed-coordinate substitution must retain affine constants, fixed
+ * objective terms, dependent rows and the lifted public dual. */
+static void test_t291(void) {
+    cur_name="T291 conic fixed-variable substitution and lifted dual";
+    enum {nb=30,n=3*nb+1,fixed=3*nb};
+    for(int mode=0;mode<3;mode++) {
+        P p;pbegin(&p);PRIMAL_appendvars(p.task,n);PRIMAL_appendcons(p.task,2);
+        int sg=mode==1?-1:1;
+        for(int k=0;k<nb;k++) {
+            PRIMAL_putvarbound(p.task,3*k,PRIMAL_BK_LO,0,0);
+            PRIMAL_putvarbound(p.task,3*k+1,PRIMAL_BK_FX,.5,.5);
+            PRIMAL_putvarbound(p.task,3*k+2,PRIMAL_BK_FX,2,2);
+            int mem[3]={3*k,3*k+1,3*k+2};
+            PRIMAL_appendcone(p.task,PRIMAL_CT_RQUAD,0,3,mem);
+            PRIMAL_putcj(p.task,3*k,sg);
+        }
+        PRIMAL_putvarbound(p.task,fixed,PRIMAL_BK_FX,3,3);
+        PRIMAL_putcj(p.task,fixed,2*sg);
+        if(mode==1)PRIMAL_putobjsense(p.task,PRIMAL_OBJECTIVE_SENSE_MAXIMIZE);
+        PRIMAL_putaij(p.task,0,1,1);PRIMAL_putaij(p.task,0,2,1);PRIMAL_putaij(p.task,0,fixed,1);
+        PRIMAL_putconbound(p.task,0,PRIMAL_BK_FX,mode==2?5.6:5.5,mode==2?5.6:5.5);
+        PRIMAL_putaij(p.task,1,0,1);PRIMAL_putaij(p.task,1,fixed,-1);
+        PRIMAL_putconbound(p.task,1,PRIMAL_BK_LO,0,0);
+        int rc=PRIMAL_optimize(p.task);
+        double x[n],po=INFINITY,du=-INFINITY,pi=INFINITY,di=INFINITY;
+        if(mode==2) {
+            check(PRIMAL_getxx(p.task,PRIMAL_SOL_ITR,x)!=PRIMAL_RES_OK,
+                  "inconsistent fixed-only equality cannot publish a point");
+        } else {
+            check_rc(rc,PRIMAL_RES_OK,"fixed-coordinate conic optimize");
+            check_rc(PRIMAL_getxx(p.task,PRIMAL_SOL_ITR,x),PRIMAL_RES_OK,"lifted primal vector");
+            PRIMAL_getprimalobj(p.task,PRIMAL_SOL_ITR,&po);
+            PRIMAL_getdualobj(p.task,PRIMAL_SOL_ITR,&du);
+            PRIMAL_getprimalinfeas(p.task,PRIMAL_SOL_ITR,&pi);
+            PRIMAL_getdualinfeas(p.task,PRIMAL_SOL_ITR,&di);
+            int exact=x[fixed]==3;double error=0;
+            for(int k=0;k<nb;k++) {
+                if(x[3*k+1]!=.5||x[3*k+2]!=2)exact=0;
+                if(fabs(x[3*k]-4)>error)error=fabs(x[3*k]-4);
+            }
+            check(error<1e-6&&exact,"fixed entries and rotated-cone optimum");
+            check(fabs(po-(4*nb+6)*sg)<1e-6,"fixed objective constant preserved for min and max");
+            check(pi<1e-7&&di<1e-7,"public primal and lifted dual feasibility");
+            check(fabs(po-du)/(1+fabs(po)+fabs(du))<1e-8,"public dual includes eliminated fixed bounds");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t291();
+    test_t290();
     test_t289();
     test_t288();
     test_t287();

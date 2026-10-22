@@ -181,7 +181,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5233 checks
+make test          # reliability suite: 5254 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -503,6 +503,41 @@ then answers every node. Suite 5233/0 at `-O0`..`-O3`, without FMA and under
 ASan + UBSan, with both SOCP backends at every level; 171/171 examples exit 0,
 with last-digit changes in `lsq_l1_penalty` and `primal_svm`, and `rank_one`
 returning the other of its two symmetric optima `b = (3/2, 0)`.
+
+**Fixed variables substituted, sparse LU incidence (2026-10-22).** On the
+sparse SOCP route a fixed variable is no longer two opposite `R+` rows (an
+interior of width zero, which pushed the last iterations onto the augmented
+LU): its value is substituted into the equality and cone right-hand sides,
+the reduced model is solved, and the bound multipliers are lifted back from
+stationarity, `max(r_j,0)` and `max(-r_j,0)` with
+`r_j = c_j + (E'y)_j - (G'lambda)_j`. The reduced tolerances are only ever
+tightened; an inconsistent row, an allocation failure or an unsuccessful
+reduced solve falls back to the original model
+([details](docs/socp-fixed-reduction.md); `T291`). The sparse LU also keeps an
+exact column-to-row incidence bitset (≤ 8 MiB, portable C99) so a pivot column
+visits only the rows that hold it, in the same order as before — the factors
+are byte-identical (`T290`) — and the augmented fallback orders its columns
+`[lambda, x, y]` instead of RCM. Measured with the C worker, 21 rounds
+interleaved with `bb1beaf`:
+
+| case | before | after | change | after faster |
+|---|---:|---:|---:|---:|
+| SOCP 120, rotated cones | 1.675 ms | 0.512 ms | **−69.4%** | 21/21 |
+| SOCP 200, rotated cones | 3.775 ms | 0.987 ms | **−73.9%** | 21/21 |
+| small rotated, n = 2 / 10 / 40 | 0.019 / 0.059 / 0.608 ms | 0.015 / 0.059 / 0.593 ms | −20.3% / −0.6% / −2.4% | 21 / 13 / 19 |
+| SOCP 40 / 120 / 200, canonical | 0.368 / 0.307 / 0.561 ms | 0.366 / 0.300 / 0.550 ms | −0.5% / −2.2% / −2.1% | 14 / 15 / 14 |
+| SOCP 200, unequal costs | 0.594 ms | 0.600 ms | +1.1% | 9/21 |
+
+All runs end `OPTIMAL`; the rotated objectives agree to ~1e-9 and every gap
+stays below 1e-10. Over the two rotated-cone steps of 2026-10-21/22 the
+rotated SOCP 200 goes 19.7 → 0.99 ms (−95%); against the previous session's
+Clarabel construction+solve timings (~0.41 / ~0.62 ms, not re-measured, so
+indicative) the rotated cases are now about 1.2× / 1.6× slower instead of
+~15× / ~32×. The table's SOCP rows are unchanged (`conic_bench` 0.000371 /
+0.000301 / 0.000550 s against 0.000371 / 0.000300 / 0.000549 s). Suite
+5254/0 at `-O0`..`-O3`, without FMA and under ASan + UBSan, with both SOCP
+backends at every level; 171/171 examples exit 0, only `logcontrast_lasso`
+moves β in the 4th decimal on its flat objective (its checks pass).
 
 The **reference columns** (HiGHS, Clarabel, SCS, SCIP) are still the
 **2026-10-20** snapshot: they need `bench_all.py` with the reference solvers'
