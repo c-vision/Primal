@@ -53,7 +53,9 @@ libname = Sys.iswindows() ? "libprimal.dll" :
           Sys.isapple()   ? "libprimal.dylib" : "libprimal.so"
 out = joinpath(HERE, libname)
 
-cc = get(ENV, "CC", "gcc")
+# `cc` is the C compiler on every Unix (clang on macOS, gcc on Linux); MinGW
+# provides gcc on Windows. CC overrides both.
+cc = get(ENV, "CC", Sys.iswindows() ? "gcc" : "cc")
 cc_cmd = split(cc)
 
 base_flags = String["-std=c99", "-O2", "-fPIC", "-I", SRC_DIR]

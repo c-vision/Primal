@@ -169,7 +169,17 @@ julia --project=julia -e 'using Primal; println(Primal.version())'
 ### JuMP
 
 `Primal.Optimizer` is a [MathOptInterface](https://github.com/jump-dev/MathOptInterface.jl)
-solver, so Primal can be used from [JuMP](https://jump.dev) as any other:
+solver, so Primal can be used from [JuMP](https://jump.dev) as any other. To install
+it next to JuMP in any Julia environment (Julia 1.10 or later and a C compiler; the
+first `using Primal` compiles the C library):
+
+```sh
+git clone https://github.com/c-vision/Primal.git
+julia -e 'using Pkg; Pkg.develop(path="Primal/julia"); Pkg.add("JuMP")'
+```
+
+(`Pkg.add(url=..., subdir="julia")` does not work yet: it copies `julia/` alone,
+without the C sources the build needs.)
 
 ```julia
 using JuMP, Primal

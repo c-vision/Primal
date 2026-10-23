@@ -14,16 +14,26 @@ using Libdl
 const PRIMAL_LIBNAME = Sys.iswindows() ? "libprimal.dll" :
                  Sys.isapple()   ? "libprimal.dylib" : "libprimal.so"
 
+const _PKG_DIR = dirname(dirname(@__FILE__))       # .../PrimalSolver/julia
+
 function _primaldl()
-    # Look for the library next to this module (deps/), then in the live C
-    # repo's out/ directory, then on the system loader path.
+    # Look for the library next to this module (deps/), then in the C repo's
+    # out/ directory, then on the system loader path.
     candidates = [
-        joinpath(dirname(dirname(@__FILE__)), "deps", PRIMAL_LIBNAME),
-        joinpath(dirname(dirname(dirname(dirname(@__FILE__)))), "out", PRIMAL_LIBNAME),
+        joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME),
+        joinpath(dirname(_PKG_DIR), "out", PRIMAL_LIBNAME),
         PRIMAL_LIBNAME,
     ]
     for c in candidates
         isfile(c) && return c
+    end
+    # Not built yet: Pkg.add runs deps/build.jl, Pkg.develop does not, so the
+    # first use compiles it (once, in its own process: a C compiler is needed).
+    build = joinpath(_PKG_DIR, "deps", "build.jl")
+    if isfile(build)
+        @info "Primal: compiling the C library (first use)"
+        run(`$(Base.julia_cmd()) --startup-file=no $build`)
+        isfile(candidates[1]) && return candidates[1]
     end
     error("libprimal shared library not found; run deps/build.jl or set PRIMAL_C_SRC")
 end
