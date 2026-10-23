@@ -8,8 +8,8 @@
 #      x0,x1,x2 >= 0; x3,x4,x5 free
 # Known optimum: obj = 1/sqrt(2) ≈ 0.7071
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 6)

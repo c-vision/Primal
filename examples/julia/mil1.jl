@@ -1,8 +1,8 @@
 #!/usr/bin/env julia
 # mil1.jl — Simple MIP: max x0+x1 s.t. x0+x1<=2.5, x integer
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 2)

@@ -2,8 +2,8 @@
 # sensitivity.jl — Port of c_examples/mosek_comparison/sensitivity.c
 # Simple LP for sensitivity analysis.
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 2)

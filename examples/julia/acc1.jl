@@ -4,8 +4,8 @@
 #  => 6+x1 >= |2|  =>  x1 >= -4
 # Optimum: x = (3, -4), obj = -4.
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 2)

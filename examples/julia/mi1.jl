@@ -7,8 +7,8 @@
 #      x1, x2 integer >= 0
 # Expected solution: x1 = 5, x2 = 0, obj = 5.0
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_cons(m, 2)

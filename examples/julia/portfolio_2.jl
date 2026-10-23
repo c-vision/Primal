@@ -2,8 +2,8 @@
 # portfolio_2.jl — Port of c_examples/mosek_comparison/portfolio_2.c
 # Simple QP variant.
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 3)

@@ -1,8 +1,8 @@
 #!/usr/bin/env julia
 # multi_period.jl — Port of c_examples/finance/multi_period.c
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 4)

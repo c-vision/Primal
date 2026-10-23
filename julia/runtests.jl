@@ -1,10 +1,13 @@
 #!/usr/bin/env julia
 # runtests.jl — Execute all Julia examples and verify exit code 0.
-# Usage: julia runtests.jl  (from julia/Primal/)
+# Usage (from the PrimalSolver checkout):
+#     julia --project=julia julia/runtests.jl
+# Each example runs in its own process against this package (--project=julia/).
 
 using Printf
 
-const EXAMPLES_DIR = joinpath(@__DIR__, "examples")
+const PKG_DIR = @__DIR__
+const EXAMPLES_DIR = joinpath(dirname(PKG_DIR), "examples", "julia")
 
 example_files = sort(filter(f -> endswith(f, ".jl"), readdir(EXAMPLES_DIR)))
 
@@ -13,8 +16,8 @@ failed = String[]
 
 for f in example_files
     path = joinpath(EXAMPLES_DIR, f)
-    cmd = `julia $path`
-    ok = success(cmd)
+    cmd = `$(Base.julia_cmd()) --project=$PKG_DIR $path`
+    ok = success(pipeline(cmd; stdout = devnull, stderr = devnull))
     if ok
         passed[] += 1
         @printf("PASS: %s\n", f)

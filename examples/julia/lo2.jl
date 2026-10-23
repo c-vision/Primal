@@ -7,8 +7,8 @@
 #       x0 + 2x1 +  x2 + 2x3 >= 15
 #      0 <= x0, 0 <= x1 <= 10, x2, x3 >= 0
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 4)

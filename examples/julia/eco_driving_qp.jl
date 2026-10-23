@@ -1,8 +1,8 @@
 #!/usr/bin/env julia
 # eco_driving_qp.jl — Simple QP
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 2)

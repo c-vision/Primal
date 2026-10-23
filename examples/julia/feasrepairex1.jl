@@ -2,8 +2,8 @@
 # feasrepairex1.jl — Port of c_examples/mosek_comparison/feasrepairex1.c
 # Simple feasibility repair example.
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 2)

@@ -4,8 +4,8 @@
 # min x^2 + y^2  s.t. x+y >= 1, x,y >= 0
 # Expected solution: x = 0.5, y = 0.5, obj = 0.5
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 2)

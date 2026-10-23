@@ -2,8 +2,8 @@
 # transaction_cost.jl — Port of c_examples/finance/transaction_cost.c
 # min t'z  s.t. z >= |x-x0|, e'x=0, x/z free
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 6)  # x0,x1,x2,z0,z1,z2

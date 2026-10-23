@@ -1,8 +1,8 @@
 #!/usr/bin/env julia
 # mean_cvar.jl — Port of c_examples/finance/mean_cvar.c
 
-include("../src/Primal.jl")
-using .Primal
+using Primal
+using Primal: Model   # not exported: JuMP exports its own Model
 
 m = Model(0, 0)
 add_vars(m, 3)
