@@ -169,6 +169,72 @@ independent recomputation).
 - `socp_robust.py` — least-squares regression as an SOCP (a larger, scaling
   example): residual equals the optimal `t` and `A'r ≈ 0`.
 
+### Ports of the remaining C samples
+
+Every sample in [`examples/c/`](../examples/c/) now has a Python port with the
+**same output** as the C program: the same text, numbers and exit code. Lines with a
+wall-clock time differ only in the time. The pseudo-random instances use the same
+generators. Three samples differ in the last printed digit of a rounding-noise
+residual from the C build used as reference: `sos_m1_certificate`, `secure_ee_sdma`
+and `logcontrast_lasso`. That build lets clang fuse multiply-adds (FMA). The C
+programs compiled with `-ffp-contract=off` print exactly the Python values.
+
+MOSEK API ports:
+
+- `hello`, `simple`, `lo2`, `parallel`, `concurrent1` — basic LPs, several tasks,
+  the four optimizers agreeing on `250/3`.
+- `pinfeas`, `mioinfeas1`, `feasrepairex1` — infeasibility verdicts and the
+  minimum-violation repair.
+- `reoptimization`, `solvelinear`, `sensitivity`, `solutionquality`,
+  `parameters` — re-solve after a change, a linear system as an LP, cost ranges,
+  violations, parameter round-trip.
+- `solvebasis` — write the optimal basis, read it into a new task, `solvebasis`.
+- `response`, `callback` — log stream and progress callbacks (ctypes `CFUNCTYPE`).
+- `mil1`, `mil2`, `milo1`, `mioinitsol`, `mico1`, `sched` — MIPs (pure,
+  semi-continuous/semi-integer, warm start, mixed-integer conic, scheduling).
+- `sos1`, `sos2` — SOS1 / SOS2 constraints.
+- `cqo1`, `qcqo1`, `ceo1`, `pow1`, `acc1`, `acc1_max`, `djc1`, `gp1`,
+  `logistic` — quadratic, rotated, exponential and power cones, affine conic and
+  disjunctive constraints, geometric programming, sum-of-exp regression.
+- `portfolio_1` … `portfolio_6` — Markowitz basic, frontier, market impact,
+  transaction costs, cardinality, factor model.
+- `sdo1`, `sdo2`, `sdo_lmi`, `dual_sdo_l1`, `nearestcorrelation`,
+  `sparsecholesky` — semidefinite programs.
+
+Books:
+
+- `intlo_bigm`, `intlo_transport` — Nemirovski: Big-M LP, transportation
+  counterexample.
+- `boyd_lp_unique`, `boyd_qp_box2`, `boyd_l1`, `boyd_detector`, `boyd_corr_sdp` —
+  Boyd & Vandenberghe exercises (unique LP optimum, box QP, l1 approximation,
+  minimax detector, correlation bounds SDP).
+- `pca_alloc`, `pca_cashflow` — *Portfolio Construction and Analytics*.
+- `oa_feed` — *Optimization Algorithms*: animal feed mix.
+- `npo_lad`, `npo_minimax` — *Nonlinear Parameter Optimization Using R*: L1 and
+  L-infinity regression.
+- `lmco_lovasz` — Ben-Tal & Nemirovski: Lovasz capacity of C5, `sqrt(5)`.
+
+Applications and scaling tests:
+
+- LP / MILP: `transport`, `assignment`, `network_flow`, `lp_large`,
+  `lp_ineq_large`, `cvx_regression`, `diet`, `max_flow_min_cut`, `lp_mincut`,
+  `wasserstein`, `dist_robust`, `surface_cycles`, `knapsack`, `facility`,
+  `unit_commitment`, `exact_cover`, `nesting_dotted_board`, `poly_date`, `sudoku`,
+  `tsp`, `lpt`, `sinr_balancing`.
+- QP: `qp_sparse`, `eco_driving_qp`, `mpc_linear`, `barqcqp`.
+- SOCP: `equilibrium`, `min_enclosing_ball`, `min_circle`, `welzl`,
+  `facility_location`, `pwl_convex`, `total_variation`, `primal_svm`,
+  `secure_beamforming`, `limit_analysis_dp`, `steering_robustness`.
+- Exponential / power cones and GPs: `logistic_large`, `mle_density`,
+  `hard_uncertain`, `f_sparc`, `kmeans`, `rank_one`, `logcontrast_lasso`,
+  `gp_toolbox`, `gate_sizing_gp`, `transformer_design`, `max_volume_cuboid`,
+  `secure_ee_sdma`.
+- SDP: `maxcut_sdp`, `binary_quadratic`, `lovasz_theta`, `quantum_separability`,
+  `truss_design`, `filter_design`, `lmi_lyapunov`, `bounded_real_lmi`,
+  `lownerjohn_ellipsoid`, `qcqp_sdo_relaxation`, `lyapunov_roa`.
+- `sos_m1_certificate` — re-verifies an exact rational SOS certificate (pure
+  arithmetic, no solve).
+
 ## See also
 
 - [`examples/lp/`](../examples/lp/README.md) — one model file per supported
