@@ -875,7 +875,7 @@ PRIMALrescodee PRIMAL_getmaxnamelen(PRIMALtask_t t, int *maxlen) {
  */
 PRIMALrescodee PRIMAL_getversion(int *major, int *minor, int *revision) {
     if (!major || !minor || !revision) return PRIMAL_RES_ERR_NULL;
-    *major = 0; *minor = 1; *revision = 0;
+    *major = 0; *minor = 1; *revision = 4;
     return PRIMAL_RES_OK;
 }
 

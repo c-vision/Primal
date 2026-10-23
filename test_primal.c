@@ -8021,7 +8021,7 @@ static void test_t122(void) {
         P p; pbegin(&p);
         int ma = -1, mi = -1, rev = -1;
         check_rc(PRIMAL_getversion(&ma, &mi, &rev), PRIMAL_RES_OK, "A getversion");
-        check(ma == 0 && mi == 1 && rev == 0, "A the version of this solver");
+        check(ma == 0 && mi == 1 && rev == 4, "A the version of this solver");
         check_rc(PRIMAL_getversion(NULL, &mi, &rev), PRIMAL_RES_ERR_NULL, "A null");
         check(PRIMAL_isinfinity(INFINITY) == 1, "A +inf");
         check(PRIMAL_isinfinity(-INFINITY) == 1, "A -inf");
