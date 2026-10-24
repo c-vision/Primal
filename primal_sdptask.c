@@ -38,19 +38,114 @@
  * into a flat index. Used by the bar-variable conversions. */
 int bar_pack(int d, int p, int q) { return p * d - p * (p - 1) / 2 + (q - p); }
 
-/* add the bar terms of original row k into Abar[r*nb+j] (dense symmetric). */
-static void sdp_bar_row(PRIMALtask_t t, int k, int r, int nb, double **symPq, double **Abar) {
-    for (int kb = 0; kb < t->nbarA; kb++) {
-        if (t->barA_con[kb] != k) continue;
+/* add the bar terms of original row k into Abar[r*nb+j] (dense symmetric).
+ * The terms of row k are bkb[bkp[k]] .. bkb[bkp[k+1]-1], in the order they
+ * were stored; a block is allocated when the row first touches it (a block
+ * the row never touches stays NULL, the zero block of sdp_ipm_csr).
+ * Returns 0, or 1 when an allocation fails. */
+static int sdp_bar_row(PRIMALtask_t t, int k, int r, int nb, double **symPq, double **Abar,
+                       const int *bkp, const int *bkb) {
+    for (int e = bkp[k]; e < bkp[k + 1]; e++) {
+        int kb = bkb[e];
         int b = t->barA_bar[kb], m = t->barA_sym[kb], d = t->barDim[b];
         double coef = t->barA_coef[kb];
-        double *M = Abar[(size_t)r * nb + b];
+        double **slot = &Abar[(size_t)r * nb + b];
+        if (!*slot && !(*slot = (double *)calloc((size_t)d * d, sizeof(double)))) return 1;
+        double *M = *slot;
         for (int p = 0; p < d; p++) for (int q = p; q < d; q++) {
             double sv = (p == q) ? symPq[m][bar_pack(d, p, q)] : 0.5 * symPq[m][bar_pack(d, p, q)];
             double v = coef * sv;
             M[p * d + q] += v; M[q * d + p] = M[p * d + q];
         }
     }
+    return 0;
+}
+
+/* The scalar rows of the converted problem as triplets (row, column, value),
+ * in the order the conversion produces them.  sdp_tri_csr merges a repeated
+ * position by adding its values in that order, starting from 0.0 -- the sums
+ * the dense E2 used to accumulate with +=, -= and = on a fresh zero. */
+typedef struct { int n, cap; int *r, *c; double *v; } SdpTri;
+
+/* Append one triplet. 0 ok, 1 out of memory. */
+static int sdp_tri_add(SdpTri *T, int r, int c, double v) {
+    if (T->n == T->cap) {
+        int nc = T->cap ? 2 * T->cap : 1024;
+        int *a = (int *)realloc(T->r, (size_t)nc * sizeof(int));
+        if (!a) return 1;
+        T->r = a;
+        a = (int *)realloc(T->c, (size_t)nc * sizeof(int));
+        if (!a) return 1;
+        T->c = a;
+        double *w = (double *)realloc(T->v, (size_t)nc * sizeof(double));
+        if (!w) return 1;
+        T->v = w;
+        T->cap = nc;
+    }
+    T->r[T->n] = r; T->c[T->n] = c; T->v[T->n] = v; T->n++;
+    return 0;
+}
+
+/* Order an index list by column (insertion sort for the short rows, a merge
+ * sort through `tmp` for the long ones); columns are distinct here. */
+static void sdp_sort_cols(int *idx, int len, const int *col, int *tmp) {
+    if (len < 32) {
+        for (int a = 1; a < len; a++) { int x = idx[a], b = a - 1;
+            while (b >= 0 && col[idx[b]] > col[x]) { idx[b + 1] = idx[b]; b--; }
+            idx[b + 1] = x; }
+        return;
+    }
+    int h = len / 2;
+    sdp_sort_cols(idx, h, col, tmp);
+    sdp_sort_cols(idx + h, len - h, col, tmp);
+    int a = 0, b = h, o = 0;
+    while (a < h && b < len) tmp[o++] = (col[idx[a]] <= col[idx[b]]) ? idx[a++] : idx[b++];
+    while (a < h) tmp[o++] = idx[a++];
+    while (b < len) tmp[o++] = idx[b++];
+    memcpy(idx, tmp, (size_t)len * sizeof(int));
+}
+
+/* Compressed rows of m rows and n columns from the triplets: repeated
+ * positions summed in emission order, columns strictly ascending, exact
+ * zeros dropped.  0 ok, 1 out of memory. */
+static int sdp_tri_csr(const SdpTri *T, int m, int n, int **orp, int **oci, double **ov) {
+    int nt = T->n;
+    int *cnt = (int *)calloc((size_t)m + 1, sizeof(int));
+    int *ord = (int *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(int));
+    int *pos = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
+    int *uc = (int *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(int));
+    double *uv = (double *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(double));
+    int *idx = (int *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(int));
+    int *tmp = (int *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(int));
+    int *rp = (int *)malloc(((size_t)m + 1) * sizeof(int));
+    int *ci = (int *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(int));
+    double *v = (double *)malloc((size_t)(nt > 0 ? nt : 1) * sizeof(double));
+    if (!cnt || !ord || !pos || !uc || !uv || !idx || !tmp || !rp || !ci || !v) {
+        free(cnt); free(ord); free(pos); free(uc); free(uv); free(idx); free(tmp);
+        free(rp); free(ci); free(v); return 1;
+    }
+    for (int q = 0; q < nt; q++) cnt[T->r[q] + 1]++;
+    for (int k = 0; k < m; k++) cnt[k + 1] += cnt[k];
+    for (int q = 0; q < nt; q++) ord[cnt[T->r[q]]++] = q;   /* stable: emission order kept */
+    for (int k = m; k > 0; k--) cnt[k] = cnt[k - 1];
+    cnt[0] = 0;
+    for (int i = 0; i < n; i++) pos[i] = -1;
+    int nz = 0;
+    for (int k = 0; k < m; k++) {
+        int nu = 0;
+        for (int q = cnt[k]; q < cnt[k + 1]; q++) { int e = ord[q], c = T->c[e];
+            if (pos[c] < 0) { pos[c] = nu; uc[nu] = c; uv[nu] = 0.0 + T->v[e]; nu++; }
+            else uv[pos[c]] += T->v[e]; }
+        for (int a = 0; a < nu; a++) { pos[uc[a]] = -1; idx[a] = a; }
+        sdp_sort_cols(idx, nu, uc, tmp);
+        rp[k] = nz;
+        for (int a = 0; a < nu; a++) { double x = uv[idx[a]];
+            if (x != 0.0) { ci[nz] = uc[idx[a]]; v[nz] = x; nz++; } }
+    }
+    rp[m] = nz;
+    free(cnt); free(ord); free(pos); free(uc); free(uv); free(idx); free(tmp);
+    *orp = rp; *oci = ci; *ov = v;
+    return 0;
 }
 
 /* SDP/conic via primal-dual interior point (Nesterov-Todd).  Converts the task
@@ -157,11 +252,42 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
         }
     }
 
-    /* ---- scalar row matrix Arow (ncon x nvar) ---- */
-    double *Arow = (double *)calloc((size_t)(ncon > 0 ? ncon : 1) * (size_t)(nvar > 0 ? nvar : 1), sizeof(double));
-    if (!Arow) goto fail_cbar;
-    for (int j = 0; j < nvar; j++) { const Col *col = &t->cols[j];
-        for (int e = 0; e < col->nz; e++) Arow[col->sub[e] * nvar + j] += col->val[e]; }
+    /* ---- scalar rows of A by row: row k holds arj[arp[k]..arp[k+1]) with
+     * columns ascending and a repeated (row, column) summed in the order the
+     * column stores it (the dense ncon x nvar matrix this replaces did +=).
+     * Then the bar terms of every row, bkb[bkp[k]..bkp[k+1]) in stored order. ---- */
+    int *arp = (int *)calloc((size_t)ncon + 1, sizeof(int));
+    int *bkp = (int *)calloc((size_t)ncon + 1, sizeof(int));
+    int *arj = NULL, *bkb = NULL; double *arv = NULL;
+    if (!arp || !bkp) { free(arp); free(bkp); goto fail_cbar; }
+    {
+        size_t tot = 0;
+        for (int j = 0; j < nvar; j++) tot += (size_t)t->cols[j].nz;
+        arj = (int *)malloc((tot > 0 ? tot : 1) * sizeof(int));
+        arv = (double *)malloc((tot > 0 ? tot : 1) * sizeof(double));
+        bkb = (int *)malloc((size_t)(t->nbarA > 0 ? t->nbarA : 1) * sizeof(int));
+        int *fill = (int *)malloc((size_t)(ncon > 0 ? ncon : 1) * sizeof(int));
+        if (!arj || !arv || !bkb || !fill) { free(fill); free(arp); free(bkp); free(arj); free(arv); free(bkb); goto fail_cbar; }
+        for (int j = 0; j < nvar; j++) { const Col *col = &t->cols[j];
+            for (int e = 0; e < col->nz; e++) arp[col->sub[e] + 1]++; }
+        for (int k = 0; k < ncon; k++) arp[k + 1] += arp[k];
+        for (int k = 0; k < ncon; k++) fill[k] = arp[k];
+        for (int j = 0; j < nvar; j++) { const Col *col = &t->cols[j];   /* columns ascending */
+            for (int e = 0; e < col->nz; e++) { int k = col->sub[e];
+                if (fill[k] > arp[k] && arj[fill[k] - 1] == j) arv[fill[k] - 1] += col->val[e];
+                else { arj[fill[k]] = j; arv[fill[k]] = 0.0 + col->val[e]; fill[k]++; } } }
+        /* close the gaps a merged repeat left: compact every row in place */
+        int o = 0;
+        for (int k = 0; k < ncon; k++) { int s0 = arp[k], s1 = fill[k];
+            arp[k] = o;
+            for (int p = s0; p < s1; p++) { arj[o] = arj[p]; arv[o] = arv[p]; o++; } }
+        arp[ncon] = o;
+        for (int kb = 0; kb < t->nbarA; kb++) bkp[t->barA_con[kb] + 1]++;
+        for (int k = 0; k < ncon; k++) bkp[k + 1] += bkp[k];
+        for (int k = 0; k < ncon; k++) fill[k] = bkp[k];
+        for (int kb = 0; kb < t->nbarA; kb++) bkb[fill[t->barA_con[kb]]++] = kb;
+        free(fill);
+    }
 
     /* ---- represent each scalar var as const + sum coef * newvar (>= 0) ---- */
     int nv2 = 0, m2 = 0;
@@ -203,7 +329,10 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
         else { m2 += 1; rowSlack[2*k] = nv2++; rowSlack[2*k+1] = -1; }
     }
     int mTot = m2 + nSocVar + 3 * nep;
-    double *E2 = (double *)calloc((size_t)(mTot > 0 ? mTot : 1) * (size_t)(nv2 > 0 ? nv2 : 1), sizeof(double));
+    /* E2 (mTot x nv2) is built as triplets, never as an array: see SdpTri.
+     * Abar/Asoc/Aexp hold a block only where a row touches it (NULL = zero). */
+    SdpTri T2 = { 0, 0, NULL, NULL, NULL };
+    int *E2p = NULL, *E2i = NULL; double *E2v = NULL;
     double *b2 = (double *)calloc((size_t)(mTot > 0 ? mTot : 1), sizeof(double));
     double *c2 = (double *)calloc((size_t)(nv2 > 0 ? nv2 : 1), sizeof(double));
     double **Abar = (double **)calloc((size_t)(mTot > 0 ? mTot : 1) * (size_t)(nb > 0 ? nb : 1), sizeof(double *));
@@ -211,16 +340,12 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     double **Asoc = (double **)calloc((size_t)(mTot > 0 ? mTot : 1) * (size_t)(nsoc > 0 ? nsoc : 1), sizeof(double *));
     double **Cexp = (double **)calloc((size_t)(nep > 0 ? nep : 1), sizeof(double *));
     double **Aexp = (double **)calloc((size_t)(mTot > 0 ? mTot : 1) * (size_t)(nep > 0 ? nep : 1), sizeof(double *));
-    if (!E2 || !b2 || !c2 || !Abar || !Csoc || !Asoc || !Cexp || !Aexp) goto fail_exp;
-    for (int r = 0; r < mTot; r++) for (int j = 0; j < nb; j++) {
-        int d = t->barDim[j];
-        Abar[(size_t)r * nb + j] = (double *)calloc((size_t)d * d, sizeof(double));
-        if (!Abar[(size_t)r * nb + j]) goto fail_abar;
-    }
+    if (!b2 || !c2 || !Abar || !Csoc || !Asoc || !Cexp || !Aexp) goto fail_exp;
     for (int i = 0; i < nsoc; i++) {
         Csoc[i] = (double *)calloc((size_t)socdim[i], sizeof(double));
         if (!Csoc[i]) goto fail_abar;
-        for (int r = 0; r < mTot; r++) {
+        for (int a = 0; a < socdim[i]; a++) {   /* linking row a of cone i touches it */
+            int r = m2 + socOf[i] + a;
             Asoc[(size_t)r * nsoc + i] = (double *)calloc((size_t)socdim[i], sizeof(double));
             if (!Asoc[(size_t)r * nsoc + i]) goto fail_abar;
         }
@@ -228,38 +353,40 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     for (int i = 0; i < nep; i++) {
         Cexp[i] = (double *)calloc(3, sizeof(double));
         if (!Cexp[i]) goto fail_abar;
-        for (int r = 0; r < mTot; r++) {
+        for (int a = 0; a < 3; a++) {
+            int r = m2 + nSocVar + 3 * i + a;
             Aexp[(size_t)r * nep + i] = (double *)calloc(3, sizeof(double));
             if (!Aexp[(size_t)r * nep + i]) goto fail_abar;
         }
     }
+#define E2ADD(r_, c_, v_) do { if (sdp_tri_add(&T2, (r_), (c_), (v_))) goto fail_abar; } while (0)
     for (int i = 0; i < nvar; i++) { double ci = s * t->c[i];
         for (int p = 0; p < vN[i]; p++) c2[vIdx[2*i+p]] += ci * vCoef[2*i+p]; }
     for (int k = 0; k < ncon; k++) {
         if (rowOf[k] < 0) continue;
         int r = rowOf[k], bk = t->bkc[k];
         double bb = 0.0;
-        for (int i = 0; i < nvar; i++) { double a = Arow[k * nvar + i]; if (a == 0.0) continue;
+        for (int e = arp[k]; e < arp[k + 1]; e++) { int i = arj[e]; double a = arv[e]; if (a == 0.0) continue;
             bb += a * vConst[i];
-            for (int p = 0; p < vN[i]; p++) E2[(size_t)r * nv2 + vIdx[2*i+p]] += a * vCoef[2*i+p]; }
-        sdp_bar_row(t, k, r, nb, symPq, Abar);
+            for (int p = 0; p < vN[i]; p++) E2ADD(r, vIdx[2*i+p], a * vCoef[2*i+p]); }
+        if (sdp_bar_row(t, k, r, nb, symPq, Abar, bkp, bkb)) goto fail_abar;
         if (bk == PRIMAL_BK_RA) {
             int r2 = r + 1;
-            for (int i = 0; i < nvar; i++) { double a = Arow[k * nvar + i]; if (a == 0.0) continue;
-                for (int p = 0; p < vN[i]; p++) E2[(size_t)r2 * nv2 + vIdx[2*i+p]] += a * vCoef[2*i+p]; }
-            sdp_bar_row(t, k, r2, nb, symPq, Abar);
-            E2[(size_t)r * nv2 + rowSlack[2*k]] = -1.0; b2[r] = t->blc[k] - bb;
-            E2[(size_t)r2 * nv2 + rowSlack[2*k+1]] = 1.0; b2[r2] = t->buc[k] - bb;
-        } else if (bk == PRIMAL_BK_LO) { E2[(size_t)r * nv2 + rowSlack[2*k]] = -1.0; b2[r] = t->blc[k] - bb; }
-        else if (bk == PRIMAL_BK_UP) { E2[(size_t)r * nv2 + rowSlack[2*k]] = 1.0; b2[r] = t->buc[k] - bb; }
+            for (int e = arp[k]; e < arp[k + 1]; e++) { int i = arj[e]; double a = arv[e]; if (a == 0.0) continue;
+                for (int p = 0; p < vN[i]; p++) E2ADD(r2, vIdx[2*i+p], a * vCoef[2*i+p]); }
+            if (sdp_bar_row(t, k, r2, nb, symPq, Abar, bkp, bkb)) goto fail_abar;
+            E2ADD(r, rowSlack[2*k], -1.0); b2[r] = t->blc[k] - bb;
+            E2ADD(r2, rowSlack[2*k+1], 1.0); b2[r2] = t->buc[k] - bb;
+        } else if (bk == PRIMAL_BK_LO) { E2ADD(r, rowSlack[2*k], -1.0); b2[r] = t->blc[k] - bb; }
+        else if (bk == PRIMAL_BK_UP) { E2ADD(r, rowSlack[2*k], 1.0); b2[r] = t->buc[k] - bb; }
         else { b2[r] = t->blc[k] - bb; }   /* FX */
     }
     /* ---- cap rows of the ranged scalar variables (see the variable loop) ---- */
     for (int i = 0; i < nvar; i++) {
         if (varRow[i] < 0) continue;
         int r = varRow[i];
-        E2[(size_t)r * nv2 + vIdx[2*i]] = 1.0;
-        E2[(size_t)r * nv2 + varSlack[i]] = 1.0;
+        E2ADD(r, vIdx[2*i], 1.0);
+        E2ADD(r, varSlack[i], 1.0);
         b2[r] = varCap[i];
     }
     /* ---- SOC linking rows ----
@@ -275,7 +402,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
                 int r = m2 + socOf[i] + a, v = mem[a];
                 Asoc[(size_t)r * nsoc + i][a] = 1.0;
                 b2[r] = vConst[v];
-                for (int p = 0; p < vN[v]; p++) E2[(size_t)r * nv2 + vIdx[2*v+p]] -= vCoef[2*v+p];
+                for (int p = 0; p < vN[v]; p++) E2ADD(r, vIdx[2*v+p], -vCoef[2*v+p]);
             }
         } else {   /* RQUAD */
             const double sq2 = sqrt(2.0);
@@ -292,12 +419,12 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
                     Asoc[(size_t)r * nsoc + i][a] = sq2;
                     for (int t2 = 0; t2 < 2; t2++) { int v = vs[t2];
                         lhsC += cs[t2] * vConst[v];
-                        for (int p = 0; p < vN[v]; p++) E2[(size_t)r * nv2 + vIdx[2*v+p]] += cs[t2] * vCoef[2*v+p]; }
+                        for (int p = 0; p < vN[v]; p++) E2ADD(r, vIdx[2*v+p], cs[t2] * vCoef[2*v+p]); }
                 } else {
                     int v = mem[a];
                     Asoc[(size_t)r * nsoc + i][a] = 1.0;
                     lhsC = -vConst[v];
-                    for (int p = 0; p < vN[v]; p++) E2[(size_t)r * nv2 + vIdx[2*v+p]] -= vCoef[2*v+p];
+                    for (int p = 0; p < vN[v]; p++) E2ADD(r, vIdx[2*v+p], -vCoef[2*v+p]);
                 }
                 b2[r] = -lhsC;
             }
@@ -312,9 +439,12 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             int r = m2 + nSocVar + 3 * i + a, v = mem[a];
             Aexp[(size_t)r * nep + i][a] = 1.0;
             b2[r] = sg * vConst[v];
-            for (int p = 0; p < vN[v]; p++) E2[(size_t)r * nv2 + vIdx[2*v+p]] -= sg * vCoef[2*v+p];
+            for (int p = 0; p < vN[v]; p++) E2ADD(r, vIdx[2*v+p], -(sg * vCoef[2*v+p]));
         }
     }
+#undef E2ADD
+    if (sdp_tri_csr(&T2, mTot, nv2, &E2p, &E2i, &E2v)) goto fail_abar;
+    free(T2.r); free(T2.c); free(T2.v); T2.r = T2.c = NULL; T2.v = NULL;
     if (getenv("GMB_DBG")) {
         fprintf(stderr, "  [phase] sdp_ipm conv=%.4fs\n", (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);
         g_phase_t0 = clock();
@@ -379,7 +509,8 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     if (!alloc_ok) rc = PRIMAL_RES_ERR_ALLOC;
     else {
         int fb = 0;
-        int st = sdp_ipm(mTot, nv2, E2, b2, c2, nb, t->barDim,
+        SdpCsr A2 = { E2p, E2i, E2v };
+        int st = sdp_ipm_csr(mTot, nv2, &A2, b2, c2, nb, t->barDim,
                          (const double *const *)Cbar, (const double *const *)Abar,
                          nsoc, socdim, (const double *const *)Csoc, (const double *const *)Asoc,
                          nep, ekind, ealpha, (const double *const *)Cexp, (const double *const *)Aexp,
@@ -485,12 +616,13 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     free(Xb); free(Sb); free(Zsoc); free(Ssoc); free(Zexp); free(Sexp); free(x2); free(y2);
     free(xwarm2); free(ywarm2);
     for (int r = 0; r < mTot; r++) for (int j = 0; j < nb; j++) free(Abar[(size_t)r * nb + j]);
-    free(Abar); free(E2); free(b2); free(c2);
+    free(Abar); free(E2p); free(E2i); free(E2v); free(b2); free(c2);
     for (int i = 0; i < nsoc; i++) { free(Csoc[i]); for (int r = 0; r < mTot; r++) free(Asoc[(size_t)r * nsoc + i]); }
     for (int i = 0; i < nep; i++) { free(Cexp[i]); for (int r = 0; r < mTot; r++) free(Aexp[(size_t)r * nep + i]); }
     free(Csoc); free(Asoc); free(Cexp); free(Aexp);
     free(socdim); free(socOf); free(socCone); free(ekind); free(ealpha); free(eOf); free(eSgn);
-    free(vN); free(vIdx); free(vCoef); free(vConst); free(Arow);
+    free(vN); free(vIdx); free(vCoef); free(vConst);
+    free(arp); free(arj); free(arv); free(bkp); free(bkb);
     free(varRow); free(varSlack); free(varCap);
     free(rowOf); free(rowSlack);
     for (int j = 0; j < nb; j++) free(Cbar[j]);
@@ -507,9 +639,11 @@ fail_abar:
     if (Aexp) for (int i = 0; i < nep; i++) for (int r = 0; r < mTot; r++) free(Aexp[(size_t)r * nep + i]);
 fail_exp:
     free(Csoc); free(Asoc); free(Cexp); free(Aexp);
-    free(E2); free(b2); free(c2); free(Abar);
+    free(T2.r); free(T2.c); free(T2.v); free(E2p); free(E2i); free(E2v);
+    free(b2); free(c2); free(Abar);
 fail_row:
-    free(vN); free(vIdx); free(vCoef); free(vConst); free(Arow);
+    free(vN); free(vIdx); free(vCoef); free(vConst);
+    free(arp); free(arj); free(arv); free(bkp); free(bkb);
     free(varRow); free(varSlack); free(varCap);
     free(rowOf); free(rowSlack);
 fail_cbar:

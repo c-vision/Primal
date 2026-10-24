@@ -22,11 +22,13 @@
  *   s.t. A x + sum_j <A_kj, X_j> + sum_i <a_ki, z_i> = b_k
  *        x >= 0,  X_j >= 0 (PSD),  z_i in SOC
  *
- * A    : m x n row-major.
+ * A    : m x n row-major (sdp_ipm) or CSR (sdp_ipm_csr, see SdpCsr).
  * Cbar : nb symmetric matrices, Cbar[j] -> d_j*d_j row-major.
- * Abar : m*nb symmetric matrices, Abar[k*nb+j] -> d_j*d_j row-major.
+ * Abar : m*nb symmetric matrices, Abar[k*nb+j] -> d_j*d_j row-major,
+ *        NULL where row k does not touch block j (a zero block).
  * Csoc : nsoc vectors, Csoc[i] -> k_i.
- * Asoc : m*nsoc vectors, Asoc[k*nsoc+i] -> k_i.
+ * Asoc : m*nsoc vectors, Asoc[k*nsoc+i] -> k_i, NULL for a zero vector.
+ * Aexp : m*nep vectors of 3, NULL for a zero vector.
  *
  * Unified conic path: R_+, SOC and PSD blocks in the same interior point.
  * R_+ and PSD use Nesterov-Todd scaling + normal equations on the m equality
@@ -51,6 +53,34 @@
  * Returns 0 optimal, 1 max-iter, 2 memory, 3 singular. */
 #ifndef SDP_H
 #define SDP_H
+
+/* The scalar part A (m x n) in compressed rows: row k holds the columns
+ * ci[rp[k]] .. ci[rp[k+1]-1], STRICTLY ascending (no repeated column), with
+ * values v[].  The solver's sums run over the columns in this order, so the
+ * dense and the compressed entry points give the same numbers. */
+typedef struct {
+    const int *rp;    /* m + 1 row pointers */
+    const int *ci;    /* column indices */
+    const double *v;  /* values */
+} SdpCsr;
+
+/* Same solver with A in compressed rows: the constraint data never exist as an
+ * m x n array (the dense A of sdp_ipm is converted to this form on entry). */
+int sdp_ipm_csr(int m, int n, const SdpCsr *A, const double *b, const double *c,
+            int nb, const int *dims,
+            const double *const *Cbar, const double *const *Abar,
+            int nsoc, const int *socdims,
+            const double *const *Csoc, const double *const *Asoc,
+            int nep, const int *ekind, const double *ealpha,
+            const double *const *Cexp, const double *const *Aexp,
+            int max_iter, double tol,
+            double rtol_pri, double rtol_dual, double rtol_gap,
+            double near_rel,
+            double *x, double *const *Xbar, double *y, double *const *Sbar,
+            double *const *Zsoc, double *const *Ssoc,
+            double *const *Zexp, double *const *Sexp, const double *xwarm,
+            const double *ywarm,
+            int *fb_ok);
 
 int sdp_ipm(int m, int n, const double *A, const double *b, const double *c,
             int nb, const int *dims,

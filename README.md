@@ -687,13 +687,15 @@ Open algorithmic work, largest first:
 
 - **Basis warm start.** No real crash basis; `solvebasis` re-solves from scratch
   when the basis handed in does not measure, instead of re-optimizing *from* it.
-- **Sparse data in the conic path.** The unified conic KKT (`sdp.c`) is now
-  assembled sparse and factored with the sparse LU when the dense route would be
-  expensive (`SDP_SPARSE_WORK`: a 2×2 PSD block next to an 800-row LP goes from
-  12.5 s to 0.1 s). The constraint data handed to it are still dense: `A` is
-  `m × n` and every (row, PSD block) pair holds a `d × d` matrix, so memory still
-  grows as `m·n` and `m·Σd²` (a 10 000-row model takes 2.3 GB). The sparse LDLᵀ
-  is not used there: that KKT is not symmetric.
+- **Many-cone scaling in the conic path.** The unified conic route (`sdp.c`) now
+  takes `A` in compressed rows, stores a PSD block only for the rows that touch it,
+  and assembles its KKT sparse when the dense route would be expensive
+  (`SDP_SPARSE_WORK`): a 2×2 PSD block next to a 10 000-row LP takes 2.9 s and
+  21 MB (29.6 s and 2.3 GB before). Two quadratic costs remain with thousands of
+  SOC or exp/power cones: the per-(row, cone) pointer tables of `Asoc`/`Aexp`,
+  and the sparse LU, which above 8192 equations drops its column-incidence map
+  and scans every row for each pivot (2000 exp cones: 14 s, 234 MB). The sparse
+  LDLᵀ is not used there: that KKT is not symmetric.
 - **Symmetric KKT in the SOCP route**, so the sparse symmetric factorization can
   replace the sparse LU there.
 - **Large-scale conic performance.** The second-order SOCP corrector reduces
