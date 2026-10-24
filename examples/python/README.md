@@ -73,6 +73,13 @@ directly as `primalsolver.PRIMAL_*`.
 
 ## Examples
 
+Every sample in [`examples/c/`](../examples/c/) has a Python port here with the
+**same output** as the C program (built with `-ffp-contract=off`, as `make
+run-samples` does): the same text, numbers and exit code. Lines with a wall-clock
+time differ only in the time. The pseudo-random instances use the same generators,
+and sums run left to right as in the C loops. `quickstart.py` is the only example
+with no C counterpart.
+
 ### Basics
 
 - `quickstart.py` — the smallest LP, the whole API in one screen
@@ -170,14 +177,6 @@ independent recomputation).
   example): residual equals the optimal `t` and `A'r ≈ 0`.
 
 ### Ports of the remaining C samples
-
-Every sample in [`examples/c/`](../examples/c/) now has a Python port with the
-**same output** as the C program: the same text, numbers and exit code. Lines with a
-wall-clock time differ only in the time. The pseudo-random instances use the same
-generators. Three samples differ in the last printed digit of a rounding-noise
-residual from the C build used as reference: `sos_m1_certificate`, `secure_ee_sdma`
-and `logcontrast_lasso`. That build lets clang fuse multiply-adds (FMA). The C
-programs compiled with `-ffp-contract=off` print exactly the Python values.
 
 MOSEK API ports:
 

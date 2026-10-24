@@ -1,81 +1,102 @@
 #!/usr/bin/env python3
-"""PrimalSolver - equal risk contribution portfolio (exponential cones).
+"""Equal risk contribution portfolio via exponential cones.
 
-Port of c_examples/finance/risk_parity.c:
+    min sqrt(x'Sx) - c sum_i log(x_i)
+    conic form: (t, G'x) in Q,  (x_i, 1, s_i) in EXP (s_i <= log x_i),  min t - c sum s_i
 
-    min sqrt(x'Sx) - c*sum_i log(x_i)   (x_i > 0)
-    conic:  (t, G'x) in QUAD (t >= sqrt(x'Sx), S = F F' + diag(D), G = [F, sqrt(D)])
-            (x_i, 1, s_i) in EXP   (x_i >= exp(s_i)),   min t - c*sum_i s_i.
+with S = F F' + diag(D), G = [F, sqrt(D)]. After rescaling to sum(x) = 1 the risk
+contributions x_i (Sx)_i are equal (verified). The data come from the same 32-bit
+linear congruential generator as the C example.
 
-The minimiser is scale-invariant; after rescaling to sum(x)=1 the risk
-contributions x_i (Sx)_i are equal (checked within 0.1%).
+    python risk_parity.py [n] [k] [c]   (default 20 4 0.01)
 
-    python python_examples/risk_parity.py [n] [k]      (default 20 4)
+Port of examples/c/risk_parity.c.
 """
 
 import math
 import sys
+import time
 
-from primalsolver import Model, BK, CT, SOLSTA
+from primalsolver import Model, BK, CT
 
-N = int(sys.argv[1]) if len(sys.argv) > 1 else 20
-K = int(sys.argv[2]) if len(sys.argv) > 2 else 4
-C = float(sys.argv[3]) if len(sys.argv) > 3 else 0.01
+_state = 909090
 
 
-class RNG:
-    def __init__(self, seed):
-        self.s = seed & 0xFFFFFFFF
-
-    def next(self):
-        self.s = (self.s * 1103515245 + 12345) & 0xFFFFFFFF
-        return ((self.s >> 16) & 0x7FFF) / 32767.0
+def rnd():
+    """Deterministic pseudo-random draw in [0,1] from the fixed seed."""
+    global _state
+    _state = (_state * 1103515245 + 12345) & 0xFFFFFFFF
+    return ((_state >> 16) & 0x7FFF) / 32767.0
 
 
 def main() -> int:
-    rng = RNG(909090)
-    F, D = [], []
-    for _ in range(N):
-        D.append(0.001 + rng.next() * 0.004)
-        F.append([(rng.next() - 0.5) * 0.2 for _ in range(K)])
-    m2 = K + N
-
-    x0, z0, tv, s0, one = 0, N, N + m2, N + m2 + 1, N + m2 + 1 + N
-    with Model(maxcon=m2, maxvar=N + m2 + 1 + N + 1) as m:
-        for i in range(N):
-            m.var_bounds(x0 + i, BK.RA, 1e-4, 1e4)
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+    k = int(sys.argv[2]) if len(sys.argv) > 2 else 4
+    if n < 2 or k < 1:
+        return 2
+    c = float(sys.argv[3]) if len(sys.argv) > 3 else 0.01
+    F, D = [0.0] * (n * k), [0.0] * n
+    for i in range(n):
+        D[i] = 0.001 + rnd() * 0.004
+        for j in range(k):
+            F[i * k + j] = (rnd() - 0.5) * 0.2
+    m2 = k + n
+    X0, Z0, TV, S0, ONE = 0, n, n + m2, n + m2 + 1, n + m2 + 1 + n   # x (n), z (m2), t, s (n), one
+    with Model() as t:
+        t.add_vars(n + m2 + 1 + n + 1)
+        t.add_cons(m2)
+        for i in range(n):
+            t.var_bounds(X0 + i, BK.RA, 1e-4, 1e4)
         for j in range(m2):
-            m.var_bounds(z0 + j, BK.FR)
-        m.var_bounds(tv, BK.LO, 0.0); m.cj(tv, 1.0)
-        for i in range(N):
-            m.var_bounds(s0 + i, BK.RA, -30.0, 10.0); m.cj(s0 + i, -C)
-        m.var_bounds(one, BK.FX, 1.0, 1.0)
-        for j in range(m2):
-            cols, vals = [], []
-            for i in range(N):
-                g = F[i][j] if j < K else (math.sqrt(D[i]) if j - K == i else 0.0)
+            t.var_bounds(Z0 + j, BK.FR, -math.inf, math.inf)
+        t.var_bounds(TV, BK.LO, 0.0, math.inf)
+        t.cj(TV, 1.0)
+        for i in range(n):
+            # big-M on the log variable: keeps the round-0 tangent LP bounded
+            t.var_bounds(S0 + i, BK.RA, -30.0, 10.0)
+            t.cj(S0 + i, -c)
+        t.var_bounds(ONE, BK.FX, 1.0, 1.0)
+        for j in range(m2):                         # z_j - (G'x)_j = 0
+            sub, val = [], []
+            for i in range(n):
+                g = F[i * k + j] if j < k else (math.sqrt(D[i]) if j - k == i else 0.0)
                 if g != 0.0:
-                    cols.append(x0 + i); vals.append(-g)
-            cols.append(z0 + j); vals.append(1.0)
-            m.a_row(j, cols, vals)
-            m.con_bounds(j, BK.FX, 0.0, 0.0)
-        m.cone(CT.QUAD, [tv] + [z0 + j for j in range(m2)])
-        for i in range(N):
-            m.cone(CT.PEXP, [x0 + i, one, s0 + i])
-        r = m.solve()
-
-    x = r.x[:N]
-    s = sum(x)
-    x = [v / s for v in x]
-    Sx = [0.0] * N
-    for i in range(N):
-        for a in range(K):
-            Sx[i] += F[i][a] * sum(F[l][a] * x[l] for l in range(N))
-        Sx[i] += D[i] * x[i]
-    rc = [x[i] * Sx[i] for i in range(N)]
-    spread = max(rc) / min(rc) - 1.0 if min(rc) > 0 else 1.0
-    ok = r.solsta == SOLSTA.OPTIMAL and spread < 1e-3
-    print(f"riskparity n={N} k={K} RC spread={spread:.3e} {'OK' if ok else 'FAIL'}")
+                    sub.append(X0 + i); val.append(-g)
+            sub.append(Z0 + j); val.append(1.0)
+            t.a_row(j, sub, val)
+            t.con_bounds(j, BK.FX, 0.0, 0.0)
+        t.cone(CT.QUAD, [TV] + list(range(Z0, Z0 + m2)))   # (t, z) in QUAD
+        for i in range(n):                          # x_i >= exp(s_i)
+            t.cone(CT.PEXP, [X0 + i, ONE, S0 + i])
+        t0 = time.perf_counter()
+        r = t.solve()
+        sec = time.perf_counter() - t0
+    ok = r.rc == 0
+    spread = 0.0
+    if ok:
+        x = r.x[:n]
+        s = 0.0                                     # rescale to sum 1
+        for i in range(n):
+            s += x[i]
+        x = [xi / s for xi in x]
+        Sx = [0.0] * n
+        for i in range(n):
+            for a2 in range(k):
+                ss = 0.0
+                for l in range(n):
+                    ss += F[l * k + a2] * x[l]
+                Sx[i] += F[i * k + a2] * ss
+            Sx[i] += D[i] * x[i]
+        rcmin, rcmax = 1e300, -1e300
+        for i in range(n):
+            rci = x[i] * Sx[i]
+            if rci < rcmin:
+                rcmin = rci
+            if rci > rcmax:
+                rcmax = rci
+        spread = (rcmax / rcmin - 1.0) if rcmin > 0 else 1.0
+        ok = spread < 1e-3                          # risk contributions equal within 0.1%
+    print("riskparity n=%d k=%d RC spread=%.3e rc=%d t=%.4fs %s" % (n, k, spread, r.rc, sec, "OK" if ok else "FAIL"))
     return 0 if ok else 1
 
 

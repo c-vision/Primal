@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
-"""PrimalSolver - mean-variance + correlation-stress portfolio pipeline.
+"""The full mean-variance + correlation-stress pipeline of "BIG Portfolio Optimisation"
+(tbc81/big-portfolio-optimisation, MIT) on the real market estimates of that pipeline
+(18 held assets, cash at 1.5%):
 
-Port of c_examples/finance/big_portfolio.c (the "BIG portfolio optimisation"
-case study, on real market moments). Steps: observed snapshot, min-risk SOCP,
-max-return SOCP, nearest valid stressed correlation SDP, multiplier, stressed
-min-risk. Checks the case-study reference values.
+  1) observed snapshot  R0 = mu'x0, vol0 = sqrt(x0'Sigma x0)
+  2) min risk at R0 and 3) max return at vol0 (SOCPs, ||G'x|| with Sigma = G G')
+  4) correlation stress: the nearest valid C* (SDP) with C*_ij >= 0.85 on the
+     technology/growth group, Sigma* = D C* D
+  5) the risk multiplier and 6) min risk at R0 under Sigma*
 
-    python python_examples/big_portfolio.py
+Reference values: vol0 = 0.229369, stressed vol 0.257033, multiplier 1.255767,
+min risk 0.135508 / 0.137191, max return 0.400353. Port of examples/c/big_portfolio.c.
 """
 
 import math
 
-from primalsolver import Model, BK, CT, SENSE, SOLSTA
+from primalsolver import Model, BK, CT, SENSE
 
 N = 18
-CASH0 = 0.015
 RHO = 0.85
-
+ASSET = ["Rheinmetall", "Parkmead", "ASML", "Roku", "CSH2", "Gold", "Duke Energy", "BAE Systems", "Nucor",
+         "Diageo", "Legal & General", "Apollo", "Cocoa", "Salesforce", "Cameco", "Marvell", "Micron",
+         "Volatus Aerospace"]
 MU = [0.88505759, 0.01637996, 0.25760384, 0.07062742, 0.03748831, 0.21091841,
       0.09583463, 0.33645087, 0.29112897, -0.12002662, 0.04296791, 0.28051820,
       0.45077128, 0.07685441, 0.48956336, 0.52495055, 0.96592058, 0.13350019]
@@ -42,140 +47,159 @@ SIG = [
     [2.4902557447e-02, 2.9537667670e-02, 2.6458674616e-01, 2.2927720652e-01, 1.6094265546e-04, 2.5661584954e-02, -2.7969778114e-02, 2.9376699243e-02, 1.4960500545e-01, 3.2894027535e-02, 4.9918556905e-02, 1.6081480146e-01, 1.0054468065e-01, 9.0697380314e-02, 2.2317811290e-01, 4.6250714851e-01, 1.3161522295e+00, 1.2823281199e-01],
     [1.3222599613e-01, -1.3758533343e-02, 6.4507143109e-02, 6.8311932735e-02, 1.0938845624e-05, 2.1354342979e-02, 1.2924825501e-02, 4.6318187274e-02, 3.4878112774e-02, 1.2690667367e-03, 1.1330921374e-02, 1.5054071340e-02, -1.2663102393e-02, 4.7172627159e-02, 1.1312375259e-01, 6.5406670102e-02, 1.2823281199e-01, 1.0492689215e+00],
 ]
+# technology/growth stress pairs among the held assets
 PAIRS = [(2, 3), (2, 13), (2, 15), (2, 16), (3, 13), (3, 15), (3, 16),
          (13, 15), (13, 16), (15, 16)]
 
 
-def port_var(x, S):
-    return sum(x[i] * S[i][j] * x[j] for i in range(N) for j in range(N))
-
-
 def corr_from_cov(S):
+    """Correlation matrix of a covariance."""
     d = [math.sqrt(S[i][i]) for i in range(N)]
     return [[S[i][j] / (d[i] * d[j]) for j in range(N)] for i in range(N)]
 
 
 def cov_from_corr(S, C):
+    """Covariance from a correlation matrix and the variances of S."""
     d = [math.sqrt(S[i][i]) for i in range(N)]
     return [[d[i] * d[j] * C[i][j] for j in range(N)] for i in range(N)]
 
 
 def chol(S):
+    """Cholesky factor G with S = G G'; returns (ok, G)."""
     G = [[0.0] * N for _ in range(N)]
     for i in range(N):
         for j in range(i + 1):
-            s = S[i][j] - sum(G[i][k] * G[j][k] for k in range(j))
+            s = S[i][j]
+            for k in range(j):
+                s -= G[i][k] * G[j][k]
             if i == j:
                 if s <= 0.0:
-                    return None
+                    return False, G
                 G[i][j] = math.sqrt(s)
             else:
                 G[i][j] = s / G[j][j]
-    return G
+    return True, G
+
+
+def port_var(x, S):
+    """Portfolio variance x'S x."""
+    v = 0.0
+    for i in range(N):
+        t = 0.0
+        for j in range(N):
+            t += S[i][j] * x[j]
+        v += x[i] * t
+    return v
 
 
 def min_risk(G, target):
-    nv = 2 * N + 2
-    with Model(maxcon=N + 2, maxvar=nv) as m:
+    """Min risk at a target return (SOCP): vars x, c, t, y = G'x; returns (ok, vol)."""
+    with Model(N + 2, 2 * N + 2) as m:
         for j in range(N + 1):
-            m.var_bounds(j, BK.LO, 0.0)
-        m.var_bounds(N + 1, BK.LO, 0.0)
+            m.var_bounds(j, BK.LO, 0.0, math.inf)
+        m.var_bounds(N + 1, BK.LO, 0.0, math.inf)
         for i in range(N):
-            m.var_bounds(N + 2 + i, BK.FR)
+            m.var_bounds(N + 2 + i, BK.FR, -math.inf, math.inf)
         m.cj(N + 1, 1.0)
-        m.a_row(0, list(range(N + 1)), [1.0] * (N + 1)); m.con_bounds(0, BK.FX, 1.0, 1.0)
-        m.a_row(1, list(range(N)), MU); m.con_bounds(1, BK.LO, target)
+        m.a_row(0, list(range(N + 1)), [1.0] * (N + 1))
+        m.con_bounds(0, BK.FX, 1.0, 1.0)
+        m.a_row(1, list(range(N)), MU)
+        m.con_bounds(1, BK.LO, target, math.inf)
         for i in range(N):
-            cols = list(range(N)) + [N + 2 + i]
-            vals = [-G[j][i] for j in range(N)] + [1.0]
-            m.a_row(2 + i, cols, vals); m.con_bounds(2 + i, BK.FX, 0.0, 0.0)
-        m.cone(CT.QUAD, [N + 1] + [N + 2 + i for i in range(N)])
+            m.a_row(2 + i, list(range(N)) + [N + 2 + i], [-G[j][i] for j in range(N)] + [1.0])
+            m.con_bounds(2 + i, BK.FX, 0.0, 0.0)
+        m.cone(CT.QUAD, [N + 1] + list(range(N + 2, 2 * N + 2)))
         r = m.solve()
-    return r.objective, r.x[:N + 1], r.solsta
+    return r.rc == 0, r.objective
 
 
 def max_return(G, risk):
-    with Model(maxcon=N + 1, maxvar=2 * N + 2) as m:
+    """Max return at a risk limit (SOCP): vars x, c, y = G'x, rb; returns (ok, return)."""
+    with Model(N + 1, 2 * N + 2) as m:
         for j in range(N + 1):
-            m.var_bounds(j, BK.LO, 0.0)
+            m.var_bounds(j, BK.LO, 0.0, math.inf)
         for i in range(N):
-            m.var_bounds(N + 1 + i, BK.FR)
-        m.var_bounds(2 * N + 1, BK.FX, risk)
+            m.var_bounds(N + 1 + i, BK.FR, -math.inf, math.inf)
+        m.var_bounds(2 * N + 1, BK.FX, risk, risk)
         m.sense(SENSE.MAX)
         for j in range(N):
             m.cj(j, MU[j])
-        m.a_row(0, list(range(N + 1)), [1.0] * (N + 1)); m.con_bounds(0, BK.FX, 1.0, 1.0)
+        m.a_row(0, list(range(N + 1)), [1.0] * (N + 1))
+        m.con_bounds(0, BK.FX, 1.0, 1.0)
         for i in range(N):
-            cols = list(range(N)) + [N + 1 + i]
-            vals = [-G[j][i] for j in range(N)] + [1.0]
-            m.a_row(1 + i, cols, vals); m.con_bounds(1 + i, BK.FX, 0.0, 0.0)
-        m.cone(CT.QUAD, [2 * N + 1] + [N + 1 + i for i in range(N)])
+            m.a_row(1 + i, list(range(N)) + [N + 1 + i], [-G[j][i] for j in range(N)] + [1.0])
+            m.con_bounds(1 + i, BK.FX, 0.0, 0.0)
+        m.cone(CT.QUAD, [2 * N + 1] + list(range(N + 1, 2 * N + 1)))
         r = m.solve()
-    return r.objective, r.solsta
+    return r.rc == 0, r.objective
 
 
 def stress_corr(C):
+    """Nearest valid stressed correlation matrix (SDP); returns (ok, C*)."""
     pairs = [(i, j) for i in range(N) for j in range(i + 1, N)]
     NP = len(pairs)
-    isgrp = [1 if ((i, j) in PAIRS or (j, i) in PAIRS) else 0 for (i, j) in pairs]
-    with Model(maxcon=NP + N + NP, maxvar=2 * NP + 1) as m:
-        for k, (i, j) in enumerate(pairs):
+    isgrp = [(i, j) in PAIRS or (j, i) in PAIRS for (i, j) in pairs]
+    with Model() as m:
+        m.add_vars(2 * NP + 1)                      # vars C* (NP), t, d (NP)
+        for k in range(NP):
             if isgrp[k]:
-                m.var_bounds(k, BK.LO, RHO)
+                m.var_bounds(k, BK.LO, RHO, math.inf)
             else:
                 m.var_bounds(k, BK.RA, -1.0, 1.0)
-        m.var_bounds(NP, BK.LO, 0.0)
+        m.var_bounds(NP, BK.LO, 0.0, math.inf)
         for k in range(NP):
-            m.var_bounds(NP + 1 + k, BK.FR)
+            m.var_bounds(NP + 1 + k, BK.FR, -math.inf, math.inf)
         m.cj(NP, 1.0)
         esym = [m.sparsesymmat(N, [(i, i, 1.0)]) for i in range(N)]
         psym = [m.sparsesymmat(N, [(i, j, 1.0)]) for (i, j) in pairs]
         m.barvars([N])
-        row = 0
-        for k, (i, j) in enumerate(pairs):
+        m.add_cons(NP + N + NP)
+        for k, (i, j) in enumerate(pairs):          # d_k - sqrt2 C*_k = -sqrt2 C_k
             m.a_row(k, [NP + 1 + k, k], [1.0, -math.sqrt(2.0)])
             m.con_bounds(k, BK.FX, -math.sqrt(2.0) * C[i][j], -math.sqrt(2.0) * C[i][j])
-            row += 1
-        for i in range(N):
+        for i in range(N):                          # <E_ii,X> = 1
             m.baraij(NP + i, 0, [(esym[i], 1.0)])
             m.con_bounds(NP + i, BK.FX, 1.0, 1.0)
-        for k in range(NP):
+        for k in range(NP):                         # <E_ij,X> - 2 C*_k = 0
             m.baraij(NP + N + k, 0, [(psym[k], 1.0)])
             m.a_row(NP + N + k, [k], [-2.0])
             m.con_bounds(NP + N + k, BK.FX, 0.0, 0.0)
-        m.cone(CT.QUAD, [NP] + [NP + 1 + k for k in range(NP)])
+        m.cone(CT.QUAD, [NP] + list(range(NP + 1, 2 * NP + 1)))
         r = m.solve()
+        if r.rc != 0:
+            return False, [[0.0] * N for _ in range(N)]
         X = m.getbarxj(0)
-    Cs = [[X[i * N + j] for j in range(N)] for i in range(N)]
-    return Cs, r.solsta
+    return True, [[X[i * N + j] for j in range(N)] for i in range(N)]
 
 
 def main() -> int:
-    R0 = sum(MU[j] * X0[j] for j in range(N))
+    ok = True
+    R0 = 0.0
+    for j in range(N):
+        R0 += MU[j] * X0[j]
     var0 = port_var(X0, SIG)
     vol0 = math.sqrt(var0)
-
-    G = chol(SIG)
-    vols_base, _, s1 = min_risk(G, R0)
-    Rrisk, s2 = max_return(G, vol0)
-
+    g, G = chol(SIG); ok &= g
+    g, vols_base = min_risk(G, R0); ok &= g
+    g, Rrisk = max_return(G, vol0); ok &= g
     C = corr_from_cov(SIG)
-    Cs, s3 = stress_corr(C)
+    g, Cs = stress_corr(C); ok &= g
     Ss = cov_from_corr(SIG, Cs)
     volstr = math.sqrt(port_var(X0, Ss))
     mult = port_var(X0, Ss) / var0
-
-    Gs = chol(Ss)
-    vols_str, _, s4 = min_risk(Gs, R0)
-
-    group_ok = all(abs(Cs[a][b] - RHO) < 1e-3 for (a, b) in PAIRS)
-    ok = (group_ok and abs(vol0 - 0.229369) < 1e-4 and abs(mult - 1.255767) < 2e-3
-          and abs(volstr - 0.257033) < 2e-3 and abs(vols_base - 0.135508) < 2e-3
-          and abs(vols_str - 0.137191) < 2e-3 and abs(Rrisk - 0.400353) < 2e-3)
-    print(f"big_portfolio N={N} R0={R0:.6f} vol0={vol0:.6f} (0.229369)")
-    print(f"   group C*=0.85 multiplier={mult:.6f} (1.255767) stressed vol={volstr:.6f} (0.257033)")
-    print(f"   min-risk@R0 base={vols_base:.6f} stressed={vols_str:.6f} (0.135508/0.137191)")
-    print(f"   max-return@vol0={Rrisk:.6f} (0.400353)  {'OK' if ok else 'FAIL'}")
+    g, Gs = chol(Ss); ok &= g
+    g, vols_str = min_risk(Gs, R0); ok &= g
+    if ok:
+        ok_c = all(abs(Cs[a][b] - RHO) <= 1e-3 for (a, b) in PAIRS)
+        ok = (ok_c and abs(vol0 - 0.229369) < 1e-4 and abs(mult - 1.255767) < 2e-3 and abs(volstr - 0.257033) < 2e-3
+              and abs(vols_base - 0.135508) < 2e-3 and abs(vols_str - 0.137191) < 2e-3 and abs(Rrisk - 0.400353) < 2e-3)
+        print("big_portfolio  N=%d (%s..%s)  R0=%.6f vol0=%.6f (case 0.229369)" % (N, ASSET[0], ASSET[N - 1], R0, vol0))
+        print("               group C* entries=0.85  multiplier=%.6f (case 1.255767) stressed vol=%.6f (case 0.257033)"
+              % (mult, volstr))
+        print("               min-risk@R0 base=%.6f stressed=%.6f (case 0.135508 / 0.137191)" % (vols_base, vols_str))
+        print("               max-return@vol0=%.6f (case 0.400353)  %s" % (Rrisk, "OK" if ok else "FAIL"))
+    else:
+        print("big_portfolio  solve FAIL (rc)")
     return 0 if ok else 1
 
 

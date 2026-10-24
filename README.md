@@ -151,9 +151,10 @@ python -c "import primalsolver; print(primalsolver.version())"
 Wheels for macOS (universal2) and Linux (x86_64/aarch64) are published to PyPI and
 also attached to the [latest
 release](https://github.com/c-vision/Primal/releases/latest); Windows wheels are
-built by the CI. **53 runnable examples** live in
-[`examples/python/`](examples/python/README.md) — installation, usage, and one
-line per example.
+built by the CI. **172 runnable examples** live in
+[`examples/python/`](examples/python/README.md): one per C sample, with the same
+output as the C program, plus a quickstart. The README covers installation, usage,
+and one line per example.
 
 ## Julia
 
@@ -206,8 +207,9 @@ five at a looser tolerance, each documented in `julia/test/MOI_wrapper.jl`):
 julia --project=julia -e 'using Pkg; Pkg.test()'
 ```
 
-**125 runnable examples** live in [`examples/julia/`](examples/julia/) — each checks its
-own result and exits non-zero on failure. Run them all with:
+**171 runnable examples** live in [`examples/julia/`](examples/julia/), one per C sample,
+with the same output as the C program. Each checks its own result and exits
+non-zero on failure. Run them all with:
 
 ```sh
 julia --project=julia julia/runtests.jl

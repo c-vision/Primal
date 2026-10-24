@@ -1,45 +1,43 @@
 #!/usr/bin/env python3
-"""OMF Section 3.1.1 - short-term financing LP.
+"""Short-term financing LP of "Optimization Methods in Finance" (Cornuejols & Tutuncu, 2007), Section 3.1.1.
 
-Port of c_examples/finance/omf_financing.c. Checks the book's shadow prices
-u_Jan=-1.0373, u_Feb=-1.030, u_Mar=-1.020 (primal not unique).
-
-    python python_examples/omf_financing.py
+Monthly cash needs (k$) Jan..Jun: 150, 100, -200, 200, -50, -300; a credit line x_i
+(1%/month, limit 100), commercial paper y_i in Jan-Mar (2% for three months), excess
+funds z_i (0.5%/month). Maximize the wealth v at the end of June. The book's
+sensitivity report gives shadow prices u_Jan = -1.0373, u_Feb = -1.030, u_Mar = -1.020.
+Port of examples/c/omf_financing.c.
 """
 
-from primalsolver import Model, BK, SENSE, SOLSTA
+import math
 
-RHS = [150, 100, -200, 200, -50, -300]
+from primalsolver import Model, BK
 
 
 def main() -> int:
-    # vars: x1..x5 (0..4), y1..y3 (5..7), z1..z5 (8..12), v (13); rows 0..5
-    with Model(maxcon=6, maxvar=14) as m:
+    with Model(6, 14) as m:                         # 0..4 = x1..x5, 5..7 = y1..y3, 8..12 = z1..z5, 13 = v
         for i in range(5):
             m.var_bounds(i, BK.RA, 0.0, 100.0)
         for i in range(5, 13):
-            m.var_bounds(i, BK.LO, 0.0)
-        m.var_bounds(13, BK.FR)
-        m.cj(13, 1.0)
-        m.sense(SENSE.MAX)
-        rows = [
-            ([0, 5, 8], [1.0, 1.0, -1.0]),
-            ([1, 6, 0, 8, 9], [1.0, 1.0, -1.01, 1.003, -1.0]),
-            ([2, 7, 1, 9, 10], [1.0, 1.0, -1.01, 1.003, -1.0]),
-            ([3, 5, 2, 10, 11], [1.0, -1.02, -1.01, 1.003, -1.0]),
-            ([4, 6, 3, 11, 12], [1.0, -1.02, -1.01, 1.003, -1.0]),
-            ([7, 4, 12, 13], [-1.02, -1.01, 1.003, -1.0]),
-        ]
-        for k, (idx, val) in enumerate(rows):
-            m.a_row(k, idx, val)
-            m.con_bounds(k, BK.FX, float(RHS[k]), float(RHS[k]))
+            m.var_bounds(i, BK.LO, 0.0, math.inf)
+        m.var_bounds(13, BK.FR, -math.inf, math.inf)   # v
+        m.cj(13, -1.0)                              # max v
+        rhs = [150.0, 100, -200, 200, -50, -300]
+        ii = [[0, 5, 8], [1, 6, 0, 8, 9], [2, 7, 1, 9, 10], [3, 5, 2, 10, 11], [4, 6, 3, 11, 12], [7, 4, 12, 13]]
+        vv = [[1.0, 1.0, -1.0], [1.0, 1.0, -1.01, 1.003, -1.0], [1.0, 1.0, -1.01, 1.003, -1.0],
+              [1.0, -1.02, -1.01, 1.003, -1.0], [1.0, -1.02, -1.01, 1.003, -1.0], [-1.02, -1.01, 1.003, -1.0]]
+        for k in range(6):
+            m.a_row(k, ii[k], vv[k])
+            m.con_bounds(k, BK.FX, rhs[k], rhs[k])
         r = m.solve()
-
-    u = [abs(r.y[k]) for k in range(3)]
-    ok = (r.solsta == SOLSTA.OPTIMAL and abs(u[0] - 1.0373) < 1e-3
-          and abs(u[1] - 1.030) < 1e-3 and abs(u[2] - 1.020) < 1e-3)
-    print(f"omf_financing  v={r.objective:.4f}  uJan={u[0]:.4f} uFeb={u[1]:.4f} "
-          f"uMar={u[2]:.4f} {'OK' if ok else 'FAIL'}")
+    ok = r.rc == 0
+    if ok:
+        obj, x, y = r.objective, r.x, r.y
+        v = -obj                                    # the objective is max v, reported as min -v
+        ok = abs(abs(y[0]) - 1.0373) < 1e-3 and abs(abs(y[1]) - 1.030) < 1e-3 and abs(abs(y[2]) - 1.020) < 1e-3
+        print("omf_financing  v=%.4f  x=(%.2f,%.4f,%.2f,%.2f,%.2f)  uJan=%.4f uFeb=%.4f uMar=%.4f  %s"
+              % (v, x[0], x[1], x[2], x[3], x[4], abs(y[0]), abs(y[1]), abs(y[2]), "OK" if ok else "FAIL"))
+    else:
+        print("omf_financing  rc=%d FAIL" % r.rc)
     return 0 if ok else 1
 
 

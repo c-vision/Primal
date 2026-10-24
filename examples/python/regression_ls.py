@@ -1,94 +1,169 @@
 #!/usr/bin/env python3
-"""PrimalSolver - least-squares regression as an SOCP.
+"""Least-squares regression as a second-order cone program (Schmelzer-Hauser-Andersen-Dahl,
+"Regression techniques for Portfolio Optimisation using MOSEK", arXiv:1310.3397, Section 2).
 
-Port of c_examples/finance/regression_ls.c (Schmelzer et al., arXiv:1310.3397,
-Section 2):  min ||X w - y||_2  <=>  min v  s.t. (v, Xw - y) in QUAD.
+    min ||X w - y||_2  <=>  min v  s.t.  (v, Xw - y) in Q^{n+1}
 
-Two variants: unconstrained (checked against the normal equations X'Xw = X'y)
-and the constrained portfolio form sum(w)=1, w>=0 (Section 2.6).
+Two variants: unconstrained (checked against the normal equations solved with the
+library's dense LU) and the constrained portfolio form sum(w) = 1, w >= 0 (Section 2.6).
+The data come from the same 32-bit linear congruential generator as the C example.
 
-    python python_examples/regression_ls.py [n] [m]     (default 60 6)
+    python regression_ls.py [n] [m]   (default 60 6)
+
+Port of examples/c/regression_ls.c.
 """
 
+import ctypes
+import math
 import sys
+import time
 
-from primalsolver import Model, BK, CT, SOLSTA
+import primalsolver as ps
+from primalsolver import Model, BK, CT
 
-N, M = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) > 2 else (60, 6)
-
-
-class RNG:
-    def __init__(self, seed):
-        self.s = seed & 0xFFFFFFFF
-
-    def next(self):
-        self.s = (self.s * 1103515245 + 12345) & 0xFFFFFFFF
-        return ((self.s >> 16) & 0x7FFF) / 32767.0
+_state = 13103397
 
 
-def build(constrained, X, y):
-    m = Model(maxcon=N + (1 if constrained else 0), maxvar=M + N + 1)
-    w0, r0, v = 0, M, M + N
-    for j in range(M):
-        if constrained:
-            m.var_bounds(w0 + j, BK.LO, 0.0)
-        else:
-            m.var_bounds(w0 + j, BK.FR)
-    for i in range(N):
-        m.var_bounds(r0 + i, BK.FR)
-    m.var_bounds(v, BK.FR)
-    m.cj(v, 1.0)
-    for i in range(N):
-        cols, vals = [], []
+def rnd():
+    """Deterministic pseudo-random draw in [0,1] from the fixed seed."""
+    global _state
+    _state = (_state * 1103515245 + 12345) & 0xFFFFFFFF
+    return ((_state >> 16) & 0x7FFF) / 32767.0
+
+
+class _DMat(ctypes.Structure):
+    _fields_ = [("m", ctypes.c_int), ("n", ctypes.c_int),
+                ("v", ctypes.POINTER(ctypes.POINTER(ctypes.c_double)))]
+
+
+def dmat_solve_lu(M, rhs, d):
+    """Solve M x = rhs (d x d, row-major) with the library's dense LU (linalg.h), as
+    the C sample does; rhs is overwritten with x. Returns the C return code."""
+    try:
+        lib = ps.LIB
+        lib.dmat_new.restype = ctypes.POINTER(_DMat)
+        lib.dmat_new.argtypes = [ctypes.c_int, ctypes.c_int]
+        lib.dmat_solve_lu.argtypes = [ctypes.POINTER(_DMat), ctypes.POINTER(ctypes.c_double), ctypes.c_int]
+        lib.dmat_free.argtypes = [ctypes.POINTER(_DMat)]
+    except AttributeError:                          # a build that hides internal symbols
+        return _solve_lu_py(M, rhs, d)
+    p = lib.dmat_new(d, d)
+    for i in range(d):
+        for j in range(d):
+            p.contents.v[i][j] = M[i * d + j]
+    b = (ctypes.c_double * d)(*rhs)
+    rc = lib.dmat_solve_lu(p, b, d)
+    lib.dmat_free(p)
+    rhs[:] = list(b)
+    return rc
+
+
+def _solve_lu_py(M, rhs, d):
+    """The same elimination as linalg.c's dmat_solve_lu, step for step (it can differ from
+    the library in the last bits: the library build contracts a*b+c to FMA)."""
+    a = [M[i * d:(i + 1) * d] for i in range(d)]
+    for k in range(d):
+        piv, maxv = k, abs(a[k][k])
+        for i in range(k + 1, d):
+            if abs(a[i][k]) > maxv:
+                maxv, piv = abs(a[i][k]), i
+        if maxv < 1e-14:
+            return 1
+        if piv != k:
+            a[piv], a[k] = a[k], a[piv]
+        for i in range(k + 1, d):
+            f = a[i][k] / a[k][k]
+            a[i][k] = f
+            for j in range(k + 1, d):
+                a[i][j] -= f * a[k][j]
+    for i in range(d):
+        s = rhs[i]
+        for j in range(i):
+            s -= a[i][j] * rhs[j]
+        rhs[i] = s
+    for i in range(d - 1, -1, -1):
+        s = rhs[i]
+        for j in range(i + 1, d):
+            s -= a[i][j] * rhs[j]
+        rhs[i] = s / a[i][i]
+    return 0
+
+
+def solve_ls(constrained, X, y, N, M):
+    """vars w (M), r (N), v; rows r_i - (Xw)_i = -y_i; cone (v, r). Returns (rc, v, w, sec)."""
+    W0, R0, V = 0, M, M + N
+    with Model() as t:
+        t.add_vars(M + N + 1)
+        t.add_cons(N)
         for j in range(M):
-            if X[i][j] != 0.0:
-                cols.append(w0 + j); vals.append(-X[i][j])
-        cols.append(r0 + i); vals.append(1.0)
-        m.a_row(i, cols, vals)
-        m.con_bounds(i, BK.FX, -y[i], -y[i])
-    m.cone(CT.QUAD, [v] + [r0 + i for i in range(N)])
-    if constrained:
-        m.a_row(N, [w0 + j for j in range(M)], [1.0] * M)
-        m.con_bounds(N, BK.FX, 1.0, 1.0)
-    r = m.solve()
-    m.close()
-    return r
-
-
-def solve_dense(A, b):
-    n = len(b)
-    aug = [list(A[i]) + [b[i]] for i in range(n)]
-    for col in range(n):
-        piv = max(range(col, n), key=lambda r: abs(aug[r][col]))
-        aug[col], aug[piv] = aug[piv], aug[col]
-        for r in range(n):
-            if r != col and aug[r][col] != 0.0:
-                f = aug[r][col] / aug[col][col]
-                for c in range(col, n + 1):
-                    aug[r][c] -= f * aug[col][c]
-    return [aug[i][n] / aug[i][i] for i in range(n)]
+            if constrained:
+                t.var_bounds(W0 + j, BK.LO, 0.0, math.inf)
+            else:
+                t.var_bounds(W0 + j, BK.FR, -math.inf, math.inf)
+        for i in range(N):
+            t.var_bounds(R0 + i, BK.FR, -math.inf, math.inf)
+        t.var_bounds(V, BK.FR, -math.inf, math.inf)
+        t.cj(V, 1.0)
+        for i in range(N):
+            sub, val = [], []
+            for j in range(M):
+                xij = X[i * M + j]
+                if xij != 0.0:
+                    sub.append(W0 + j); val.append(-xij)
+            sub.append(R0 + i); val.append(1.0)
+            t.a_row(i, sub, val)
+            t.con_bounds(i, BK.FX, -y[i], -y[i])
+        t.cone(CT.QUAD, [V] + list(range(R0, R0 + N)))
+        if constrained:
+            t.add_cons(1)
+            t.a_row(N, list(range(W0, W0 + M)), [1.0] * M)
+            t.con_bounds(N, BK.FX, 1.0, 1.0)
+        t0 = time.perf_counter()
+        r = t.solve()
+        sec = time.perf_counter() - t0
+    return r.rc, r.objective, r.x[W0:W0 + M], sec
 
 
 def main() -> int:
-    rng = RNG(13103397)
-    X = [[(rng.next() - 0.5) * 2.0 for _ in range(M)] for _ in range(N)]
-    y = [(rng.next() - 0.5) * 2.0 for _ in range(N)]
-
-    un = build(False, X, y)
-    w1 = un.x[:M]
-    G = [[sum(X[i][j] * X[i][k] for i in range(N)) for k in range(M)] for j in range(M)]
-    rhs = [sum(X[i][j] * y[i] for i in range(N)) for j in range(M)]
-    wref = solve_dense(G, rhs)
-    wdiff = max(abs(w1[j] - wref[j]) for j in range(M))
-
-    con = build(True, X, y)
-    budget = sum(con.x[:M])
-    minw = min(con.x[:M])
-    ok = (un.solsta == SOLSTA.OPTIMAL and con.solsta == SOLSTA.OPTIMAL
-          and wdiff < 1e-6 and abs(budget - 1.0) < 1e-6 and minw > -1e-6
-          and con.objective >= un.objective - 1e-6)
-    print(f"regr_ls n={N} m={M} uncons={un.objective:.6f} cons={con.objective:.6f} "
-          f"max|w-wref|={wdiff:.2e} budget={budget:.6f} {'OK' if ok else 'FAIL'}")
+    N = int(sys.argv[1]) if len(sys.argv) > 1 else 60
+    M = int(sys.argv[2]) if len(sys.argv) > 2 else 6
+    if N < 1 or M < 1:
+        return 2
+    X = [(rnd() - 0.5) * 2.0 for _ in range(N * M)]
+    y = [(rnd() - 0.5) * 2.0 for _ in range(N)]
+    ok = True
+    rc, v1, w1, sec1 = solve_ls(False, X, y, N, M)  # unconstrained LS
+    if rc != 0:
+        ok, v1 = False, 0.0
+    G, rhs = [0.0] * (M * M), [0.0] * M             # normal-equations reference
+    for j in range(M):
+        for k in range(M):
+            s = 0.0
+            for i in range(N):
+                s += X[i * M + j] * X[i * M + k]
+            G[j * M + k] = s
+    for j in range(M):
+        s = 0.0
+        for i in range(N):
+            s += X[i * M + j] * y[i]
+        rhs[j] = s
+    if dmat_solve_lu(G, rhs, M) == 0:
+        if max(abs(w1[j] - rhs[j]) for j in range(M)) > 1e-6:
+            ok = False
+    rc2, v2, w2, sec2 = solve_ls(True, X, y, N, M)  # constrained (portfolio) LS
+    budget, minw = 0.0, 0.0
+    if rc2 == 0:
+        for j in range(M):
+            budget += w2[j]
+            if w2[j] < minw:
+                minw = w2[j]
+    else:
+        ok, v2 = False, 0.0
+    if ok and (abs(budget - 1.0) > 1e-6 or minw < -1e-6):
+        ok = False
+    if ok and v2 < v1 - 1e-6:                       # constraints cannot lower the residual
+        ok = False
+    print("regr_ls    n=%d m=%d uncons=%.6f cons=%.6f t=%.4f/%.4fs %s" % (N, M, v1, v2, sec1, sec2, "OK" if ok else "FAIL"))
     return 0 if ok else 1
 
 

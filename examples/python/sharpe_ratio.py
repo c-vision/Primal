@@ -1,44 +1,50 @@
 #!/usr/bin/env python3
-"""PrimalSolver - max-Sharpe ratio via Charnes-Cooper (quadratic constraint).
+"""The max-Sharpe case (A3) of arXiv:2508.03704, Section 4.4.
 
-Port of c_examples/finance/sharpe_ratio.c (arXiv:2508.03704, case A3):
+    max (mu'w - rf) / sqrt(w'Sigma w)  s.t.  e'w = 1
 
-    max (mu'w - rf)/sqrt(w'Sigma w)  s.t. e'w = 1
-    -> max mu'y - rf*kappa  s.t. y'Sigma y <= 1, e'y = kappa, kappa >= 0.
+is a ratio, not a QP. Charnes-Cooper: kappa = 1/sqrt(w'Sigma w), y = kappa w,
 
-Hand case: mu=(3,1), rf=0, Sigma=I -> Sharpe sqrt(10) at w = (3/4, 1/4).
+    max mu'y - rf kappa  s.t.  y'Sigma y <= 1,  e'y = kappa,  kappa >= 0,
 
-    python python_examples/sharpe_ratio.py
+and w = y/kappa. Hand case: mu = (3, 1), rf = 0, Sigma = I: max Sharpe ||mu|| = sqrt(10)
+at w = (3/4, 1/4). Port of examples/c/sharpe_ratio.c.
 """
 
 import math
 
-from primalsolver import Model, BK, SENSE, SOLSTA
-
-MU = [3.0, 1.0]
-RF = 0.0
+from primalsolver import Model, BK, SENSE
 
 
 def main() -> int:
-    with Model(maxcon=2, maxvar=3) as m:      # y0, y1, kappa
-        m.var_bounds(0, BK.FR)
-        m.var_bounds(1, BK.FR)
-        m.var_bounds(2, BK.LO, 0.0)
-        m.qconk(0, [(0, 0, 2.0), (1, 1, 2.0)])   # Sigma = I: 1/2 y'Qy, Q=2I
-        m.con_bounds(0, BK.UP, up=1.0)
+    mu = [3.0, 1.0]
+    with Model() as m:
+        m.add_vars(3)                           # y0, y1, kappa
+        m.add_cons(2)                           # 0: y'Sigma y <= 1, 1: e'y - kappa = 0
+        m.var_bounds(0, BK.FR, -math.inf, math.inf)
+        m.var_bounds(1, BK.FR, -math.inf, math.inf)
+        m.var_bounds(2, BK.LO, 0.0, math.inf)
+        m.qconk(0, [(0, 0, 2.0), (1, 1, 2.0)])  # Sigma = I: 1/2 x'Qx with Q = 2I
+        m.con_bounds(0, BK.UP, -math.inf, 1.0)
         m.a_row(1, [0, 1, 2], [1.0, 1.0, -1.0])
         m.con_bounds(1, BK.FX, 0.0, 0.0)
-        m.cj(0, MU[0]); m.cj(1, MU[1])
+        m.cj(0, mu[0])
+        m.cj(1, mu[1])
         m.sense(SENSE.MAX)
         r = m.solve()
-
-    w0, w1 = r.x[0] / r.x[2], r.x[1] / r.x[2]
-    ratio = (MU[0] * w0 + MU[1] * w1) / math.hypot(w0, w1)
-    ok = (r.solsta == SOLSTA.OPTIMAL and abs(r.objective - math.sqrt(10.0)) < 1e-6
-          and abs(w0 - 0.75) < 1e-5 and abs(w1 - 0.25) < 1e-5
-          and abs(ratio - r.objective) < 1e-5 and abs(w0 + w1 - 1.0) < 1e-6)
-    print(f"Sharpe = {r.objective:.6f} (sqrt(10)={math.sqrt(10.0):.6f}) w=({w0:.4f},{w1:.4f}) "
-          f"reconstructed={ratio:.6f} {'OK' if ok else 'FAIL'}")
+    if r.rc != 0:
+        print("optimize rc=%d" % r.rc)
+        return 1
+    sharpe, x = r.objective, r.x
+    w0, w1 = x[0] / x[2], x[1] / x[2]
+    norm = math.sqrt(w0 * w0 + w1 * w1)
+    ratio = (mu[0] * w0 + mu[1] * w1) / norm
+    ok = (abs(sharpe - math.sqrt(10.0)) < 1e-6 and abs(w0 - 0.75) < 1e-5 and abs(w1 - 0.25) < 1e-5
+          and abs(ratio - sharpe) < 1e-5 and abs(w0 + w1 - 1.0) < 1e-6)
+    print("Sharpe = %.6f (expected sqrt(10) = %.6f), w = (%.4f, %.4f) (expected .75,.25)"
+          % (sharpe, math.sqrt(10.0), w0, w1))
+    print("reconstructed (mu'w)/||w|| = %.6f, e'w = %.2e" % (ratio, w0 + w1))
+    print("%s (A3 is not quadratic: solved with Charnes-Cooper)" % ("OK" if ok else "FAIL"))
     return 0 if ok else 1
 
 
