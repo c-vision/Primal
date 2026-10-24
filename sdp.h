@@ -24,11 +24,11 @@
  *
  * A    : m x n row-major (sdp_ipm) or CSR (sdp_ipm_csr, see SdpCsr).
  * Cbar : nb symmetric matrices, Cbar[j] -> d_j*d_j row-major.
- * Abar : m*nb symmetric matrices, Abar[k*nb+j] -> d_j*d_j row-major,
- *        NULL where row k does not touch block j (a zero block).
+ * Abar : m*nb symmetric matrices, Abar[k*nb+j] -> d_j*d_j row-major (sdp_ipm),
+ *        or per block the rows that touch it (sdp_ipm_csr, see SdpBlk).
  * Csoc : nsoc vectors, Csoc[i] -> k_i.
- * Asoc : m*nsoc vectors, Asoc[k*nsoc+i] -> k_i, NULL for a zero vector.
- * Aexp : m*nep vectors of 3, NULL for a zero vector.
+ * Asoc : m*nsoc vectors, Asoc[k*nsoc+i] -> k_i (sdp_ipm), or SdpBlk.
+ * Aexp : m*nep vectors of 3 (sdp_ipm), or SdpBlk.
  *
  * Unified conic path: R_+, SOC and PSD blocks in the same interior point.
  * R_+ and PSD use Nesterov-Todd scaling + normal equations on the m equality
@@ -64,15 +64,26 @@ typedef struct {
     const double *v;  /* values */
 } SdpCsr;
 
-/* Same solver with A in compressed rows: the constraint data never exist as an
- * m x n array (the dense A of sdp_ipm is converted to this form on entry). */
+/* The block data of one family (PSD, SOC or exp/power) as lists: block j is
+ * touched by the rows row[p[j]] .. row[p[j+1]-1], STRICTLY ascending, and
+ * val[q] holds the data row row[q] puts on it (d_j*d_j, k_j or 3 numbers).  A
+ * row that does not touch a block is simply absent. */
+typedef struct {
+    const int *p;               /* nblk + 1 pointers */
+    const int *row;             /* row of each entry */
+    const double *const *val;   /* its data */
+} SdpBlk;
+
+/* Same solver with A in compressed rows and the block data as lists: the
+ * constraint data never exist as an m x n array nor as m x nblk tables (the
+ * dense arguments of sdp_ipm are converted to this form on entry). */
 int sdp_ipm_csr(int m, int n, const SdpCsr *A, const double *b, const double *c,
             int nb, const int *dims,
-            const double *const *Cbar, const double *const *Abar,
+            const double *const *Cbar, const SdpBlk *Abar,
             int nsoc, const int *socdims,
-            const double *const *Csoc, const double *const *Asoc,
+            const double *const *Csoc, const SdpBlk *Asoc,
             int nep, const int *ekind, const double *ealpha,
-            const double *const *Cexp, const double *const *Aexp,
+            const double *const *Cexp, const SdpBlk *Aexp,
             int max_iter, double tol,
             double rtol_pri, double rtol_dual, double rtol_gap,
             double near_rel,

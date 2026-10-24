@@ -1068,6 +1068,21 @@ SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax) {
 /* Index of the lowest set bit of x != 0, portable C99 (De Bruijn multiply;
  * the library uses no compiler builtins).  Checked against a naive loop on
  * all 64 positions. */
+/* Append row position i to the row list of column col (grown by doubling).
+ * 0 ok, 1 out of memory (the list is left as it was). */
+static int cl_push(int **cl, int *cln, int *clcap, int col, int i) {
+    if (cln[col] == clcap[col]) {
+        int nc = clcap[col] ? 2 * clcap[col] : 4;
+        int *a = (int *)realloc(cl[col], (size_t)nc * sizeof(int));
+        if (!a) return 1;
+        cl[col] = a; clcap[col] = nc;
+    }
+    cl[col][cln[col]++] = i;
+    return 0;
+}
+/* qsort order of row positions. */
+static int cl_cmp(const void *a, const void *b) { int x = *(const int *)a, y = *(const int *)b; return (x > y) - (x < y); }
+
 static int ctz64(unsigned long long x) {
     static const int idx[64] = {
          0,  1, 48,  2, 57, 49, 28,  3, 61, 58, 50, 42, 38, 29, 17,  4,
@@ -1124,6 +1139,24 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
     }
     if(inc)for(int i=0;i<n;i++)for(int a=0;a<rows[i].nz;a++)
         inc[(size_t)rows[i].ci[a]*words+(size_t)i/64]|=1ULL<<(i&63);
+    /* Above the bitset's budget (n ~ 8192), per-column lists of row positions
+     * instead of scanning every row at every pivot (that scan was 93% of a
+     * 2000-exp-cone solve, attempts.md F83).  A list is a SUPERSET of the rows
+     * holding the column: fill appends, a swap appends the new position, a stale
+     * entry is rejected by srow_get.  At step k the list is deduplicated and
+     * sorted, so the candidates -- and the pivot a tie picks -- are exactly those
+     * of the scan, in its ascending order.  GMB_SPLU_SCAN forces the scan (the
+     * parity test).  Allocation failure retains the scan. */
+    int **cl=NULL,*cln=NULL,*clcap=NULL,*fst=NULL,*cmk=NULL;
+    if(!inc&&n>0&&!getenv("GMB_SPLU_SCAN")) {
+        cl=calloc((size_t)n,sizeof(*cl));cln=calloc((size_t)n,sizeof(int));clcap=calloc((size_t)n,sizeof(int));
+        fst=calloc((size_t)n,sizeof(int));cmk=calloc((size_t)n,sizeof(int));cand=malloc((size_t)n*sizeof(int));
+        int bad=!cl||!cln||!clcap||!fst||!cmk||!cand;
+        for(int i=0;i<n&&!bad;i++)for(int a=0;a<rows[i].nz&&!bad;a++)
+            if(cl_push(cl,cln,clcap,rows[i].ci[a],i))bad=1;
+        if(bad){if(cl)for(int c=0;c<n;c++)free(cl[c]);free(cl);free(cln);free(clcap);free(fst);free(cmk);free(cand);
+            cl=NULL;cln=clcap=fst=cmk=cand=NULL;}
+    }
     int stamp = 0, singular = 0;
     for (int k = 0; k < n; k++) {
         /* Slots remain valid until their own row is eliminated. Row swaps
@@ -1143,6 +1176,20 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
                     if(v>best){best=v;p=i;}
                 }
             }
+        } else if(cl) {
+            for(int t=0;t<cln[k];t++) {
+                int i=cl[k][t];
+                if(i<=k||cmk[i]==k+1)continue;
+                cmk[i]=k+1;
+                int q=slot[i]=srow_get(&rows[i],k);
+                if(q>=0)cand[ncand++]=i;
+            }
+            free(cl[k]);cl[k]=NULL;cln[k]=clcap[k]=0;   /* column k is done */
+            qsort(cand,(size_t)ncand,sizeof(int),cl_cmp);
+            for(int c=0;c<ncand;c++) {
+                int i=cand[c];double v=fabs(rows[i].cv[slot[i]]);
+                if(v>best){best=v;p=i;}
+            }
         } else {
             for(int i=k+1;i<n;i++) {
                 int q=slot[i]=srow_get(&rows[i],k);
@@ -1152,6 +1199,12 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
         }
         if (best < 1e-300) { singular = 1; break; }
         if (p != k) { SRow tr = rows[k]; rows[k] = rows[p]; rows[p] = tr; int tp = F->perm[k]; F->perm[k] = F->perm[p]; F->perm[p] = tp; int ts = slot[k]; slot[k] = slot[p]; slot[p] = ts; }
+        if(cl&&p!=k)   /* the former pivot row now sits at position p */
+            for(int a=rows[p].active;a<rows[p].nz&&!singular;a++) {
+                int col=rows[p].ci[a];
+                if(col>k&&cl_push(cl,cln,clcap,col,p))singular=2;
+            }
+        if (singular) break;
         if(inc&&p!=k) {
             /* Clear the union first, then install both swapped row patterns. */
             for(int side=0;side<2;side++) {
@@ -1172,8 +1225,8 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
         }
         int qk = slot[k];
         double piv = rows[k].cv[qk];
-        for (int ci=0;ci<(inc?ncand:n-k-1);ci++) {
-            int i=inc?cand[ci]:k+1+ci;
+        for (int ci=0;ci<((inc||cl)?ncand:n-k-1);ci++) {
+            int i=(inc||cl)?cand[ci]:k+1+ci;
             int qi = slot[i];
             if (qi < 0) continue;
             double aik = rows[i].cv[qi];
@@ -1187,7 +1240,7 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
             for (int a = rows[k].active; a < rows[k].nz; a++) {
                 int col = rows[k].ci[a]; if (col <= k) continue;
                 double sub = mult * rows[k].cv[a];
-                if (wst[col] != stamp) { wst[col] = stamp; w[col] = 0.0; touch[nt++] = col; }
+                if (wst[col] != stamp) { wst[col] = stamp; w[col] = 0.0; touch[nt++] = col; if (cl) fst[col] = stamp; }
                 w[col] -= sub;
             }
             /* rebuild rows[i]: keep cols<=k (L part + the mult at col k), then cols>k from w */
@@ -1208,12 +1261,16 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
                 rows[i].cap = nc;
             }
             rows[i].cols = 0;
-            for (int a = 0; a < nt; a++) { int col = touch[a]; double v = w[col]; if (v != 0.0) { if(inc)inc[(size_t)col*words+(size_t)i/64]|=1ULL<<(i&63); rows[i].cols |= 1ULL << (col & 63); rows[i].ci[newnz] = col; rows[i].cv[newnz] = v; newnz++; } }
+            for (int a = 0; a < nt; a++) { int col = touch[a]; double v = w[col]; if (v != 0.0) { if(inc)inc[(size_t)col*words+(size_t)i/64]|=1ULL<<(i&63);
+                if (cl && fst[col] == stamp && cl_push(cl,cln,clcap,col,i)) singular = 2;   /* fill: a new column of row i */
+                rows[i].cols |= 1ULL << (col & 63); rows[i].ci[newnz] = col; rows[i].cv[newnz] = v; newnz++; } }
             rows[i].nz = newnz;
         }
         if (singular) break;
     }
     free(w); free(wst); free(touch); free(slot);free(inc);free(cand);
+    if(cl)for(int c=0;c<n;c++)free(cl[c]);
+    free(cl);free(cln);free(clcap);free(fst);free(cmk);
     if (singular) {
         for (int i = 0; i < n; i++) { free(rows[i].ci); free(rows[i].cv); }
         free(rows); splu_free(F);

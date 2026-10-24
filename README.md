@@ -223,7 +223,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5267 checks
+make test          # reliability suite: 5272 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -687,15 +687,18 @@ Open algorithmic work, largest first:
 
 - **Basis warm start.** No real crash basis; `solvebasis` re-solves from scratch
   when the basis handed in does not measure, instead of re-optimizing *from* it.
-- **Many-cone scaling in the conic path.** The unified conic route (`sdp.c`) now
-  takes `A` in compressed rows, stores a PSD block only for the rows that touch it,
-  and assembles its KKT sparse when the dense route would be expensive
-  (`SDP_SPARSE_WORK`): a 2×2 PSD block next to a 10 000-row LP takes 2.9 s and
-  21 MB (29.6 s and 2.3 GB before). Two quadratic costs remain with thousands of
-  SOC or exp/power cones: the per-(row, cone) pointer tables of `Asoc`/`Aexp`,
-  and the sparse LU, which above 8192 equations drops its column-incidence map
-  and scans every row for each pivot (2000 exp cones: 14 s, 234 MB). The sparse
-  LDLᵀ is not used there: that KKT is not symmetric.
+- **Many-cone conic models.** The unified conic route (`sdp.c`) takes `A` in
+  compressed rows and the PSD, SOC and exp/power data as per-block row lists,
+  assembles its KKT sparse when the dense route would be expensive
+  (`SDP_SPARSE_WORK`), and the sparse LU finds its pivot candidates through
+  column lists above 8192 equations: a 2×2 PSD block next to a 10 000-row LP takes
+  0.37 s and 22 MB (29.6 s and 2.3 GB before), 2000 exp cones 4.2 s and 160 MB
+  (68 s and 873 MB). Two limits remain. The row-oriented sparse LU rewrites a dense
+  row every time one of its columns is the pivot, which is most of the 2000-cone
+  time. And when the native exp/power polish misses its gap tolerance, the
+  tangent-cut fallback answers with a dense master that grows to gigabytes
+  (4000 exp cones: stopped at 29 GB). The sparse LDLᵀ is not used in this KKT:
+  it is not symmetric.
 - **Symmetric KKT in the SOCP route**, so the sparse symmetric factorization can
   replace the sparse LU there.
 - **Large-scale conic performance.** The second-order SOCP corrector reduces

@@ -430,9 +430,11 @@ typedef struct {
     int *bp, *bi;               /* rows touching PSD block j: bi[bp[j]..bp[j+1]) */
     int *sp, *si;               /* rows touching SOC block i */
     int *ep, *ei;               /* rows touching exp/power block i */
-    int *kbp, *kbj;             /* PSD blocks touched by row k: kbj[kbp[k]..kbp[k+1]) */
-    int *ksp, *ksj;             /* SOC blocks touched by row k */
-    int *kep, *kej;             /* exp/power blocks touched by row k */
+    const double **bv, **sv, **ev;   /* the data of each list entry */
+    int *kbp, *kbj, *kbq;       /* PSD blocks touched by row k: kbj[kbp[k]..kbp[k+1]),
+                                 * kbq = position of that entry in the block lists */
+    int *ksp, *ksj, *ksq;       /* SOC blocks touched by row k */
+    int *kep, *kej, *keq;       /* exp/power blocks touched by row k */
 } SdpSpData;
 
 /* ---- residual kernel.  The main loop and the merit line search must measure
@@ -446,9 +448,7 @@ typedef struct {
     const SdpSpData *S;               /* A and the block incidence */
     const double *b, *c;
     const int *dims, *socdims;
-    const double *const *Cbar, *const *Abar;
-    const double *const *Csoc, *const *Asoc;
-    const double *const *Cexp, *const *Aexp;
+    const double *const *Cbar, *const *Csoc, *const *Cexp;   /* the A data are in S */
     const int *ekind; const double *ealpha;
     double *xs, *ss, *y, *rp, *rdx, *scr;
     double *const *Xbar, *const *Sbar, *const *Zsoc, *const *Ssoc;
@@ -469,12 +469,12 @@ static ipmres ipm_resid(const ipmc *P) {
         double t = -b[k];
         for (int p = S->rp[k]; p < S->rp[k + 1]; p++) t += S->rv[p] * xs[S->ri[p]];
         for (int q = S->kbp[k]; q < S->kbp[k + 1]; q++) { int j = S->kbj[q];
-            t += trAB(dims[j], P->Abar[k * nb + j], P->Xbar[j]); }
+            t += trAB(dims[j], S->bv[S->kbq[q]], P->Xbar[j]); }
         for (int q = S->ksp[k]; q < S->ksp[k + 1]; q++) { int i = S->ksj[q];
-            int kk = socdims[i]; const double *ak = P->Asoc[k * nsoc + i];
+            int kk = socdims[i]; const double *ak = S->sv[S->ksq[q]];
             for (int a = 0; a < kk; a++) t += ak[a] * P->Zsoc[i][a]; }
         for (int q = S->kep[k]; q < S->kep[k + 1]; q++) { int i = S->kej[q];
-            const double *ak = P->Aexp[k * nep + i];
+            const double *ak = S->ev[S->keq[q]];
             for (int a = 0; a < 3; a++) t += ak[a] * ez[3 * i + a]; }
         rp[k] = t;
     }
@@ -492,18 +492,18 @@ static ipmres ipm_resid(const ipmc *P) {
     for (int j = 0; j < nb; j++) { int d = dims[j];
         for (int a = 0; a < d * d; a++) t1[a] = -P->Cbar[j][a] + P->Sbar[j][a];
         for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int k = S->bi[q];
-            double yk = y[k]; const double *Akj = P->Abar[k * nb + j]; for (int a = 0; a < d * d; a++) t1[a] += yk * Akj[a]; }
+            double yk = y[k]; const double *Akj = S->bv[q]; for (int a = 0; a < d * d; a++) t1[a] += yk * Akj[a]; }
         for (int a = 0; a < d * d; a++) { double v = fabs(t1[a]); if (v > df) df = v; } }
     for (int i = 0; i < nsoc; i++) { int kk = socdims[i];
         for (int a = 0; a < kk; a++) t1[a] = -P->Csoc[i][a] + P->Ssoc[i][a];
         for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-            double yk = y[k]; const double *ak = P->Asoc[k * nsoc + i]; for (int a = 0; a < kk; a++) t1[a] += yk * ak[a]; }
+            double yk = y[k]; const double *ak = S->sv[q]; for (int a = 0; a < kk; a++) t1[a] += yk * ak[a]; }
         for (int a = 0; a < kk; a++) { double v = fabs(t1[a]); if (v > df) df = v; } }
     for (int i = 0; i < nep; i++) {
         double rde[3];
         for (int a = 0; a < 3; a++) rde[a] = -P->Cexp[i][a] + es[3 * i + a];
         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-            const double *ak = P->Aexp[k * nep + i]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a]; }
+            const double *ak = S->ev[q]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a]; }
         for (int a = 0; a < 3; a++) { double v = fabs(rde[a]); if (v > df) df = v; }
     }
     R.pfeas = pf; R.dfeas = df; R.mu = mu;
@@ -630,11 +630,14 @@ static double nsum_prod(const double *a, const double *b, int n) {
  * route's: every entry is the same sum in the same order, only the terms that
  * are exactly zero (rows of A, PSD blocks and cones a row does not touch) are
  * skipped, and the equilibration is the same per-entry scaling.  What changes
- * is the factorization.  The switch is the dense route's own cost per
- * assembly, Nsys^3 for the LU plus m^2 (n + sum d^2) for the triple loop: the
- * row count alone misses an 800-row LP next to a 2x2 PSD block, whose 800x800
- * LU is cheap but whose assembly is 1e9 flops (12 s).  Below SDP_SPARSE_WORK
- * the dense route runs untouched; the largest work in the test suite is
+ * is the factorization.  The switch is the dense route's cost per assembly as
+ * it was written, Nsys^3 for the LU plus m^2 (n + sum d^2) for the triple loop
+ * (the row count alone missed an 800-row LP next to a 2x2 PSD block: cheap
+ * 800x800 LU, 1e9-flop assembly, 12 s).  The dense assembly now intersects the
+ * rows instead (attempts.md F82), so below the threshold it is cheaper than the
+ * estimate says -- the same 400-row model takes 0.034 s -- and the threshold
+ * is kept where it was so that the routes do not move.  Below SDP_SPARSE_WORK
+ * the dense route answers; the largest work in the test suite is
  * 1.98e8 and in the samples 8.35e7, except big_portfolio (8.2e8 .. 2.7e9).
  * GMB_SDP_SPARSE forces the sparse form at every size (parity tests),
  * GMB_SDP_DENSE disables it. */
@@ -745,59 +748,63 @@ static void sdp_spd_free(SdpSpData *D) {
     free(D->rp); free(D->ri); free(D->rv); free(D->cp); free(D->ci); free(D->cv);
     free(D->bp); free(D->bi); free(D->sp); free(D->si); free(D->ep); free(D->ei);
     free(D->kbp); free(D->kbj); free(D->ksp); free(D->ksj); free(D->kep); free(D->kej);
+    free(D->kbq); free(D->ksq); free(D->keq); free(D->bv); free(D->sv); free(D->ev);
     memset(D, 0, sizeof *D);
 }
 
-/* Row lists of nblk blocks whose data for row k and block j has `len(j)`
- * entries at get(k, j); a row touches a block when any entry is nonzero. */
-static int sdp_spd_rows(int m, int nblk, const double *const *dat, const int *len,
-                        int fixed, int **op, int **oi) {
+/* One family of block lists (see SdpBlk), copied with every all-zero entry
+ * dropped: a row touches a block when its data has a nonzero (len(j) numbers,
+ * or `fixed` when len is NULL).  Rows stay ascending inside every block.
+ * 0 ok, 1 out of memory. */
+static int sdp_spd_blk(int nblk, const SdpBlk *B, const int *len, int fixed, int sq,
+                       int **op, int **oi, const double ***ov) {
+    int tot = (nblk > 0 && B) ? B->p[nblk] : 0;
     int *p = (int *)calloc((size_t)nblk + 1, sizeof(int));
-    if (!p) return 1;
-    for (int pass = 0; pass < 2; pass++) {
-        int nz = 0;
-        for (int j = 0; j < nblk; j++) {
-            if (pass == 1) p[j] = nz;
-            int L = len ? len[j] : fixed;
-            for (int k = 0; k < m; k++) {
-                const double *v = dat[(size_t)k * nblk + j];
-                int any = 0;
-                if (v) for (int a = 0; a < L && !any; a++) if (v[a] != 0.0) any = 1;
-                if (any) { if (pass == 1) (*oi)[nz] = k; nz++; }
-            }
+    int *ri = (int *)malloc((size_t)(tot > 0 ? tot : 1) * sizeof(int));
+    const double **v = (const double **)malloc((size_t)(tot > 0 ? tot : 1) * sizeof(double *));
+    if (!p || !ri || !v) { free(p); free(ri); free(v); return 1; }
+    int nz = 0;
+    for (int j = 0; j < nblk; j++) {
+        p[j] = nz;
+        int L = len ? (sq ? len[j] * len[j] : len[j]) : fixed;
+        for (int q = B->p[j]; q < B->p[j + 1]; q++) {
+            const double *d = B->val[q];
+            int any = 0;
+            if (d) for (int a = 0; a < L && !any; a++) if (d[a] != 0.0) any = 1;
+            if (any) { ri[nz] = B->row[q]; v[nz] = d; nz++; }
         }
-        if (pass == 0) {
-            *oi = (int *)malloc((size_t)(nz > 0 ? nz : 1) * sizeof(int));
-            if (!*oi) { free(p); return 1; }
-        } else p[nblk] = nz;
     }
-    *op = p;
+    p[nblk] = nz;
+    *op = p; *oi = ri; *ov = v;
     return 0;
 }
 
 /* The transpose of block -> rows lists: for every row the blocks it touches,
- * ascending (the blocks are visited in order). 0 ok, 1 out of memory. */
-static int sdp_spd_transpose(int m, int nblk, const int *bp, const int *bi, int **okp, int **okj) {
+ * ascending (the blocks are visited in order), and the position q of each in
+ * the block lists. 0 ok, 1 out of memory. */
+static int sdp_spd_transpose(int m, int nblk, const int *bp, const int *bi,
+                             int **okp, int **okj, int **okq) {
     int *kp = (int *)calloc((size_t)m + 1, sizeof(int));
     int *kj = (int *)malloc((size_t)(bp[nblk] > 0 ? bp[nblk] : 1) * sizeof(int));
+    int *kq = (int *)malloc((size_t)(bp[nblk] > 0 ? bp[nblk] : 1) * sizeof(int));
     int *fill = (int *)malloc((size_t)(m > 0 ? m : 1) * sizeof(int));
-    if (!kp || !kj || !fill) { free(kp); free(kj); free(fill); return 1; }
+    if (!kp || !kj || !kq || !fill) { free(kp); free(kj); free(kq); free(fill); return 1; }
     for (int q = 0; q < bp[nblk]; q++) kp[bi[q] + 1]++;
     for (int k = 0; k < m; k++) kp[k + 1] += kp[k];
     for (int k = 0; k < m; k++) fill[k] = kp[k];
     for (int j = 0; j < nblk; j++)
-        for (int q = bp[j]; q < bp[j + 1]; q++) kj[fill[bi[q]]++] = j;
+        for (int q = bp[j]; q < bp[j + 1]; q++) { int f = fill[bi[q]]++; kj[f] = j; kq[f] = q; }
     free(fill);
-    *okp = kp; *okj = kj;
+    *okp = kp; *okj = kj; *okq = kq;
     return 0;
 }
 
 /* Build the structure lists from A in compressed rows (columns strictly
- * ascending; an explicit zero is dropped) and the block data. 0 ok, 1 memory. */
+ * ascending; an explicit zero is dropped) and the block lists. 0 ok, 1 memory. */
 static int sdp_spd_build(SdpSpData *D, int m, int n, const SdpCsr *A,
-                         int nb, const int *dims, const double *const *Abar,
-                         int nsoc, const int *socdims, const double *const *Asoc,
-                         int nep, const double *const *Aexp) {
+                         int nb, const int *dims, const SdpBlk *Abar,
+                         int nsoc, const int *socdims, const SdpBlk *Asoc,
+                         int nep, const SdpBlk *Aexp) {
     size_t nz = 0;
     for (int k = 0; k < m; k++)
         for (int p = A->rp[k]; p < A->rp[k + 1]; p++) if (A->v[p] != 0.0) nz++;
@@ -822,17 +829,12 @@ static int sdp_spd_build(SdpSpData *D, int m, int n, const SdpCsr *A,
         for (int p = D->rp[k]; p < D->rp[k + 1]; p++) {
             int i = D->ri[p]; D->ci[fill[i]] = k; D->cv[fill[i]] = D->rv[p]; fill[i]++; }
     free(fill);
-    int *d2 = (int *)malloc((size_t)(nb > 0 ? nb : 1) * sizeof(int));
-    if (!d2) return 1;
-    for (int j = 0; j < nb; j++) d2[j] = dims[j] * dims[j];
-    int bad = sdp_spd_rows(m, nb, Abar, d2, 0, &D->bp, &D->bi) ||
-              sdp_spd_rows(m, nsoc, Asoc, socdims, 0, &D->sp, &D->si) ||
-              sdp_spd_rows(m, nep, Aexp, NULL, 3, &D->ep, &D->ei) ||
-              sdp_spd_transpose(m, nb, D->bp, D->bi, &D->kbp, &D->kbj) ||
-              sdp_spd_transpose(m, nsoc, D->sp, D->si, &D->ksp, &D->ksj) ||
-              sdp_spd_transpose(m, nep, D->ep, D->ei, &D->kep, &D->kej);
-    free(d2);
-    return bad;
+    return sdp_spd_blk(nb, Abar, dims, 0, 1, &D->bp, &D->bi, &D->bv) ||
+           sdp_spd_blk(nsoc, Asoc, socdims, 0, 0, &D->sp, &D->si, &D->sv) ||
+           sdp_spd_blk(nep, Aexp, NULL, 3, 0, &D->ep, &D->ei, &D->ev) ||
+           sdp_spd_transpose(m, nb, D->bp, D->bi, &D->kbp, &D->kbj, &D->kbq) ||
+           sdp_spd_transpose(m, nsoc, D->sp, D->si, &D->ksp, &D->ksj, &D->ksq) ||
+           sdp_spd_transpose(m, nep, D->ep, D->ei, &D->kep, &D->kej, &D->keq);
 }
 
 /* Rescue Newton solve for a PSD-only path whose Schur direction failed.
@@ -847,7 +849,7 @@ static int sdp_spd_build(SdpSpData *D, int m, int n, const SdpCsr *A,
  * the existing non-convergence/fallback behavior.  No model is reduced.
  */
 static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
- const SdpSpData *S,const double *const *Ab,const double *const *Cb,
+ const SdpSpData *S,const double *const *Cb,
  const double *xs,const double *ss,const double *const *Sb,const double *y,
  const double *rp,const double *rd,const double *Wi,const double *Xi,double target,
  double *dy,double *dx,double *ds,double *Dx,double *Ds){
@@ -872,7 +874,7 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
  for(int j=0;j<nb;j++){int d=dims[j];for(int a=0;a<d;a++)for(int b=a;b<d;b++,z++){
   bj[z]=j;bi[z]=a;bl[z]=b;double f=a==b?1:sqrt(2.0);
   double v=Cb[j][a*d+b]-target*Xi[(size_t)j*d2+a*d+b];
-  for(int qq=S->bp[j];qq<S->bp[j+1];qq++){int k=S->bi[qq];double av=f*Ab[k*nb+j][a*d+b];K[(size_t)k*N+m+z]=K[(size_t)(m+z)*N+k]=av;v-=Ab[k*nb+j][a*d+b]*y[k];}
+  for(int qq=S->bp[j];qq<S->bp[j+1];qq++){int k=S->bi[qq];double av=f*S->bv[qq][a*d+b];K[(size_t)k*N+m+z]=K[(size_t)(m+z)*N+k]=av;v-=S->bv[qq][a*d+b]*y[k];}
   r[m+z]=f*v;
  }}
  for(int u=n;u<q;u++)for(int v=n;v<q;v++)if(bj[u]==bj[v]){
@@ -900,7 +902,7 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
   for(int k=0;k<m;k++)dy[k]=r[k];
   for(int i=0;i<n;i++){dx[i]=r[m+i];double v=-rd[i];for(int p=S->cp[i];p<S->cp[i+1];p++)v-=S->cv[p]*dy[S->ci[p]];ds[i]=v;}
   for(int u=n;u<q;u++){int j=bj[u],d=dims[j],a=bi[u],b=bl[u];double v=r[m+u]/(a==b?1:sqrt(2.0));Dx[(size_t)j*d2+a*d+b]=Dx[(size_t)j*d2+b*d+a]=v;}
-  for(int j=0;j<nb;j++){int d=dims[j];for(int a=0;a<d*d;a++){double v=Cb[j][a]-Sb[j][a];for(int qq=S->bp[j];qq<S->bp[j+1];qq++){int k=S->bi[qq];v-=Ab[k*nb+j][a]*(y[k]+dy[k]);}Ds[(size_t)j*d2+a]=v;}}
+  for(int j=0;j<nb;j++){int d=dims[j];for(int a=0;a<d*d;a++){double v=Cb[j][a]-Sb[j][a];for(int qq=S->bp[j];qq<S->bp[j+1];qq++){int k=S->bi[qq];v-=S->bv[qq][a]*(y[k]+dy[k]);}Ds[(size_t)j*d2+a]=v;}}
  }
  dmat_lu_free(lf);free(K);free(r);free(cs);free(org);free(cor);free(bj);free(bi);free(bl);return ok;
 }
@@ -1621,11 +1623,11 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
  */
 static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const double *b, const double *c,
             int nb, const int *dims,
-            const double *const *Cbar, const double *const *Abar,
+            const double *const *Cbar,
             int nsoc, const int *socdims,
-            const double *const *Csoc, const double *const *Asoc,
+            const double *const *Csoc,
             int nep, const int *ekind, const double *ealpha,
-            const double *const *Cexp, const double *const *Aexp,
+            const double *const *Cexp,
             int max_iter, double tol, double rtol_pri, double rtol_dual, double rtol_gap,
             double near_rel,
             double *x, double *const *Xbar, double *y, double *const *Sbar,
@@ -1648,7 +1650,8 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
         if (!Ad || !Abd || !zero) { free(Ad); free(Abd); free(zero); return 2; }
         for (int k = 0; k < m; k++)
             for (int p = S->rp[k]; p < S->rp[k + 1]; p++) Ad[(size_t)k * n + S->ri[p]] = S->rv[p];
-        for (size_t q = 0; q < (size_t)m * (size_t)nb; q++) Abd[q] = Abar[q] ? Abar[q] : zero;
+        for (size_t q = 0; q < (size_t)m * (size_t)nb; q++) Abd[q] = zero;
+        for (int j = 0; j < nb; j++) for (int q = S->bp[j]; q < S->bp[j + 1]; q++) Abd[(size_t)S->bi[q] * nb + j] = S->bv[q];
         g_eig_twosided = 1;   /* pin the HSD to its calibrated eigensolver */
         int rc = hsd_psd(m, n, Ad, b, c, nb, dims, Cbar, (const double *const *)Abd,
                          max_iter, rtol_pri, rtol_dual, rtol_gap, x, Xbar, y, Sbar);
@@ -1677,15 +1680,15 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     double *t2 = (double *)malloc(tsz * sizeof(double));
     double *t3 = (double *)malloc(tsz * sizeof(double));
     /* Mt[k,j] = W_j Abar_kj W_j, kept only for the (row, block) pairs that touch:
-     * Mto[k*nb+j] is 1 + its offset in the pool, 0 for a zero block. */
+     * Mto[q] is the offset of the q-th entry of the block lists (S->bp, S->bi). */
     size_t mtsz = 0;
     for (int j = 0; j < nb; j++) mtsz += (size_t)(S->bp[j + 1] - S->bp[j]) * dims[j] * dims[j];
     double *Mt = (double *)malloc((mtsz > 0 ? mtsz : 1) * sizeof(double));
-    size_t *Mto = (size_t *)calloc((size_t)(m > 0 ? m : 1) * (size_t)(nb > 0 ? nb : 1), sizeof(size_t));
+    size_t *Mto = (size_t *)malloc((size_t)(S->bp[nb] > 0 ? S->bp[nb] : 1) * sizeof(size_t));
     if (Mto) { size_t off = 0;
         for (int j = 0; j < nb; j++) for (int q = S->bp[j]; q < S->bp[j + 1]; q++) {
-            Mto[(size_t)S->bi[q] * nb + j] = off + 1; off += (size_t)dims[j] * dims[j]; } }
-#define MTP(k, j) (Mt + (Mto[(size_t)(k) * nb + (j)] - 1))
+            Mto[q] = off; off += (size_t)dims[j] * dims[j]; } }
+#define MTQ(q) (Mt + Mto[(q)])   /* Mt of the q-th entry of the PSD block lists */
     double *xs = (double *)malloc((size_t)(n > 0 ? n : 1) * sizeof(double));
     double *ss = (double *)malloc((size_t)(n > 0 ? n : 1) * sizeof(double));
     double *zsoc = (double *)malloc((size_t)(K > 0 ? K : 1) * sizeof(double));
@@ -1789,7 +1792,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     ipmc C;
     C.n = n; C.m = m; C.nb = nb; C.nsoc = nsoc; C.nep = nep; C.Ke = Ke;
     C.S = S; C.b = b; C.c = c; C.dims = dims; C.socdims = socdims;
-    C.Cbar = Cbar; C.Abar = Abar; C.Csoc = Csoc; C.Asoc = Asoc; C.Cexp = Cexp; C.Aexp = Aexp;
+    C.Cbar = Cbar; C.Csoc = Csoc; C.Cexp = Cexp;
     C.ekind = ekind; C.ealpha = ealpha;
     C.xs = xs; C.ss = ss; C.y = y; C.rp = rp; C.rdx = rdx; C.scr = t1;
     C.Xbar = Xbar; C.Sbar = Sbar; C.Zsoc = Zsoc; C.Ssoc = Ssoc; C.ez = ez; C.es = es;
@@ -1958,8 +1961,8 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
             sym_fun(d, Xbar[j], 0, t1); mmul(d, t1, Sbar[j], t2); mmul(d, t2, t1, t3);
             sym_fun(d, t3, 1, t2); mmul(d, t1, t2, t3); mmul(d, t3, t1, Ws + j * dmax2);
             sym_fun(d, Ws + j * dmax2, 2, Wi + j * dmax2); sym_fun(d, Xbar[j], 2, Xi + j * dmax2); }
-        for (int j = 0; j < nb; j++) for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int k = S->bi[q], d = dims[j];
-            const double *Wj = Ws + j * dmax2; mmul(d, Wj, Abar[k * nb + j], t1); mmul(d, t1, Wj, MTP(k, j)); }
+        for (int j = 0; j < nb; j++) for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int d = dims[j];
+            const double *Wj = Ws + j * dmax2; mmul(d, Wj, S->bv[q], t1); mmul(d, t1, Wj, MTQ(q)); }
         for (int pass = 0; pass < 2; pass++) {
             int aug_dx = 0;   /* dx already solved in the augmented system */
             /* ---- augmented KKT: [ Kpp  Esoc' ; Esoc  Theta_soc ] ----
@@ -2032,12 +2035,12 @@ redo_dir:
                     for (int j = 0; j < nb; j++) { int d = dims[j]; double *g = gblk + (size_t)j * dmax2;
                         for (int a = 0; a < d * d; a++) g[a] = -Cbar[j][a] + sigma * mu * Xi[j * dmax2 + a];
                         for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int kk2 = S->bi[q];
-                            double yk = y[kk2]; const double *Akj = Abar[kk2 * nb + j];
+                            double yk = y[kk2]; const double *Akj = S->bv[q];
                             for (int a = 0; a < d * d; a++) g[a] += yk * Akj[a]; } }
                     /* blocks ascending for every row, as the dense loop subtracts them */
                     for (int j = 0; j < nb; j++)
                         for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int k = S->bi[q];
-                            Srhs[k] -= trAB(dims[j], MTP(k, j), gblk + (size_t)j * dmax2); }
+                            Srhs[k] -= trAB(dims[j], MTQ(q), gblk + (size_t)j * dmax2); }
                     if (!augx) for (int i = 0; i < n; i++) {
                         double th = xs[i] / ss[i];
                         for (int p = S->cp[i]; p < S->cp[i + 1]; p++)
@@ -2047,14 +2050,14 @@ redo_dir:
                     for (int j = 0; j < nb; j++)
                         for (int p = S->bp[j]; p < S->bp[j + 1]; p++) { int k = S->bi[p];
                             for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int l = S->bi[q];
-                                SPE(k, l, trAB(dims[j], MTP(k, j), Abar[l * nb + j])); } }
+                                SPE(k, l, trAB(dims[j], MTQ(p), S->bv[q])); } }
                     /* SOC blocks: arrow-matrix cone equation */
                     for (int i = 0; i < nsoc; i++) { int kk = socdims[i];
                         const double *zi = Zsoc[i], *si = Ssoc[i];
                         soc_arrow(zi, kk, Az); soc_arrow(si, kk, As);
                         for (int a = 0; a < kk; a++) rds[a] = -Csoc[i][a] + si[a];
                         for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                            const double *ak = Asoc[k * nsoc + i]; double yk = y[k];
+                            const double *ak = S->sv[q]; double yk = y[k];
                             for (int a = 0; a < kk; a++) rds[a] += yk * ak[a]; }
                         for (int a = 0; a < kk; a++) soc_e[a] = (a == 0) ? 1.0 : 0.0;
                         soc_arrow_mul(Az, si, kk, rcs);
@@ -2063,14 +2066,14 @@ redo_dir:
                         for (int a = 0; a < kk; a++) {
                             for (int b = 0; b < kk; b++) SPE(bi + a, bi + b, As[a * kk + b]);
                             for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                                const double *ak = Asoc[k * nsoc + i];
+                                const double *ak = S->sv[q];
                                 double t = 0; for (int b = 0; b < kk; b++) t += Az[a * kk + b] * ak[b];
                                 SPE(bi + a, k, -t); }
                             double t = 0; for (int b = 0; b < kk; b++) t += Az[a * kk + b] * rds[b];
                             Srhs[bi + a] = rcs[a] + t;
                         }
                         for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                            const double *ak = Asoc[k * nsoc + i];
+                            const double *ak = S->sv[q];
                             for (int a = 0; a < kk; a++) SPE(k, bi + a, ak[a]); }
                     }
                     /* exp/power blocks: scaled cone equation (see the dense loop) */
@@ -2089,17 +2092,17 @@ redo_dir:
                         inv = 1.0 / sc;
                         for (int a = 0; a < 3; a++) rde[a] = (-Cexp[i][a] + es[3 * i + a]) * inv;
                         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                            const double *ak = Aexp[k * nep + i]; double yk = y[k];
+                            const double *ak = S->ev[q]; double yk = y[k];
                             for (int a = 0; a < 3; a++) rde[a] += yk * ak[a] * inv; }
                         int bi = m + K + 3 * i;
                         for (int a = 0; a < 3; a++) {
                             for (int b = 0; b < 3; b++) SPE(bi + a, bi + b, Tin[a * 3 + b]);
                             for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                                SPE(bi + a, k, -Aexp[k * nep + i][a] * inv); }
+                                SPE(bi + a, k, -S->ev[q][a] * inv); }
                             Srhs[bi + a] = rt[a] + rde[a];
                         }
                         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                            const double *ak = Aexp[k * nep + i];
+                            const double *ak = S->ev[q];
                             for (int a = 0; a < 3; a++) SPE(k, bi + a, ak[a]); }
                     }
 #undef SPE
@@ -2186,13 +2189,13 @@ redo_dir:
                 for (int j = 0; j < nb; j++) { int d = dims[j]; double *g = gd + (size_t)j * dmax2;
                     for (int a = 0; a < d * d; a++) g[a] = -Cbar[j][a] + sigma * mu * Xi[j * dmax2 + a];
                     for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int kk2 = S->bi[q];
-                        double yk = y[kk2]; const double *Akj = Abar[kk2 * nb + j]; for (int a = 0; a < d * d; a++) g[a] += yk * Akj[a]; } }
+                        double yk = y[kk2]; const double *Akj = S->bv[q]; for (int a = 0; a < d * d; a++) g[a] += yk * Akj[a]; } }
                 for (int k = 0; k < m; k++) {
                     double rk = -rp[k];
                     if (!augx) for (int p = S->rp[k]; p < S->rp[k + 1]; p++) { int i = S->ri[p]; double th = xs[i] / ss[i];
                         double g = (-ss[i] + sigma * mu / xs[i]) + rdx[i]; rk -= S->rv[p] * th * g; }
                     for (int q = S->kbp[k]; q < S->kbp[k + 1]; q++) { int j = S->kbj[q];
-                        rk -= trAB(dims[j], MTP(k, j), gd + (size_t)j * dmax2); }
+                        rk -= trAB(dims[j], MTQ(S->kbq[q]), gd + (size_t)j * dmax2); }
                     Srhs[k] = rk;
                     for (int l = 0; l < m; l++) {
                         double s = 0.0;
@@ -2205,7 +2208,7 @@ redo_dir:
                         for (int p = S->kbp[k], q = S->kbp[l]; p < S->kbp[k + 1] && q < S->kbp[l + 1]; ) {
                             int jk = S->kbj[p], jl = S->kbj[q];
                             if (jk < jl) p++; else if (jl < jk) q++;
-                            else { s += trAB(dims[jk], MTP(k, jk), Abar[l * nb + jk]); p++; q++; } }
+                            else { s += trAB(dims[jk], MTQ(S->kbq[p]), S->bv[S->kbq[q]]); p++; q++; } }
                         Sys[(size_t)k * Nsys + l] = s;
                     }
                 }
@@ -2215,7 +2218,7 @@ redo_dir:
                     soc_arrow(zi, kk, Az); soc_arrow(si, kk, As);
                     for (int a = 0; a < kk; a++) rds[a] = -Csoc[i][a] + si[a];
                     for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                        const double *ak = Asoc[k * nsoc + i]; double yk = y[k]; for (int a = 0; a < kk; a++) rds[a] += yk * ak[a]; }
+                        const double *ak = S->sv[q]; double yk = y[k]; for (int a = 0; a < kk; a++) rds[a] += yk * ak[a]; }
                     for (int a = 0; a < kk; a++) soc_e[a] = (a == 0) ? 1.0 : 0.0;
                     soc_arrow_mul(Az, si, kk, rcs);
                     for (int a = 0; a < kk; a++) rcs[a] = -rcs[a] + sigma * mu * soc_e[a];
@@ -2223,14 +2226,14 @@ redo_dir:
                     for (int a = 0; a < kk; a++) {
                         for (int b = 0; b < kk; b++) Sys[(size_t)(bi + a) * Nsys + (bi + b)] = As[a * kk + b];
                         for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                            const double *ak = Asoc[k * nsoc + i];
+                            const double *ak = S->sv[q];
                             double t = 0; for (int b = 0; b < kk; b++) t += Az[a * kk + b] * ak[b];
                             Sys[(size_t)(bi + a) * Nsys + k] = -t; }
                         double t = 0; for (int b = 0; b < kk; b++) t += Az[a * kk + b] * rds[b];
                         Srhs[bi + a] = rcs[a] + t;
                     }
                     for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                        const double *ak = Asoc[k * nsoc + i]; for (int a = 0; a < kk; a++) Sys[(size_t)k * Nsys + (bi + a)] = ak[a]; }
+                        const double *ak = S->sv[q]; for (int a = 0; a < kk; a++) Sys[(size_t)k * Nsys + (bi + a)] = ak[a]; }
                 }
                 /* exp/power blocks: cone equation Thin dz + ds/scale = r~, with
                  * Thin the Hessian-NT scaling evaluated at the mu-free dual
@@ -2272,16 +2275,16 @@ redo_dir:
                     }
                     for (int a = 0; a < 3; a++) rde[a] = (-Cexp[i][a] + es[3 * i + a]) * inv;
                     for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                        const double *ak = Aexp[k * nep + i]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a] * inv; }
+                        const double *ak = S->ev[q]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a] * inv; }
                     int bi = m + K + 3 * i;
                     for (int a = 0; a < 3; a++) {
                         for (int b = 0; b < 3; b++) Sys[(size_t)(bi + a) * Nsys + (bi + b)] = Tin[a * 3 + b];
                         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                            Sys[(size_t)(bi + a) * Nsys + k] = -Aexp[k * nep + i][a] * inv; }
+                            Sys[(size_t)(bi + a) * Nsys + k] = -S->ev[q][a] * inv; }
                         Srhs[bi + a] = rt[a] + rde[a];
                     }
                     for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                        const double *ak = Aexp[k * nep + i]; for (int a = 0; a < 3; a++) Sys[(size_t)k * Nsys + (bi + a)] = ak[a]; }
+                        const double *ak = S->ev[q]; for (int a = 0; a < 3; a++) Sys[(size_t)k * Nsys + (bi + a)] = ak[a]; }
                 }
                 /* Diagonal equilibration (Jacobi row+column) of the augmented
                  * system.  Measured on the exp/power cases, the three row
@@ -2378,10 +2381,10 @@ redo_dir:
             for (int j = 0; j < nb; j++) { int d = dims[j]; double *e = t1;
                 for (int a = 0; a < d * d; a++) e[a] = 0.0;
                 for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int k = S->bi[q];
-                    double yk = dy[k]; const double *Akj = Abar[k * nb + j]; for (int a = 0; a < d * d; a++) e[a] += yk * Akj[a]; }
+                    double yk = dy[k]; const double *Akj = S->bv[q]; for (int a = 0; a < d * d; a++) e[a] += yk * Akj[a]; }
                 for (int a = 0; a < d * d; a++) e[a] += -Cbar[j][a] + sigma * mu * Xi[j * dmax2 + a];
                 for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int kk2 = S->bi[q];
-                    double yk = y[kk2]; const double *Akj = Abar[kk2 * nb + j]; for (int a = 0; a < d * d; a++) e[a] += yk * Akj[a]; }
+                    double yk = y[kk2]; const double *Akj = S->bv[q]; for (int a = 0; a < d * d; a++) e[a] += yk * Akj[a]; }
                 const double *Wj = Ws + j * dmax2; mmul(d, Wj, e, t2); mmul(d, t2, Wj, Dx + j * dmax2); }
             /* ds.  With dx from the augmented system, take ds from the dual
              * row  A'dy + ds = -rdx  (as the SOC/exp blocks below do), not
@@ -2395,16 +2398,16 @@ redo_dir:
                 for (int a = 0; a < d * d; a++) Ds[j * dmax2 + a] = -t2[a] - Sbar[j][a] + sigma * mu * Xi[j * dmax2 + a]; }
             for (int i = 0; i < nsoc; i++) { int kk = socdims[i];
                 for (int a = 0; a < kk; a++) { double t = -(-Csoc[i][a] + Ssoc[i][a]);
-                    for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q]; t -= Asoc[k * nsoc + i][a] * y[k]; }
-                    for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q]; t -= Asoc[k * nsoc + i][a] * dy[k]; }
+                    for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q]; t -= S->sv[q][a] * y[k]; }
+                    for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q]; t -= S->sv[q][a] * dy[k]; }
                     Dssoc[soff[i] + a] = t; } }
             for (int i = 0; i < nep; i++) {
                 double rde[3];
                 for (int a = 0; a < 3; a++) rde[a] = -Cexp[i][a] + es[3 * i + a];
                 for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                    const double *ak = Aexp[k * nep + i]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a]; }
+                    const double *ak = S->ev[q]; double yk = y[k]; for (int a = 0; a < 3; a++) rde[a] += yk * ak[a]; }
                 for (int a = 0; a < 3; a++) { double t = -rde[a];
-                    for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q]; t -= Aexp[k * nep + i][a] * dy[k]; }
+                    for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q]; t -= S->ev[q][a] * dy[k]; }
                     Des[3 * i + a] = t; }
             }
             /* The direction must satisfy the primal rows it linearises,
@@ -2425,10 +2428,10 @@ redo_dir:
                 for (int k = 0; k < m; k++) { double t = rp[k];
                     for (int p = S->rp[k]; p < S->rp[k + 1]; p++) t += S->rv[p] * dx[S->ri[p]];
                     for (int q = S->kbp[k]; q < S->kbp[k + 1]; q++) { int j = S->kbj[q];
-                        t += trAB(dims[j], Abar[k * nb + j], Dx + j * dmax2); }
-                    for (int q = S->ksp[k]; q < S->ksp[k + 1]; q++) { int i = S->ksj[q]; const double *ak = Asoc[k * nsoc + i];
+                        t += trAB(dims[j], S->bv[S->kbq[q]], Dx + j * dmax2); }
+                    for (int q = S->ksp[k]; q < S->ksp[k + 1]; q++) { int i = S->ksj[q]; const double *ak = S->sv[S->ksq[q]];
                         for (int a = 0; a < socdims[i]; a++) t += ak[a] * Dzsoc[soff[i] + a]; }
-                    for (int q = S->kep[k]; q < S->kep[k + 1]; q++) { int i = S->kej[q]; const double *ak = Aexp[k * nep + i];
+                    for (int q = S->kep[k]; q < S->kep[k + 1]; q++) { int i = S->kej[q]; const double *ak = S->ev[S->keq[q]];
                         for (int a = 0; a < 3; a++) t += ak[a] * Dez[3 * i + a]; }
                     if (fabs(t) > lr) lr = fabs(t);
                     if (fabs(rp[k]) > rpm) rpm = fabs(rp[k]); }
@@ -2492,7 +2495,7 @@ redo_dir:
                  * the gate (nb > 1, 5% growth) is a measured heuristic, not a
                  * Schur conditioning test. */
                 if (use_rescue && nb > 1 && nep == 0 && nsoc == 0) {
-                    int rr = sdp_aug_direction(m, n, nb, dims, dmax2, S, Abar, Cbar,
+                    int rr = sdp_aug_direction(m, n, nb, dims, dmax2, S, Cbar,
                                xs, ss, (const double *const *)Sbar, y, rp, rdx, Wi, Xi, sigma * mu,
                                dy, dx, ds, Dx, Ds);
                     if (getenv("GMB_DBG")) fprintf(stderr, "  [rescue] it=%d ret=%d\n", it, rr);
@@ -2734,7 +2737,7 @@ done:
      * fallback when the cuts do not answer either. */
     if (fb_ok) *fb_ok = (status != 0 && fb_saved) ? 1 : 0;
     free(soff); free(Ws); free(Wi); free(Xi); free(symX); free(symS); free(t1); free(t2); free(t3); free(Mt); free(Mto);
-#undef MTP
+#undef MTQ
     free(xs); free(ss); free(zsoc); free(ssoc); free(Dzsoc); free(Dssoc);
     free(Az); free(As); free(rds); free(rcs); free(soc_e);
     free(ez); free(es); free(Dez); free(Des);
@@ -2758,11 +2761,11 @@ done:
  * mode alone. */
 int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double *c,
             int nb, const int *dims,
-            const double *const *Cbar, const double *const *Abar,
+            const double *const *Cbar, const SdpBlk *Abar,
             int nsoc, const int *socdims,
-            const double *const *Csoc, const double *const *Asoc,
+            const double *const *Csoc, const SdpBlk *Asoc,
             int nep, const int *ekind, const double *ealpha,
-            const double *const *Cexp, const double *const *Aexp,
+            const double *const *Cexp, const SdpBlk *Aexp,
             int max_iter, double tol, double rtol_pri, double rtol_dual, double rtol_gap,
             double near_rel,
             double *x, double *const *Xbar, double *y, double *const *Sbar,
@@ -2775,8 +2778,8 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
     SdpSpData S; memset(&S, 0, sizeof S);
     if (sdp_spd_build(&S, m, n, Acsr, nb, dims, Abar, nsoc, socdims, Asoc, nep, Aexp)) {
         sdp_spd_free(&S); return 2; }
-#define SDP_IPM_RUN(sec) sdp_ipm_run((sec), m, n, &S, b, c, nb, dims, Cbar, Abar, nsoc, socdims, \
-        Csoc, Asoc, nep, ekind, ealpha, Cexp, Aexp, max_iter, tol, rtol_pri, rtol_dual, rtol_gap, \
+#define SDP_IPM_RUN(sec) sdp_ipm_run((sec), m, n, &S, b, c, nb, dims, Cbar, nsoc, socdims, \
+        Csoc, nep, ekind, ealpha, Cexp, max_iter, tol, rtol_pri, rtol_dual, rtol_gap, \
         near_rel, x, Xbar, y, Sbar, Zsoc, Ssoc, Zexp, Sexp, xwarm, ywarm, fb_ok)
     int first = getenv("GMB_EXP_DA") ? 1 : 0;
     int st = SDP_IPM_RUN(first);
@@ -2807,8 +2810,31 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
     return st;
 }
 
+/* The block lists of one m x nblk table of the dense entry point (a NULL
+ * entry is a block the row does not touch).  0 ok, 1 out of memory. */
+static int sdp_tab_blk(int m, int nblk, const double *const *tab, SdpBlk *B,
+                       int **op, int **orow, const double ***oval) {
+    size_t tot = 0;
+    for (size_t q = 0; q < (size_t)m * (size_t)nblk; q++) if (tab && tab[q]) tot++;
+    int *p = (int *)malloc(((size_t)nblk + 1) * sizeof(int));
+    int *row = (int *)malloc((tot > 0 ? tot : 1) * sizeof(int));
+    const double **val = (const double **)malloc((tot > 0 ? tot : 1) * sizeof(double *));
+    if (!p || !row || !val) { free(p); free(row); free(val); return 1; }
+    int nz = 0;
+    for (int j = 0; j < nblk; j++) {
+        p[j] = nz;
+        for (int k = 0; k < m; k++) { const double *d = tab ? tab[(size_t)k * nblk + j] : NULL;
+            if (d) { row[nz] = k; val[nz] = d; nz++; } }
+    }
+    p[nblk] = nz;
+    B->p = p; B->row = row; B->val = val;
+    *op = p; *orow = row; *oval = val;
+    return 0;
+}
+
 /* Dense entry point: A (m x n, row-major) is converted to compressed rows
- * (zeros dropped, columns ascending) and handed to sdp_ipm_csr. */
+ * (zeros dropped, columns ascending), the m x nblk tables to block lists, and
+ * both are handed to sdp_ipm_csr. */
 int sdp_ipm(int m, int n, const double *A, const double *b, const double *c,
             int nb, const int *dims,
             const double *const *Cbar, const double *const *Abar,
@@ -2839,9 +2865,16 @@ int sdp_ipm(int m, int n, const double *A, const double *b, const double *c,
     }
     rp[m] = (int)q;
     SdpCsr Ac = { rp, ci, v };
-    int st = sdp_ipm_csr(m, n, &Ac, b, c, nb, dims, Cbar, Abar, nsoc, socdims, Csoc, Asoc,
-                         nep, ekind, ealpha, Cexp, Aexp, max_iter, tol, rtol_pri, rtol_dual, rtol_gap,
+    SdpBlk Bb, Bs, Be;
+    int *p1 = NULL, *r1 = NULL, *p2 = NULL, *r2 = NULL, *p3 = NULL, *r3 = NULL;
+    const double **v1 = NULL, **v2 = NULL, **v3 = NULL;
+    int st = 2;
+    if (!sdp_tab_blk(m, nb, Abar, &Bb, &p1, &r1, &v1) && !sdp_tab_blk(m, nsoc, Asoc, &Bs, &p2, &r2, &v2) &&
+        !sdp_tab_blk(m, nep, Aexp, &Be, &p3, &r3, &v3))
+        st = sdp_ipm_csr(m, n, &Ac, b, c, nb, dims, Cbar, &Bb, nsoc, socdims, Csoc, &Bs,
+                         nep, ekind, ealpha, Cexp, &Be, max_iter, tol, rtol_pri, rtol_dual, rtol_gap,
                          near_rel, x, Xbar, y, Sbar, Zsoc, Ssoc, Zexp, Sexp, xwarm, ywarm, fb_ok);
     free(rp); free(ci); free(v);
+    free(p1); free(r1); free(v1); free(p2); free(r2); free(v2); free(p3); free(r3); free(v3);
     return st;
 }

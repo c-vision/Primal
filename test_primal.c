@@ -20917,8 +20917,71 @@ static void test_t293(void) {
     pend(&p);
 }
 
+/* T294: the sparse LU above its 8 MiB column-incidence bitset (n > ~8192)
+ * finds its pivot candidates through per-column row lists instead of scanning
+ * every row (attempts.md F83).  The lists only change how the candidates are
+ * found, not which they are nor their order, so the factor must be the scan's
+ * bit for bit: same row and column permutations, same L and U, same solution.
+ * GMB_SPLU_SCAN forces the scan.  The matrix is random (fixed seed) with small
+ * diagonals, so the partial pivoting swaps rows. */
+static void test_t294(void) {
+    cur_name = "T294 sparse LU column lists = row scan";
+    const int n = 9000, per = 4;
+    int *Ap = (int *)malloc(((size_t)n + 1) * sizeof(int));
+    int *Ai = (int *)malloc((size_t)n * (per + 1) * sizeof(int));
+    double *Ax = (double *)malloc((size_t)n * (per + 1) * sizeof(double));
+    double *b1 = (double *)malloc((size_t)n * sizeof(double));
+    double *b2 = (double *)malloc((size_t)n * sizeof(double));
+    int *mark = (int *)calloc((size_t)n, sizeof(int));
+    check(Ap && Ai && Ax && b1 && b2 && mark, "T294 allocates");
+    if (!Ap || !Ai || !Ax || !b1 || !b2 || !mark) {
+        free(Ap); free(Ai); free(Ax); free(b1); free(b2); free(mark); return; }
+    unsigned st = 294u;
+    int nz = 0;
+    for (int j = 0; j < n; j++) {
+        Ap[j] = nz;
+        st = st * 1103515245u + 12345u;
+        Ai[nz] = j; Ax[nz] = 1e-3 * (double)((st >> 16) & 0x7fff) / 32767.0; mark[j] = j + 1; nz++;
+        for (int e = 0; e < per; e++) {
+            st = st * 1103515245u + 12345u; int i = (int)((st >> 8) % (unsigned)n);
+            st = st * 1103515245u + 12345u;
+            if (mark[i] == j + 1) continue;
+            mark[i] = j + 1;
+            Ai[nz] = i; Ax[nz] = (double)((st >> 16) & 0x7fff) / 32767.0 - 0.5; nz++;
+        }
+    }
+    Ap[n] = nz;
+    for (int i = 0; i < n; i++) b1[i] = b2[i] = (double)(i % 7) - 3.0;
+    unsetenv("GMB_SPLU_SCAN");
+    SpluFact *F1 = splu_factor(n, Ap, Ai, Ax);
+    setenv("GMB_SPLU_SCAN", "1", 1);
+    SpluFact *F2 = splu_factor(n, Ap, Ai, Ax);
+    unsetenv("GMB_SPLU_SCAN");
+    check(F1 && F2, "T294 both factor");
+    if (F1 && F2) {
+        int same = memcmp(F1->perm, F2->perm, (size_t)n * sizeof(int)) == 0 &&
+                   memcmp(F1->qperm, F2->qperm, (size_t)n * sizeof(int)) == 0 &&
+                   memcmp(F1->Lp, F2->Lp, ((size_t)n + 1) * sizeof(int)) == 0 &&
+                   memcmp(F1->Up, F2->Up, ((size_t)n + 1) * sizeof(int)) == 0;
+        if (same) {
+            size_t ln = (size_t)F1->Lp[n], un = (size_t)F1->Up[n];
+            same = memcmp(F1->Li, F2->Li, ln * sizeof(int)) == 0 && memcmp(F1->Lx, F2->Lx, ln * sizeof(double)) == 0 &&
+                   memcmp(F1->Ui, F2->Ui, un * sizeof(int)) == 0 && memcmp(F1->Ux, F2->Ux, un * sizeof(double)) == 0;
+        }
+        int swaps = 0;
+        for (int k = 0; k < n; k++) if (F1->perm[k] != k) swaps++;
+        check(swaps > 0, "T294 the pivoting swaps rows");
+        check(same, "T294 identical permutations and L, U factors");
+        check(splu_solve(F1, b1) == 0 && splu_solve(F2, b2) == 0 &&
+              memcmp(b1, b2, (size_t)n * sizeof(double)) == 0, "T294 identical solutions");
+    }
+    splu_free(F1); splu_free(F2);
+    free(Ap); free(Ai); free(Ax); free(b1); free(b2); free(mark);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t294();
     test_t293();
     test_t292();
     test_t291();
