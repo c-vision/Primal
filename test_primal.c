@@ -20855,8 +20855,71 @@ static void test_t292(void) {
     }
 }
 
+/* T293 model: a 2x2 PSD block X with min <diag(1,2),X>, tr X = 1 (optimum 1)
+ * next to a path LP min sum x, x_i + x_{i+1} >= 1, x >= 0 (optimum
+ * floor(N/2)), plus, with `soc`, min t over (t, 3, 4) in QUAD (optimum 5).
+ * Returns the rc of PRIMAL_optimize and the primal objective in *obj. */
+static PRIMALrescodee t293_solve(PRIMALenv_t env, int N, int soc, double *obj) {
+    PRIMALtask_t t;
+    *obj = NAN;
+    if (PRIMAL_maketask(env, 0, 0, &t) != PRIMAL_RES_OK) return PRIMAL_RES_ERR_ALLOC;
+    PRIMAL_appendvars(t, N); PRIMAL_appendcons(t, N);
+    for (int i = 0; i < N; i++) { PRIMAL_putvarbound(t, i, PRIMAL_BK_LO, 0.0, INFINITY); PRIMAL_putcj(t, i, 1.0); }
+    for (int i = 0; i + 1 < N; i++) {
+        PRIMAL_putarow(t, i, 2, (int[]){i, i + 1}, (double[]){1.0, 1.0});
+        PRIMAL_putconbound(t, i, PRIMAL_BK_LO, 1.0, INFINITY);
+    }
+    int d = 2, ic, it;
+    PRIMAL_appendbarvars(t, 1, &d);
+    PRIMAL_appendsparsesymmat(t, 2, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){1.0, 2.0}, &ic);
+    PRIMAL_appendsparsesymmat(t, 2, 2, (int[]){0, 1}, (int[]){0, 1}, (double[]){1.0, 1.0}, &it);
+    PRIMAL_putbarcj(t, 0, 1, &ic, (double[]){1.0});
+    PRIMAL_putbaraij(t, N - 1, 0, 1, &it, (double[]){1.0});
+    PRIMAL_putconbound(t, N - 1, PRIMAL_BK_FX, 1.0, 1.0);
+    if (soc) {
+        PRIMAL_appendvars(t, 3);
+        PRIMAL_putvarbound(t, N, PRIMAL_BK_FR, -INFINITY, INFINITY);
+        PRIMAL_putvarbound(t, N + 1, PRIMAL_BK_FX, 3.0, 3.0);
+        PRIMAL_putvarbound(t, N + 2, PRIMAL_BK_FX, 4.0, 4.0);
+        PRIMAL_putcj(t, N, 1.0);
+        PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){N, N + 1, N + 2});
+    }
+    PRIMAL_putobjsense(t, PRIMAL_OPTIMIZE_MINIMIZE);
+    PRIMALrescodee rc = PRIMAL_optimize(t);
+    if (rc == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, obj);
+    PRIMAL_deletetask(&t);
+    return rc;
+}
+
+/* T293: sparse form of the unified conic KKT (sdp.c, SDP_SPARSE_WORK).  The
+ * sparse route assembles the dense route's entries into a fixed pattern and
+ * factors them with the sparse LU, so the same model solved both ways must
+ * give the same optimum (A: PSD + LP, B: PSD + LP + SOC, both forced with
+ * GMB_SDP_SPARSE); C is above the threshold, where the sparse form is the
+ * default (the dense route costs 12 s at this size, the sparse 0.1 s). */
+static void test_t293(void) {
+    cur_name = "T293 sparse unified conic KKT";
+    P p; pbegin(&p);
+    double od, os;
+    for (int soc = 0; soc <= 1; soc++) {
+        double want = 1.0 + 30.0 + (soc ? 5.0 : 0.0);
+        unsetenv("GMB_SDP_SPARSE");
+        PRIMALrescodee rd = t293_solve(p.env, 60, soc, &od);
+        setenv("GMB_SDP_SPARSE", "1", 1);
+        PRIMALrescodee rs = t293_solve(p.env, 60, soc, &os);
+        unsetenv("GMB_SDP_SPARSE");
+        check(rd == PRIMAL_RES_OK && rs == PRIMAL_RES_OK, soc ? "T293 B both routes solve" : "T293 A both routes solve");
+        check(fabs(od - want) < 1e-6 && fabs(os - want) < 1e-6, soc ? "T293 B optimum 36" : "T293 A optimum 31");
+        check(fabs(od - os) < 1e-7 * (1.0 + fabs(want)), soc ? "T293 B dense = sparse" : "T293 A dense = sparse");
+    }
+    PRIMALrescodee rc = t293_solve(p.env, 800, 1, &os);   /* dense work 1.5e9 >= SDP_SPARSE_WORK */
+    check(rc == PRIMAL_RES_OK && fabs(os - 406.0) < 1e-6, "T293 C large model, sparse by default, optimum 406");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t293();
     test_t292();
     test_t291();
     test_t290();

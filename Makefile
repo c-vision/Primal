@@ -208,11 +208,15 @@ run-samples: samples
 	@for s in $(SAMPLES); do echo "== $$s =="; ./$(OUT)/examples/c/$$s || exit 1; done
 
 # ---- benchmark harness (see bench/) ----
-bench: $(OUT)/bench/solve_mps $(OUT)/bench/conic_bench $(OUT)/bench/expcone_route_probe $(OUT)/bench/expcone_ipm_probe $(OUT)/bench/sdp_sweep
+bench: $(OUT)/bench/solve_mps $(OUT)/bench/conic_bench $(OUT)/bench/expcone_route_probe $(OUT)/bench/expcone_ipm_probe $(OUT)/bench/sdp_sweep $(OUT)/bench/kkt_scale
 
 $(OUT)/bench/sdp_sweep: bench/sdp_sweep.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench
 	$(CC) $(CFLAGS) -I. bench/sdp_sweep.c $(LIB_A) $(LDLIBS) -o $@
+
+$(OUT)/bench/kkt_scale: bench/kkt_scale.c $(LIB_A) | $(OUT)
+	mkdir -p $(OUT)/bench
+	$(CC) $(CFLAGS) -I. bench/kkt_scale.c $(LIB_A) $(LDLIBS) -o $@
 
 $(OUT)/bench/solve_mps: bench/solve_mps.c $(LIB_A) | $(OUT)
 	mkdir -p $(OUT)/bench

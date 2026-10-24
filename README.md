@@ -223,7 +223,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5260 checks
+make test          # reliability suite: 5267 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -687,9 +687,13 @@ Open algorithmic work, largest first:
 
 - **Basis warm start.** No real crash basis; `solvebasis` re-solves from scratch
   when the basis handed in does not measure, instead of re-optimizing *from* it.
-- **Sparse KKT in the conic path.** The unified conic system is assembled
-  densely, which caps problem size. The sparse LDLᵀ with 2×2 pivots exists and is
-  validated; it is not wired in yet.
+- **Sparse data in the conic path.** The unified conic KKT (`sdp.c`) is now
+  assembled sparse and factored with the sparse LU when the dense route would be
+  expensive (`SDP_SPARSE_WORK`: a 2×2 PSD block next to an 800-row LP goes from
+  12.5 s to 0.1 s). The constraint data handed to it are still dense: `A` is
+  `m × n` and every (row, PSD block) pair holds a `d × d` matrix, so memory still
+  grows as `m·n` and `m·Σd²` (a 10 000-row model takes 2.3 GB). The sparse LDLᵀ
+  is not used there: that KKT is not symmetric.
 - **Symmetric KKT in the SOCP route**, so the sparse symmetric factorization can
   replace the sparse LU there.
 - **Large-scale conic performance.** The second-order SOCP corrector reduces
