@@ -1,22 +1,39 @@
 #!/usr/bin/env julia
-# mioinfeas1.jl — MIP infeasible
+# mioinfeas1.jl — MOSEK port "mioinfeas1": an infeasible MIP.
+#
+#   min 0  s.t.  x >= 5,  x <= 2,  x integer >= 0
+#
+# Expected (reference table 7.3, integer problems): prosta = PRIM_INFEAS,
+# solsta = UNKNOWN. A branch-and-bound produces no Farkas vector, so the
+# certificate status is never published on a MIP; rc stays ERR_INFEASIBLE.
+# Port of examples/c/mioinfeas1.c.
 
+using Printf
 using Primal
 using Primal: Model   # not exported: JuMP exports its own Model
 
-m = Model(0, 0)
-add_vars(m, 1)
-add_cons(m, 1)
+const PRO_STA_PRIM_INFEAS = 4
 
-obj(m, [0], [1.0])
-sense(m, SENSE[:MIN])
-var_bounds(m, 0, BK[:LO]; lo=0.0, up=Inf)
-a_row(m, 0, [0], [1.0])
-con_bounds(m, 0, BK[:FX]; lo=5.0, up=3.0)  # x=5 and x=3 -> infeasible
-var_type(m, 0, VAR_TYPE[:INT])
+function main()
+    m = Model(0, 0)
+    r = try
+        add_vars(m, 1)
+        add_cons(m, 2)
+        a_row(m, 0, [0], [1.0])
+        a_row(m, 1, [0], [1.0])
+        con_bounds(m, 0, BK_LO; lo=5.0, up=Inf)
+        con_bounds(m, 1, BK_UP; lo=-Inf, up=2.0)
+        var_bounds(m, 0, BK_LO; lo=0.0, up=Inf)
+        var_type(m, 0, VT_INT)
+        sense(m, SENSE_MIN)
+        solve(m)
+    finally
+        free(m)
+    end
+    @printf("rc = %d, prosta = %d, solsta = %d\n", r.rc, r.prosta, r.solsta)
+    ok = r.rc == RC[:ERR_INFEASIBLE] && r.prosta == PRO_STA_PRIM_INFEAS && r.solsta == SOLSTA_UNKNOWN
+    @printf("%s (expected MIP infeasible: prosta PRIM_INFEAS + solsta UNKNOWN)\n", ok ? "OK" : "FAIL")
+    return ok ? 0 : 1
+end
 
-r = solve(m)
-ok = r.solsta != SOLSTA[:OPTIMAL]  # infeasible, no optimal
-println(ok ? "OK (mioinfeas1 infeasible)" : "FAIL: x=$(r.x), obj=$(r.objective), solsta=$(r.solsta)")
-free(m)
-exit(ok ? 0 : 1)
+exit(main())
