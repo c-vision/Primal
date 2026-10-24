@@ -57,6 +57,7 @@
 #include "presolve.h"
 #include "scaling.h"
 #include "socp.h"
+#include "conic_matrix.h"
 #include "sdp.h"
 #include "expcone.h"
 
@@ -20979,8 +20980,150 @@ static void test_t294(void) {
     free(Ap); free(Ai); free(Ax); free(b1); free(b2); free(mark);
 }
 
+/* T295: the cut master stores only actual coefficients, even when all future
+ * cut slots are used. This capacity used to imply a multi-GB rectangle. */
+static void test_t295(void) {
+    cur_name="T295 sparse conic master storage";
+    ConicMatrix *a=conic_matrix_new(4,5);SocpCsr csr={0};
+    check(a!=NULL,"small master allocates");
+    if(!a)return;
+    conic_matrix_add(a,0,4,2);conic_matrix_add(a,0,4,-2);
+    conic_matrix_set(a,0,3,9);conic_matrix_set(a,0,3,7);
+    conic_matrix_add(a,0,1,3);conic_matrix_set(a,2,2,0);
+    check(a->row[0].nz==2&&a->row[2].cap==0,"duplicates merge, zeros allocate no row entries");
+    check(conic_matrix_csr(a,3,&csr)==0,"master exports CSR");
+    if(csr.ptr)check(csr.ptr[3]==2&&csr.idx[0]==1&&csr.idx[1]==3&&
+                     csr.val[0]==3&&csr.val[1]==7,"CSR uses dense initializer column order");
+    double *dense=conic_matrix_dense(a,3);
+    check(dense&&dense[1]==3&&dense[3]==7&&dense[4]==0,"small dense view preserves overwrite and cancellation");
+    free(dense);conic_csr_free(&csr);
+    size_t before=a->bytes;conic_matrix_clear(a,0);conic_matrix_set(a,0,2,5);
+    check(a->bytes==before&&a->row[0].nz==1,"cut rows reuse their buffers after clearing");
+    conic_matrix_set(a,4,0,1);
+    check(conic_matrix_csr(a,1,&csr)!=0&&!csr.ptr,"invalid row fails without exporting partial buffers");
+    conic_matrix_free(a);
+
+    enum {N=4000, rounds=61, cols=6*N, erows=3*N+1, grows=(rounds+5)*N};
+    ConicMatrix *e=conic_matrix_new(erows,cols),*g=conic_matrix_new(grows,cols);
+    SocpCsr ec={0},gc={0};
+    check(e&&g,"4000-cone master allocates row metadata");
+    if(!e||!g){conic_matrix_free(e);conic_matrix_free(g);return;}
+    for(int k=0;k<N;k++) {
+        conic_matrix_set(e,0,3*k+1,1);
+        for(int j=0;j<3;j++) {
+            conic_matrix_set(e,1+3*k+j,3*k+j,-1);
+            conic_matrix_set(e,1+3*k+j,3*N+3*k+j,1);
+        }
+        conic_matrix_set(g,5*k,3*k,1);
+        conic_matrix_set(g,5*k+1,3*k,-1);
+        conic_matrix_set(g,5*k+2,3*k+1,1);
+        conic_matrix_set(g,5*k+3,3*N+3*k,1);
+        conic_matrix_set(g,5*k+4,3*N+3*k+1,1);
+        for(int round=0;round<rounds;round++)for(int j=0;j<3;j++)
+            conic_matrix_set(g,5*N+round*N+k,3*N+3*k+j,j?-.25:1);
+    }
+    check(!e->failed&&!g->failed,"all 61 rounds assemble without a dense rectangle");
+    int ok=conic_matrix_csr(e,erows,&ec)==0&&conic_matrix_csr(g,grows,&gc)==0;
+    check(ok,"large master exports directly to CSR");
+    if(ok) {
+        size_t bytes=e->bytes+g->bytes+(size_t)(erows+grows+2)*sizeof(int)
+            +(size_t)(ec.ptr[erows]+gc.ptr[grows])*(sizeof(int)+sizeof(double));
+        check(bytes<64u*1024u*1024u,"4000 cones and all cut slots stay below 64 MiB including CSR");
+        check(gc.ptr[grows]==5*N+3*rounds*N,"sparse master counts only real cut coefficients");
+    }
+    conic_csr_free(&ec);conic_csr_free(&gc);conic_matrix_free(e);conic_matrix_free(g);
+}
+
+/* T296: CSR ingestion must retain both Newton trajectories, public coordinates
+ * and duals of the existing dense-input sparse engine. */
+static void test_t296(void) {
+    cur_name="T296 SOCP CSR input equals dense input";
+    double E[]={0,1,0,0,0,1},G[]={1,0,0,0,1,0,0,0,1};
+    double d[]={1,0},c[]={1,0,0},h[]={0,0,0};
+    ConicMatrix *em=conic_matrix_new(2,3),*gm=conic_matrix_new(3,3);
+    SocpCsr ec={0},gc={0};SocpCone cone={1,3,NULL};
+    check(em&&gm,"CSR parity model allocates");
+    if(!em||!gm){conic_matrix_free(em);conic_matrix_free(gm);return;}
+    conic_matrix_set(em,1,2,1);conic_matrix_set(em,0,1,1);
+    for(int j=2;j>=0;j--)conic_matrix_set(gm,j,j,1);
+    int ok=conic_matrix_csr(em,2,&ec)==0&&conic_matrix_csr(gm,3,&gc)==0;
+    check(ok,"CSR parity model exports");
+    const char *pref=getenv("GMB_NO_NT");char *saved=pref?strdup(pref):NULL;
+    check(!pref||saved!=NULL,"CSR parity saves routing preference");
+    if(ok&&(!pref||saved))for(int mode=0;mode<2;mode++) {
+        if(mode)setenv("GMB_NO_NT","1",1);else unsetenv("GMB_NO_NT");
+        double x1[3],x2[3],y1[2],y2[2],l1[3],l2[3];
+        int r1=socp_solve_sparse(3,2,E,d,c,1,&cone,G,h,1e-10,1e-10,200,x1,y1,l1);
+        int zp[]={0,2,3,4},zi[]={0,2,1,2};double zv[]={1,0,1,1};
+        SocpCsr with_zero={3,3,zp,zi,zv};
+        int r2=socp_solve_sparse_csr(3,2,&ec,d,c,1,&cone,mode?&with_zero:&gc,h,
+                                    1e-10,1e-10,200,x2,y2,l2,1);
+        check(r1==0&&r2==0,"dense and CSR inputs solve");
+        if(!r1&&!r2) {
+            check(!memcmp(x1,x2,sizeof x1)&&!memcmp(y1,y2,sizeof y1)&&!memcmp(l1,l2,sizeof l1),
+                  "same point, equality dual and cone dual bit for bit");
+            check(fabs(x2[0]-1)<1e-8&&fabs(x2[1]-1)<1e-8&&fabs(x2[2])<1e-8,
+                  "CSR point satisfies analytic optimum and original equalities");
+            check(fabs(c[0]+y2[0]*E[0]+y2[1]*E[3]-l2[0])<1e-8&&
+                  fabs(y2[0]-l2[1])<1e-8&&fabs(y2[1]-l2[2])<1e-8,
+                  "CSR dual satisfies stationarity in original matrix");
+            check(l2[0]>=hypot(l2[1],l2[2])-1e-8&&fabs(x2[0]+y2[0])<1e-8,
+                  "CSR dual lies in the cone and closes the original objective gap");
+        }
+    }
+    if(saved){setenv("GMB_NO_NT",saved,1);free(saved);}else if(!pref)unsetenv("GMB_NO_NT");
+    conic_csr_free(&ec);conic_csr_free(&gc);conic_matrix_free(em);conic_matrix_free(gm);
+}
+
+/* T297: exercise the actual tangent-cut fallback, even if the native exp
+ * solver later improves enough to answer this max-entropy family. */
+static void test_t297(void) {
+    cur_name="T297 many-exp sparse cut master end to end";
+    const char *pref=getenv("GMB_NO_EXP_IPM");char *saved=pref?strdup(pref):NULL;
+    check(!pref||saved!=NULL,"saves exp routing preference");
+    if(pref&&!saved)return;
+    setenv("GMB_NO_EXP_IPM","1",1);
+    enum {N=50};P p;pbegin(&p);
+    PRIMAL_appendvars(p.task,3*N);PRIMAL_appendcons(p.task,1);
+    for(int k=0;k<N;k++) {
+        PRIMAL_putvarbound(p.task,3*k,PRIMAL_BK_FX,1,1);
+        PRIMAL_putvarbound(p.task,3*k+1,PRIMAL_BK_LO,0,INFINITY);
+        PRIMAL_putvarbound(p.task,3*k+2,PRIMAL_BK_FR,-INFINITY,INFINITY);
+        PRIMAL_putcj(p.task,3*k+2,-1);
+        PRIMAL_putaij(p.task,0,3*k+1,1);
+        PRIMAL_appendcone(p.task,PRIMAL_CT_PEXP,0,3,(int[]){3*k,3*k+1,3*k+2});
+    }
+    PRIMAL_putconbound(p.task,0,PRIMAL_BK_FX,1,1);
+    int rc=PRIMAL_optimize(p.task);
+    check_rc(rc,PRIMAL_RES_OK,"forced cut master solves entropy model");
+    double po=INFINITY,du=-INFINITY,pi=INFINITY,di=INFINITY,x[3*N];
+    check_rc(PRIMAL_getprimalobj(p.task,PRIMAL_SOL_ITR,&po),PRIMAL_RES_OK,"cut primal objective");
+    check_rc(PRIMAL_getdualobj(p.task,PRIMAL_SOL_ITR,&du),PRIMAL_RES_OK,"cut dual objective");
+    PRIMAL_getprimalinfeas(p.task,PRIMAL_SOL_ITR,&pi);
+    PRIMAL_getdualinfeas(p.task,PRIMAL_SOL_ITR,&di);
+    check(fabs(po+log((double)N))<1e-7,"entropy optimum known by Jensen's inequality");
+    check(pi<1e-8&&di<1e-8&&fabs(po-du)/(1+fabs(po)+fabs(du))<1e-8,
+          "public cut solution retains feasibility and objective gap");
+    int rx=PRIMAL_getxx(p.task,PRIMAL_SOL_ITR,x);
+    check_rc(rx,PRIMAL_RES_OK,"published entropy point");
+    if(rx==PRIMAL_RES_OK) {
+        double violation=0,sum=0;
+        for(int k=0;k<N;k++) {
+            double u=x[3*k],v=x[3*k+1],w=x[3*k+2];sum+=v;
+            double z=v>0?(v*exp(w/v)-u)/(1+fmax(fabs(u),fmax(fabs(v),fabs(w)))):INFINITY;
+            if(z>violation)violation=z;
+        }
+        check(fabs(sum-1)<1e-8&&violation<1e-8,"point satisfies the original exp cones and coupling row");
+    }
+    pend(&p);
+    if(saved){setenv("GMB_NO_EXP_IPM",saved,1);free(saved);}else unsetenv("GMB_NO_EXP_IPM");
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t297();
+    test_t296();
+    test_t295();
     test_t294();
     test_t293();
     test_t292();

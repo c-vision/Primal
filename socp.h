@@ -33,6 +33,20 @@ typedef struct {
     int *mem;   /* SOC: member variable indices (mem[0] = t) */
 } SocpCone;
 
+/* Internal row-compressed input. Columns within each row are strictly
+ * increasing; the solver borrows these buffers for the duration of the call. */
+typedef struct {
+    int rows, cols;
+    int *ptr, *idx;
+    double *val;
+} SocpCsr;
+
+int socp_solve_sparse_csr(int n, int p, const SocpCsr *E,
+               const double *d, const double *c, int ncones,
+               const SocpCone *cones, const SocpCsr *G, const double *h,
+               double tol_gap, double tol_feas, int max_iter,
+               double *x, double *y, double *lambda, int allow_qd);
+
 /* Internal cone ratio test, shared by both engines; exposed for exact
  * geometric regression tests. type 0 = R+, type 1 = SOC. */
 double socp_step_len(const double *v, const double *dv, int type, int k);

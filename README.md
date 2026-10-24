@@ -223,7 +223,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5272 checks
+make test          # reliability suite: 5305 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -443,9 +443,10 @@ and primal-dual gap. The 64 targeted checks pass before and after; no full
 suite or sanitizer run was performed for this update. The canonical table
 below predates this scaling change.
 
-The **Primal** column below was refreshed on **2026-10-24** at the commit that
-adds this note (the solver of `6ee5f00` plus the two SOCP memory fixes
-described under "Many-cone conic models"), with the C harness alone
+The **Primal** column below was refreshed on **2026-10-24** at `f32c82d` (the
+solver of `6ee5f00` plus the two SOCP memory fixes described under
+"Many-cone conic models"; the sparse cut master that follows it was checked on
+the 171 examples, which run within timing noise), with the C harness alone
 (`out/bench/solve_mps` on the ten MPS instances, `out/bench/conic_bench`,
 `out/bench/sdp_sweep 4 22`): medians of **11 rounds, interleaved** with
 `e90c614` (the previous refresh) in the same session, the order alternating
@@ -720,11 +721,21 @@ Open algorithmic work, largest first:
   11 s instead of 20 s, with the same answer. Two leaks found on the way are
   closed: the sparse assembly lost two index arrays per iteration, and the dense
   SOCP solver lost its step vectors (`leaks`: 1520 blocks → 0; ASan on macOS
-  does not check for leaks). Three limits remain. The row-oriented sparse LU
+  does not check for leaks). The cut master itself is now sparse
+  (`conic_matrix.c`). It used to be a dense array of every possible cut slot
+  times every variable, about 61N × 6N doubles for N exp cones, copied densely
+  again when fixed variables were substituted. Its rows now hold only their
+  real coefficients and reach the sparse SOCP solver as compressed rows
+  (`socp_solve_sparse_csr`), in the same order as before. Only the small dense
+  route builds a dense array, and only from the active rows. Same answers:
+  120 exp cones 205 MB (1.3 GB with the diagonal fix alone), 300 exp cones
+  106 s and 160 MB (124 s and 5.1 GB). `T295` checks that a 4000-cone master
+  with all its cut slots filled stays under 64 MiB, `T296` that the compressed
+  and dense inputs give bit-identical solutions, and `T297` runs the cut route
+  end to end on 50 exp cones. Two limits remain. The row-oriented sparse LU
   rewrites a dense row every time one of its columns is the pivot, which is
-  most of the 2000-cone time. The cut master is still dense (cut slots × variables,
-  about 61N × 6N for N exp cones), so 300 exp cones still take 124 s and 5.1 GB
-  and 1500 run past 4 minutes. And some sizes of the max-entropy family reach
+  most of the 2000-cone time, and the cut route is still slow on large sizes
+  (1500 exp cones run past 4 minutes). And some sizes of the max-entropy family reach
   the cuts at all (30, 50, 120, 300) because the native exp IPM stalls. On 50
   cones it loses centrality early, the ill-conditioned KKT breaks the symmetry
   of a symmetric problem, one cone sticks to its boundary and the dual step

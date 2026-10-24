@@ -23,7 +23,7 @@ CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2
 LDLIBS  = -lm
 
 OUT     = out
-HEADERS = primal.h linalg.h stdform.h simplex.h ipm.h socp.h sdp.h expcone.h \
+HEADERS = primal.h linalg.h stdform.h simplex.h ipm.h socp.h conic_matrix.h sdp.h expcone.h \
           mpsio.h cbf.h scaling.h presolve.h primal_priv.h
 PRIMAL_OBJS = primal_core.o primal_put.o primal_qcon.o primal_vartype.o \
           primal_get.o primal_names.o primal_meta.o primal_solution.o \
@@ -31,7 +31,7 @@ PRIMAL_OBJS = primal_core.o primal_put.o primal_qcon.o primal_vartype.o \
           primal_mip.o primal_mip_opt.o primal_conicopt.o primal_quad.o \
           primal_solio.o primal_std.o primal_verdict.o primal_optimize.o \
           primal_misc.o primal_info.o
-OBJS    = $(addprefix $(OUT)/,linalg.o stdform.o simplex.o ipm.o socp.o sdp.o \
+OBJS    = $(addprefix $(OUT)/,linalg.o stdform.o simplex.o ipm.o socp.o conic_matrix.o sdp.o \
           expcone.o mpsio.o cbf.o scaling.o presolve.o $(PRIMAL_OBJS))
 LIB_A   = $(OUT)/libprimal.a
 
@@ -77,7 +77,7 @@ example: $(OUT)/example_lp
 # ---- sanitizer (ASan+UBSan): objects and binaries under out/san/ ----
 SANFLAGS = -std=c99 -Wall -Wextra -pedantic -O2 -g -fno-omit-frame-pointer
 SAN      = -fsanitize=address,undefined
-SANOBJS  = $(addprefix $(OUT)/san/,linalg.o stdform.o simplex.o ipm.o socp.o \
+SANOBJS  = $(addprefix $(OUT)/san/,linalg.o stdform.o simplex.o ipm.o socp.o conic_matrix.o \
             sdp.o expcone.o mpsio.o cbf.o scaling.o presolve.o $(PRIMAL_OBJS))
 SAN_SAMPLES = examples/c/logistic_large.c examples/c/market_impact.c \
            examples/c/cvx_regression.c examples/c/maxcut_sdp.c examples/c/socp_robust.c \
@@ -167,7 +167,7 @@ BOOK_SAMPLES = intlo_simplex intlo_bigm intlo_transport hdb_kkt \
           pca_alloc oa_feed npo_lad npo_minimax pca_cashflow \
           boyd_corr_sdp lmco_lovasz
 SAMPLES = $(MOSEK_SAMPLES) $(COMPLEX_SAMPLES) $(FINANCE_SAMPLES) $(BOOK_SAMPLES)
-LIBSRCS = linalg.c stdform.c simplex.c ipm.c socp.c sdp.c expcone.c mpsio.c cbf.c scaling.c presolve.c \
+LIBSRCS = linalg.c stdform.c simplex.c ipm.c socp.c conic_matrix.c sdp.c expcone.c mpsio.c cbf.c scaling.c presolve.c \
           primal_core.c primal_put.c primal_qcon.c primal_vartype.c primal_get.c primal_names.c \
           primal_meta.c primal_solution.c primal_afe.c primal_djc.c primal_bar.c primal_sdptask.c \
           primal_mip.c primal_mip_opt.c primal_conicopt.c primal_quad.c primal_solio.c primal_std.c \

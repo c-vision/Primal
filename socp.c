@@ -648,6 +648,39 @@ static int spmat_init(SpMat *S, const double *D, int r, int q) {
         int a=S->rp[i]+fr[i]++;S->ri[a]=j;S->rv[a]=v; int b=S->cp[j]+fc[j]++;S->ci[b]=i;S->cv[b]=v;}
     free(fr);free(fc);return 0;
 }
+/* CSR -> the same CSR/CSC order as the dense initializer, without visiting
+ * structural zeros. The input belongs to the master, not to this solve. */
+static int spmat_init_csr(SpMat *S,const SocpCsr *A,int r,int n) {
+    if(!A||A->rows!=r||A->cols!=n||!A->ptr||A->ptr[0]!=0)return -1;
+    int nz=0;
+    for(int i=0;i<r;i++) {
+        if(A->ptr[i]<0||A->ptr[i+1]<A->ptr[i])return -1;
+        int last=-1;
+        for(int q=A->ptr[i];q<A->ptr[i+1];q++) {
+            if(!A->idx||!A->val||A->idx[q]<=last||A->idx[q]>=n)return -1;
+            last=A->idx[q];if(A->val[q]!=0)nz++;
+        }
+    }
+    S->rp=calloc((size_t)r+1,sizeof(int));S->cp=calloc((size_t)n+1,sizeof(int));
+    S->ri=malloc((size_t)(nz?nz:1)*sizeof(int));S->rv=malloc((size_t)(nz?nz:1)*sizeof(double));
+    S->ci=malloc((size_t)(nz?nz:1)*sizeof(int));S->cv=malloc((size_t)(nz?nz:1)*sizeof(double));
+    if(!S->rp||!S->cp||!S->ri||!S->rv||!S->ci||!S->cv)return -1;
+    int used=0;
+    for(int i=0;i<r;i++) {
+        for(int q=A->ptr[i];q<A->ptr[i+1];q++)if(A->val[q]!=0) {
+            S->ri[used]=A->idx[q];S->rv[used++]=A->val[q];S->cp[A->idx[q]+1]++;
+        }
+        S->rp[i+1]=used;
+    }
+    for(int j=0;j<n;j++)S->cp[j+1]+=S->cp[j];
+    int *next=malloc((size_t)(n?n:1)*sizeof(int));
+    if(!next)return -1;
+    for(int j=0;j<n;j++)next[j]=S->cp[j];
+    for(int i=0;i<r;i++)for(int q=S->rp[i];q<S->rp[i+1];q++) {
+        int dest=next[S->ri[q]]++;S->ci[dest]=i;S->cv[dest]=S->rv[q];
+    }
+    free(next);return 0;
+}
 /* Nulls every pointer: the error paths here free the same struct more than once
  * (once in the failing step, once in the common tail) and a freed-again pointer
  * must not be a live address. */
@@ -1144,29 +1177,40 @@ static double spchol_cond_diag(const SpChol *L){
 static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,const double *c,
                       int ncones,const SocpCone *cones,const double *G,const double *h,
                       double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam,
-                      int allow_qd);
+                      int allow_qd,const SocpCsr *Ec,const SocpCsr *Gc);
 int socp_solve_sparse(int n,int p,const double *E,const double *d,const double *c,
                       int ncones,const SocpCone *cones,const double *G,const double *h,
                       double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam)
 {
-    return socp_solve_sparse_impl(n,p,E,d,c,ncones,cones,G,h,tol_gap,tol_feas,max_iter,x,y,lam,1);
+    return socp_solve_sparse_impl(n,p,E,d,c,ncones,cones,G,h,tol_gap,tol_feas,max_iter,x,y,lam,1,NULL,NULL);
 }
 int socp_solve_sparse_production(int n,int p,const double *E,const double *d,const double *c,
                       int ncones,const SocpCone *cones,const double *G,const double *h,
                       double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam)
 {
-    return socp_solve_sparse_impl(n,p,E,d,c,ncones,cones,G,h,tol_gap,tol_feas,max_iter,x,y,lam,0);
+    return socp_solve_sparse_impl(n,p,E,d,c,ncones,cones,G,h,tol_gap,tol_feas,max_iter,x,y,lam,0,NULL,NULL);
+}
+int socp_solve_sparse_csr(int n,int p,const SocpCsr *E,const double *d,const double *c,
+                      int ncones,const SocpCone *cones,const SocpCsr *G,const double *h,
+                      double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam,
+                      int allow_qd) {
+    if(!E||!G)return OPT_MAXITER;
+    return socp_solve_sparse_impl(n,p,NULL,d,c,ncones,cones,NULL,h,
+                                  tol_gap,tol_feas,max_iter,x,y,lam,allow_qd,E,G);
 }
 static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,const double *c,
                       int ncones,const SocpCone *cones,const double *G,const double *h,
                       double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam,
-                      int allow_qd)
+                      int allow_qd,const SocpCsr *Ec,const SocpCsr *Gc)
 {
     if(n<0||p<0||ncones<0) return OPT_MAXITER;
     int K=0; for(int k=0;k<ncones;k++) K+=cones[k].nmem;
     int N=n+p+K; if(N==0) return OPT_OK;
     SpMat SE,SG; memset(&SE,0,sizeof(SE)); memset(&SG,0,sizeof(SG));
-    if(spmat_init(&SE,E,p,n)||spmat_init(&SG,G,K,n)){spmat_free(&SE);spmat_free(&SG);return OPT_MEMORY;}
+    if((Ec?spmat_init_csr(&SE,Ec,p,n):spmat_init(&SE,E,p,n))||
+       (Gc?spmat_init_csr(&SG,Gc,K,n):spmat_init(&SG,G,K,n))) {
+        spmat_free(&SE);spmat_free(&SG);return OPT_MEMORY;
+    }
     int *off=(int*)malloc((size_t)(ncones>0?ncones:1)*sizeof(int));
     double *xs=(double*)calloc((size_t)(n>0?n:1),sizeof(double)),*ys=(double*)calloc((size_t)(p>0?p:1),sizeof(double));
     double *s=(double*)malloc((size_t)(K>0?K:1)*sizeof(double)),*lm=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));

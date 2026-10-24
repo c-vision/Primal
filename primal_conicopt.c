@@ -19,6 +19,7 @@
  * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
  */
 #include "primal_priv.h"
+#include "conic_matrix.h"
 
 /* Sum of the stored A entries in row i, column j (duplicates included). */
 static double conic_aij(PRIMALtask_t t, int i, int j) {
@@ -40,36 +41,59 @@ enum { CR_ROWLO = 0, CR_ROWUP = 1, CR_VARLO = 2, CR_VARUP = 3,
 /* Exact substitution of fixed scalar variables. Removing their opposite
  * R+ rows restores a strict interior; retaining them makes the IPM approach
  * two incompatible interiors. Only successful reduced solves are used. */
-typedef int (*ConicSolve)(int,int,const double*,const double*,const double*,
-    int,const SocpCone*,const double*,const double*,double,double,int,double*,double*,double*);
-static int conic_solve_fixed(PRIMALtask_t t, ConicSolve solve,
-    int n,int p,const double *E,const double *d,const double *c,
-    int nc,const SocpCone *cones,const double *G,const double *h,
+static int conic_sparse_run(int n,int p,ConicMatrix *E,const double *d,const double *c,
+    int nc,const SocpCone *cones,ConicMatrix *G,const double *h,
+    double tg,double tf,int maxit,double *x,double *y,double *lm,int allow_qd) {
+    SocpCsr er={0},gr={0};int K=0,rc=2;
+    for(int k=0;k<nc;k++)K+=cones[k].nmem;
+    if(!conic_matrix_csr(E,p,&er)&&!conic_matrix_csr(G,K,&gr))
+        rc=socp_solve_sparse_csr(n,p,&er,d,c,nc,cones,&gr,h,tg,tf,maxit,x,y,lm,allow_qd);
+    conic_csr_free(&er);conic_csr_free(&gr);return rc;
+}
+static int conic_dense_run(int n,int p,ConicMatrix *E,const double *d,const double *c,
+    int nc,const SocpCone *cones,ConicMatrix *G,const double *h,
+    double tg,double tf,int maxit,double *x,double *y,double *lm) {
+    int K=0;for(int k=0;k<nc;k++)K+=cones[k].nmem;
+    /* Only the already-selected small dense route materializes a rectangle,
+     * and only its active rows, never the future tangent-cut capacity. */
+    double *ed=conic_matrix_dense(E,p),*gd=conic_matrix_dense(G,K);
+    int rc=ed&&gd?socp_solve(n,p,ed,d,c,nc,cones,gd,h,tg,tf,maxit,x,y,lm):2;
+    free(ed);free(gd);return rc;
+}
+static int conic_solve_fixed(PRIMALtask_t t,
+    int n,int p,ConicMatrix *E,const double *d,const double *c,
+    int nc,const SocpCone *cones,ConicMatrix *G,const double *h,
     const int *kind,const int *idx,double tg,double tf,int maxit,
     double *x,double *y,double *lm) {
     int nf=0,K=0;
     for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)nf++;
     for(int k=0;k<nc;k++)K+=cones[k].nmem;
-    if(!nf||nf>=n) return solve(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm);
+    if(!nf||nf>=n) return conic_sparse_run(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm,1);
+    conic_matrix_sort(E);conic_matrix_sort(G);
     int nr=n-nf,pr=0,kr=0,ncr=0,rc=-1;
     int *cols=malloc((size_t)nr*sizeof(int)),*rows=malloc((size_t)(p?p:1)*sizeof(int));
     int *crow=malloc((size_t)K*sizeof(int));
-    double *Er=calloc((size_t)(p?p:1)*nr,sizeof(double)),*dr=malloc((size_t)(p?p:1)*sizeof(double));
-    double *Gr=malloc((size_t)K*nr*sizeof(double)),*hr=malloc((size_t)K*sizeof(double));
+    ConicMatrix *Er=conic_matrix_new(p,nr),*Gr=conic_matrix_new(K,nr);
+    double *dr=malloc((size_t)(p?p:1)*sizeof(double)),*hr=malloc((size_t)K*sizeof(double));
     double *cr=malloc((size_t)nr*sizeof(double)),*xr=malloc((size_t)nr*sizeof(double));
     double *yr=malloc((size_t)(p?p:1)*sizeof(double)),*lr=malloc((size_t)K*sizeof(double));
+    int *map=malloc((size_t)n*sizeof(int));double *station=malloc((size_t)n*sizeof(double));
     SocpCone *cc=calloc((size_t)nc,sizeof(SocpCone));
-    if(!cols||!rows||!crow||!Er||!dr||!Gr||!hr||!cr||!xr||!yr||!lr||!cc)goto done;
+    if(!cols||!rows||!crow||!Er||!dr||!Gr||!hr||!cr||!xr||!yr||!lr||!cc||!map||!station)goto done;
     int q=0;double offset=0,do_=0,drn=0,ho=0,hrn=0;
     for(int j=0;j<n;j++) {
-        if(j<t->numvar&&t->bkx[j]==PRIMAL_BK_FX)offset+=c[j]*t->blx[j];
-        else {cols[q]=j;cr[q++]=c[j];}
+        if(j<t->numvar&&t->bkx[j]==PRIMAL_BK_FX){offset+=c[j]*t->blx[j];map[j]=-1;}
+        else {map[j]=q;cols[q]=j;cr[q++]=c[j];}
     }
     for(int i=0;i<p;i++) {
         double b=d[i];int nz=0;
         if(fabs(b)>do_)do_=fabs(b);
-        for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)b-=E[(size_t)i*n+j]*t->blx[j];
-        for(int j=0;j<nr;j++){double a=E[(size_t)i*n+cols[j]];Er[(size_t)pr*nr+j]=a;if(a!=0)nz=1;}
+        const ConicRow *row=E->row+i;
+        for(int j=0;j<row->nz;j++) {
+            int col=row->entry[j].col;double a=row->entry[j].value;
+            if(map[col]<0)b-=a*t->blx[col];
+            else {conic_matrix_set(Er,pr,map[col],a);nz=1;}
+        }
         if(!nz){if(b!=0)goto done;continue;}
         rows[pr]=i;dr[pr++]=b;if(fabs(b)>drn)drn=fabs(b);
     }
@@ -81,17 +105,21 @@ static int conic_solve_fixed(PRIMALtask_t t, ConicSolve solve,
             if(cones[k].type==0&&(kind[o]==CR_VARLO||kind[o]==CR_VARUP)
                &&idx[o]>=0&&idx[o]<t->numvar&&t->bkx[idx[o]]==PRIMAL_BK_FX)continue;
             double b=h[o];
-            for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)b+=G[(size_t)o*n+j]*t->blx[j];
-            for(int j=0;j<nr;j++)Gr[(size_t)kr*nr+j]=G[(size_t)o*n+cols[j]];
+            const ConicRow *row=G->row+o;
+            for(int j=0;j<row->nz;j++) {
+                int col=row->entry[j].col;double a=row->entry[j].value;
+                if(map[col]<0)b+=a*t->blx[col];
+                else conic_matrix_set(Gr,kr,map[col],a);
+            }
             crow[kr]=o;hr[kr++]=b;if(fabs(b)>hrn)hrn=fabs(b);
         }
         if(kr>start){cc[ncr].type=cones[k].type;cc[ncr++].nmem=kr-start;}
     }
-    if(!ncr||!isfinite(offset)||!isfinite(drn)||!isfinite(hrn))goto done;
+    if(!ncr||Er->failed||Gr->failed||!isfinite(offset)||!isfinite(drn)||!isfinite(hrn))goto done;
     /* A translation can increase a relative residual's denominator. Tighten
      * the reduced tolerances so success implies the original criteria. */
     double fr=fmin(1.0,fmin((1+do_)/(1+drn),(1+ho)/(1+hrn)));
-    rc=solve(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,tg/(1+fabs(offset)),tf*fr,maxit,xr,yr,lr);
+    rc=conic_sparse_run(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,tg/(1+fabs(offset)),tf*fr,maxit,xr,yr,lr,1);
     if(rc==0) {
         for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)x[j]=t->blx[j];
         for(int j=0;j<nr;j++)x[cols[j]]=xr[j];
@@ -101,23 +129,27 @@ static int conic_solve_fixed(PRIMALtask_t t, ConicSolve solve,
         for(int i=0;i<kr;i++)lm[crow[i]]=lr[i];
         /* Fixed-coordinate stationarity determines the difference of the
          * bound multipliers. Their common nonnegative part is immaterial. */
-        for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX) {
-            double r=c[j];
-            for(int i=0;i<p;i++)r+=E[(size_t)i*n+j]*y[i];
-            for(int i=0;i<K;i++)r-=G[(size_t)i*n+j]*lm[i];
-            o=0;
-            for(int k=0;k<nc;k++) {
-                for(int i=0;i<cones[k].nmem;i++,o++)if(cones[k].type==0&&idx[o]==j) {
-                    if(kind[o]==CR_VARLO)lm[o]=fmax(r,0);
-                    if(kind[o]==CR_VARUP)lm[o]=fmax(-r,0);
-                }
-            }
+        for(int j=0;j<n;j++)station[j]=c[j];
+        for(int i=0;i<p;i++)for(int j=0;j<E->row[i].nz;j++) {
+            ConicEntry a=E->row[i].entry[j];
+            if(map[a.col]<0)station[a.col]+=a.value*y[i];
+        }
+        for(int i=0;i<K;i++)for(int j=0;j<G->row[i].nz;j++) {
+            ConicEntry a=G->row[i].entry[j];
+            if(map[a.col]<0)station[a.col]-=a.value*lm[i];
+        }
+        o=0;
+        for(int k=0;k<nc;k++)for(int i=0;i<cones[k].nmem;i++,o++) {
+            int j=idx[o];
+            if(cones[k].type!=0||j<0||j>=t->numvar||map[j]>=0)continue;
+            if(kind[o]==CR_VARLO)lm[o]=fmax(station[j],0);
+            if(kind[o]==CR_VARUP)lm[o]=fmax(-station[j],0);
         }
     }
 done:
-    free(cols);free(rows);free(crow);free(Er);free(dr);free(Gr);free(hr);
-    free(cr);free(xr);free(yr);free(lr);free(cc);
-    return rc==0?0:solve(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm);
+    free(cols);free(rows);free(crow);conic_matrix_free(Er);free(dr);conic_matrix_free(Gr);free(hr);
+    free(cr);free(xr);free(yr);free(lr);free(cc);free(map);free(station);
+    return rc==0?0:conic_sparse_run(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm,1);
 }
 
 /* ---- nonlinear cones (PEXP/DEXP/PPOW/RPOW): tangent cuts ----
@@ -304,9 +336,9 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         for (int j = 0; j < nb; j++) { barOff[j] = bo; bo += barPq[j]; }
     }
 
-    double *E = neq ? (double *)calloc((size_t)neq * (size_t)ntot, sizeof(double)) : NULL;
+    ConicMatrix *E = conic_matrix_new(neq,ntot);
     double *d = neq ? (double *)calloc((size_t)neq, sizeof(double)) : NULL;
-    double *G = (double *)calloc((size_t)K * (size_t)ntot, sizeof(double));
+    ConicMatrix *G = conic_matrix_new(K,ntot);
     double *h = (double *)malloc((size_t)K * sizeof(double));
     double *c = (double *)calloc((size_t)ntot, sizeof(double));
     /* solver cones: R_+ block + one per user QUAD/RQUAD (nonlinear cones are
@@ -318,9 +350,9 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     int *eqKind  = (int *)malloc((size_t)(neq > 0 ? neq : 1) * sizeof(int));
     int *eqIdx   = (int *)malloc((size_t)(neq > 0 ? neq : 1) * sizeof(int));
     int *eqAux   = (int *)malloc((size_t)(neq > 0 ? neq : 1) * sizeof(int));
-    if (!G || !h || !c || !cones || !cmem || !rowKind || !rowIdx ||
+    if (!E || !G || !h || !c || !cones || !cmem || !rowKind || !rowIdx ||
         !eqKind || !eqIdx || !eqAux || (neq && (!E || !d))) {
-        free(E); free(d); free(G); free(h); free(c); free(cones); free(cmem);
+        conic_matrix_free(E); free(d); conic_matrix_free(G); free(h); free(c); free(cones); free(cmem);
         free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux);
         return PRIMAL_RES_ERR_ALLOC;
     }
@@ -332,19 +364,19 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     /* ---------- variable bounds ---------- */
     for (int j = 0; j < nvar; j++) {
         if (t->bkx[j] == PRIMAL_BK_LO || t->bkx[j] == PRIMAL_BK_RA) {
-            G[r * ntot + j] = 1.0; h[r] = -t->blx[j];
+            conic_matrix_set(G,r,j,1.0); h[r] = -t->blx[j];
             rowKind[r] = CR_VARLO; rowIdx[r] = j; r++;
         }
         if (t->bkx[j] == PRIMAL_BK_UP || t->bkx[j] == PRIMAL_BK_RA) {
-            G[r * ntot + j] = -1.0; h[r] = t->bux[j];
+            conic_matrix_set(G,r,j,-1.0); h[r] = t->bux[j];
             rowKind[r] = CR_VARUP; rowIdx[r] = j; r++;
         }
         if (t->bkx[j] == PRIMAL_BK_FX) {
             /* fixed var as two opposite R_+ rows (KKT conditioning: avoids a
              * duplicate E column when the var also appears in EQ rows) */
-            G[r * ntot + j] = 1.0; h[r] = -t->blx[j];
+            conic_matrix_set(G,r,j,1.0); h[r] = -t->blx[j];
             rowKind[r] = CR_VARLO; rowIdx[r] = j; r++;
-            G[r * ntot + j] = -1.0; h[r] = t->blx[j];
+            conic_matrix_set(G,r,j,-1.0); h[r] = t->blx[j];
             rowKind[r] = CR_VARUP; rowIdx[r] = j; r++;
         }
     }
@@ -353,7 +385,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     if (nb > 0) {
         symPq = (double **)malloc((size_t)(t->nsym > 0 ? t->nsym : 1) * sizeof(double *));
         if (!symPq) {
-            free(E); free(d); free(G); free(h); free(c); free(cones); free(cmem);
+            conic_matrix_free(E); free(d); conic_matrix_free(G); free(h); free(c); free(cones); free(cmem);
             free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux);
             free(barOff); free(barPq);
             return PRIMAL_RES_ERR_ALLOC;
@@ -381,7 +413,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         if (!ok) {
             for (int m = 0; m < t->nsym; m++) free(symPq[m]);
             free(symPq);
-            free(E); free(d); free(G); free(h); free(c); free(cones); free(cmem);
+            conic_matrix_free(E); free(d); conic_matrix_free(G); free(h); free(c); free(cones); free(cmem);
             free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux);
             free(barOff); free(barPq);
             return PRIMAL_RES_ERR_ALLOC;
@@ -394,9 +426,9 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         for (int j = 0; j < nb; j++) {
             for (int p = 0; p < barPq[j]; p++) {
                 int v = barOff[j] + p;
-                G[r * ntot + v] = 1.0; h[r] = SDP_BIGM;
+                conic_matrix_set(G,r,v,1.0); h[r] = SDP_BIGM;
                 rowKind[r] = CR_VARLO; rowIdx[r] = v; r++;
-                G[r * ntot + v] = -1.0; h[r] = SDP_BIGM;
+                conic_matrix_set(G,r,v,-1.0); h[r] = SDP_BIGM;
                 rowKind[r] = CR_VARUP; rowIdx[r] = v; r++;
             }
         }
@@ -411,38 +443,38 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     /* ---------- linear rows (bar A terms appended to each row) ---------- */
     for (int i = 0; i < ncon; i++) {
         if (t->bkc[i] == PRIMAL_BK_FX) {
-            for (int j = 0; j < nvar; j++) E[e * ntot + j] = conic_aij(t, i, j);
+            for (int j = 0; j < nvar; j++) conic_matrix_set(E,e,j,conic_aij(t, i, j));
             for (int k = 0; k < t->nbarA; k++) {
                 if (t->barA_con[k] != i) continue;
                 int b = t->barA_bar[k], m = t->barA_sym[k], dd = t->barDim[b];
                 int pq = dd * (dd + 1) / 2;
                 for (int p = 0; p < pq; p++)
-                    E[e * ntot + barOff[b] + p] += t->barA_coef[k] * symPq[m][p];
+                    conic_matrix_add(E,e,barOff[b]+p,t->barA_coef[k]*symPq[m][p]);
             }
             d[e] = t->blc[i];
             eqKind[e] = EQ_FXROW; eqIdx[e] = i; e++;
             continue;
         }
         if (t->bkc[i] == PRIMAL_BK_LO || t->bkc[i] == PRIMAL_BK_RA) {
-            for (int j = 0; j < nvar; j++) G[r * ntot + j] = conic_aij(t, i, j);
+            for (int j = 0; j < nvar; j++) conic_matrix_set(G,r,j,conic_aij(t, i, j));
             for (int k = 0; k < t->nbarA; k++) {
                 if (t->barA_con[k] != i) continue;
                 int b = t->barA_bar[k], m = t->barA_sym[k], dd = t->barDim[b];
                 int pq = dd * (dd + 1) / 2;
                 for (int p = 0; p < pq; p++)
-                    G[r * ntot + barOff[b] + p] += t->barA_coef[k] * symPq[m][p];
+                    conic_matrix_add(G,r,barOff[b]+p,t->barA_coef[k]*symPq[m][p]);
             }
             h[r] = -t->blc[i];
             rowKind[r] = CR_ROWLO; rowIdx[r] = i; r++;
         }
         if (t->bkc[i] == PRIMAL_BK_UP || t->bkc[i] == PRIMAL_BK_RA) {
-            for (int j = 0; j < nvar; j++) G[r * ntot + j] = -conic_aij(t, i, j);
+            for (int j = 0; j < nvar; j++) conic_matrix_set(G,r,j,-conic_aij(t, i, j));
             for (int k = 0; k < t->nbarA; k++) {
                 if (t->barA_con[k] != i) continue;
                 int b = t->barA_bar[k], m = t->barA_sym[k], dd = t->barDim[b];
                 int pq = dd * (dd + 1) / 2;
                 for (int p = 0; p < pq; p++)
-                    G[r * ntot + barOff[b] + p] -= t->barA_coef[k] * symPq[m][p];
+                    conic_matrix_add(G,r,barOff[b]+p,-t->barA_coef[k]*symPq[m][p]);
             }
             h[r] = t->buc[i];
             rowKind[r] = CR_ROWUP; rowIdx[r] = i; r++;
@@ -462,7 +494,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     double *nlAlpha = (double *)malloc((size_t)(nNlin > 0 ? nNlin : 1) * sizeof(double));
     int *nlMem = (int *)malloc((size_t)(3 * (nNlin > 0 ? nNlin : 1)) * sizeof(int));
     if (!auxBase || !nlType || !nlAlpha || !nlMem) {
-        free(E); free(d); free(G); free(h); free(c); free(cones); free(cmem);
+        conic_matrix_free(E); free(d); conic_matrix_free(G); free(h); free(c); free(cones); free(cmem);
         free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux); free(auxBase); free(nlType); free(nlAlpha); free(nlMem);
         return PRIMAL_RES_ERR_ALLOC;
     }
@@ -492,13 +524,13 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             nlMem[3 * nl + i] = A0 + i;
             /* link equality: A_i - sg*m_i = 0 */
             eqKind[e] = EQ_LINK; eqIdx[e] = mem[i]; eqAux[e] = A0 + i;
-            E[e * ntot + A0 + i] = 1.0; E[e * ntot + mem[i]] = -(double)sg;
+            conic_matrix_set(E,e,A0+i,1.0); conic_matrix_set(E,e,mem[i],-(double)sg);
             d[e] = 0.0; e++;
         }
         nauxDone += 3;
         /* sign rows on the auxiliaries: A0 >= 0, A1 >= 0 */
         for (int i = 0; i < 2; i++) {
-            G[r * ntot + A0 + i] = 1.0; h[r] = 0.0;
+            conic_matrix_set(G,r,A0+i,1.0); h[r] = 0.0;
             rowKind[r] = CR_VARLO; rowIdx[r] = A0 + i; r++;
         }
     }
@@ -513,7 +545,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             cones[ncones_solver].mem = cmem + co;
             for (int i = 0; i < m; i++) {
                 cmem[co] = mem[i];
-                G[r * ntot + mem[i]] = 1.0;   /* s = x_member */
+                conic_matrix_set(G,r,mem[i],1.0);   /* s = x_member */
                 h[r] = 0.0;
                 rowKind[r] = CR_VARLO; rowIdx[r] = mem[i]; r++;
                 co++;
@@ -537,14 +569,14 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             cones[ncones_solver].nmem = m;
             cones[ncones_solver].mem = cmem + co;
             cmem[co] = mem[0];
-            G[r * ntot + mem[0]] += r2; G[r * ntot + mem[1]] += r2; h[r] = 0.0;
+            conic_matrix_add(G,r,mem[0],r2); conic_matrix_add(G,r,mem[1],r2); h[r] = 0.0;
             rowKind[r] = CR_RQUAD_T; rowIdx[r] = k; r++; co++;
             cmem[co] = mem[1];
-            G[r * ntot + mem[0]] += r2; G[r * ntot + mem[1]] -= r2; h[r] = 0.0;
+            conic_matrix_add(G,r,mem[0],r2); conic_matrix_add(G,r,mem[1],-r2); h[r] = 0.0;
             rowKind[r] = CR_RQUAD_R; rowIdx[r] = k; r++; co++;
             for (int i = 2; i < m; i++) {
                 cmem[co] = mem[i];
-                G[r * ntot + mem[i]] = 1.0; h[r] = 0.0;
+                conic_matrix_set(G,r,mem[i],1.0); h[r] = 0.0;
                 rowKind[r] = CR_VARLO; rowIdx[r] = mem[i]; r++; co++;
             }
             ncones_solver++;
@@ -596,14 +628,14 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
         for (int round = 0;; round++) {
             /* cut rows: slots [r_cut, r_cut+nCutAll) */
             if (nCutAll > 0)
-                memset((void *)(G + (size_t)r_cut * ntot), 0,
-                       (size_t)(nCutAll * ntot) * sizeof(double));
+                conic_matrix_clear(G,r_cut);
             /* round 0: problems without cuts are often unbounded (the nonlinear
              * member variables have no G rows): add an initial tangent cut for
              * every cone right away */
             if (ncuts == 0 && nNlin > 0) {
                 int nw = 0;
                 double *sxv = (double *)calloc((size_t)ntot, sizeof(double));
+                if(!sxv){rcs=PRIMAL_RES_ERR_ALLOC;break;}
                 for (int k = 0; k < nNlin; k++) {
                     /* tangent at (u,v)=(1,0): the members are the auxiliaries */
                     sxv[nlMem[3 * k + 0]] = 1.0;
@@ -622,7 +654,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             int rr = r_cut;
             for (int q = 0; q < ncuts; q++) {
                 for (int i = 0; i < 3; i++)
-                    G[(size_t)rr * ntot + cutcol[3 * q + i]] += cuta[3 * q + i];
+                    conic_matrix_add(G,rr,cutcol[3*q+i],cuta[3*q+i]);
                 h[rr] = cuth[q];
                 rowKind[rr] = CR_CUT; rowIdx[rr] = -1;
                 rr++;
@@ -630,11 +662,12 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             for (int q = 0; q < ncuts_psd; q++) {
                 const double *cv = psd_cut_val + (size_t)q * (size_t)ntot;
                 for (int v = 0; v < ntot; v++)
-                    if (cv[v] != 0.0) G[(size_t)rr * ntot + v] += cv[v];
+                    if (cv[v] != 0.0) conic_matrix_add(G,rr,v,cv[v]);
                 h[rr] = psd_cut_rhs[q];
                 rowKind[rr] = CR_PSDCUT; rowIdx[rr] = -1;
                 rr++;
             }
+            if(E->failed||G->failed){rcs=PRIMAL_RES_ERR_ALLOC;break;}
             int Nsys = ntot + neq;
             for (int kk = 0; kk < ncones_solver; kk++) Nsys += cones[kk].nmem;
             /* Many small cones give a sparse augmented system well below 800:
@@ -643,10 +676,10 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             int sparse_conic = (Nsys >= 300 && ncones_solver >= 16) ||
                                (Nsys >= 800) || (getenv("GMB_SOCP_SPARSE") != NULL);
             int st = sparse_conic
-                ? conic_solve_fixed(t,socp_solve_sparse,
+                ? conic_solve_fixed(t,
                     ntot,neq,E,d,c,ncones_solver,cones,G,h,rowKind,rowIdx,
                     t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm)
-                : socp_solve(ntot,neq,E,d,c,ncones_solver,cones,G,h,
+                : conic_dense_run(ntot,neq,E,d,c,ncones_solver,cones,G,h,
                     t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm);
             /* A dense solve that fails gets one sparse attempt on the same
              * system before the round gives up; only a SUCCESS replaces its
@@ -661,8 +694,8 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
              * NT/LU engines only: with the opt-in GMB_SOCP_LDL backend one
              * T212 node still failed at -O0 and under sanitizers. */
             if (st != 0 && !sparse_conic &&
-                socp_solve_sparse_production(ntot, neq, E, d, c, ncones_solver, cones, G, h,
-                                  t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm) == 0)
+                conic_sparse_run(ntot, neq, E, d, c, ncones_solver, cones, G, h,
+                                  t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm,0) == 0)
                 st = 0;
             if (st != 0) {
                 /* No point is published here. The iterate socp_solve left in
@@ -673,7 +706,8 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
                  * buffer, answered how much x = 0 violates the model (measured
                  * 2.0 on the bounded bar of T100 C). The verdict travels in rc. */
                 t->solsta = PRIMAL_SOL_STA_UNKNOWN;
-                rcs = (st == 1) ? PRIMAL_RES_TRM_MAX_ITER : PRIMAL_RES_ERR_ARG;
+                rcs = st==2 ? PRIMAL_RES_ERR_ALLOC :
+                      (st == 1) ? PRIMAL_RES_TRM_MAX_ITER : PRIMAL_RES_ERR_ARG;
                 break;
             }
             {
@@ -781,7 +815,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     if (rcs == PRIMAL_RES_OK && nb > 0)
         rcs = bar_cap_verdict(t, s, symPq, nb, barOff, barPq, xs);
     if (rcs != PRIMAL_RES_OK) {
-        free(xs); free(ys); free(lm); free(E); free(d); free(G); free(h); free(c);
+        free(xs); free(ys); free(lm); conic_matrix_free(E); free(d); conic_matrix_free(G); free(h); free(c);
         free(cones); free(cmem); free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux);
         free(auxBase); free(nlType); free(nlAlpha); free(nlMem);
         free(cutcol); free(cuta); free(cuth);
@@ -812,8 +846,8 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     double *ymin = (double *)calloc((size_t)(ncon > 0 ? ncon : 1), sizeof(double));
     double *zmin = (double *)calloc((size_t)ntot, sizeof(double));
     if (!ymin || !zmin) {
-        free(ymin); free(zmin); free(xs); free(ys); free(lm); free(E); free(d);
-        free(G); free(h); free(c); free(cones); free(cmem);
+        free(ymin); free(zmin); free(xs); free(ys); free(lm); conic_matrix_free(E); free(d);
+        conic_matrix_free(G); free(h); free(c); free(cones); free(cmem);
         free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux); free(auxBase); free(nlType); free(nlAlpha); free(nlMem); free(cutcol); free(cuta); free(cuth);
         return PRIMAL_RES_ERR_ALLOC;
     }
@@ -944,8 +978,8 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     t->solsta = PRIMAL_SOL_STA_OPTIMAL;
     tlog(t, "conic optimal solution found\n");
 
-    free(ymin); free(zmin); free(xs); free(ys); free(lm); free(E); free(d);
-    free(G); free(h); free(c); free(cones); free(cmem);
+    free(ymin); free(zmin); free(xs); free(ys); free(lm); conic_matrix_free(E); free(d);
+    conic_matrix_free(G); free(h); free(c); free(cones); free(cmem);
     free(rowKind); free(rowIdx); free(eqKind); free(eqIdx); free(eqAux); free(auxBase); free(nlType); free(nlAlpha); free(nlMem); free(cutcol); free(cuta); free(cuth);
     if (nb > 0) {
         for (int m = 0; m < t->nsym; m++) free(symPq[m]);
