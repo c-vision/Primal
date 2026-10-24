@@ -18,6 +18,15 @@ import math
 import primalsolver as ps
 from primalsolver import Model, BK, SENSE, SOL, SOLSTA
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 C = [3.0, 1.0, 5.0, 1.0]
 
 
@@ -55,7 +64,7 @@ def main() -> int:
         ok = False
     if abs(po - dobj) > 1e-6 * (1 + abs(po)):       # zero duality gap + consistent BAS/ITR
         ok = False
-    if abs(po - sum(C[j] * x[j] for j in range(4))) > 1e-6:
+    if abs(po - csum(C[j] * x[j] for j in range(4))) > 1e-6:
         ok = False
     if any(abs(x[j] - xb[j]) > 1e-6 for j in range(4)):
         ok = False

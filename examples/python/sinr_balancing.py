@@ -17,6 +17,15 @@ import math
 
 from primalsolver import Model, BK
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 N = 2
 G = [[1.0, 0.1], [0.1, 1.0]]
 SIGMA2 = [1.0, 1.0]
@@ -55,7 +64,7 @@ def main() -> int:
     want = 10.0 / 21.0                              # 0.476190...
     gmin, budget = 1e30, 0.0
     for i in range(N):
-        inter = SIGMA2[i] + sum(G[i][j] * p[j] for j in range(N) if j != i)
+        inter = csum((G[i][j] * p[j] for j in range(N) if j != i), SIGMA2[i])
         gmin = min(gmin, G[i][i] * p[i] / inter)
         budget += p[i]
     ok = abs(lo - want) < 1e-6 and abs(gmin - lo) < 1e-6 and budget <= P + 1e-7

@@ -18,6 +18,15 @@ import math
 
 from primalsolver import Model, BK, SENSE, SOLSTA, VAR_TYPE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 N, M = 30, 6
 T = [97.328509, 93.040884, 68.870958, 57.771417, 54.733747, 28.056097,
      4.931142, 4.638985, 4.632452, 4.608664, 4.595353, 4.377687,
@@ -50,7 +59,7 @@ def main() -> int:
     print(f"rc = {r.rc}, prosta = {r.prosta}, solsta = {r.solsta}")
     print(f"Optimal makespan: {x[tv]:.4f}")
     for i in range(M):
-        load = sum(T[j] for j in range(N) if x[i * N + j] > 0.5)
+        load = csum(T[j] for j in range(N) if x[i * N + j] > 0.5)
         print(f"  M{i}: load = {load:.4f}")
     ok = (r.rc == 0 and r.solsta == SOLSTA.INTEGER_OPTIMAL and r.prosta == PRO_STA_PRIM_FEAS
           and abs(r.objective - 97.328509) < 1e-3)

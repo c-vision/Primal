@@ -18,6 +18,15 @@ import math
 
 from primalsolver import Model, BK, CT, SENSE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 L = 1
 NP = 2
 NVX = 1
@@ -61,7 +70,7 @@ def main() -> int:
     xstar, found = 0.0, False                       # reference: smallest x where every vertex holds
     for q in range(-400000, 400001):
         xx = q * 1e-5
-        if all(sum(math.exp(B[i] * VERT[k] * xx - xx) for i in range(NP)) <= 1.0 for k in range(NVERT)):
+        if all(csum(math.exp(B[i] * VERT[k] * xx - xx) for i in range(NP)) <= 1.0 for k in range(NVERT)):
             xstar, found = xx, True
             break
     okall = ok and found and abs(x - xstar) < 1e-4 * (1.0 + abs(xstar))

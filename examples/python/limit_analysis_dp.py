@@ -19,6 +19,15 @@ import sys
 
 from primalsolver import Model, BK, CT, SENSE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 T, SIG, SDEV, RHS, NV = 0, 1, 7, 13, 14
 
 
@@ -63,7 +72,7 @@ def main() -> int:
     s0v, s1v, s2v = v[SIG + 0], v[SIG + 1], v[SIG + 2]
     mm = (s0v + s1v + s2v) / 3.0
     d = [s0v - mm, s1v - mm, s2v - mm, v[SIG + 3], v[SIG + 4], v[SIG + 5]]
-    sq = sum(x * x for x in d)
+    sq = csum(x * x for x in d)
     yf = math.sqrt(sq / 2.0) + 3.0 * alpha * mm - kk   # must be ~ 0 at yield
     good = ok and abs(tstar - want) < 1e-7 and abs(tstar - 1.128237) < 1e-5 and abs(yf) < 1e-7
     print(f"limit_analysis_dp  alpha={alpha:.8f} k={kk:.8f}  t*={tstar:.8f} (expected {want:.8f})")

@@ -21,6 +21,15 @@ import time
 
 from primalsolver import Model, BK
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 _state = 12345
 
 
@@ -65,8 +74,8 @@ def main() -> int:
     ok = r.rc == 0
     if ok:
         obj, dobj, x = r.objective, r.dual, r.x
-        maxsup = max(abs(sum(x[i * nn + j] for j in range(nn)) - sup[i]) for i in range(mm))
-        maxdem = max(abs(sum(x[i * nn + j] for i in range(mm)) - dem[j]) for j in range(nn))
+        maxsup = max(abs(csum(x[i * nn + j] for j in range(nn)) - sup[i]) for i in range(mm))
+        maxdem = max(abs(csum(x[i * nn + j] for i in range(mm)) - dem[j]) for j in range(nn))
         minx = min(0.0, min(x[:nvar]))
         ok = maxsup < 1e-5 and maxdem < 1e-5 and minx > -1e-6 and abs(obj - dobj) < 1e-5 * (1.0 + abs(obj))
     print(f"transport  M={mm} N={nn} vars={nvar} cons={mm + nn} nnz={2 * nvar} obj={obj:.6f} dobj={dobj:.6f} "

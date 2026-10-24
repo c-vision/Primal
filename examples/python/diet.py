@@ -16,6 +16,15 @@ import math
 
 from primalsolver import Model, BK, SENSE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 NF = 3
 NN = 3
 N = [[2.0, 1.0, 0.0], [1.0, 2.0, 0.0], [0.0, 0.0, 1.0]]
@@ -44,7 +53,7 @@ def main() -> int:
             xp, cost, ok = r.x[:NF], r.objective, True
     mindef = 0.0                                    # nutrient deficit at xp
     for i in range(NN):
-        s = sum(N[i][j] * xp[j] for j in range(NF))
+        s = csum(N[i][j] * xp[j] for j in range(NF))
         mindef = max(mindef, BB[i] - s)
     good = (ok and abs(cost - 5.0) < 1e-7 and abs(xp[0] - 1.0) < 1e-7 and abs(xp[1] - 2.0) < 1e-7
             and abs(xp[2] - 1.0) < 1e-7 and mindef < 1e-9)
@@ -69,7 +78,7 @@ def main() -> int:
             yd, value, ok = r.x[:NN], r.objective, True
     vmax = 0.0
     for j in range(NF):
-        s = sum(N[i][j] * yd[i] for i in range(NN))
+        s = csum(N[i][j] * yd[i] for i in range(NN))
         vmax = max(vmax, s - CC[j])
     good = ok and abs(value - 5.0) < 1e-7 and vmax < 1e-9 and abs(value - cost) < 1e-7
     print(f"  dual:    value={value:.6f} (expected 5)  y=({yd[0]:.4f},{yd[1]:.4f},{yd[2]:.4f})  "

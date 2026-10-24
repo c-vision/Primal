@@ -18,6 +18,15 @@ import time
 
 from primalsolver import Model, BK
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 _state = 14142135
 
 
@@ -59,7 +68,7 @@ def main() -> int:
         obj, dobj, x = r.objective, r.dual, r.x
         maxviol = mint = 0.0
         for i in range(m_rows):
-            res = -b[i] + sum(a[i * d + j] * x[j] for j in range(d))
+            res = -b[i] + csum(a[i * d + j] * x[j] for j in range(d))
             maxviol = max(maxviol, abs(res) - x[d + i])
             mint = min(mint, x[d + i])
         ok = maxviol < 1e-5 and mint > -1e-6 and abs(obj - dobj) < 1e-5 * (1.0 + abs(obj))

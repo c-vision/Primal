@@ -16,6 +16,15 @@ import math
 
 from primalsolver import Model, BK
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 P0 = [0.70, 0.20, 0.05, 0.05]                       # hypothesis 1 column
 P1 = [0.10, 0.10, 0.70, 0.10]                       # hypothesis 2 column
 
@@ -42,8 +51,8 @@ def main() -> int:
         print(f"boyd_detector  rc={r.rc} FAIL")
         return 1
     v, z = r.x, r.objective
-    fn = sum(P0[i] * v[4 + i] for i in range(4))    # recomputed error probabilities
-    fp = sum(P1[i] * v[i] for i in range(4))
+    fn = csum(P0[i] * v[4 + i] for i in range(4))    # recomputed error probabilities
+    fp = csum(P1[i] * v[i] for i in range(4))
     ok = abs(z - 1.0 / 6.0) < 1e-6 and abs(fn - 1.0 / 6.0) < 1e-6 and abs(fp - 1.0 / 6.0) < 1e-6
     print(f"boyd_detector  t={z:.6g} Pfp={fp:.6g} Pfn={fn:.6g} (book 1/6 all) {'OK' if ok else 'FAIL'}")
     return 0 if ok else 1

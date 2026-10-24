@@ -17,6 +17,15 @@ import math
 
 from primalsolver import Model, APPROX, BK, CT, SENSE, SolverError, VAR_TYPE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 NPTS = 4
 NK = 2
 PT = [0.0, 1.0, 2.0, 3.0]
@@ -91,7 +100,7 @@ def main() -> int:
     obj, cen = 0.0, [0.0] * NK
     if ok:
         cen = [r.x[C], r.x[C + 1]]
-        obj = sum(r.x[DIST + i] for i in range(NPTS))
+        obj = csum(r.x[DIST + i] for i in range(NPTS))
     okall = ok and abs(obj - 1.0) < 1e-6
     print(f"kmeans  n={NPTS} K={NK}")
     print(f"  objective (inertia) = {obj:.8f} (expected 1.0)   centers = ({cen[0]:.4f}, {cen[1]:.4f})")

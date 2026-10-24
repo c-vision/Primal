@@ -18,6 +18,15 @@ import math
 
 from primalsolver import Model, BK, CT, SENSE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 NP = 3
 XD = [0.0, 1.0, 2.0]
 YD = [0.0, 1.0, 0.0]
@@ -53,7 +62,7 @@ def main() -> int:
         r = m.solve()
     ok = r.rc == 0
     mv, tv = (r.x[M], [r.x[T + i] for i in range(NP)]) if ok else (0.0, [0.0] * NP)
-    sse = sum((tv[i] - YD[i]) ** 2 for i in range(NP))
+    sse = csum((tv[i] - YD[i]) ** 2 for i in range(NP))
     okall = (ok and abs(mv - 2.0 / 3.0) < 1e-7 and all(abs(tv[i] - 1.0 / 3.0) < 1e-6 for i in range(NP))
              and abs(mv - sse) < 1e-7)
     print(f"pwl_convex  n={NP}")

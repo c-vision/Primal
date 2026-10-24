@@ -18,6 +18,15 @@ import time
 
 from primalsolver import Model, BK
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 _state = 987654321
 
 
@@ -61,7 +70,7 @@ def main() -> int:
                 maxfrac = max(maxfrac, abs(v - math.floor(v + 0.5)))
             maxrow = max(maxrow, abs(s - 1.0))
         for j in range(n):
-            maxcol = max(maxcol, abs(sum(x[i * n + j] for i in range(n)) - 1.0))
+            maxcol = max(maxcol, abs(csum(x[i * n + j] for i in range(n)) - 1.0))
         ok = maxrow < 1e-6 and maxcol < 1e-6 and maxfrac < 1e-6 and abs(obj - dobj) < 1e-5 * (1.0 + abs(obj))
     print(f"assignment n={n} vars={nvar} cons={2 * n} nnz={2 * nvar} obj={obj:.6f} dobj={dobj:.6f} "
           f"t={sec:.4f}s {'OK' if ok else 'FAIL'}")

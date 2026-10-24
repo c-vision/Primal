@@ -14,6 +14,15 @@ import math
 
 from primalsolver import Model, BK, SENSE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 N = 4                                               # sides of the cylinder
 NV = 2 * N                                          # 8 vertices
 NE = 4 * N                                          # 2 rings + verticals + diagonals = 16
@@ -61,7 +70,7 @@ def main() -> int:
         e, sg = edge_sgn(N + i, N + (i + 1) % N)
         cring[e] += sg
     y0 = [1.0] + [0.0] * (nf - 1)
-    c = [cring[e] + sum(d2[e][t] * y0[t] for t in range(nf)) for e in range(NE)]
+    c = [csum((d2[e][t] * y0[t] for t in range(nf)), cring[e]) for e in range(NE)]
     rv = rval = 0.0                                 # the ring (x = Cring, y = -y0) is feasible: value 4
     for e in range(NE):
         s = cring[e] - c[e]
@@ -106,7 +115,7 @@ def main() -> int:
     obj = 0.0
     for e in range(NE):
         obj += w[e] * xabs[e]
-    cyc = max(abs(sum(d1[i][e] * x[e] for e in range(NE))) for i in range(NV))   # D1 x = 0
+    cyc = max(abs(csum(d1[i][e] * x[e] for e in range(NE))) for i in range(NV))   # D1 x = 0
     hom = 0.0                                       # x - C - D2 y = 0
     for e in range(NE):
         s = x[e] - c[e]

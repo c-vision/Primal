@@ -18,6 +18,15 @@ import math
 import primalsolver as ps
 from primalsolver import Model, BK, SENSE
 
+
+def csum(values, start=0.0):
+    """Left-to-right sum, as the C loop (sum() is compensated since Python 3.12)."""
+    s = start
+    for v in values:
+        s += v
+    return s
+
+
 UPLO_UP = 1
 
 
@@ -60,7 +69,7 @@ def min_eig(n, x):
 
 def check_x(n, adj, x, tol):
     """tr(X) = 1, X PSD, X_ij = 0 on non-edges."""
-    if abs(sum(x[i * n + i] for i in range(n)) - 1.0) > 1e-6:
+    if abs(csum(x[i * n + i] for i in range(n)) - 1.0) > 1e-6:
         return False
     if min_eig(n, x) < -tol:
         return False
