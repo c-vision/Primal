@@ -264,21 +264,21 @@ end
 # ---- AFE / ACC / DJC --------------------------------------------------------
 function afes(m::Model, num::Int)
     _check(ccall(Libdl.dlsym(_lib(), "PRIMAL_appendafes"), Cint,
-                 (Ptr{Cvoid}, Cint), m.task[], Int32(num)), "appendafes")
+                 (Ptr{Cvoid}, Int64), m.task[], Int64(num)), "appendafes")
     return nothing
 end
 
 function afe_entry(m::Model, i::Int, j::Int, value::Real)
     _check(ccall(Libdl.dlsym(_lib(), "PRIMAL_putafefentry"), Cint,
-                 (Ptr{Cvoid}, Cint, Cint, Cdouble),
-                 m.task[], Int32(i), Int32(j), Float64(value)), "putafefentry")
+                 (Ptr{Cvoid}, Int64, Cint, Cdouble),
+                 m.task[], Int64(i), Int32(j), Float64(value)), "putafefentry")
     return nothing
 end
 
 function afe_g(m::Model, i::Int, value::Real)
     _check(ccall(Libdl.dlsym(_lib(), "PRIMAL_putafeg"), Cint,
-                 (Ptr{Cvoid}, Cint, Cdouble),
-                 m.task[], Int32(i), Float64(value)), "putafeg")
+                 (Ptr{Cvoid}, Int64, Cdouble),
+                 m.task[], Int64(i), Float64(value)), "putafeg")
     return nothing
 end
 
@@ -289,8 +289,8 @@ function domain(m::Model, kind::Int; n::Int=1)
          kind == 3 ? "PRIMAL_appendrminusdomain" : error("unknown domain kind $kind")
     idx = Ref{Int64}(0)
     _check(ccall(Libdl.dlsym(_lib(), fn), Cint,
-                 (Ptr{Cvoid}, Cint, Ptr{Int64}),
-                 m.task[], Int32(n), idx), fn)
+                 (Ptr{Cvoid}, Int64, Ptr{Int64}),
+                 m.task[], Int64(n), idx), fn)
     return Int(idx[])
 end
 
@@ -299,14 +299,14 @@ function acc(m::Model, domidx::Int, afeidx; b=nothing)
     bb = b === nothing ? Float64[0.0 for _ in afeidx] : collect(Float64, b)
     a64 = Int64[Int64(a) for a in afeidx]
     _check(ccall(Libdl.dlsym(_lib(), "PRIMAL_appendacc"), Cint,
-                 (Ptr{Cvoid}, Cint, Cint, Ptr{Int64}, Ptr{Cdouble}),
-                 m.task[], Int32(domidx), Int32(length(afeidx)), a64, bb), "appendacc")
+                 (Ptr{Cvoid}, Int64, Int64, Ptr{Int64}, Ptr{Cdouble}),
+                 m.task[], Int64(domidx), Int64(length(afeidx)), a64, bb), "appendacc")
     return nothing
 end
 
 function djcs(m::Model, num::Int)
     _check(ccall(Libdl.dlsym(_lib(), "PRIMAL_appenddjcs"), Cint,
-                 (Ptr{Cvoid}, Cint), m.task[], Int32(num)), "appenddjcs")
+                 (Ptr{Cvoid}, Int64), m.task[], Int64(num)), "appenddjcs")
     return nothing
 end
 
@@ -316,9 +316,9 @@ function djc(m::Model, idx::Int, domidxlist, afeidxlist, b, termsizelist)
     bv = collect(Float64, b)
     ts = Int64[Int64(t) for t in termsizelist]
     _check(ccall(Libdl.dlsym(_lib(), "PRIMAL_putdjc"), Cint,
-                 (Ptr{Cvoid}, Cint, Cint, Ptr{Int64}, Cint, Ptr{Int64}, Ptr{Cdouble}, Cint, Ptr{Int64}),
-                 m.task[], Int32(idx), Int32(length(domidxlist)), dom,
-                 Int32(length(afeidxlist)), afe, bv, Int32(length(termsizelist)), ts), "putdjc")
+                 (Ptr{Cvoid}, Int64, Int64, Ptr{Int64}, Int64, Ptr{Int64}, Ptr{Cdouble}, Int64, Ptr{Int64}),
+                 m.task[], Int64(idx), Int64(length(domidxlist)), dom,
+                 Int64(length(afeidxlist)), afe, bv, Int64(length(termsizelist)), ts), "putdjc")
     return nothing
 end
 
