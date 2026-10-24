@@ -3317,7 +3317,7 @@ static void test_t79(void) {
 /* T80 - dual cone and scaling point of expcone.c.  Identities verified
  * independently, for every cone type and on different interior points:
  *  1. logarithmic homogeneity of the barrier:  <z, grad f(z)> = -nu,
- *     with nu = 2 for PEXP and nu = 3 for PPOW/RPOW;
+ *     with nu = 3 for every block (PEXP uses the 3-self-concordant barrier);
  *  2. the gradient map is involutive: with s = -mu grad f(z), the scaling
  *     point W = (grad f)^{-1}(-s) returns -grad f(W) = s;
  *  3. consequence of 1+2 on the paired couple:  <z, s> = nu*mu;
@@ -3328,7 +3328,7 @@ static void test_t80(void) {
     cur_name = "T80 expcone dual cone + scaling point";
     int kinds[3] = { EXPCONE_PEXP, EXPCONE_PPOW, EXPCONE_RPOW };
     double alph[3] = { 0.0, 0.3, 0.4 };
-    int nu[3] = { 2, 3, 3 };
+    int nu[3] = { 3, 3, 3 };
     /* two INTERIOR points per cone (t|u >= u e^{v/u}; t^a u^(1-a) > |v|;
      * sqrt2 t^a u^(1-a) > |v|), chosen far from the boundary of the cone */
     double zp[3][2][3] = {
@@ -21075,6 +21075,73 @@ static void test_t296(void) {
     conic_csr_free(&ec);conic_csr_free(&gc);conic_matrix_free(em);conic_matrix_free(gm);
 }
 
+/* T298 helpers: order-3 Taylor jets, c[k] = phi^(k)(0)/k! of phi(s) = f(x+s h). */
+typedef struct { double c[4]; } T298J;
+static T298J t298_sub(T298J a, T298J b) { for (int i = 0; i < 4; i++) a.c[i] -= b.c[i]; return a; }
+static T298J t298_mul(T298J a, T298J b) { T298J r; for (int k = 0; k < 4; k++) { r.c[k] = 0;
+    for (int i = 0; i <= k; i++) r.c[k] += a.c[i] * b.c[k - i]; } return r; }
+static T298J t298_div(T298J a, T298J b) { T298J r; for (int k = 0; k < 4; k++) { double s = a.c[k];
+    for (int i = 1; i <= k; i++) s -= b.c[i] * r.c[k - i]; r.c[k] = s / b.c[0]; } return r; }
+static T298J t298_log(T298J a) { T298J r; r.c[0] = log(a.c[0]); for (int k = 1; k < 4; k++) {
+    double s = k * a.c[k]; for (int i = 1; i < k; i++) s -= i * r.c[i] * a.c[k - i];
+    r.c[k] = s / (k * a.c[0]); } return r; }
+
+/* T298: the PEXP barrier is self-concordant, and the native exp IPM answers
+ * the max-entropy family on its own.  The previous barrier -log(t-u e^{v/u})
+ * -log u (nu = 2) reached |phi'''| / (2 phi''^1.5) = 2.54 and sent N = 30, 50,
+ * 120, 300 of this family to the tangent cuts (N = 120: 20 s, 8.8 GB, relative
+ * error 3e-7); the nu = 3 barrier answers each in tens of ms to ~1e-12. */
+static void test_t298(void) {
+    cur_name = "T298 PEXP barrier self-concordance + native max-entropy";
+    unsigned long long st = 88ULL; double worst = 0.0; int lines = 0, mism = 0;
+    for (int trial = 0; trial < 20000; trial++) {
+        double r[6];
+        for (int i = 0; i < 6; i++) { st = st * 6364136223846793005ULL + 1442695040888963407ULL;
+            r[i] = (double)(st >> 11) / 9007199254740992.0; }
+        double x[3], h[3], f0, g[3], H[9];
+        x[1] = exp(8 * r[0] - 4); x[2] = x[1] * (10 * r[1] - 5);
+        x[0] = x[1] * exp(x[2] / x[1]) * (1 + exp(12 * r[2] - 9));
+        for (int i = 0; i < 3; i++) h[i] = 2 * r[3 + i] - 1;
+        if (expcone_barrier(EXPCONE_PEXP, 0.0, x, &f0) || expcone_grad(EXPCONE_PEXP, 0.0, x, g) ||
+            expcone_hess(EXPCONE_PEXP, 0.0, x, H)) continue;
+        T298J t = {{ x[0], h[0], 0, 0 }}, u = {{ x[1], h[1], 0, 0 }}, v = {{ x[2], h[2], 0, 0 }};
+        T298J psi = t298_sub(t298_mul(u, t298_log(t298_div(t, u))), v);
+        T298J fj = t298_sub(t298_sub(t298_sub((T298J){{0,0,0,0}}, t298_log(psi)), t298_log(t)), t298_log(u));
+        double d1 = fj.c[1], d2 = 2 * fj.c[2], d3 = 6 * fj.c[3], gh = 0.0, hh = 0.0;
+        for (int i = 0; i < 3; i++) { gh += g[i] * h[i];
+            for (int j = 0; j < 3; j++) hh += h[i] * H[i * 3 + j] * h[j]; }
+        /* the library's f, grad and Hessian are the function the jet differentiates */
+        /* measured worst relative differences: f 1.5e-12, grad 3.6e-12, H 1.4e-11 */
+        if (fabs(fj.c[0] - f0) > 1e-10 * (1 + fabs(f0)) || fabs(d1 - gh) > 1e-9 * (1 + fabs(gh)) ||
+            fabs(d2 - hh) > 1e-8 * (1 + fabs(hh))) mism++;
+        if (d2 > 0) { double q = fabs(d3) / (2 * pow(d2, 1.5)); if (q > worst) worst = q; }
+        lines++;
+    }
+    check(lines > 15000, "T298 enough interior lines sampled");
+    check(mism == 0, "T298 library f, grad, Hessian match the exact jet");
+    check(worst <= 1.0 + 1e-6, "T298 |phi'''| <= 2 phi''^1.5 (self-concordant)");
+    for (int pass = 0; pass < 2; pass++) {
+        int N = pass ? 120 : 30; P p; pbegin(&p);
+        PRIMAL_appendvars(p.task, 3 * N); PRIMAL_appendcons(p.task, 1);
+        for (int k = 0; k < N; k++) {
+            PRIMAL_putvarbound(p.task, 3 * k, PRIMAL_BK_FX, 1, 1);
+            PRIMAL_putvarbound(p.task, 3 * k + 1, PRIMAL_BK_LO, 0, INFINITY);
+            PRIMAL_putvarbound(p.task, 3 * k + 2, PRIMAL_BK_FR, -INFINITY, INFINITY);
+            PRIMAL_putcj(p.task, 3 * k + 2, -1);
+            PRIMAL_putaij(p.task, 0, 3 * k + 1, 1);
+            PRIMAL_appendcone(p.task, PRIMAL_CT_PEXP, 0, 3, (int[]){ 3 * k, 3 * k + 1, 3 * k + 2 });
+        }
+        PRIMAL_putconbound(p.task, 0, PRIMAL_BK_FX, 1, 1);
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "T298 max-entropy solves");
+        double po = INFINITY;
+        PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po);
+        /* the cut route reached only 3e-7 on N = 120 */
+        check(fabs(po + log((double)N)) <= 1e-9 * (1 + log((double)N)),
+              "T298 entropy optimum -log N to 1e-9 (native route)");
+        pend(&p);
+    }
+}
+
 /* T297: exercise the actual tangent-cut fallback, even if the native exp
  * solver later improves enough to answer this max-entropy family. */
 static void test_t297(void) {
@@ -21121,6 +21188,7 @@ static void test_t297(void) {
 
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t298();
     test_t297();
     test_t296();
     test_t295();

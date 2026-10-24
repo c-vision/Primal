@@ -22,30 +22,40 @@
 #include "expcone.h"
 #include "linalg.h"
 
-/* PEXP: t >= u e^{v/u}, u > 0.  f = -log(G) - log(u), G = t - u e^{v/u}. */
+/* PEXP: t >= u e^{v/u}, u > 0.
+ *   f = -log(psi) - log(t) - log(u),   psi = u log(t/u) - v,
+ * the 3-self-concordant barrier of Nesterov / Chares (nu = 3), the one MOSEK,
+ * ECOS, SCS and Clarabel use.  The previous f = -log(t - u e^{v/u}) - log(u) is
+ * logarithmically homogeneous of degree 2 but NOT self-concordant: along
+ * random lines |f'''| / (2 f''^1.5) reaches 2.54 near the boundary (exact Taylor
+ * jets), and no barrier of this cone can have nu < 3 -- the faces t = 0 and
+ * u = 0 meet at (0, 0, -1).  Without self-concordance the Newton steps lose
+ * centrality: on the max-entropy family (kkt_scale exp N) a symmetric problem
+ * broke its symmetry through an ill-conditioned KKT, the dual step went to 0
+ * and N = 30, 50, 120, 300 fell to the tangent cuts (attempts.md F88). */
 static int pexp_core(const double *x, double *f, double *g, double *H) {
     double t = x[0], u = x[1], v = x[2];
-    if (!(u > 0.0)) return -1;
-    double w = v / u, ew = exp(w);
-    double G = t - u * ew;
-    if (!(G > 0.0)) return -1;
-    double gu = ew * (w - 1.0);      /* dG/du */
-    double gv = -ew;                 /* dG/dv */
-    if (f) *f = -log(G) - log(u);
+    if (!(u > 0.0) || !(t > 0.0)) return -1;
+    double r = log(t / u);
+    double psi = u * r - v;
+    if (!(psi > 0.0) || !isfinite(psi)) return -1;
+    double pt = u / t, pu = r - 1.0;   /* dpsi/dt, dpsi/du; dpsi/dv = -1 */
+    if (f) *f = -log(psi) - log(t) - log(u);
     if (g) {
-        g[0] = -1.0 / G;
-        g[1] = -gu / G - 1.0 / u;
-        g[2] = -gv / G;
+        g[0] = -pt / psi - 1.0 / t;
+        g[1] = -pu / psi - 1.0 / u;
+        g[2] = 1.0 / psi;
     }
     if (H) {
-        double dG[3] = { 1.0, gu, gv };
-        double d2G[9] = {
-            0.0,            0.0,           0.0,
-            0.0,            -ew * w * w / u, ew * w / u,
-            0.0,            ew * w / u,     -ew / u
+        double dp[3] = { pt, pu, -1.0 };
+        double d2p[9] = {
+            -u / (t * t), 1.0 / t,  0.0,
+            1.0 / t,      -1.0 / u, 0.0,
+            0.0,          0.0,      0.0
         };
         for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) {
-            double h = dG[i] * dG[j] / (G * G) - d2G[i * 3 + j] / G;
+            double h = dp[i] * dp[j] / (psi * psi) - d2p[i * 3 + j] / psi;
+            if (i == 0 && j == 0) h += 1.0 / (t * t);
             if (i == 1 && j == 1) h += 1.0 / (u * u);
             H[i * 3 + j] = h;
         }
@@ -96,7 +106,8 @@ static int ppow_core(const double *x, double alpha, double rot, double *f, doubl
  *
  * @return 0 on success, -1 if x is not in the interior of the cone.
  *
- * @note PEXP: f = -log(t - u*exp(v/u)) - log(u), defined for u > 0, t > u*exp(v/u).
+ * @note PEXP: f = -log(u*log(t/u) - v) - log(t) - log(u), defined for t, u > 0,
+ *       u*log(t/u) > v (the same set as t > u*exp(v/u)); nu = 3.
  *       PPOW/RPOW: f = -log(D) - (1-a)*log(t) - a*log(u), D = rot*t^{2a}*u^{2(1-a)} - v^2.
  *       Returns -1 if x is not in the interior of the cone.
  */
@@ -117,7 +128,7 @@ int expcone_barrier(int kind, double alpha, const double *x, double *f) {
  * @return 0 on success, -1 if x is not in the interior of the cone.
  *
  * @note Gradient of the log-barrier function.
- *       PEXP: g = (-1/G, -(ew*(w-1)+1/u)/G, ew/G) where w=v/u, G=t-u*exp(v/u).
+ *       PEXP: g = (-(u/t)/psi - 1/t, -(log(t/u)-1)/psi - 1/u, 1/psi), psi = u log(t/u) - v.
  *       PPOW/RPOW: g = -(dD/D) - (1-a)/t etc. where D = rot*t^{2a}*u^{2(1-a)} - v^2.
  */
 int expcone_grad(int kind, double alpha, const double *x, double *g) {
@@ -137,7 +148,7 @@ int expcone_grad(int kind, double alpha, const double *x, double *g) {
  * @return 0 on success, -1 if x is not in the interior of the cone.
  *
  * @note Hessian of the log-barrier function (3x3 symmetric matrix).
- *       For PEXP: H_ij = (dG_i dG_j)/G^2 - d2G_ij/G + diag(0, 1/u^2, 0).
+ *       For PEXP: H_ij = (dpsi_i dpsi_j)/psi^2 - d2psi_ij/psi + diag(1/t^2, 1/u^2, 0).
  *       For PPOW/RPOW: H_ij = (dD_i dD_j)/D^2 - d2D_ij/D + diag((1-a)/t^2, a/u^2, 0).
  *       Returns -1 if x is not in the interior of the cone.
  */
@@ -254,7 +265,8 @@ int expcone_dual_in(int kind, double alpha, const double *s) {
  * @return 0 on success, -1 if s not in K* or W not found.
  *
  * @note Finds W such that -∇f(W) = s.
- *       PEXP: W = (1/s0 + exp(w)/q, 1/q, w/q) where w = ln(-s2/s0), q = s1 - s2 + s2*w.
+ *       PEXP: Newton on the unique root a = 1/u of a - s2 log((a-s2)/s0) + s2 - s1,
+ *             then t = (1 - u s2)/s0, v = u log(t/u) + 1/s2.
  *       PPOW/RPOW: Solves for xi via binary search on pow_gap(xi) > 0,
  *                  then W = (2a*xi+1-a)/s0, (2(1-a)*xi+a)/s1, -0.5*s2*D.
  *       Verifies by computing grad at W and checking ||grad + s|| < 1e-6.
@@ -263,10 +275,29 @@ int expcone_dual_point(int kind, double alpha, const double *s, double *W) {
     double g[3], res = 0.0, sn = 1.0 + fabs(s[0]) + fabs(s[1]) + fabs(s[2]);
     if (!expcone_dual_in(kind, alpha, s)) return -1;
     if (kind == EXPCONE_PEXP) {
-        double s0 = s[0], s1 = s[1], s2 = s[2];
-        double w = log(-s2 / s0), q = s1 - s2 + s2 * w;
+        /* -grad f(W) = s with W = (t, u, v): s2 = -1/psi fixes psi, then
+         * t = (1 - u s2)/s0 and, with a = 1/u, the u-row reads
+         *   g(a) = a - s2 log((a - s2)/s0) + s2 - s1 = 0.
+         * g is strictly increasing and concave (s2 < 0), g(0+) = -(s1 - s2 +
+         * s2 log(-s2/s0)) < 0 exactly when s is inside K*, so the root is unique
+         * and Newton started on its left stays on its left and increases
+         * monotonically to it (the tangent of a concave function lies above it). */
+        double s0 = s[0], s1 = s[1], s2 = s[2], a = 0.0, lo = 0.0;
+        double q = s1 - s2 + s2 * log(-s2 / s0);
         if (!(q > 0.0)) return -1;
-        W[0] = 1.0 / s0 + exp(w) / q; W[1] = 1.0 / q; W[2] = w / q;
+        for (int it = 0; it < 200; it++) {
+            double ga = a - s2 * log((a - s2) / s0) + s2 - s1;
+            double dg = 1.0 - s2 / (a - s2);
+            double an = a - ga / dg;
+            if (!isfinite(an)) return -1;
+            if (an <= lo) an = 0.5 * (lo + a);          /* never step back */
+            if (fabs(an - a) <= 1e-15 * (an > 1.0 ? an : 1.0)) { a = an; break; }
+            lo = a; a = an;
+        }
+        if (!(a > 0.0)) return -1;
+        {   double u = 1.0 / a, t = (1.0 - u * s2) / s0;
+            W[0] = t; W[1] = u; W[2] = u * log(t / u) + 1.0 / s2;
+        }
     } else {
         double rot = (kind == EXPCONE_RPOW) ? 2.0 : 1.0;
         double s0 = s[0], s1 = s[1], s2 = s[2], xi = 1.0;
@@ -297,7 +328,7 @@ int expcone_dual_point(int kind, double alpha, const double *s, double *W) {
 }
 
 /* Degree of the barrier: <x, grad f(x)> = -nu for every block. */
-static double expcone_nu(int kind) { return kind == EXPCONE_PEXP ? 2.0 : 3.0; }
+static double expcone_nu(int kind) { (void)kind; return 3.0; }
 
 /* Symmetric eigendecomposition of a 3x3 matrix via the Jacobi solver.
  * Symmetrizes M first, then reports eigenvalues ev and eigenvectors V. */

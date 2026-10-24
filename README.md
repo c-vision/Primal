@@ -223,7 +223,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5305 checks
+make test          # reliability suite: 5312 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```
@@ -732,14 +732,17 @@ Open algorithmic work, largest first:
   106 s and 160 MB (124 s and 5.1 GB). `T295` checks that a 4000-cone master
   with all its cut slots filled stays under 64 MiB, `T296` that the compressed
   and dense inputs give bit-identical solutions, and `T297` runs the cut route
-  end to end on 50 exp cones. Two limits remain. The row-oriented sparse LU
-  rewrites a dense row every time one of its columns is the pivot, which is
-  most of the 2000-cone time, and the cut route is still slow on large sizes
-  (1500 exp cones run past 4 minutes). And some sizes of the max-entropy family reach
-  the cuts at all (30, 50, 120, 300) because the native exp IPM stalls. On 50
-  cones it loses centrality early, the ill-conditioned KKT breaks the symmetry
-  of a symmetric problem, one cone sticks to its boundary and the dual step
-  goes to zero. The other sizes were not traced. The
+  end to end on 50 exp cones. Some sizes of the max-entropy family used to
+  reach the cuts at all (30, 50, 120, 300) because the exponential-cone barrier
+  was not self-concordant (ν = 2, `|f'''| / (2·f''^1.5)` up to 2.54). It is now
+  the standard ν = 3 barrier ([details](docs/exp-power-cones.md#the-barriers)),
+  and every size from 10 to 4000 cones answers natively, to about 1e-12:
+  120 cones 0.02 s and 3 MB (20 s and 8.8 GB through the cuts before),
+  2000 cones 1.5 s (4.2 s), 4000 cones 5.8 s and 146 MB (stopped at 29 GB
+  before). One limit remains: the row-oriented sparse LU rewrites a dense row
+  every time one of its columns is the pivot. The cut route itself has not been
+  re-timed on large models since the sparse master (before it, 1500 exp cones
+  ran past 4 minutes). The
   sparse LDLᵀ is not used in this KKT: it is not symmetric.
 - **Symmetric KKT in the SOCP route**, so the sparse symmetric factorization can
   replace the sparse LU there.

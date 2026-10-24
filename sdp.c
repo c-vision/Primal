@@ -1758,7 +1758,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
      * the axis vertex (1,0,..,0) for SOC are the cheapest such points; the
      * exp/power blocks are the pair z and s = -grad f(z), which makes each
      * block's starting complementarity <z,s> equal to the barrier's degree
-     * (nu = 2 for PEXP, 3 for the power cones) instead of some number that
+     * (nu = 3 for every exp/power block) instead of some number that
      * would then set mu -- and mu is what every tolerance on the path is
      * relative to. */
     for (int i = 0; i < n; i++) { xs[i] = 1.0; ss[i] = 1.0; }
@@ -1777,7 +1777,8 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
         Zsoc[i][0] = 1.0; Ssoc[i][0] = 1.0; }
     for (int i = 0; i < nep; i++) {
         double *zi = ez + 3 * i, *si = es + 3 * i, g[3];
-        if (ekind[i] == EXPCONE_PEXP) { zi[0] = 2.0; zi[1] = 1.0; zi[2] = 0.0; }
+        /* PEXP: the central point of the nu = 3 barrier (Clarabel's, in (t,u,v)) */
+        if (ekind[i] == EXPCONE_PEXP) { zi[0] = 1.258967884768947; zi[1] = 0.556409619469370; zi[2] = -1.051383945322714; }
         else { zi[0] = 1.0; zi[1] = 1.0; zi[2] = 0.0; }
         expcone_grad(ekind[i], ealpha[i], zi, g);
         for (int a = 0; a < 3; a++) si[a] = -g[a];

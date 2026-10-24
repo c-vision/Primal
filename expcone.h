@@ -26,7 +26,7 @@
  *
  * Conventions, matching the cone members (t,u,v) = (m0,m1,m2) in primal.c:
  *   PEXP: t >= u*exp(v/u), u >= 0
- *         f = -log(t - u e^{v/u}) - log(u)
+ *         f = -log(u log(t/u) - v) - log(t) - log(u)   (nu = 3, self-concordant)
  *   PPOW: t^a u^(1-a) >= |v|, t,u >= 0
  *         f = -log(t^{2a} u^{2(1-a)} - v^2) - (1-a) log(t) - a log(u)
  *   RPOW: sqrt2 t^a u^(1-a) >= |v|, t,u >= 0

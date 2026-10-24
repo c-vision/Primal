@@ -18,6 +18,39 @@ approximated.
 
 `RPOW(1/2)` coincides with `RQUAD`, which is why both exist.
 
+## The barriers
+
+Every block uses a logarithmically homogeneous **self-concordant** barrier with
+parameter ν = 3 (`<x, ∇f(x)> = −3`):
+
+| Type | Barrier |
+|---|---|
+| `PEXP` | `f = −log(u·log(t/u) − v) − log t − log u` |
+| `PPOW(a)` | `f = −log(t^(2a)·u^(2(1−a)) − v²) − (1−a)·log t − a·log u` |
+| `RPOW(a)` | as `PPOW` with `2·t^(2a)·u^(2(1−a))` |
+
+The `PEXP` barrier is the one of Nesterov and Chares, also used by MOSEK, ECOS,
+SCS and Clarabel. Until 2026-10-24 the code used `−log(t − u·e^(v/u)) − log u`
+(ν = 2). That function is logarithmically homogeneous but **not**
+self-concordant. Along random lines, `|f'''| / (2·f''^1.5)` reaches **2.54**,
+measured with exact Taylor jets (the bound is 1). It cannot be fixed by
+rescaling either: the faces `t = 0` and `u = 0` of the cone meet at `(0, 0, −1)`,
+so no self-concordant barrier of this cone has ν < 3. Without
+self-concordance the Newton steps lose centrality. On the max-entropy family
+(`bench/kkt_scale exp N`) a symmetric problem broke its symmetry through an
+ill-conditioned KKT, the dual step went to zero, and N = 30, 50, 120 and 300
+fell to the tangent cuts. N = 120 took 20 s and 8.8 GB, with a relative error
+of 3e-7. With the ν = 3 barrier every size from 10 to 4000 answers natively,
+to about 1e-12. N = 120 takes 0.02 s and 3 MB, N = 4000 takes 5.8 s and
+146 MB (`T298` checks both the self-concordance bound and the family).
+
+The scaling point `W` (`−∇f(W) = s`) of the `PEXP` barrier comes from one scalar
+equation. `s₂ = −1/ψ` fixes ψ, `t = (1 − u·s₂)/s₀`, and with `a = 1/u` the
+remaining row is `a − s₂·log((a − s₂)/s₀) + s₂ − s₁ = 0`. That function is
+increasing and concave, and it is negative at `a = 0⁺` exactly when `s` is
+inside `K*`. Newton started on the left of the root therefore converges to it
+monotonically.
+
 ## What the file provides
 
 | Function | Purpose |
@@ -52,7 +85,8 @@ Four oracles with closed-form optima, solved natively:
 
 Relative errors. The native route is **4 to 5 orders of magnitude** more
 accurate on three of the four, because a closed-form barrier and a tangent cut
-are not comparable instruments.
+are not comparable instruments. (The `PEXP` rows were measured with the earlier
+ν = 2 barrier, see above. They were not re-measured.)
 
 A degenerate CBF case (2×2 PSD plus a power cone, optimum on the boundary)
 answers natively at 7.1e-6 radial KKT residual, against 5.4e-5 for the cuts.
