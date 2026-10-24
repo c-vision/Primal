@@ -87,7 +87,7 @@ void dmat_free(DMat *A) {
  * @return 0 on success, 1 if pivot < 1e-14 (absolute threshold).
  *
  * @note Destroys the input matrix A (stores LU factorization in-place).
- *       Uses row pointer swaps for pivoting. Absolute pivot threshold 1e-14
+ *       Uses row pointer swaps for pivoting, applied to b too. Absolute pivot threshold 1e-14
  *       means matrices scaled around 1e-20 read as singular.
  *       For multiple RHS with same matrix, use dmat_lu_factor + dmat_lu_solve.
  *
@@ -105,7 +105,10 @@ int dmat_solve_lu(DMat *A, double *b, int n) {
         for (int i = k + 1; i < n; i++)
             if (fabs(A->v[i][k]) > maxv) { maxv = fabs(A->v[i][k]); piv = i; }
         if (maxv < 1e-14) return 1;
-        if (piv != k) { double *t = A->v[piv]; A->v[piv] = A->v[k]; A->v[k] = t; }
+        if (piv != k) {
+            double *t = A->v[piv]; A->v[piv] = A->v[k]; A->v[k] = t;
+            double tb = b[piv]; b[piv] = b[k]; b[k] = tb;   /* b follows the row swap */
+        }
         for (int i = k + 1; i < n; i++) {
             double f = A->v[i][k] / A->v[k][k];
             A->v[i][k] = f;

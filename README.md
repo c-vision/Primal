@@ -223,7 +223,7 @@ shared library into `julia/deps/` on first use (no system compiler needed beyond
 
 ```sh
 make               # gcc -std=c99 -Wall -Wextra -pedantic -O2, zero warnings
-make test          # reliability suite: 5254 checks
+make test          # reliability suite: 5260 checks
 make run-samples   # the 171 examples
 make clean         # remove out/
 ```

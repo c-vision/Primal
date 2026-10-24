@@ -70,6 +70,7 @@ def _solve_lu_py(M, rhs, d):
             return 1
         if piv != k:
             a[piv], a[k] = a[k], a[piv]
+            rhs[piv], rhs[k] = rhs[k], rhs[piv]   # b follows the row swap
         for i in range(k + 1, d):
             f = a[i][k] / a[k][k]
             a[i][k] = f

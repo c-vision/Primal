@@ -20821,8 +20821,43 @@ static void test_t291(void) {
     }
 }
 
+/* T292: dmat_solve_lu applies its row pivoting to b as well.  The row swaps
+ * permuted A but not b, so any system that needed a pivot was solved for the
+ * wrong right-hand side. */
+static void test_t292(void) {
+    cur_name = "T292 dense LU solve with pivoting";
+    {   /* A: [[0,1],[1,0]] x = (1,2) needs a swap at k = 0: x = (2,1) */
+        DMat *A = dmat_new(2, 2);
+        check(A != NULL, "T292 A allocates");
+        if (A) {
+            A->v[0][0] = 0; A->v[0][1] = 1; A->v[1][0] = 1; A->v[1][1] = 0;
+            double b[2] = {1, 2};
+            check(dmat_solve_lu(A, b, 2) == 0, "T292 A solves");
+            check(fabs(b[0] - 2) < 1e-15 && fabs(b[1] - 1) < 1e-15, "T292 A x = (2,1)");
+            dmat_free(A);
+        }
+    }
+    {   /* B: 3x3 with swaps at k = 0 and k = 1, x = (1,2,3) */
+        double M[9] = {1,2,0, 4,1,1, 2,0,3}, xs[3] = {1,2,3}, b[3];
+        DMat *A = dmat_new(3, 3);
+        check(A != NULL, "T292 B allocates");
+        if (A) {
+            for (int i = 0; i < 3; i++) {
+                b[i] = 0;
+                for (int j = 0; j < 3; j++) { A->v[i][j] = M[i*3+j]; b[i] += M[i*3+j] * xs[j]; }
+            }
+            check(dmat_solve_lu(A, b, 3) == 0, "T292 B solves");
+            double e = 0;
+            for (int i = 0; i < 3; i++) if (fabs(b[i] - xs[i]) > e) e = fabs(b[i] - xs[i]);
+            check(e < 1e-13, "T292 B x = (1,2,3)");
+            dmat_free(A);
+        }
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t292();
     test_t291();
     test_t290();
     test_t289();
