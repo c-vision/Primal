@@ -308,11 +308,11 @@ int socp_solve(int n, int p,
     double *ds_aff = (double *)malloc((size_t)(K > 0 ? K : 1) * sizeof(double));
     double *dlm_aff = (double *)malloc((size_t)(K > 0 ? K : 1) * sizeof(double));
     if (!off || !typ || !xs || !ys || !s || !lm || !rd || !rp || !rg || !rc ||
-        !Asc || !Alr || !M || !rhs || !ds || !dlm ||
+        !Asc || !Alr || !M || !rhs || !dx || !dy || !ds || !dlm ||
         !dx_aff || !dy_aff || !ds_aff || !dlm_aff) {
         free(off); free(typ); free(xs); free(ys); free(s); free(lm); free(rd);
         free(rp); free(rg); free(rc); free(Asc); free(Alr); free(M); free(rhs);
-        free(ds); free(dlm); free(dx_aff); free(dy_aff); free(ds_aff); free(dlm_aff);
+        free(dx); free(dy); free(ds); free(dlm); free(dx_aff); free(dy_aff); free(ds_aff); free(dlm_aff);
         return OPT_MEMORY;
     }
 
@@ -615,7 +615,7 @@ int socp_solve(int n, int p,
     }
     free(off); free(typ); free(xs); free(ys); free(s); free(lm); free(rd);
     free(rp); free(rg); free(rc); free(Asc); free(Alr); free(M); free(rhs);
-    free(ds); free(dlm); free(dx_aff); free(dy_aff); free(ds_aff); free(dlm_aff);
+    free(dx); free(dy); free(ds); free(dlm); free(dx_aff); free(dy_aff); free(ds_aff); free(dlm_aff);
     return status;
 }
 
@@ -717,6 +717,7 @@ static int tri3_to_csc(int ncol,const Tri3*t,int **op,int **oi,double **ov){
         for(int a=0;a<ns;a++) slot[seen[a]]=-1;
     }
     ptr[ncol]=k;
+    free(slot);free(seen);
     *op=ptr;*oi=ri;*ov=vv; return 0;
 }
 
@@ -1006,6 +1007,7 @@ typedef struct {
     const SocpCone *cones;
     const SpMat *SE,*SG;
     const double *Qwi,*sinv;          /* NT per-cone Q(w)^{-1} blocks / s^{-1} */
+    const size_t *qoff;               /* block k of Qwi starts at qoff[k] (R_+: diagonal only) */
     SpChol *Hchol,*Schol; double *Z;  /* NT: H=L L', S=E H^{-1}E', Z=H^{-1}E' */
     SpluFact *lu;                     /* LU: augmented KKT */
     SocpKkt *qd; const double *Qw;    /* optional symmetric augmented NT KKT */
@@ -1050,9 +1052,11 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
     } else if(c->use_nt){
         for(int a=0;a<n;a++) c->b1[a]=-rd[a];
         {int o=0;for(int k=0;k<c->ncones;k++){int kk=c->cones[k].nmem;
+          const double *qb=c->Qwi+c->qoff[k];
           for(int i=0;i<kk;i++){double t=lm[o+i]-sigma*mu*c->sinv[o+i]
               -(c->correction?c->correction[o+i]:0.0);
-            for(int i2=0;i2<kk;i2++) t+=c->Qwi[o*c->maxk+i*kk+i2]*rg[o+i2];
+            if(c->cones[k].type==0) t+=qb[i]*rg[o+i];
+            else for(int i2=0;i2<kk;i2++) t+=qb[i*kk+i2]*rg[o+i2];
             for(int q=c->SG->rp[o+i];q<c->SG->rp[o+i+1];q++) c->b1[c->SG->ri[q]]-=c->SG->rv[q]*t;}
           o+=kk;}}
         for(int j=0;j<n;j++) c->tmp[j]=c->b1[j];
@@ -1067,9 +1071,11 @@ static int conic_dir(const DirCtx *c,double sigma,double mu,
         sp_row(c->SG,dx,ds,K);
         for(int k=0;k<K;k++) ds[k]+=rg[k];
         {int o=0;for(int k=0;k<c->ncones;k++){int kk=c->cones[k].nmem;
+          const double *qb=c->Qwi+c->qoff[k];
           for(int i=0;i<kk;i++){double t=-lm[o+i]+sigma*mu*c->sinv[o+i]
               +(c->correction?c->correction[o+i]:0.0);
-            for(int i2=0;i2<kk;i2++) t-=c->Qwi[o*c->maxk+i*kk+i2]*ds[o+i2];
+            if(c->cones[k].type==0) t-=qb[i]*ds[o+i];
+            else for(int i2=0;i2<kk;i2++) t-=qb[i*kk+i2]*ds[o+i2];
             dlm[o+i]=t;}
           o+=kk;}}
     } else {
@@ -1177,7 +1183,16 @@ static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,co
     /* NT (Nesterov-Todd) scratch: per-cone Q(w)^{-1} blocks, s^{-1}, scaling
      * point, Z = H^{-1}E', dense solve buffers, plus a triplet list for S. */
     int maxk=1; for(int k=0;k<ncones;k++) if(cones[k].nmem>maxk) maxk=cones[k].nmem;
-    double *Qwi=(double*)malloc((size_t)(K>0?K:1)*(size_t)maxk*sizeof(double));
+    /* Q(w)^{-1} of an R_+ block is diagonal, so it keeps only its kk diagonal
+     * entries; a SOC block is kk x kk.  A K x maxk array stored every R_+
+     * block densely: the tangent cuts of primal_conicopt.c live in one R_+
+     * block that grows by one row per cone per round, and with 120 exp cones
+     * that array alone reached 346 MB, reallocated larger every round (8.8 GB
+     * of peak RSS, attempts.md F85). */
+    size_t *qoff=(size_t*)malloc((size_t)(ncones+1)*sizeof(size_t));
+    if(qoff){qoff[0]=0;for(int k=0;k<ncones;k++){size_t kk=(size_t)cones[k].nmem;
+        qoff[k+1]=qoff[k]+(cones[k].type==0?kk:kk*kk);}}
+    double *Qwi=qoff?(double*)malloc((qoff[ncones]>0?qoff[ncones]:1)*sizeof(double)):NULL;
     double *sinv=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));
     double *correction=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));
     double *wnt=(double*)malloc((size_t)(K>0?K:1)*sizeof(double));
@@ -1263,19 +1278,18 @@ static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,co
             for(int k=0;k<ncones&&use_nt;k++){int kk=cones[k].nmem;
                 double amax=0.0;
                 if(cones[k].type==0){
-                    double *blk=&Qwi[(size_t)o*maxk];
-                    for(int z=0;z<kk*kk;z++) blk[z]=0.0;
+                    double *blk=Qwi+qoff[k];
                     for(int i=0;i<kk;i++){
                         if(s[o+i]<=1e-300||lm[o+i]<=1e-300){use_nt=0;break;}
                         wnt[o+i]=sqrt(s[o+i]/lm[o+i]);
-                        double q=lm[o+i]/s[o+i]; blk[i*kk+i]=q;
+                        double q=lm[o+i]/s[o+i]; blk[i]=q;
                         sinv[o+i]=1.0/s[o+i];
                         if(fabs(q)>amax)amax=fabs(q);
                         if(fabs(sinv[o+i])>amax)amax=fabs(sinv[o+i]);
                     }
                 } else {
-                    if(nt_setup(&s[o],&lm[o],kk,&wnt[o],&Qwi[(size_t)o*maxk],&sinv[o])){use_nt=0;break;}
-                    for(int z=0;z<kk*kk;z++){double q=fabs(Qwi[(size_t)o*maxk+z]); if(!isfinite(q)||q>amax)amax=q;}
+                    if(nt_setup(&s[o],&lm[o],kk,&wnt[o],Qwi+qoff[k],&sinv[o])){use_nt=0;break;}
+                    for(int z=0;z<kk*kk;z++){double q=fabs(Qwi[qoff[k]+z]); if(!isfinite(q)||q>amax)amax=q;}
                     for(int i=0;i<kk;i++){double q=fabs(sinv[o+i]); if(!isfinite(q)||q>amax)amax=q;}
                 }
                 if(amax>1e16){use_nt=0;break;}   /* scaling ill-conditioned -> fall back */
@@ -1286,10 +1300,11 @@ static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,co
         if(use_nt&&!use_qd){
             /* H = G' Q(w)^{-1} G  (SPD; upper triangle in CSC) */
             tri.n=0;
-            {int o=0;for(int k=0;k<ncones;k++){int kk=cones[k].nmem;
+            {int o=0;for(int k=0;k<ncones;k++){int kk=cones[k].nmem,diag=cones[k].type==0;
+              const double *qw=Qwi+qoff[k];
               for(int i=0;i<kk;i++){
                 stamp++; int nt=0;
-                for(int i2=0;i2<kk;i2++){double q=Qwi[(size_t)o*maxk+i*kk+i2]; if(q==0.0) continue;
+                for(int i2=diag?i:0;i2<(diag?i+1:kk);i2++){double q=diag?qw[i]:qw[i*kk+i2]; if(q==0.0) continue;
                   for(int qb=SG.rp[o+i2];qb<SG.rp[o+i2+1];qb++){int col=SG.ri[qb];
                     if(wst[col]!=stamp){wst[col]=stamp;wacc[col]=0.0;wtouch[nt++]=col;} wacc[col]+=q*SG.rv[qb];}}
                 for(int qa=SG.rp[o+i];qa<SG.rp[o+i+1];qa++){int a=SG.ri[qa]; double ga=SG.rv[qa];
@@ -1424,7 +1439,7 @@ static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,co
         DirCtx dctx; memset(&dctx,0,sizeof(dctx));
         if(getenv("GMB_DBG_NT")) fprintf(stderr,"socp_sp it=%d dir=%s n=%d p=%d K=%d nc=%d\n",it,use_qd?"QD":use_nt?"NT":"LU",n,p,K,ncones);
         dctx.n=n; dctx.p=p; dctx.K=K; dctx.use_nt=use_nt; dctx.ncones=ncones; dctx.maxk=maxk;
-        dctx.cones=cones; dctx.SE=&SE; dctx.SG=&SG; dctx.Qwi=Qwi; dctx.sinv=sinv;
+        dctx.cones=cones; dctx.SE=&SE; dctx.SG=&SG; dctx.Qwi=Qwi; dctx.qoff=qoff; dctx.sinv=sinv;
         dctx.Hchol=Hchol; dctx.Schol=Schol; dctx.Z=Znt; dctx.lu=f;
         dctx.qd=use_qd?qd:NULL; dctx.Qw=Qw;
         dctx.b1=nb1; dctx.b2=nb2; dctx.tmp=t1; dctx.rhs=rhs;
@@ -1513,7 +1528,7 @@ done:
     free(off);free(xs);free(ys);free(s);free(lm);free(rd);free(rp);free(rg);free(Asc);free(Alr);free(rhs);
     free(dx);free(dy);free(ds);free(dlm);free(dxa);free(dya);free(dsa);free(dlma);free(t1);
     free(wacc);free(wst);free(wtouch); free(tri.r);free(tri.c);free(tri.v);
-    free(Qwi);free(sinv);free(wnt);free(Znt);free(nb1);free(nb2);free(correction);
+    free(qoff);free(Qwi);free(sinv);free(wnt);free(Znt);free(nb1);free(nb2);free(correction);
     free(stri.r);free(stri.c);free(stri.v);
     spmat_free(&SE);spmat_free(&SG);
     return status;

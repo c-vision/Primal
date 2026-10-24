@@ -101,5 +101,6 @@ int main(int argc, char **argv) {
 #endif
     printf("%s N=%d rc=%d solsta=%d obj=%.9g ref=%.9g relerr=%.1e t=%.3fs rss=%.0fMB\n",
            argv[1], N, rc, ss, obj, ref, fabs(obj - ref) / (1 + fabs(ref)), sec, rss_mb);
+    PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return 0;
 }
