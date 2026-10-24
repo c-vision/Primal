@@ -184,17 +184,24 @@ $(LIB_A): $(OBJS)
 	rm -f $@
 	$(AR) rcs $@ $(OBJS)
 
+# The samples print their own checks (residuals, eigenvalues, objective sums)
+# to many digits: without -ffp-contract=off a compiler that fuses a*b+c into one
+# FMA (clang does by default) prints different last digits than one that does
+# not (gcc -std=c99), so the same sample gave a different output per compiler.
+# The library itself is unaffected: only the sample sources get the flag.
+SAMPLE_CFLAGS = $(CFLAGS) -ffp-contract=off
+
 $(MOSEK_SAMPLES:%=$(OUT)/examples/c/%): $(OUT)/examples/c/%: examples/c/%.c $(LIB_A) | $(OUT)/examples/c
-	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
+	$(CC) $(SAMPLE_CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
 $(COMPLEX_SAMPLES:%=$(OUT)/examples/c/%): $(OUT)/examples/c/%: examples/c/%.c $(LIB_A) | $(OUT)/examples/c
-	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
+	$(CC) $(SAMPLE_CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
 $(FINANCE_SAMPLES:%=$(OUT)/examples/c/%): $(OUT)/examples/c/%: examples/c/%.c $(LIB_A) | $(OUT)/examples/c
-	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
+	$(CC) $(SAMPLE_CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
 $(BOOK_SAMPLES:%=$(OUT)/examples/c/%): $(OUT)/examples/c/%: examples/c/%.c $(LIB_A) | $(OUT)/examples/c
-	$(CC) $(CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
+	$(CC) $(SAMPLE_CFLAGS) -I. $< $(LIB_A) $(LDLIBS) -o $@
 
 .PHONY: run-samples
 run-samples: samples

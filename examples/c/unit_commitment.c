@@ -65,7 +65,8 @@ static const double demand[NT] = {2, 4};
 int main(void) {
     PRIMALenv_t env; PRIMALtask_t t;
     PRIMAL_makeenv(&env, NULL);
-    PRIMAL_maketask(env, 2 * NT + NG * NT + NG * NT, NVAR, &t);
+    /* rows: NT demand rows + 3 per (generator, period) -- max, min, startup */
+    PRIMAL_maketask(env, NT + 3 * NG * NT, NVAR, &t);
 
     for (int i = 0; i < NG; i++)
         for (int k = 0; k < NT; k++) {

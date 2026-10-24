@@ -82,11 +82,12 @@ int main(void) {
         PRIMAL_putarow(t, row, N, sub, v);
         PRIMAL_putconbound(t, row, PRIMAL_BK_FX, 1.0, 1.0); row++;
     }
-    for (int i = 0; i < N; i++) {                       /* no 2-hop loops */
-        PRIMAL_putarow(t, row, 2, (int[]){IDX(i, (i + 1) % N), IDX((i + 1) % N, i)},
-                       (double[]){1.0, 1.0});
-        PRIMAL_putconbound(t, row, PRIMAL_BK_UP, -INFINITY, 1.0); row++;
-    }
+    if (two_hop)                                        /* no 2-hop loops (rows exist only then) */
+        for (int i = 0; i < N; i++) {
+            PRIMAL_putarow(t, row, 2, (int[]){IDX(i, (i + 1) % N), IDX((i + 1) % N, i)},
+                           (double[]){1.0, 1.0});
+            PRIMAL_putconbound(t, row, PRIMAL_BK_UP, -INFINITY, 1.0); row++;
+        }
 
     /* iterative subtour elimination */
     int it = 0, succ[N];
