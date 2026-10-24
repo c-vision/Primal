@@ -443,30 +443,37 @@ and primal-dual gap. The 64 targeted checks pass before and after; no full
 suite or sanitizer run was performed for this update. The canonical table
 below predates this scaling change.
 
-The **Primal** column below was refreshed on **2026-10-24** at `f32c82d` (the
-solver of `6ee5f00` plus the two SOCP memory fixes described under
-"Many-cone conic models"; the sparse cut master that follows it was checked on
-the 171 examples, which run within timing noise), with the C harness alone
-(`out/bench/solve_mps` on the ten MPS instances, `out/bench/conic_bench`,
-`out/bench/sdp_sweep 4 22`): medians of **11 rounds, interleaved** with
-`e90c614` (the previous refresh) in the same session, the order alternating
-every round. All 704 runs returned `rc=0`, and every objective is identical
-between the two versions, across the rounds and equal to the `obj` column.
+The **Primal** column below was refreshed on **2026-10-24** at `5c5c8b3` (the
+sparse cut master and the self-concordant exponential-cone barrier on top of
+the SOCP memory fixes; none of the table's families has an exp/power cone),
+with the C harness alone (`out/bench/solve_mps` on the ten MPS instances,
+`out/bench/conic_bench`, `out/bench/sdp_sweep 4 22`): medians of **11 rounds,
+interleaved** with `f32c82d` (the previous refresh) in the same session, the
+order alternating every round. All 704 runs returned `rc=0`, and every
+objective is identical between the two versions, across the rounds and equal
+to the `obj` column.
 
-| family | `e90c614` (s) | current (s) | change | current faster |
+| family | `f32c82d` (s) | current (s) | change | current faster |
 |---|---:|---:|---:|---:|
-| LP (4) | 0.0417 | 0.0414 | −0.5% | 29/44 |
-| QP (3) | 0.0536 | 0.0544 | +1.6% | 21/33 |
-| MILP (3) | 4.4763 | 4.4033 | −1.6% | 24/33 |
-| SOCP (3) | 0.0037 | 0.0012 | **−68.3%** | 27/33 |
-| SDP (19) | 0.1952 | 0.1872 | −4.1% | 121/209 |
-| **total** | **4.7704** | **4.6875** | **−1.7%** | |
+| LP (4) | 0.0405 | 0.0401 | −0.9% | 25/44 |
+| QP (3) | 0.0525 | 0.0521 | −0.8% | 20/33 |
+| MILP (3) | 4.1895 | 4.1450 | −1.1% | 21/33 |
+| SOCP (3) | 0.0011 | 0.0009 | **−12.3%** | 22/33 |
+| SDP (19) | 0.1782 | 0.1798 | +0.9% | 92/209 |
+| **total** | **4.4617** | **4.4179** | **−1.0%** | |
 
-The SOCP gain is the second-order corrector of 2026-10-21 (below; SOCP 120 / 200
-−75.3% / −76.7%, SOCP 40 +3.6% at 0.4 ms). LP, QP and MILP stay inside the
-table's ~10% noise. SDP is −4.1%, with 15 of 19 sizes faster (`sdp_14`..`sdp_18`
-and `sdp_21` −5.2% to −7.0%, three sizes slower by up to 3.7%); its cause is
-not identified. Treat it as measured, not explained.
+The SOCP gain is the sparse cut master: SOCP 120 / 200 go −11.5% / −23.7%,
+because the master's rows no longer reach the SOCP solver as a dense array to
+scan. SOCP 40 is +1.4% at 0.36 ms. LP, QP, MILP and SDP stay within ±1%,
+inside the table's ~10% noise. The machine ran faster in this session than in
+the previous refresh (`f32c82d` itself measured 4.46 s here against 4.69 s
+then), so the absolute cells moved more than the code did. Compare versions
+only within one session.
+
+**Previous refresh (2026-10-24)** at `f32c82d`: 11 interleaved rounds against
+`e90c614`, all `rc=0`, identical objectives. LP −0.5%, QP +1.6%, MILP −1.6%,
+SOCP −68.3% (the second-order corrector of 2026-10-21: SOCP 120 / 200 −75.3% /
+−76.7%), SDP −4.1% (cause not identified), total −1.7%.
 
 **Previous refresh (2026-10-21)** at `e90c614` (solver code of `ee1081e`):
 11 interleaved rounds against `2a71577`, all `rc=0`, identical objectives. Its
@@ -619,17 +626,17 @@ failure is not counted as a green validation.
 |---|---|---|---|---|---|---|---|---|---|
 | lp_50x25 | lp | 50 x 25 | 171 | 0.0010 | 0.0022 | 0.0002 | N/A | N/A | 64.1886 |
 | lp_100x50 | lp | 100 x 50 | 576 | 0.0014 | 0.0020 | 0.0007 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | 0.0060 | 0.0039 | 0.0022 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | 0.0331 | 0.0138 | 0.0133 | N/A | N/A | 546.481 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.0058 | 0.0039 | 0.0022 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.0320 | 0.0138 | 0.0133 | N/A | N/A | 546.481 |
 | qp_50x25 | qp | 50 x 25 | 1445 | 0.0016 | N/A | 0.0004 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.0070 | N/A | 0.0025 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.0459 | N/A | 0.0083 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.2902 | N/A | N/A | N/A | 0.1644 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 1.0088 | N/A | N/A | N/A | 0.2863 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 3.1043 | N/A | N/A | N/A | 1.1389 | 277.019 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.0068 | N/A | 0.0025 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.0438 | N/A | 0.0083 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.2760 | N/A | N/A | N/A | 0.1644 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 0.9513 | N/A | N/A | N/A | 0.2863 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | 2.9177 | N/A | N/A | N/A | 1.1389 | 277.019 |
 | socp_40 | socp | 40 x 1 | - | 0.0004 | N/A | 0.0001 | 0.0003 | N/A | 0.707107 |
-| socp_120 | socp | 120 x 1 | - | 0.0003 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
-| socp_200 | socp | 200 x 1 | - | 0.0005 | N/A | 0.0005 | 0.0012 | N/A | 0.707107 |
+| socp_120 | socp | 120 x 1 | - | 0.0002 | N/A | 0.0002 | 0.0007 | N/A | 0.707107 |
+| socp_200 | socp | 200 x 1 | - | 0.0003 | N/A | 0.0005 | 0.0012 | N/A | 0.707107 |
 | sdp_4 | sdp | 4 x 4 | - | 0.0002 | N/A | 0.0002 | 0.0002 | N/A | -9.83233 |
 | sdp_5 | sdp | 5 x 5 | - | 0.0002 | N/A | 0.0001 | 0.0002 | N/A | -4.79948 |
 | sdp_6 | sdp | 6 x 6 | - | 0.0004 | N/A | 0.0002 | 0.0002 | N/A | -10.2438 |
@@ -637,18 +644,18 @@ failure is not counted as a green validation.
 | sdp_8 | sdp | 8 x 8 | - | 0.0007 | N/A | 0.0004 | 0.0005 | N/A | -22.165 |
 | sdp_9 | sdp | 9 x 9 | - | 0.0011 | N/A | 0.0006 | 0.0004 | N/A | -17.0048 |
 | sdp_10 | sdp | 10 x 10 | - | 0.0014 | N/A | 0.0008 | 0.0007 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0020 | N/A | 0.0010 | 0.0017 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0039 | N/A | 0.0017 | 0.0010 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | 0.0037 | N/A | 0.0019 | 0.0011 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0041 | N/A | 0.0021 | 0.0011 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0055 | N/A | 0.0023 | 0.0014 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0133 | N/A | 0.0034 | 0.0015 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0110 | N/A | 0.0044 | 0.0018 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0140 | N/A | 0.0044 | 0.0024 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0409 | N/A | 0.0046 | 0.0021 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | 0.0327 | N/A | 0.0065 | 0.0027 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0234 | N/A | 0.0095 | 0.0042 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.0275 | N/A | 0.0110 | 0.0091 | N/A | -149.613 |
+| sdp_11 | sdp | 11 x 11 | - | 0.0019 | N/A | 0.0010 | 0.0017 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | 0.0038 | N/A | 0.0017 | 0.0010 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | 0.0036 | N/A | 0.0019 | 0.0011 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | 0.0040 | N/A | 0.0021 | 0.0011 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | 0.0053 | N/A | 0.0023 | 0.0014 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | 0.0130 | N/A | 0.0034 | 0.0015 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | 0.0105 | N/A | 0.0044 | 0.0018 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | 0.0135 | N/A | 0.0044 | 0.0024 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | 0.0394 | N/A | 0.0046 | 0.0021 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | 0.0309 | N/A | 0.0065 | 0.0027 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | 0.0225 | N/A | 0.0095 | 0.0042 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | 0.0265 | N/A | 0.0110 | 0.0091 | N/A | -149.613 |
 
 </div>
 
