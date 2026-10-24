@@ -86,7 +86,9 @@ static void check_rc(PRIMALrescodee rc, PRIMALrescodee want, const char *what) {
 static void close_enough_tol(double a, double b, double ftol, const char *what) {
     double tol = ftol * (1.0 + fabs(a) + fabs(b));
     check(fabs(a - b) <= tol, what);
-    if (fabs(a - b) > tol)
+    /* !(<=), not >: a NaN fails the check AND must print, or the failure reads
+     * as a bare label (T100 M/I published dobj = NaN that way, F89) */
+    if (!(fabs(a - b) <= tol))
         printf("       %.10g vs %.10g (diff %.3g)\n", a, b, a - b);
 }
 
@@ -94,7 +96,7 @@ static void close_enough_tol(double a, double b, double ftol, const char *what) 
 static void close_enough(double a, double b, const char *what) {
     double tol = 1e-6 * (1.0 + fabs(a) + fabs(b));
     check(fabs(a - b) <= tol, what);
-    if (fabs(a - b) > tol)
+    if (!(fabs(a - b) <= tol))
         printf("       %.10g vs %.10g (diff %.3g)\n", a, b, a - b);
 }
 

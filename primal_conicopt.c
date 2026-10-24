@@ -339,7 +339,8 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     ConicMatrix *E = conic_matrix_new(neq,ntot);
     double *d = neq ? (double *)calloc((size_t)neq, sizeof(double)) : NULL;
     ConicMatrix *G = conic_matrix_new(K,ntot);
-    double *h = (double *)malloc((size_t)K * sizeof(double));
+    /* calloc: the cut slots beyond the ones a round fills are never written */
+    double *h = (double *)calloc((size_t)K, sizeof(double));
     double *c = (double *)calloc((size_t)ntot, sizeof(double));
     /* solver cones: R_+ block + one per user QUAD/RQUAD (nonlinear cones are
      * cut-based, no solver cone) + the cut R_+ cone => numcones + 3 max */
@@ -967,9 +968,16 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
     }
     t->pobj = po;
 
+    /* Only the rows the last round solved: K also counts every cut slot the
+     * outer loop could still have filled, whose h was never written.  Summing
+     * them added 0 * garbage, which is NaN whenever the recycled memory held a
+     * NaN or Inf -- T100 I and T100 M published dobj = NaN in 2 suite runs of 7,
+     * depending on what earlier tests left on the heap (attempts.md F89). */
+    int ksolved = r_cut + ncuts + ncuts_psd;
+    if (ksolved > K) ksolved = K;
     double dob = 0.0;
     for (int q = 0; q < neq; q++) dob += d[q] * ys[q];
-    for (int q = 0; q < K; q++)  dob += h[q] * lm[q];
+    for (int q = 0; q < ksolved; q++) dob += h[q] * lm[q];
     /* cfix is a term of the objective as written (pobj starts from it above), so
      * it sits OUTSIDE the sense factor: inside, -s*(dob+cfix) misses by 2*cfix. */
     t->dobj = -s * dob + t->cfix;
