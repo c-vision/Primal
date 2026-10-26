@@ -1,6 +1,6 @@
 name = "Primal"
 uuid = "9217f390-80c0-41a2-8a72-19c64bb28d66"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Gaetano Minardi"]
 
 [deps]
