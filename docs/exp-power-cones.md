@@ -74,28 +74,44 @@ approximately zero and freezes the iterate.
 
 ## Accuracy against hand values
 
-Four oracles with closed-form optima, solved natively:
+Four oracles with closed-form optima (the shapes of `T79`), relative error of
+`t`, measured at `fe43d59` (`-O2`; tangent cuts forced with `GMB_NO_EXP_IPM=1`):
 
 | Problem | Optimum | Native | Tangent cuts |
 |---|---|---|---|
-| `PEXP`, `u = v = 1` | `e` | 1.6e-13 | 1.3e-12 |
-| `PEXP`, `u = 2, v = 1` | `2√e` | 6.9e-14 | 1.9e-8 |
-| `PPOW(0.3)`, `u = 1, v = 2` | `2^(1/0.3)` | 1.9e-13 | 5.1e-8 |
-| `RPOW(0.4)`, `u = v = 1` | `2^(−1.25)` | 9.6e-15 | 1.5e-9 |
+| `PEXP`, `u = v = 1` | `e` | 7.1e-12 | 4.8e-13 |
+| `PEXP`, `u = 2, v = 1` | `2√e` | 2.6e-13 | 1.0e-13 |
+| `PPOW(0.3)`, `u = 1, v = 2` | `2^(1/0.3)` | **does not answer** | 7.2e-15 |
+| `RPOW(0.4)`, `u = v = 1` | `2^(−1.25)` | 6.2e-13 | 1.5e-9 |
 
-Relative errors. The native route is **4 to 5 orders of magnitude** more
-accurate on three of the four, because a closed-form barrier and a tangent cut
-are not comparable instruments. (The `PEXP` rows were measured with the earlier
-ν = 2 barrier, see above. They were not re-measured.)
+Every row is well inside the declared tolerance on the route that answers.
+Two things changed against the earlier table (2026-09-27, all four native at
+2e-14 to 6e-14). The `PEXP` rows lost a digit or two with the ν = 3 barrier
+(3.5e-13 and 9.0e-14 just before it). And the `PPOW` oracle no longer answers
+natively: both native attempts stop without a measurable point and the cuts
+answer. That started at `edd355b` (one-sided Jacobi update in the eigenvalue
+kernel that `spd_pow3` uses for the scaling). That commit is only the trigger.
+The trajectory is already off-center after the first step on both sides of the
+commit (block gap 0.044 against μ = 0.245, 0.0002 against 0.17 one step later).
+A difference of 1e-14 in the eigenvalues then decides whether the NT row is
+still available at `it=7` or degrades to the Hessian row and stalls (see the
+limits below).
 
 A degenerate CBF case (2×2 PSD plus a power cone, optimum on the boundary)
 answers natively at 7.1e-6 radial KKT residual, against 5.4e-5 for the cuts.
 
 ## When the native route is skipped
 
-On a 40-block model (`logistic_large`, mixed PEXP and RQUAD) no iterate of the
-native path reaches the declared relative triple, so the tangent cuts answer
-instead — correctly, and by a decision made on measured quality
+A model the first native run does not solve gets one more native attempt in
+secant mode (augmented R+ block, primal-dual secant scaling, one step length for
+both sides) before the tangent cuts take it. The retry can only turn a failure
+into a success. On the 40-block `logistic_large` (mixed PEXP and RQUAD) the
+first run stops at `rel_gap` 1.7e-6 and the secant attempt answers natively at
+1.8e-10 (`-O2`; 5.1e-11 at `-O0`). On the eleven bounds of `T91` (a `PPOW`
+optimum on the boundary of the cone, not strictly complementary) every bound
+answers natively; the retry is needed on `u ≥ −100` at `-O2` and on `u ≥ −5`
+and `u ≥ −100` at `-O0`. Only when both attempts fail do the cuts answer,
+correctly and by a decision made on measured quality
 ([tangent cuts](tangent-cuts.md)).
 
 The path can also be forced off with `GMB_NO_EXP_IPM=1`, which selects the
@@ -106,8 +122,11 @@ cuts. Note that for the native path the variable must be *unset*, not set to
 
 - No ray is published for a model with a PSD block
   ([certificates](certificates.md)).
-- The degenerate case where the conic route freezes on one particular
-  trajectory toward a boundary optimum is documented as open work; the result
-  is the same on every route, only the route differs.
-- Accuracy on very badly scaled blocks degrades; the multi-block floor is a
-  known open item.
+- No per-block centrality check in the step length. On the `PPOW` oracle a
+  block loses centrality in two steps (block gap / μ = 0.0011 at `it=2`) and
+  the step is still accepted. The first run on `logistic_large` and the
+  retried bounds of `T91` do not lose centrality in that sense (block gap / μ
+  stays above 0.17). What all three share is the NT row of a block becoming
+  unavailable and degrading to the Hessian row, after which the dual step
+  collapses: on `logistic_large` all 40 blocks at `it=13`. The answer is the
+  same on every route; only the route, and its cost, differ.
