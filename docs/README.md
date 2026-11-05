@@ -6,6 +6,11 @@ the solver picks it, what it was measured at, and where it stops.
 Start with the [README](../README.md) for the shape of the solver; come here
 for a specific route.
 
+For the README timing table, see [benchmark methodology](benchmarks.md).
+
+For the architectural comparison with Clarabel, SCS, COSMO, HiGHS and COPT,
+see [performance research and experiment gates](solver-performance-research.md).
+
 ## The solve path, in order
 
 | File | What it covers |
@@ -26,6 +31,7 @@ for a specific route.
 | [socp-fixed-reduction.md](socp-fixed-reduction.md) | Fixed-coordinate substitution, dual lifting and sparse LU incidence |
 | [sdp.md](sdp.md) | SDP and the unified conic path (PSD + SOC + exp in one KKT) |
 | [exp-power-cones.md](exp-power-cones.md) | exponential and power cones, natively |
+| [pexp-higher-correction.md](pexp-higher-correction.md) | higher-order correction for mixed SOC/PEXP models, measured gains and remaining gap |
 | [tangent-cuts.md](tangent-cuts.md) | the outer-approximation fallback |
 | [qcqp-encoding.md](qcqp-encoding.md) | quadratic rows encoded exactly into rotated cones |
 | [branch-and-bound.md](branch-and-bound.md) | MILP / MIQP / mixed-integer conic |

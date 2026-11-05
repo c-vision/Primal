@@ -19,6 +19,7 @@
  * Verbatim split of primal.c: no logic change. Shares primal_priv.h.
  */
 #include "primal_priv.h"
+#include "sdp_corrected.h"
 
 /* =====================================================================
  * SDP path: outer approximation with tangent cuts on lambda_min
@@ -562,7 +563,12 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
         SdpBlk BA = { Bp, Brow, Bval };
         SdpBlk BS = { Sp, Srow, (const double *const *)Sval };
         SdpBlk BE = { Ep, Erow, (const double *const *)Eval };
-        int st = sdp_ipm_csr(mTot, nv2, &A2, b2, c2, nb, t->barDim,
+        /* The PEXP corrector is validated on mixed SOC/exp models.  Keep
+         * pure exp, power-only and PSD models on their existing engine. */
+        int higher = 0;
+        if (nsoc > 0 && nb == 0 && !getenv("GMB_NO_EXP_HIGHER"))
+            for (int i = 0; i < nep; i++) if (ekind[i] == EXPCONE_PEXP) higher = 1;
+        int st = (higher ? sdp_ipm_csr_corrected : sdp_ipm_csr)(mTot, nv2, &A2, b2, c2, nb, t->barDim,
                          (const double *const *)Cbar, &BA,
                          nsoc, socdim, (const double *const *)Csoc, &BS,
                          nep, ekind, ealpha, (const double *const *)Cexp, &BE,

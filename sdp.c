@@ -1633,7 +1633,11 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
             double *x, double *const *Xbar, double *y, double *const *Sbar,
             double *const *Zsoc, double *const *Ssoc,
             double *const *Zexp, double *const *Sexp, const double *xwarm,
-            const double *ywarm, int *fb_ok)
+            const double *ywarm, int *fb_ok
+#ifdef SDP_IPM_CORRECTED
+            , double *ecorr, ExpConeScaleCache *escale
+#endif
+            )
 {
     if (fb_ok) *fb_ok = 0;
     /* Opt-in homogeneous self-dual embedding, PSD+scalar only (see hsd_psd's
@@ -1808,6 +1812,9 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     D.Dez = Dez; D.Des = Des; D.dy = dy; D.soff = soff; D.dmax2 = dmax2;
 
     for (int it = 0; it < max_iter; it++) {
+#ifdef SDP_IPM_CORRECTED
+        for (int i = 0; i < nep; i++) escale[i].valid = 0;
+#endif
         dmat_lu_free(pc_factor); pc_factor = NULL;
         free(pc_matrix); pc_matrix = NULL;
         splu_free(sp_pc); sp_pc = NULL;
@@ -2080,17 +2087,25 @@ redo_dir:
                     /* exp/power blocks: scaled cone equation (see the dense loop) */
                     for (int i = 0; i < nep; i++) {
                         double Th[9], Tin[9], rt[3], rde[3], sc = 0.0, inv;
+#ifdef SDP_IPM_CORRECTED
+                        int brow = expcone_scale_cached(escale + i, secant, ekind[i], ealpha[i],
+                            ez + 3*i, es + 3*i, sigma*mu, Th, Tin, rt, &sc);
+#else
                         int brow = secant
                             ? expcone_scaling_da(ekind[i], ealpha[i], ez + 3 * i, es + 3 * i,
                                                   sigma * mu, Th, Tin, rt, &sc)
                             : expcone_scaling(ekind[i], ealpha[i], ez + 3 * i, es + 3 * i,
                                                   sigma * mu, Th, Tin, rt, &sc);
+#endif
                         if (brow < 0) {
                             if (getenv("GMB_DBG")) fprintf(stderr,
                                 "  exp block %d scaling failed (sparse KKT) sigma=%.3g mu=%.3g\n", i, sigma, mu);
                             free(Srhs); free(gblk); free(rr); free(cc); status = 1; goto refine;
                         }
                         inv = 1.0 / sc;
+#ifdef SDP_IPM_CORRECTED
+                        if (pass == 1) for (int a = 0; a < 3; a++) rt[a] -= ecorr[3*i+a] * inv;
+#endif
                         for (int a = 0; a < 3; a++) rde[a] = (-Cexp[i][a] + es[3 * i + a]) * inv;
                         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
                             const double *ak = S->ev[q]; double yk = y[k];
@@ -2251,11 +2266,16 @@ redo_dir:
                      * secant conditions exact, see expcone.c) in place of the
                      * Hessian-NT chain; it falls back to expcone_scaling
                      * itself wherever it is not defined. */
+#ifdef SDP_IPM_CORRECTED
+                    int brow = expcone_scale_cached(escale + i, secant, ekind[i], ealpha[i],
+                        ez + 3*i, es + 3*i, sigma*mu, Th, Tin, rt, &sc);
+#else
                     int brow = secant
                         ? expcone_scaling_da(ekind[i], ealpha[i], ez + 3 * i, es + 3 * i,
                                               sigma * mu, Th, Tin, rt, &sc)
                         : expcone_scaling(ekind[i], ealpha[i], ez + 3 * i, es + 3 * i,
                                               sigma * mu, Th, Tin, rt, &sc);
+#endif
                     if (brow < 0) {
                         if (getenv("GMB_DBG")) fprintf(stderr,
                             "  exp block %d scaling failed: z=(%g,%g,%g) s=(%g,%g,%g) sInK*=%d sigma=%.3g mu=%.3g\n",
@@ -2264,6 +2284,9 @@ redo_dir:
                         free(Sys); free(Srhs); status = 1; goto refine;
                     }
                     inv = 1.0 / sc;
+#ifdef SDP_IPM_CORRECTED
+                    if (pass == 1) for (int a = 0; a < 3; a++) rt[a] -= ecorr[3*i+a] * inv;
+#endif
                     if (getenv("GMB_DBG")) {
                         double em[EXPCONE_EV_N];
                         expcone_nt_metrics(ekind[i], ealpha[i], ez + 3 * i, es + 3 * i, em);
@@ -2451,6 +2474,9 @@ redo_dir:
                 }
             }
             if (pass == 0) {
+#ifdef SDP_IPM_CORRECTED
+                if (ecorr) expcone_pexp_corrections(nep, ekind, ez, Des, Dez, ecorr);
+#endif
                 for (int j = 0; j < nb; j++) { sym_fun(dims[j], Xbar[j], 1, symX + (size_t)j*dmax2);
                                                sym_fun(dims[j], Sbar[j], 1, symS + (size_t)j*dmax2); }
                 double ap = 1.0, ad = 1.0;
@@ -2779,9 +2805,19 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
     SdpSpData S; memset(&S, 0, sizeof S);
     if (sdp_spd_build(&S, m, n, Acsr, nb, dims, Abar, nsoc, socdims, Asoc, nep, Aexp)) {
         sdp_spd_free(&S); return 2; }
-#define SDP_IPM_RUN(sec) sdp_ipm_run((sec), m, n, &S, b, c, nb, dims, Cbar, nsoc, socdims, \
+#ifdef SDP_IPM_CORRECTED
+    double *ecorr = (double *)calloc((size_t)(nep > 0 ? nep : 1) * 3, sizeof(double));
+    ExpConeScaleCache *escale = (ExpConeScaleCache *)calloc((size_t)(nep > 0 ? nep : 1), sizeof(ExpConeScaleCache));
+    if (!ecorr || !escale) { free(ecorr); free(escale); sdp_spd_free(&S); return 2; }
+#endif
+#define SDP_IPM_ARGS(sec) (sec), m, n, &S, b, c, nb, dims, Cbar, nsoc, socdims, \
         Csoc, nep, ekind, ealpha, Cexp, max_iter, tol, rtol_pri, rtol_dual, rtol_gap, \
-        near_rel, x, Xbar, y, Sbar, Zsoc, Ssoc, Zexp, Sexp, xwarm, ywarm, fb_ok)
+        near_rel, x, Xbar, y, Sbar, Zsoc, Ssoc, Zexp, Sexp, xwarm, ywarm, fb_ok
+#ifdef SDP_IPM_CORRECTED
+#define SDP_IPM_RUN(sec) sdp_ipm_run(SDP_IPM_ARGS(sec), ecorr, escale)
+#else
+#define SDP_IPM_RUN(sec) sdp_ipm_run(SDP_IPM_ARGS(sec))
+#endif
     int first = getenv("GMB_EXP_DA") ? 1 : 0;
     int st = SDP_IPM_RUN(first);
     if (st != 0 && !first && nep > 0 && nb == 0 && !getenv("GMB_NO_EXP_RETRY")) {
@@ -2807,6 +2843,11 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
         }
     }
 #undef SDP_IPM_RUN
+#undef SDP_IPM_ARGS
+#ifdef SDP_IPM_CORRECTED
+    free(ecorr);
+    free(escale);
+#endif
     sdp_spd_free(&S);
     return st;
 }

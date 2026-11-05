@@ -60,6 +60,7 @@
 #include "conic_matrix.h"
 #include "sdp.h"
 #include "expcone.h"
+#include "expcone_corrector.h"
 
 static int n_pass = 0, n_fail = 0;
 static const char *cur_name = "";
@@ -21188,8 +21189,84 @@ static void test_t297(void) {
     if(saved){setenv("GMB_NO_EXP_IPM",saved,1);free(saved);}else unsetenv("GMB_NO_EXP_IPM");
 }
 
+/* T299: independent Taylor-jet oracle for the experimental PEXP corrector. */
+static void test_t299(void) {
+    cur_name = "T299 PEXP higher correction";
+    for (int k = 0; k < 30; k++) {
+        double x[3] = {2.0 + 0.13*k, 1.0 + 0.02*k, -0.3 + 0.01*k};
+        double v[3] = {0.17, -0.13, 0.23}, H[9], ds[3] = {0}, hz[3] = {0}, eta[3];
+        check(expcone_hess(EXPCONE_PEXP, 0, x, H) == 0, "Hessian in interior");
+        for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) {
+            ds[i] += H[3*i+j]*v[j]; hz[i] += H[3*i+j]*x[j];
+        }
+        check(expcone_pexp_correction(x, ds, v, eta) == 0, "corrector defined");
+        T298J t = {{x[0],v[0],0,0}}, u = {{x[1],v[1],0,0}}, w = {{x[2],v[2],0,0}};
+        T298J psi = t298_sub(t298_mul(u,t298_log(t298_div(t,u))),w);
+        T298J f = t298_sub(t298_sub(t298_sub((T298J){{0,0,0,0}},t298_log(psi)),t298_log(t)),t298_log(u));
+        double contraction = 0; for (int i = 0; i < 3; i++) contraction += eta[i]*v[i];
+        check(fabs(contraction + 3*f.c[3]) < 1e-12, "third derivative from independent jet");
+        check(expcone_pexp_correction(x, hz, v, eta) == 0, "homogeneous correction defined");
+        double err = 0; for (int i = 0; i < 3; i++) err += fabs(eta[i]-ds[i]);
+        check(err < 1e-11, "log-homogeneity eta(x,v)=H*v");
+        double yy[3] = {x[0]*1.1, x[1]*0.9, x[2]-0.1}, dual[3];
+        expcone_grad(EXPCONE_PEXP, 0, yy, dual);
+        for (int i = 0; i < 3; i++) dual[i] = -dual[i];
+        for (int mode = 0; mode < 2; mode++) {
+            ExpConeScaleCache cache; memset(&cache, 0, sizeof cache);
+            for (int pass = 0; pass < 2; pass++) {
+                double th[9], ti[9], rt[3], sc, ch[9], ci[9], cr[3], cs;
+                double smu = pass ? 0.17 : 0;
+                int a = mode ? expcone_scaling_da(EXPCONE_PEXP,0,x,dual,smu,th,ti,rt,&sc)
+                             : expcone_scaling(EXPCONE_PEXP,0,x,dual,smu,th,ti,rt,&sc);
+                int b = expcone_scale_cached(&cache,mode,EXPCONE_PEXP,0,x,dual,smu,ch,ci,cr,&cs);
+                check(a >= 0 && a == b && memcmp(th,ch,sizeof th) == 0 &&
+                    memcmp(ti,ci,sizeof ti) == 0 && memcmp(rt,cr,sizeof rt) == 0 && sc == cs,
+                    "cached predictor/corrector matches original bits");
+            }
+        }
+    }
+}
+
+/* T300: exp(x)-x+w, 2*w>=x*x, has its unique optimum at x=w=0,
+ * t=1. Exercise both mixed-cone engines through the public API. */
+static void test_t300(void) {
+    cur_name = "T300 mixed PEXP/RQUAD corrector";
+    const char *pref = getenv("GMB_NO_EXP_HIGHER");
+    char *saved = pref ? strdup(pref) : NULL;
+    check(!pref || saved != NULL, "saves routing preference");
+    if (pref && !saved) return;
+    for (int mode = 0; mode < 2; mode++) {
+        if (mode) unsetenv("GMB_NO_EXP_HIGHER"); else setenv("GMB_NO_EXP_HIGHER","1",1);
+        P p; pbegin(&p); PRIMAL_appendvars(p.task,4);
+        PRIMAL_putvarbound(p.task,0,PRIMAL_BK_LO,0,INFINITY);
+        PRIMAL_putvarbound(p.task,1,PRIMAL_BK_FX,1,1);
+        PRIMAL_putvarbound(p.task,2,PRIMAL_BK_FR,-INFINITY,INFINITY);
+        PRIMAL_putvarbound(p.task,3,PRIMAL_BK_LO,0,INFINITY);
+        PRIMAL_putcj(p.task,0,1); PRIMAL_putcj(p.task,2,-1); PRIMAL_putcj(p.task,3,1);
+        PRIMAL_appendcone(p.task,PRIMAL_CT_PEXP,0,3,(int[]){0,1,2});
+        PRIMAL_appendcone(p.task,PRIMAL_CT_RQUAD,0,3,(int[]){3,1,2});
+        check_rc(PRIMAL_optimize(p.task),PRIMAL_RES_OK,"mixed model solves");
+        double po=INFINITY,du=-INFINITY,pi=INFINITY,di=INFINITY,x[4];
+        check_rc(PRIMAL_getprimalobj(p.task,PRIMAL_SOL_ITR,&po),PRIMAL_RES_OK,"primal objective");
+        check_rc(PRIMAL_getdualobj(p.task,PRIMAL_SOL_ITR,&du),PRIMAL_RES_OK,"dual objective");
+        PRIMAL_getprimalinfeas(p.task,PRIMAL_SOL_ITR,&pi);
+        PRIMAL_getdualinfeas(p.task,PRIMAL_SOL_ITR,&di);
+        check(fabs(po-1)<1e-7,"known objective one");
+        check(pi<1e-7 && di<1e-7 && fabs(po-du)/(1+fabs(po)+fabs(du))<1e-8,
+              "public primal/dual feasibility and gap");
+        int rx=PRIMAL_getxx(p.task,PRIMAL_SOL_ITR,x);
+        check_rc(rx,PRIMAL_RES_OK,"published mixed point");
+        if(rx==PRIMAL_RES_OK) check(fabs(x[2])<1e-3 && x[0]+1e-7>=exp(x[2]) &&
+            2*x[3]+1e-7>=x[2]*x[2],"point in original cones at known optimum");
+        pend(&p);
+    }
+    if(saved){setenv("GMB_NO_EXP_HIGHER",saved,1);free(saved);}else unsetenv("GMB_NO_EXP_HIGHER");
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t300();
+    test_t299();
     test_t298();
     test_t297();
     test_t296();
