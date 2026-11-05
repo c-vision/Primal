@@ -62,6 +62,13 @@ this is not a correction introduced by the new PEXP route. Orders 14, 21 and
 not be interpreted as common 1e-8-accuracy results. The table's SOCP/SDP
 objective column reports the analytic reference.
 
+The subsequent SDP fix enforces symmetric directions, recovers the dual
+step from the original dual equations and checks the primal direction after
+Schur reconstruction. A bounded augmented solve repairs inaccurate steps.
+T301 verifies orders 14, 20, 21 and 22 at `1e-8` with the default near factor
+and with the factor set to one. The measured gap for order 20 fell from
+`7.13e-7` to `7.97e-14`. The table above describes the previous build.
+
 ## Reproduce
 
 Build all benchmark binaries before timing; keep the machine otherwise idle:

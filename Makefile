@@ -25,7 +25,7 @@ LDLIBS  = -lm
 OUT     = out
 HEADERS = primal.h linalg.h stdform.h simplex.h ipm.h socp.h conic_matrix.h sdp.h expcone.h \
           mpsio.h cbf.h scaling.h presolve.h primal_priv.h \
-          expcone_corrector.h sdp_corrected.h
+          expcone_corrector.h sdp_corrected.h sdp_progress.h
 PRIMAL_OBJS = primal_core.o primal_put.o primal_qcon.o primal_vartype.o \
           primal_get.o primal_names.o primal_meta.o primal_solution.o \
           primal_afe.o primal_djc.o primal_bar.o primal_sdptask.o \

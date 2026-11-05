@@ -234,6 +234,9 @@ construction, while the SCS calls include setup. Default tolerances differ,
 and objective agreement alone does not establish equal solution accuracy.
 In particular, `sdp_20` returns `rc=0` but has relative objective error about
 `1.3e-6`, so its time is **not** a result at `1e-8` accuracy.
+That row describes the measured snapshot before the SDP accuracy fix. The
+current solver passes the original-model checks at `1e-8` on orders 14, 20,
+21 and 22. The timing table retains the earlier snapshot.
 
 Reference versions, accuracy limits and reproduction:
 [benchmark methodology](docs/benchmarks.md).

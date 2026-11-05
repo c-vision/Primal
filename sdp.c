@@ -45,6 +45,7 @@
 #include "sdp.h"
 #include "linalg.h"
 #include "expcone.h"
+#include "sdp_progress.h"
 
 /* per-iteration callback hook (implemented in primal.c) */
 extern int primal_cb_iter_on;
@@ -848,10 +849,25 @@ static int sdp_spd_build(SdpSpData *D, int m, int n, const SdpCsr *A,
  * rows) keeps this exceptional dense solve bounded; larger models retain
  * the existing non-convergence/fallback behavior.  No model is reduced.
  */
+static double sdp_primal_step_residual(int m, const SdpSpData *S, const int *dims,
+    size_t d2, const double *rp, const double *dx, const double *Dx) {
+    double worst = 0;
+    for (int k = 0; k < m; k++) {
+        double r = rp[k];
+        for (int p = S->rp[k]; p < S->rp[k+1]; p++) r += S->rv[p]*dx[S->ri[p]];
+        for (int p = S->kbp[k]; p < S->kbp[k+1]; p++) {
+            int j = S->kbj[p]; r += trAB(dims[j], S->bv[S->kbq[p]], Dx+(size_t)j*d2);
+        }
+        if (!isfinite(r)) return HUGE_VAL;
+        if (fabs(r) > worst) worst = fabs(r);
+    }
+    return worst;
+}
+
 static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
  const SdpSpData *S,const double *const *Cb,
  const double *xs,const double *ss,const double *const *Sb,const double *y,
- const double *rp,const double *rd,const double *Wi,const double *Xi,double target,
+ const double *rp,const double *rd,const double *Wi,const double *Xi,double target,double max_error,
  double *dy,double *dx,double *ds,double *Dx,double *Ds){
  /* Bound this dense rescue workspace before dimension products/allocations. */
  if(m>512||n>512-m)return 0;
@@ -899,6 +915,19 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
  }
  if(ok){
   for(int i=0;i<N;i++)r[i]*=cs[i];
+  /* Check the unscaled primal rows before committing any output vector. */
+  for(int k=0;k<m&&ok;k++) {
+   double residual=rp[k];
+   for(int p=S->rp[k];p<S->rp[k+1];p++)residual+=S->rv[p]*r[m+S->ri[p]];
+   for(int u=n;u<q;u++) {
+    int j=bj[u],d=dims[j],a=bi[u],b=bl[u];
+    for(int p=S->bp[j];p<S->bp[j+1];p++)if(S->bi[p]==k)
+     residual+=(a==b?1:sqrt(2.0))*S->bv[p][a*d+b]*r[m+u];
+   }
+   if(!isfinite(residual)||fabs(residual)>max_error)ok=0;
+  }
+ }
+ if(ok){
   for(int k=0;k<m;k++)dy[k]=r[k];
   for(int i=0;i<n;i++){dx[i]=r[m+i];double v=-rd[i];for(int p=S->cp[i];p<S->cp[i+1];p++)v-=S->cv[p]*dy[S->ci[p]];ds[i]=v;}
   for(int u=n;u<q;u++){int j=bj[u],d=dims[j],a=bi[u],b=bl[u];double v=r[m+u]/(a==b?1:sqrt(2.0));Dx[(size_t)j*d2+a*d+b]=Dx[(size_t)j*d2+b*d+a]=v;}
@@ -1728,7 +1757,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
                      ipm_state_size(n, m, nb, dims, nsoc, socdims, Ke) * sizeof(double)) : NULL;
     int have_best = 0, stall = 0, lost = 0, frozen = 0, fb_saved = 0;
     int rescue_used = 0, rescue_iters = 0;   /* centring rescue on a freeze */
-    double viol_win[CWIN]; int nviol_win = 0, iwin_win = 0, crawl = 0;
+    double crawl_reference = HUGE_VAL; int crawl_elapsed = 0;
     double prev_feas = HUGE_VAL; int use_rescue = 0;
     double gap_best = 0.0, viol_best = 0.0, merit_prev = 0.0, viol_prev = 0.0;
     /* The fallback candidate keeps the BEST point the gate has seen, not the one
@@ -1888,25 +1917,14 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
          * relative triple already sits inside the effective tolerance. Stop the
          * run when the relative violation has not improved by 1% over a window
          * of CWIN iterations, offering the point to the gate like the freeze. */
-        if (nviol_win < CWIN) viol_win[nviol_win++] = viol;
-        else {
-            double vmin = viol_win[0];
-            for (int q = 1; q < CWIN; q++) if (viol_win[q] < vmin) vmin = viol_win[q];
-            viol_win[iwin_win] = viol; iwin_win = (iwin_win + 1) % CWIN;
-            if (!(viol < 0.99 * vmin)) {
-                /* Only a point already inside the effective tolerance may be
-                 * surrendered this way: a crawl far from it is still progress
-                 * (d=16/17 need the full run to close the gap). */
-                if (++crawl >= 2 && viol <= near_rel) {
-                    if (getenv("GMB_DBG")) fprintf(stderr,
-                        "  [crawl] no 1%% gain over %d iters at it=%d viol=%.3g\n", CWIN, it, viol);
-                    if (!have_best && !fb_saved) {
-                        fb_saved = 1;
-                        ipm_state(fb_snap, 1, IPM_STATE_PASS);
-                    }
-                    goto refine;
-                }
-            } else crawl = 0;
+        if (sdp_progress_stalled(viol, &crawl_reference, &crawl_elapsed, CWIN) && viol <= near_rel) {
+            if (getenv("GMB_DBG")) fprintf(stderr,
+                "  [crawl] no 1%% gain over %d iters at it=%d viol=%.3g\n", CWIN, it, viol);
+            if (!have_best && !fb_saved) {
+                fb_saved = 1;
+                ipm_state(fb_snap, 1, IPM_STATE_PASS);
+            }
+            goto refine;
         }
         merit_prev = merit; viol_prev = viol;
         if (getenv("GMB_DBG")) fprintf(stderr,
@@ -2409,7 +2427,16 @@ redo_dir:
                 for (int a = 0; a < d * d; a++) e[a] += -Cbar[j][a] + sigma * mu * Xi[j * dmax2 + a];
                 for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int kk2 = S->bi[q];
                     double yk = y[kk2]; const double *Akj = S->bv[q]; for (int a = 0; a < d * d; a++) e[a] += yk * Akj[a]; }
-                const double *Wj = Ws + j * dmax2; mmul(d, Wj, e, t2); mmul(d, t2, Wj, Dx + j * dmax2); }
+                const double *Wj = Ws + j * dmax2;
+                double *dXj = Dx + j * dmax2;
+                mmul(d, Wj, e, t2); mmul(d, t2, Wj, dXj);
+                /* W*e*W is symmetric in exact arithmetic.  Preserve that
+                 * invariant before accumulating the step into the PSD block. */
+                for (int a = 0; a < d; a++) for (int b = a + 1; b < d; b++) {
+                    double v = 0.5 * dXj[a*d+b] + 0.5 * dXj[b*d+a];
+                    dXj[a*d+b] = dXj[b*d+a] = v;
+                }
+            }
             /* ds.  With dx from the augmented system, take ds from the dual
              * row  A'dy + ds = -rdx  (as the SOC/exp blocks below do), not
              * from -(s/x) dx: at a bound s/x reaches 1e10, and dx's last-bit
@@ -2417,9 +2444,21 @@ redo_dir:
             if (aug_dx) for (int i = 0; i < n; i++) { double t = -rdx[i];
                 for (int p = S->cp[i]; p < S->cp[i + 1]; p++) t -= S->cv[p] * dy[S->ci[p]]; ds[i] = t; }
             else for (int i = 0; i < n; i++) ds[i] = -(ss[i] / xs[i]) * dx[i] + (-ss[i] + sigma * mu / xs[i]);
-            for (int j = 0; j < nb; j++) { int d = dims[j]; const double *Wij = Wi + j * dmax2;
-                mmul(d, Wij, Dx + j * dmax2, t1); mmul(d, t1, Wij, t2);
-                for (int a = 0; a < d * d; a++) Ds[j * dmax2 + a] = -t2[a] - Sbar[j][a] + sigma * mu * Xi[j * dmax2 + a]; }
+            /* Recover the PSD dual step from its linear equation, as for SOC
+             * and exp below.  Undoing W on Dx cancels large barrier terms
+             * near a rank-deficient face and needlessly loses dual accuracy. */
+            for (int j = 0; j < nb; j++) { int d = dims[j];
+                double *dst = Ds + j * dmax2;
+                for (int a = 0; a < d * d; a++) dst[a] = Cbar[j][a] - Sbar[j][a];
+                for (int q = S->bp[j]; q < S->bp[j + 1]; q++) {
+                    int k = S->bi[q]; const double *Akj = S->bv[q];
+                    for (int a = 0; a < d * d; a++) dst[a] -= y[k] * Akj[a];
+                }
+                for (int q = S->bp[j]; q < S->bp[j + 1]; q++) {
+                    int k = S->bi[q]; const double *Akj = S->bv[q];
+                    for (int a = 0; a < d * d; a++) dst[a] -= dy[k] * Akj[a];
+                }
+            }
             for (int i = 0; i < nsoc; i++) { int kk = socdims[i];
                 for (int a = 0; a < kk; a++) { double t = -(-Csoc[i][a] + Ssoc[i][a]);
                     for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q]; t -= S->sv[q][a] * y[k]; }
@@ -2521,11 +2560,16 @@ redo_dir:
                  * fall back to the tangent cuts as before.  DECLARED deviation:
                  * the gate (nb > 1, 5% growth) is a measured heuristic, not a
                  * Schur conditioning test. */
-                if (use_rescue && nb > 1 && nep == 0 && nsoc == 0) {
+                if (nb > 0 && nep == 0 && nsoc == 0) {
+                    double step_error = sdp_primal_step_residual(m,S,dims,dmax2,rp,dx,Dx);
+                    double budget = 0.1 * rtol_pri * (1.0 + C.bn);
+                    if ((use_rescue && nb > 1) || step_error > budget) {
                     int rr = sdp_aug_direction(m, n, nb, dims, dmax2, S, Cbar,
                                xs, ss, (const double *const *)Sbar, y, rp, rdx, Wi, Xi, sigma * mu,
+                               budget,
                                dy, dx, ds, Dx, Ds);
-                    if (getenv("GMB_DBG")) fprintf(stderr, "  [rescue] it=%d ret=%d\n", it, rr);
+                    if (getenv("GMB_DBG")) fprintf(stderr, "  [rescue] it=%d ret=%d primal_step=%.3g budget=%.3g\n", it, rr, step_error, budget);
+                    }
                 }
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }

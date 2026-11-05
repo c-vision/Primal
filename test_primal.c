@@ -61,6 +61,7 @@
 #include "sdp.h"
 #include "expcone.h"
 #include "expcone_corrector.h"
+#include "sdp_progress.h"
 
 static int n_pass = 0, n_fail = 0;
 static const char *cur_name = "";
@@ -13999,13 +14000,12 @@ static void test_t96(void) {
         close_enough_tol(po86, 2.0, 1e-7, "B1 the published value is the optimum");
         pend(&p);
     }
-    /* B2. the same tolerances, factor disabled: that point is no longer
-     * acceptable and the other route answers -- which is tighter. */
+    /* B2. Disabling the factor must still give an accurate answer. */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-10, 1.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B2 the outer approximation answers");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B2 solves with the factor disabled");
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po1), PRIMAL_RES_OK, "B2 pobj");
-        check(fabs(po1 - po86) > 1e-12, "B2 a different route answered");
+        close_enough_tol(po1, 2.0, 1e-9, "B2 objective at the analytic optimum");
         check(fabs(po1 - 2.0) <= fabs(po86 - 2.0), "B2 rejecting the near point does not worsen the answer");
         pend(&p);
     }
@@ -14017,14 +14017,13 @@ static void test_t96(void) {
         check(fabs(poBig - po86) <= 1e-12, "B3 it is the same point as the IPM");
         pend(&p);
     }
-    /* B4. eighty-six hundred times the tolerance does not fit in 1000x: the
-     * factor is not a free pass, the answer comes back from the cuts. */
+    /* B4. Tightening the requested tolerance with the default factor. */
     {
         P p; pbegin(&p); t96_bar2(p.task); t96_set(p.task, 1e-13, 0.0);
-        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B4 solved by the cuts");
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "B4 solves with tighter tolerances");
         double po;
         check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &po), PRIMAL_RES_OK, "B4 pobj");
-        check(fabs(po - po86) > 1e-12, "B4 the default factor is not enough at 8.6e4 times the tol");
+        check(fabs(po - 2.0) <= 1e-9, "B4 objective at the analytic optimum");
         close_enough_tol(po, 2.0, 1e-7, "B4 the value stays the right one");
         pend(&p);
     }
@@ -14050,14 +14049,10 @@ static void test_t96(void) {
         close_enough_tol(tr, 1.0, 1e-6, "C1 <I,B> = 1");
         pend(&p);
     }
-    /* C2. discriminators: a tolerance the native IPM does NOT reach, factor
-     * disabled. The weak verdict must not carry numbers along: before this
-     * change getxx/getprimalobj answered OK with the opt_prepare zero. At the
-     * declared 1e-8 the native now solves this model outright (rel_pri 9.7e-9,
-     * T96's own C1), so the refusal is measured at 1e-9, where it still cannot.
-     */
+    /* C2. Force an early stop to exercise the unpublished-point contract. */
     {
         P p; pbegin(&p); t96_bar20(p.task); t96_set(p.task, 1e-9, 1.0);
+        PRIMAL_putintparam(p.task, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1);
         check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_TRM_MAX_ITER, "C2 not solved without the factor");
         PRIMALsolstae sta = PRIMAL_SOL_STA_OPTIMAL;
         PRIMAL_getsolsta(p.task, PRIMAL_SOL_ITR, &sta);
@@ -21263,8 +21258,84 @@ static void test_t300(void) {
     if(saved){setenv("GMB_NO_EXP_HIGHER",saved,1);free(saved);}else unsetenv("GMB_NO_EXP_HIGHER");
 }
 
+/* T301: the rank-one-cost correlation SDP has a primal and dual optimum
+ * known independently.  Benchmark orders 14/20/21/22 previously returned
+ * rc=0 with objective error above 1e-7. Check original-model KKT, not rc. */
+static void test_t301(void) {
+    cur_name = "T301 accurate correlation SDP on a rank-one face";
+    const int sizes[] = {14,20,21,22};
+    for (int k = 0; k < 8; k++) {
+        int d=sizes[k%4],ii[253],jj[253],nz=0,idx;
+        double val[253],v[22],sum=0;
+        unsigned state=(unsigned)(200+d);
+        P p;pbegin(&p);PRIMAL_appendvars(p.task,1);
+        if (k >= 4) PRIMAL_putdouparam(p.task,PRIMAL_DPAR_INTPNT_TOL_NEAR_REL,1);
+        PRIMAL_putvarbound(p.task,0,PRIMAL_BK_FX,0,0);
+        PRIMAL_appendbarvars(p.task,1,&d);PRIMAL_appendcons(p.task,d);
+        for(int i=0;i<d;i++) {
+            state=state*1103515245u+12345u;
+            v[i]=2.0*(double)((state>>16)&0x7fff)/32767.0-1.0;sum+=fabs(v[i]);
+        }
+        for(int i=0;i<d;i++)for(int j=i;j<d;j++) {
+            ii[nz]=i;jj[nz]=j;val[nz++]=-v[i]*v[j];
+        }
+        PRIMAL_appendsparsesymmat(p.task,d,nz,ii,jj,val,&idx);
+        PRIMAL_putbarcj(p.task,0,1,&idx,(double[]){1});
+        for(int i=0;i<d;i++) {
+            PRIMAL_appendsparsesymmat(p.task,d,1,&i,&i,(double[]){1},&idx);
+            PRIMAL_putbaraij(p.task,i,0,1,&idx,(double[]){1});
+            PRIMAL_putconbound(p.task,i,PRIMAL_BK_FX,1,1);
+        }
+        int rc=PRIMAL_optimize(p.task);
+        check_rc(rc,PRIMAL_RES_OK,"correlation SDP solves");
+        double po=INFINITY,du=-INFINITY,pi=INFINITY,di=INFINITY,X[484],Z[484];
+        check_rc(PRIMAL_getprimalobj(p.task,PRIMAL_SOL_ITR,&po),PRIMAL_RES_OK,"correlation primal objective");
+        check_rc(PRIMAL_getdualobj(p.task,PRIMAL_SOL_ITR,&du),PRIMAL_RES_OK,"correlation dual objective");
+        PRIMAL_getprimalinfeas(p.task,PRIMAL_SOL_ITR,&pi);
+        PRIMAL_getdualinfeas(p.task,PRIMAL_SOL_ITR,&di);
+        if(getenv("GMB_DBG")) fprintf(stderr,"[T301] d=%d obj=%.17g ref=%.17g pi=%.17g di=%.17g gap=%.17g\n",
+            d,po,-sum*sum,pi,di,fabs(po-du)/(1+fabs(po)+fabs(du)));
+        check(fabs(po+sum*sum)/(1+sum*sum)<=1e-8,"correlation analytic optimum to declared accuracy");
+        check(pi<=1e-8 && di<=1e-8 && fabs(po-du)/(1+fabs(po)+fabs(du))<=1e-8,
+              "correlation public feasibility and duality gap");
+        int rx=PRIMAL_getbarxj(p.task,PRIMAL_SOL_ITR,0,X);
+        int rz=PRIMAL_getbarsj(p.task,PRIMAL_SOL_ITR,0,Z);
+        check(rx==PRIMAL_RES_OK && rz==PRIMAL_RES_OK,"published PSD primal and dual");
+        if(rx==PRIMAL_RES_OK && rz==PRIMAL_RES_OK) {
+            double diag=0,recomputed=0,e[22],V[484],copy[484];
+            for(int i=0;i<d;i++) {if(fabs(X[i*d+i]-1)>diag)diag=fabs(X[i*d+i]-1);
+                for(int j=0;j<d;j++)recomputed-=v[i]*v[j]*X[i*d+j];}
+            check(diag<=1e-8 && fabs(po-recomputed)<=1e-10*(1+fabs(po)),"original correlation rows and objective");
+            if(getenv("GMB_DBG")) fprintf(stderr,"[T301] d=%d diag=%.17g objective_recomputed=%.17g\n",d,diag,recomputed);
+            memcpy(copy,X,(size_t)d*d*sizeof(double));dmat_eig_jacobi(d,copy,e,V);
+            double lo=e[0];for(int i=1;i<d;i++)if(e[i]<lo)lo=e[i];
+            check(lo>=-1e-8,"correlation primal PSD cone");
+            memcpy(copy,Z,(size_t)d*d*sizeof(double));dmat_eig_jacobi(d,copy,e,V);
+            lo=e[0];for(int i=1;i<d;i++)if(e[i]<lo)lo=e[i];
+            check(lo>=-1e-8,"correlation dual PSD cone");
+        }
+        pend(&p);
+    }
+}
+
+static void test_t302(void) {
+    cur_name="T302 stagnation window after a recent improvement";
+    double reference=INFINITY;int elapsed=0;
+    check(!sdp_progress_stalled(100,&reference,&elapsed,16),"initial progress");
+    check(!sdp_progress_stalled(1,&reference,&elapsed,16),"recent best restarts clock");
+    for(int i=1;i<16;i++)check(!sdp_progress_stalled(1.1,&reference,&elapsed,16),
+        "nonmonotone excursion may use a complete window");
+    check(sdp_progress_stalled(1.1,&reference,&elapsed,16),"stalled only after sixteen iterations");
+    check(!sdp_progress_stalled(.98,&reference,&elapsed,16),"material improvement resets stalled clock");
+    check(elapsed==0,"new window starts at zero");
+    for(int i=0;i<15;i++)sdp_progress_stalled(.99,&reference,&elapsed,16);
+    check(!sdp_progress_stalled(.96,&reference,&elapsed,16),"late improvement grants another full window");
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t302();
+    test_t301();
     test_t300();
     test_t299();
     test_t298();
