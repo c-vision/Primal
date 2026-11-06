@@ -363,6 +363,50 @@ static int min_eig_sign(int d, const double *A, double *emin) {
     *emin = min_eig(d, A);
     return 1;
 }
+/* For a normalized PSD direction A, an interior A + I/step means
+ * this block cannot shorten the current step. Keep a margin for the
+ * factorization and for the asymmetry from forming the dense product. */
+static double psd_step_limit(int d, const double *A, double step, double *L) {
+    if (L && step > 0.0) {
+        double shift = 1.0 / step;
+        double scale = shift, asymmetry = 0.0;
+        for (int i = 0; i < d; i++) {
+            for (int j = 0; j <= i; j++) {
+                double value = fabs(A[i * d + j]);
+                double skew = fabs(A[i * d + j] - A[j * d + i]);
+                if (!isfinite(value) || !isfinite(skew)) goto spectral;
+                if (value > scale) scale = value;
+                if (skew > asymmetry) asymmetry = skew;
+            }
+        }
+        shift -= d * (1e-10 * scale + asymmetry);
+        if (isfinite(shift)) {
+            for (int i = 0; i < d; i++) {
+                for (int j = 0; j <= i; j++) {
+                    double v = A[i * d + j];
+                    for (int k = 0; k < j; k++) v -= L[i * d + k] * L[j * d + k];
+                    if (i == j) {
+                        v += shift;
+                        if (!(v > 0.0) || !isfinite(v)) goto spectral;
+                        L[i * d + j] = sqrt(v);
+                    } else {
+                        L[i * d + j] = v / L[j * d + j];
+                    }
+                }
+            }
+            return step;
+        }
+    }
+spectral:
+    ;
+    double e;
+    min_eig_sign(d, A, &e);
+    if (e < 0.0) {
+        double limit = 1.0 / (-e);
+        if (limit < step) return limit;
+    }
+    return step;
+}
 /* tr(A B) = <A,B>, the inner product the PSD cone pairs blocks with.  B is read
  * with its indices swapped, not because B is symmetric (the blocks are, but a
  * scratch product fed here is not always) but because tr(A B) is what the conic
@@ -864,6 +908,86 @@ static double sdp_primal_step_residual(int m, const SdpSpData *S, const int *dim
     return worst;
 }
 
+/* Equilibrate, solve and refine the augmented equations in place. */
+static int sdp_aug_solve(int N, double *K, double *r,
+                         double *cs, double *org, double *cor) {
+ for(int i=0;i<N;i++){double mx=0;for(int j=0;j<N;j++)if(fabs(K[(size_t)i*N+j])>mx)mx=fabs(K[(size_t)i*N+j]);double rs=mx>0?1/mx:1;r[i]*=rs;for(int j=0;j<N;j++)K[(size_t)i*N+j]*=rs;}
+ for(int j=0;j<N;j++){double mx=0;for(int i=0;i<N;i++)if(fabs(K[(size_t)i*N+j])>mx)mx=fabs(K[(size_t)i*N+j]);cs[j]=mx>0?1/mx:1;for(int i=0;i<N;i++)K[(size_t)i*N+j]*=cs[j];}
+ memcpy(org,r,(size_t)N*sizeof(double));LuFact *lf=dmat_lu_factor(K,N);int ok=lf!=NULL;
+ if(ok){dmat_lu_solve_comp(lf,r);
+  for(int it=0;it<3;it++){
+   double before=0,after=0;
+   for(int i=0;i<N;i++){cor[i]=org[i]-nsum_prod(K+(size_t)i*N,r,N);if(fabs(cor[i])>before)before=fabs(cor[i]);}
+   dmat_lu_solve_comp(lf,cor);for(int i=0;i<N;i++)r[i]+=cor[i];
+   for(int i=0;i<N;i++){double e=fabs(org[i]-nsum_prod(K+(size_t)i*N,r,N));if(e>after)after=e;}
+   if(!(after<before)){for(int i=0;i<N;i++)r[i]-=cor[i];break;}
+  }
+  for(int i=0;i<N;i++)if(!isfinite(r[i]))ok=0;
+ }
+ if(ok)for(int i=0;i<N;i++)r[i]*=cs[i];
+ dmat_lu_free(lf);
+ return ok;
+}
+
+/* Distinct singleton rows fix the corresponding packed primal steps.
+ * Recover their multipliers from the eliminated stationarity rows. */
+static int sdp_aug_singletons(int N, int m, const double *K, double *r,
+                              double max_error, double *cs, double *org,
+                              double *cor) {
+    if (m == 0 || m > N / 2) return 0;
+    int fixed[512], free_col[512], used[512] = {0};
+    double step[512] = {0}, rhs[512];
+    for (int i = 0; i < m; i++) {
+        int col = -1;
+        for (int j = m; j < N; j++) {
+            if (K[(size_t)i * N + j] == 0.0) continue;
+            if (col >= 0 || used[j]) return 0;
+            col = j;
+        }
+        if (col < 0) return 0;
+        fixed[i] = col;
+        used[col] = 1;
+        step[col] = r[i] / K[(size_t)i * N + col];
+        if (!isfinite(step[col])) return 0;
+    }
+    int nf = 0;
+    for (int i = m; i < N; i++) if (!used[i]) free_col[nf++] = i;
+    if (nf > 0) {
+        double *reduced = malloc((size_t)nf * nf * sizeof(double));
+        if (!reduced) return 0;
+        for (int i = 0; i < nf; i++) {
+            int col = free_col[i];
+            const double *row = K + (size_t)col * N;
+            double value = r[col];
+            for (int j = 0; j < m; j++) value -= row[fixed[j]] * step[fixed[j]];
+            rhs[i] = value;
+            for (int j = 0; j < nf; j++) reduced[(size_t)i * nf + j] = row[free_col[j]];
+        }
+        int ok = sdp_aug_solve(nf, reduced, rhs, cs, org, cor);
+        free(reduced);
+        if (!ok) return 0;
+        for (int i = 0; i < nf; i++) step[free_col[i]] = rhs[i];
+    }
+    for (int i = 0; i < m; i++) {
+        int col = fixed[i];
+        const double *row = K + (size_t)col * N;
+        step[i] = (r[col] - nsum_prod(row + m, step + m, N - m)) / row[i];
+        if (!isfinite(step[i])) return 0;
+        double error = K[(size_t)i * N + col] * step[col] - r[i];
+        if (!isfinite(error) || fabs(error) > max_error) return 0;
+    }
+    for (int i = m; i < N; i++) {
+        const double *row = K + (size_t)i * N;
+        double error = nsum_prod(row, step, N) - r[i];
+        double scale = 1.0 + fabs(r[i]);
+        for (int j = 0; j < N; j++) scale += fabs(row[j] * step[j]);
+        if (!isfinite(error) || !isfinite(scale) || fabs(error) > 1e-12 * scale)
+            return 0;
+    }
+    memcpy(r, step, (size_t)N * sizeof(double));
+    return 1;
+}
+
 static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
  const SdpSpData *S,const double *const *Cb,
  const double *xs,const double *ss,const double *const *Sb,const double *y,
@@ -900,21 +1024,9 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
   if(a!=b)h*=sqrt(2.0);
   K[(size_t)(m+u)*N+m+v]=-h;
  }
- for(int i=0;i<N;i++){double mx=0;for(int j=0;j<N;j++)if(fabs(K[(size_t)i*N+j])>mx)mx=fabs(K[(size_t)i*N+j]);double rs=mx>0?1/mx:1;r[i]*=rs;for(int j=0;j<N;j++)K[(size_t)i*N+j]*=rs;}
- for(int j=0;j<N;j++){double mx=0;for(int i=0;i<N;i++)if(fabs(K[(size_t)i*N+j])>mx)mx=fabs(K[(size_t)i*N+j]);cs[j]=mx>0?1/mx:1;for(int i=0;i<N;i++)K[(size_t)i*N+j]*=cs[j];}
- memcpy(org,r,(size_t)N*sizeof(double));LuFact *lf=dmat_lu_factor(K,N);int ok=lf!=NULL;
- if(ok){dmat_lu_solve_comp(lf,r);
-  for(int it=0;it<3;it++){
-   double before=0,after=0;
-   for(int i=0;i<N;i++){cor[i]=org[i]-nsum_prod(K+(size_t)i*N,r,N);if(fabs(cor[i])>before)before=fabs(cor[i]);}
-   dmat_lu_solve_comp(lf,cor);for(int i=0;i<N;i++)r[i]+=cor[i];
-   for(int i=0;i<N;i++){double e=fabs(org[i]-nsum_prod(K+(size_t)i*N,r,N));if(e>after)after=e;}
-   if(!(after<before)){for(int i=0;i<N;i++)r[i]-=cor[i];break;}
-  }
-  for(int i=0;i<N;i++)if(!isfinite(r[i]))ok=0;
- }
+ int ok=n==0 && sdp_aug_singletons(N,m,K,r,max_error,cs,org,cor);
+ if(!ok)ok=sdp_aug_solve(N,K,r,cs,org,cor);
  if(ok){
-  for(int i=0;i<N;i++)r[i]*=cs[i];
   /* Check the unscaled primal rows before committing any output vector. */
   for(int k=0;k<m&&ok;k++) {
    double residual=rp[k];
@@ -933,7 +1045,7 @@ static int sdp_aug_direction(int m,int n,int nb,const int *dims,size_t d2,
   for(int u=n;u<q;u++){int j=bj[u],d=dims[j],a=bi[u],b=bl[u];double v=r[m+u]/(a==b?1:sqrt(2.0));Dx[(size_t)j*d2+a*d+b]=Dx[(size_t)j*d2+b*d+a]=v;}
   for(int j=0;j<nb;j++){int d=dims[j];for(int a=0;a<d*d;a++){double v=Cb[j][a]-Sb[j][a];for(int qq=S->bp[j];qq<S->bp[j+1];qq++){int k=S->bi[qq];v-=S->bv[qq][a]*(y[k]+dy[k]);}Ds[(size_t)j*d2+a]=v;}}
  }
- dmat_lu_free(lf);free(K);free(r);free(cs);free(org);free(cor);free(bj);free(bi);free(bl);return ok;
+ free(K);free(r);free(cs);free(org);free(cor);free(bj);free(bi);free(bl);return ok;
 }
 
 /* ---- Experimental HSD (homogeneous self-dual) embedding, PSD+scalar only ----
@@ -2536,8 +2648,8 @@ redo_dir:
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }
                 for (int j = 0; j < nb; j++) { int d = dims[j];
-                    const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
-                    const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
+                    const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); ap = psd_step_limit(d, t3, ap, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL);
+                    const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); ad = psd_step_limit(d, t3, ad, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
@@ -2590,8 +2702,8 @@ redo_dir:
                 double ap = 1.0, ad = 1.0;
                 for (int i = 0; i < n; i++) { if (dx[i] < 0) { double t = -xs[i] / dx[i]; if (t < ap) ap = t; } if (ds[i] < 0) { double t = -ss[i] / ds[i]; if (t < ad) ad = t; } }
                 for (int j = 0; j < nb; j++) { int d = dims[j];
-                    const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); double lp; min_eig_sign(d, t3, &lp); if (lp < 0) { double t = 1.0 / (-lp); if (t < ap) ap = t; }
-                    const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); double ld; min_eig_sign(d, t3, &ld); if (ld < 0) { double t = 1.0 / (-ld); if (t < ad) ad = t; } }
+                    const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); ap = psd_step_limit(d, t3, ap, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL);
+                    const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); ad = psd_step_limit(d, t3, ad, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
                 for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;

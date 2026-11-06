@@ -232,14 +232,45 @@ For SOCP/SDP, `obj` is the analytic reference value.
 Primal timings cover `PRIMAL_optimize`; Clarabel timings exclude solver
 construction, while the SCS calls include setup. Default tolerances differ,
 and objective agreement alone does not establish equal solution accuracy.
-In particular, `sdp_20` returns `rc=0` but has relative objective error about
-`1.3e-6`, so its time is **not** a result at `1e-8` accuracy.
-That row describes the measured snapshot before the SDP accuracy fix. The
-current solver passes the original-model checks at `1e-8` on orders 14, 20,
-21 and 22. The timing table retains the earlier snapshot.
 
-Reference versions, accuracy limits and reproduction:
-[benchmark methodology](docs/benchmarks.md).
+### SDP results after the accuracy fix
+
+The table above is the snapshot before the fix. In that snapshot, SDP20's
+relative objective error was about `1.3e-6`. At `314d4f0`, all 19 published SDP
+orders (4–22) meet `1e-8` for relative objective error, reported primal and
+dual infeasibility, and relative gap. SDP20's relative gap is `3.13e-9`.
+
+The first optimization reduced the time spent recovering an accurate
+solution. These medians come from two series of nine alternating pairs.
+The baseline is the accuracy fix at `adb7f74`.
+
+| Model | Accuracy fix (ms) | Optimized solve (ms) |
+|---|---:|---:|
+| SDP14 | 47.83 / 48.20 | 7.03 / 6.55 |
+| SDP20 | 247.02 / 235.77 | 55.98 / 52.63 |
+| SDP21 | 137.55 / 137.47 | 38.61 / 37.63 |
+| SDP22 | 187.72 / 184.24 | 47.80 / 46.28 |
+
+Combining faster PSD step checks with elimination of fixed coordinates
+from the recovery system reduced the sum of the four median times by
+6.9–7.1% against `314d4f0`. The 19 published SDP orders still meet
+the accuracy limits above.
+
+| Model | `314d4f0` (ms) | Combined optimizations (ms) |
+|---|---:|---:|
+| SDP14 | 5.14 / 5.57 | 4.70 / 5.04 |
+| SDP20 | 45.40 / 42.19 | 41.97 / 39.67 |
+| SDP21 | 35.32 / 28.92 | 31.75 / 26.16 |
+| SDP22 | 41.24 / 35.63 | 39.62 / 33.66 |
+
+A separate comparison on SDP20 (seed 220) at `314d4f0` gave 59.67 / 61.44 ms for
+`PRIMAL_optimize` and 10.07 / 10.19 ms for Clarabel 0.11.1, including solver
+construction and solve at one thread. These are medians of two series of
+nine alternating pairs. Both relative objective errors were below `1e-8`.
+The relative gaps were `3.13e-9` for Primal and `2.01e-11` for Clarabel.
+
+See the [benchmark methodology](docs/benchmarks.md) for reference versions,
+accuracy limits and reproduction.
 
 The mixed SOC/PEXP regression family is separate from the table above. Against
 isolated sources at `06f767b`, two batches of nine alternating pairs gave:

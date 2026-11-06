@@ -458,6 +458,11 @@ static void dmat_eig_jacobi_core(int n, const double *A, double *eval, double *e
                         W[k * n + p] = c * wp - sn * wq;
                         W[k * n + q] = sn * wp + c * wq;
                     }
+                    for (int k = 0; k < n; k++) {   /* V J */
+                        double vp = V[k * n + p], vq = V[k * n + q];
+                        V[k * n + p] = c * vp - sn * vq;
+                        V[k * n + q] = sn * vp + c * vq;
+                    }
                 } else {
                     /* Symmetric one-sided W' = J^T W J: W stays symmetric, so the
                      * two off-diagonal half-updates are transposes -- write one and
@@ -474,18 +479,20 @@ static void dmat_eig_jacobi_core(int n, const double *A, double *eval, double *e
                         W[k * n + p] = np; W[p * n + k] = np;
                         W[k * n + q] = nq; W[q * n + k] = nq;
                     }
-                }
-                for (int k = 0; k < n; k++) {   /* V J */
-                    double vp = V[k * n + p], vq = V[k * n + q];
-                    V[k * n + p] = c * vp - sn * vq;
-                    V[k * n + q] = sn * vp + c * vq;
+                    /* Store V transposed so each rotation traverses two rows. */
+                    double *vp_row = V + p * n, *vq_row = V + q * n;
+                    for (int k = 0; k < n; k++) {
+                        double vp = vp_row[k], vq = vq_row[k];
+                        vp_row[k] = c * vp - sn * vq;
+                        vq_row[k] = sn * vp + c * vq;
+                    }
                 }
             }
         }
     }
     for (int i = 0; i < n; i++) eval[i] = W[i * n + i];
     for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) evec[i * n + j] = V[i * n + j];
+        for (int j = 0; j < n; j++) evec[i * n + j] = twosided ? V[i * n + j] : V[j * n + i];
     free(W); free(V);
 }
 
