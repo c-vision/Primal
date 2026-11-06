@@ -1837,6 +1837,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     for (int i = 0; i < n; i++) { double a = fabs(c[i]); if (a > C.cn) C.cn = a; }
 
     ipmdir D;
+    int repaired_psd_step = 0;
     D.dx = dx; D.ds = ds; D.Dx = Dx; D.Ds = Ds; D.Dzsoc = Dzsoc; D.Dssoc = Dssoc;
     D.Dez = Dez; D.Des = Des; D.dy = dy; D.soff = soff; D.dmax2 = dmax2;
 
@@ -1857,6 +1858,20 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
           use_rescue = (it > 0 && feasc > 1.05 * prev_feas);
           prev_feas = feasc; }
         ipmqual Q = ipm_quality(&C, &R);
+        /* After repairing a pure PSD step, stop once the original equations
+         * and both cones pass. Half the gap tolerance leaves room for the
+         * difference between a one-objective and a two-objective scale. */
+        if (repaired_psd_step && n == 0 &&
+            pfeas <= rtol_pri && dfeas <= rtol_dual &&
+            Q.gap <= 0.5 * rtol_gap) {
+            double primal_slack, dual_slack;
+            ipm_cone_slacks(&C, &primal_slack, &dual_slack);
+            if (primal_slack >= 0.0 && dual_slack >= 0.0) {
+                ipm_state(snap, 1, IPM_STATE_PASS);
+                have_best = 1;
+                break;
+            }
+        }
         double viol = Q.pri / rtol_pri;
         if (Q.dual / rtol_dual > viol) viol = Q.dual / rtol_dual;
         if (Q.gap  / rtol_gap  > viol) viol = Q.gap  / rtol_gap;
@@ -2568,6 +2583,7 @@ redo_dir:
                                xs, ss, (const double *const *)Sbar, y, rp, rdx, Wi, Xi, sigma * mu,
                                budget,
                                dy, dx, ds, Dx, Ds);
+                    if (rr) repaired_psd_step = 1;
                     if (getenv("GMB_DBG")) fprintf(stderr, "  [rescue] it=%d ret=%d primal_step=%.3g budget=%.3g\n", it, rr, step_error, budget);
                     }
                 }

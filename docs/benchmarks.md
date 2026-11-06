@@ -69,6 +69,13 @@ T301 verifies orders 14, 20, 21 and 22 at `1e-8` with the default near factor
 and with the factor set to one. The measured gap for order 20 fell from
 `7.13e-7` to `7.97e-14`. The table above describes the previous build.
 
+A follow-up termination check ends pure SDP recovery once the absolute
+residuals, both cones and the gap meet the requested accuracy. In two series
+of nine alternating pairs against the accuracy fix at `adb7f74`, order 20
+went from 247.0 to 56.0 ms and from 235.8 to 52.6 ms. Its public relative
+gap is approximately `3.13e-9`. Orders 14, 21 and 22 also pass T301 and took
+6.5–7.0 ms, 37.6–38.6 ms and 46.3–47.8 ms respectively.
+
 ## Reproduce
 
 Build all benchmark binaries before timing; keep the machine otherwise idle:
