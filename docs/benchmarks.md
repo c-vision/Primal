@@ -1,12 +1,11 @@
 # Benchmark methodology
 
-The README table dated 2026-11-05 is a fresh snapshot of the current working
-tree, based on `06f767b` plus the mixed SOC/PEXP corrector. It contains 32
-instances: four LP, three QP, three MILP, three SOCP and nineteen SDP sizes.
-Every timing cell is the median of five complete runs. The harness objective
-checks passed on all five runs and the printed objective column was stable.
-The canonical table does not contain exponential-cone models; the paired
-corrector measurements are reported separately below it.
+The README table dated 2026-11-07 measures `bd53531` on 32 instances across
+LP, QP, MILP, SOCP and SDP. Each timing is the median of five complete
+benchmark runs. The objective checks passed on every run and the printed
+objectives were stable. Bold marks the lowest displayed median in each row.
+The table uses six decimal places in seconds to show sub-millisecond times.
+The exponential-cone corrector measurements appear separately in the README.
 
 ## Environment
 
@@ -34,9 +33,8 @@ times come from SciPy's `linprog(method="highs")`.
 - HiGHS: the SciPy `linprog` call and its interface overhead.
 - SCIP: optimization, with reading/building the model outside the timer.
 
-Consequently this is a comparison of the existing harness boundaries, not an
-equal end-to-end latency test. Sub-millisecond cells are rounded to four
-decimal places in seconds and should not support fine percentage claims.
+The bold values identify the lowest medians within those timing boundaries.
+Close medians can change order across runs.
 `N/A` is a missing measurement for this harness/interface; it is not a solver
 capability statement. In particular, HiGHS is not measured on the MILP rows.
 
@@ -53,7 +51,7 @@ absolute; SDP uses `1e-4*(1+abs(analytic objective))`. These checks detect
 large disagreements. They do not establish a common KKT tolerance, cone
 feasibility or certificate quality across all timed results.
 
-In the independent accuracy audit of the current SDP sweep, d=20 returned
+In the accuracy audit of the SDP sweep before the fixes, d=20 returned
 `rc=0` with objective -140.19172 versus analytic reference -140.1919, about
 1.27e-6 relative error. The isolated `06f767b` baseline returns the same point:
 this is not a correction introduced by the new PEXP route. Orders 14, 21 and
@@ -67,7 +65,7 @@ step from the original dual equations and checks the primal direction after
 Schur reconstruction. A bounded augmented solve repairs inaccurate steps.
 T301 verifies orders 14, 20, 21 and 22 at `1e-8` with the default near factor
 and with the factor set to one. The measured gap for order 20 fell from
-`7.13e-7` to `7.97e-14`. The table above describes the previous build.
+`7.13e-7` to `7.97e-14`.
 
 A follow-up termination check ends pure SDP recovery once the absolute
 residuals, both cones and the gap meet the requested accuracy. In two series
@@ -91,12 +89,11 @@ The harness and deterministic instances live under `bench/`; the aggregator
 lives in `tools/bench_repeat.py`. On the development machine these dependencies
 were supplied by the existing `env-bench` environment.
 
-For this snapshot, `make clean && make` was scoped to a fresh isolated OUT
-directory, preserving previous measurements. The canonical harness binary
-paths were redirected to that directory; five raw tables, their objective
-check logs, the aggregated table, versions and binary hashes were retained
-under `out/readme-20261105/`. No frozen baseline directory was rebuilt.
+The November 7 snapshot used a fresh isolated output directory. Its raw
+tables, objective check logs, aggregated table and binary hashes were
+retained under `out/readme-20261107/`. The November 5 snapshot is retained
+under `out/readme-20261105/`.
 
-The clean release build was warning-free. The numerical change's focused
-group passed 928 checks with default, forced sparse, forced dense and legacy
-routes. This is not a new full-suite or sanitizer result.
+The November 7 benchmark build was warning-free. For the earlier PEXP
+change, 928 focused checks passed with default, forced sparse, forced dense
+and legacy routes.

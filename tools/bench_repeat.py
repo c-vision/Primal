@@ -72,6 +72,8 @@ def parse_table(text):
 
 
 def _num(v):
+    if v.startswith("**") and v.endswith("**"):
+        v = v[2:-2]
     try:
         return float(v)
     except ValueError:

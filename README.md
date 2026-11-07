@@ -170,10 +170,10 @@ Linux, macOS and the BSDs; on Windows use MinGW
 | Dependencies | libm | — | — | C++ | Rust | C |
 | Licence | Apache-2.0 | commercial | commercial | MIT | Apache-2.0 | MIT |
 
-PrimalSolver is not a replacement for HiGHS on large LP/MIP, and Clarabel is
-faster on most conic models. What it offers is the combination: SDP,
-exponential/power cones and integer variables in one permissively licensed C
-library with no dependencies.
+PrimalSolver combines SDP, exponential and power cones, and integer
+variables in one permissively licensed C library. The benchmarks below
+include a fixed-diagonal SDP family where Primal can construct the
+solution directly. Clarabel remains faster on the mixed SOC/PEXP case.
 
 The mixed SOC/exponential route now includes a higher-order corrector. Local
 paired measurements show 24–48% less solve time on three exponential
@@ -183,46 +183,47 @@ on that case. See [measurements, scope and validation](docs/pexp-higher-correcti
 
 ## Benchmarks
 
-Measured on 2026-11-05, Apple M5 Max (arm64), macOS 27.2, Apple clang 21,
-C99 `-O2`. Seconds, median of **five complete runs**; printed objectives were
-stable across all runs and the harness objective checks passed.
+Measured on 2026-11-07 at `bd53531`, Apple Silicon (arm64), macOS 27.2,
+Apple clang 21, C99 `-O2`. Times are in seconds and show the median of five
+complete runs. **Bold** marks the lowest measured median in each row.
+The objective checks passed in every run.
 
 <div>
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | 0.0016 | 0.0022 | 0.0002 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | 0.0021 | 0.0024 | 0.0010 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | 0.0081 | 0.0055 | 0.0031 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | 0.0448 | 0.0174 | 0.0199 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.0023 | N/A | 0.0006 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.0105 | N/A | 0.0031 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.0655 | N/A | 0.0125 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.3519 | N/A | N/A | N/A | 0.2031 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 1.3803 | N/A | N/A | N/A | 0.3652 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 4.1655 | N/A | N/A | N/A | 1.4121 | 277.019 |
-| socp_40 | socp | 60 x 1 | - | 0.0006 | N/A | 0.0001 | 0.0004 | N/A | 0.707107 |
-| socp_120 | socp | 180 x 1 | - | 0.0003 | N/A | 0.0003 | 0.0008 | N/A | 0.707107 |
-| socp_200 | socp | 300 x 1 | - | 0.0005 | N/A | 0.0006 | 0.0013 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | 0.0003 | N/A | 0.0002 | 0.0003 | N/A | -9.83233 |
-| sdp_5 | sdp | 5 x 5 | - | 0.0003 | N/A | 0.0002 | 0.0003 | N/A | -4.79948 |
-| sdp_6 | sdp | 6 x 6 | - | 0.0006 | N/A | 0.0003 | 0.0003 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | 0.0018 | N/A | 0.0004 | 0.0006 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | 0.0010 | N/A | 0.0005 | 0.0007 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | 0.0017 | N/A | 0.0007 | 0.0006 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | 0.0021 | N/A | 0.0010 | 0.0010 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | 0.0025 | N/A | 0.0014 | 0.0023 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | 0.0058 | N/A | 0.0023 | 0.0013 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | 0.0057 | N/A | 0.0027 | 0.0015 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | 0.0059 | N/A | 0.0027 | 0.0014 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | 0.0080 | N/A | 0.0031 | 0.0017 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | 0.0193 | N/A | 0.0044 | 0.0018 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | 0.0160 | N/A | 0.0058 | 0.0023 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | 0.0187 | N/A | 0.0060 | 0.0027 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | 0.0521 | N/A | 0.0058 | 0.0026 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | 0.0414 | N/A | 0.0112 | 0.0029 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | 0.0322 | N/A | 0.0162 | 0.0053 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | 0.0339 | N/A | 0.0166 | 0.0113 | N/A | -149.613 |
+| lp_50x25 | lp | 50 x 25 | 171 | 0.001053 | 0.001461 | **0.000166** | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | 0.001388 | 0.001837 | **0.000648** | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | 0.006212 | 0.003626 | **0.002039** | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | 0.031574 | 0.012659 | **0.011852** | N/A | N/A | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.001604 | N/A | **0.000392** | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | 0.006800 | N/A | **0.002093** | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | 0.044115 | N/A | **0.007664** | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.289115 | N/A | N/A | N/A | **0.150934** | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 1.031619 | N/A | N/A | N/A | **0.267775** | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | 3.066108 | N/A | N/A | N/A | **1.010305** | 277.019 |
+| socp_40 | socp | 60 x 1 | - | 0.000378 | N/A | **0.000097** | 0.000257 | N/A | 0.707107 |
+| socp_120 | socp | 180 x 1 | - | 0.000235 | N/A | **0.000219** | 0.000701 | N/A | 0.707107 |
+| socp_200 | socp | 300 x 1 | - | **0.000340** | N/A | 0.000423 | 0.001048 | N/A | 0.707107 |
+| sdp_4 | sdp | 4 x 4 | - | **0.000025** | N/A | 0.000123 | 0.000200 | N/A | -9.83233 |
+| sdp_5 | sdp | 5 x 5 | - | **0.000010** | N/A | 0.000134 | 0.000192 | N/A | -4.79948 |
+| sdp_6 | sdp | 6 x 6 | - | **0.000010** | N/A | 0.000163 | 0.000215 | N/A | -10.2438 |
+| sdp_7 | sdp | 7 x 7 | - | **0.000011** | N/A | 0.000252 | 0.000403 | N/A | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | **0.000012** | N/A | 0.000404 | 0.000461 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | **0.000014** | N/A | 0.000539 | 0.000380 | N/A | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | **0.000015** | N/A | 0.000678 | 0.000682 | N/A | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | **0.000018** | N/A | 0.001086 | 0.001724 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | **0.000019** | N/A | 0.001677 | 0.000890 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | **0.000023** | N/A | 0.001840 | 0.000974 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | **0.000026** | N/A | 0.001892 | 0.001008 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | **0.000030** | N/A | 0.002332 | 0.001260 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | **0.000032** | N/A | 0.003333 | 0.001454 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | **0.000039** | N/A | 0.004184 | 0.001667 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | **0.000045** | N/A | 0.004503 | 0.001992 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | **0.000046** | N/A | 0.004267 | 0.001919 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | **0.000060** | N/A | 0.006773 | 0.002362 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | **0.000058** | N/A | 0.009405 | 0.003735 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | **0.000069** | N/A | 0.010784 | 0.008129 | N/A | -149.613 |
 
 </div>
 
@@ -233,9 +234,9 @@ Primal timings cover `PRIMAL_optimize`; Clarabel timings exclude solver
 construction, while the SCS calls include setup. Default tolerances differ,
 and objective agreement alone does not establish equal solution accuracy.
 
-### SDP results after the accuracy fix
+### Earlier SDP accuracy and performance measurements
 
-The table above is the snapshot before the fix. In that snapshot, SDP20's
+In the November 5 snapshot, before the accuracy fix, SDP20's
 relative objective error was about `1.3e-6`. At `314d4f0`, all 19 published SDP
 orders (4–22) meet `1e-8` for relative objective error, reported primal and
 dual infeasibility, and relative gap. SDP20's relative gap is `3.13e-9`.
