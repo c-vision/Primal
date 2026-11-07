@@ -2944,6 +2944,93 @@ done:
     return status;
 }
 
+/* With fixed positive diagonals, |Xij| <= sqrt(Xii Xjj). When the
+ * signs of u can make Cij ui uj nonpositive on every edge, X = uu'
+ * attains these bounds together. Congruence by diag(u) turns the dual
+ * slack into a weighted graph Laplacian, which certifies optimality. */
+static int sdp_fixed_diagonal(int d, const SdpSpData *data, const double *b,
+                              const double *C, double ptol, double dtol,
+                              double gtol, double *X, double *y, double *S) {
+    if (d <= 0 || data->bp[1] != d) return 0;
+    double *u = calloc((size_t)d, sizeof(double));
+    int *row = malloc((size_t)d * sizeof(int));
+    int *sign = calloc((size_t)d, sizeof(int));
+    int *queue = malloc((size_t)d * sizeof(int));
+    int ok = 0;
+    if (!u || !row || !sign || !queue) goto done;
+    for (int p = 0; p < d; p++) {
+        const double *A = data->bv[p];
+        int k = data->bi[p], diag = -1;
+        if (k != p) goto done; /* every equality must occur exactly once */
+        for (int i = 0; i < d; i++) for (int j = 0; j < d; j++) {
+            if (A[(size_t)i*d+j] == 0.0) continue;
+            if (i != j || diag >= 0) goto done;
+            diag = i;
+        }
+        if (diag < 0 || u[diag] != 0.0) goto done;
+        double coefficient = A[(size_t)diag*d+diag];
+        if (!isfinite(coefficient)) goto done;
+        double value = b[k] / coefficient;
+        if (!(value > 0.0) || !isfinite(value)) goto done;
+        u[diag] = sqrt(value);
+        row[diag] = p;
+    }
+    for (int root = 0; root < d; root++) {
+        if (sign[root]) continue;
+        int count = 1;
+        queue[0] = root;
+        sign[root] = 1;
+        for (int head = 0; head < count; head++) {
+            int i = queue[head];
+            for (int j = 0; j < d; j++) {
+                if (i == j) continue;
+                double cij = C[(size_t)i*d+j];
+                if (!isfinite(cij) || cij != C[(size_t)j*d+i]) goto done;
+                if (cij == 0.0) continue;
+                int wanted = cij < 0.0 ? sign[i] : -sign[i];
+                if (sign[j] == 0) {
+                    sign[j] = wanted;
+                    queue[count++] = j;
+                } else if (sign[j] != wanted) goto done;
+            }
+        }
+    }
+    for (int i = 0; i < d; i++) u[i] *= sign[i];
+    double pobj = 0.0, dobj = 0.0, pri = 0.0, dual = 0.0, bnorm = 0.0;
+    for (int i = 0; i < d; i++) {
+        int p = row[i], k = data->bi[p];
+        size_t diag = (size_t)i*d+i;
+        double coefficient = data->bv[p][diag], slack = 0.0;
+        for (int j = 0; j < d; j++) {
+            size_t a = (size_t)i*d+j;
+            X[a] = u[i] * u[j];
+            S[a] = C[a];
+            if (!isfinite(X[a])) goto done;
+            pobj += C[a] * X[a];
+            if (i != j && C[a] != 0.0) slack += (-C[a] * u[j]) / u[i];
+        }
+        S[diag] = slack;
+        y[k] = (C[diag] - slack) / coefficient;
+        double pe = coefficient * X[diag] - b[k];
+        double de = (S[diag] - C[diag]) + coefficient * y[k];
+        if (!isfinite(pe) || !isfinite(de) || !isfinite(y[k])) goto done;
+        pri = fmax(pri, fabs(pe));
+        dual = fmax(dual, fabs(de));
+        bnorm = fmax(bnorm, fabs(b[k]));
+        dobj += b[k] * y[k];
+    }
+    double gap_scale = 1.0 + fabs(pobj) + fabs(dobj);
+    if (isfinite(gap_scale) && pri / (1.0 + bnorm) <= ptol &&
+        dual <= dtol && fabs(pobj - dobj) / gap_scale <= gtol)
+        ok = 1;
+done:
+    free(u);
+    free(row);
+    free(sign);
+    free(queue);
+    return ok;
+}
+
 /* The native solve, run as it always ran; an exp/power model without PSD
  * blocks that it does NOT solve gets one more native attempt in SECANT mode
  * (augmented R_+ block, primal-dual secant scaling, common step length --
@@ -2977,6 +3064,14 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
     SdpSpData S; memset(&S, 0, sizeof S);
     if (sdp_spd_build(&S, m, n, Acsr, nb, dims, Abar, nsoc, socdims, Asoc, nep, Aexp)) {
         sdp_spd_free(&S); return 2; }
+    if (n == 0 && nb == 1 && nsoc == 0 && nep == 0 && m == dims[0] &&
+        max_iter > 1 && !ywarm && !getenv("GMB_SDP_HSD") &&
+        sdp_fixed_diagonal(m, &S, b, Cbar[0], rtol_pri, rtol_dual, rtol_gap,
+                           Xbar[0], y, Sbar[0])) {
+        if (getenv("GMB_DBG")) fprintf(stderr, "  [route] fixed-diagonal PSD certificate\n");
+        sdp_spd_free(&S);
+        return 0;
+    }
 #ifdef SDP_IPM_CORRECTED
     double *ecorr = (double *)calloc((size_t)(nep > 0 ? nep : 1) * 3, sizeof(double));
     ExpConeScaleCache *escale = (ExpConeScaleCache *)calloc((size_t)(nep > 0 ? nep : 1), sizeof(ExpConeScaleCache));

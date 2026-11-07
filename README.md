@@ -269,6 +269,19 @@ construction and solve at one thread. These are medians of two series of
 nine alternating pairs. Both relative objective errors were below `1e-8`.
 The relative gaps were `3.13e-9` for Primal and `2.01e-11` for Clarabel.
 
+For a single PSD block with every diagonal fixed and compatible objective
+signs, Primal now constructs a primal and dual certificate directly. The
+interior-point solver handles the other cases. On this family, two new
+series of nine alternating pairs gave these solve times against `1bf265c`.
+
+| Model | `1bf265c` (ms) | Direct certificate (ms) |
+|---|---:|---:|
+| SDP20 | 36.50 / 40.79 | 0.083 / 0.086 |
+| SDP21 | 25.54 / 28.47 | 0.086 / 0.090 |
+| SDP22 | 36.14 / 36.86 | 0.098 / 0.097 |
+
+All 19 orders (4–22) met the accuracy limits above with this change.
+
 See the [benchmark methodology](docs/benchmarks.md) for reference versions,
 accuracy limits and reproduction.
 
