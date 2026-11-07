@@ -16,15 +16,15 @@ point and a status you can check rather than trust.
 - **MILP, MIQP** — branch & bound with cutting planes, strong branching,
   probing and primal heuristics.
 - **SOCP** — primal-dual conic interior point with Nesterov–Todd scaling.
-- **SDP** — Nesterov–Todd interior point on PSD blocks.
+- **SDP** — Nesterov–Todd interior point on PSD blocks. For a single block
+  with fixed diagonal and compatible objective signs, Primal constructs
+  the primal and dual solution directly.
 - **Exponential and power cones** — native interior point with closed-form
-  barriers.
+  barriers. Mixed SOC and primal exponential models use a higher-order
+  corrector and select a sparse KKT solve when the system is sparse.
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
-- **Disjunctions** — ACC, DJC, SOS1/SOS2, semi-continuous and semi-integer
-  variables.
-
-Every class is mapped onto one internal conic representation, so behaviour and
-diagnostics are the same across classes.
+- **Modeling** — affine conic constraints (ACC), disjunctive constraints
+  (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.
 
 ## Certificates
 
@@ -165,21 +165,10 @@ Linux, macOS and the BSDs; on Windows use MinGW
 | SDP | yes | yes | — | — | yes | yes, first-order |
 | Exp / power cones | yes | yes | — | — | yes | yes, first-order |
 | MIP / MIQP | yes | yes | yes | yes | — | — |
-| Method | interior point | interior point | simplex + IPM | simplex + IPM | interior point | first-order |
+| Continuous methods | simplex + IPM | interior point | simplex + IPM | simplex + IPM | interior point | first-order |
 | Typical accuracy | ~1e-8 | ~1e-8 | ~1e-8 | ~1e-9 | ~1e-8 | ~1e-4 |
 | Dependencies | libm | — | — | C++ | Rust | C |
 | Licence | Apache-2.0 | commercial | commercial | MIT | Apache-2.0 | MIT |
-
-PrimalSolver combines SDP, exponential and power cones, and integer
-variables in one permissively licensed C library. The benchmarks below
-include a fixed-diagonal SDP family where Primal can construct the
-solution directly. Clarabel remains faster on the mixed SOC/PEXP case.
-
-The mixed SOC/exponential route now includes a higher-order corrector. Local
-paired measurements show 24–48% less solve time on three exponential
-regression sizes, including 33–35% on the 40×8 case. The focused checks pass
-928/928; this is not a full-suite result. Clarabel remains substantially faster
-on that case. See [measurements, scope and validation](docs/pexp-higher-correction.md).
 
 ## Benchmarks
 
@@ -234,70 +223,26 @@ Primal timings cover `PRIMAL_optimize`; Clarabel timings exclude solver
 construction, while the SCS calls include setup. Default tolerances differ,
 and objective agreement alone does not establish equal solution accuracy.
 
-### Earlier SDP accuracy and performance measurements
-
-In the November 5 snapshot, before the accuracy fix, SDP20's
-relative objective error was about `1.3e-6`. At `314d4f0`, all 19 published SDP
-orders (4–22) meet `1e-8` for relative objective error, reported primal and
-dual infeasibility, and relative gap. SDP20's relative gap is `3.13e-9`.
-
-The first optimization reduced the time spent recovering an accurate
-solution. These medians come from two series of nine alternating pairs.
-The baseline is the accuracy fix at `adb7f74`.
-
-| Model | Accuracy fix (ms) | Optimized solve (ms) |
-|---|---:|---:|
-| SDP14 | 47.83 / 48.20 | 7.03 / 6.55 |
-| SDP20 | 247.02 / 235.77 | 55.98 / 52.63 |
-| SDP21 | 137.55 / 137.47 | 38.61 / 37.63 |
-| SDP22 | 187.72 / 184.24 | 47.80 / 46.28 |
-
-Combining faster PSD step checks with elimination of fixed coordinates
-from the recovery system reduced the sum of the four median times by
-6.9–7.1% against `314d4f0`. The 19 published SDP orders still meet
-the accuracy limits above.
-
-| Model | `314d4f0` (ms) | Combined optimizations (ms) |
-|---|---:|---:|
-| SDP14 | 5.14 / 5.57 | 4.70 / 5.04 |
-| SDP20 | 45.40 / 42.19 | 41.97 / 39.67 |
-| SDP21 | 35.32 / 28.92 | 31.75 / 26.16 |
-| SDP22 | 41.24 / 35.63 | 39.62 / 33.66 |
-
-A separate comparison on SDP20 (seed 220) at `314d4f0` gave 59.67 / 61.44 ms for
-`PRIMAL_optimize` and 10.07 / 10.19 ms for Clarabel 0.11.1, including solver
-construction and solve at one thread. These are medians of two series of
-nine alternating pairs. Both relative objective errors were below `1e-8`.
-The relative gaps were `3.13e-9` for Primal and `2.01e-11` for Clarabel.
-
-For a single PSD block with every diagonal fixed and compatible objective
-signs, Primal now constructs a primal and dual certificate directly. The
-interior-point solver handles the other cases. On this family, two new
-series of nine alternating pairs gave these solve times against `1bf265c`.
-
-| Model | `1bf265c` (ms) | Direct certificate (ms) |
-|---|---:|---:|
-| SDP20 | 36.50 / 40.79 | 0.083 / 0.086 |
-| SDP21 | 25.54 / 28.47 | 0.086 / 0.090 |
-| SDP22 | 36.14 / 36.86 | 0.098 / 0.097 |
-
-All 19 orders (4–22) met the accuracy limits above with this change.
-
+The SDP rows use fixed-diagonal models with compatible objective signs.
 See the [benchmark methodology](docs/benchmarks.md) for reference versions,
-accuracy limits and reproduction.
+accuracy checks and reproduction.
 
-The mixed SOC/PEXP regression family is separate from the table above. Against
-isolated sources at `06f767b`, two batches of nine alternating pairs gave:
+### Mixed SOC and exponential cones
 
-| Model | Previous solve (ms) | Current solve (ms) | Reduction |
-|---|---:|---:|---:|
-| Regression 20×4 | 28.00 / 27.57 | 14.95 / 14.41 | 46.6–47.7% |
-| Regression 40×8 | 91.47 / 94.60 | 61.27 / 61.69 | 33.0–34.8% |
-| Regression 80×12 | 121.67 / 126.28 | 92.51 / 94.34 | 24.0–25.3% |
+The regression models combine one rotated quadratic cone with a primal
+exponential cone per observation. Sizes give observations × features.
 
-Both medians are shown. These gains apply to the mixed-cone corrector, not to
-LP/MIP or SDP. Validation and remaining Clarabel gap are documented in
-[the corrector measurements](docs/pexp-higher-correction.md).
+| Instance | Primal (ms) | Clarabel (ms) |
+|---|---:|---:|
+| 20×4 | 3.39 / 3.46 | **0.26 / 0.19** |
+| 40×8 | 10.50 / 10.10 | **0.58 / 0.58** |
+| 80×12 | 43.38 / 43.31 | **2.62 / 2.58** |
+
+Measured on 2026-11-07. Each cell shows two medians from nine alternating
+pairs per series. Primal timings cover `PRIMAL_optimize`. Clarabel 0.11.1
+runs at one thread and includes solver construction. The results met
+the `1e-8` benchmark checks for objective agreement, feasibility and
+relative gap. See the [mixed-cone benchmark notes](docs/pexp-higher-correction.md#sparse-kkt-selection).
 
 ## Documentation
 

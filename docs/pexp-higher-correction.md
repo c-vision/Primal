@@ -77,6 +77,38 @@ Primal comparison: it establishes a remaining gap of tens of times on this
 case, not a controlled cross-solver speed ratio or a comparison of identical
 internal representations.
 
+## Sparse KKT selection
+
+The corrected SOC/PEXP engine now estimates the density of both KKT forms
+before selecting the sparse path. If that attempt fails, the solver retries
+with the previous routing policy.
+
+Two batches of nine alternating measurements against `5be1e52` gave:
+
+| Model | Previous routing (ms) | Sparse selection (ms) |
+|---|---:|---:|
+| Exponential regression 20×4 | 12.01 / 11.94 | 3.60 / 3.40 |
+| Exponential regression 40×8 | 49.27 / 48.09 | 9.66 / 9.70 |
+| Exponential regression 80×12 | 71.56 / 72.75 | 44.18 / 45.93 |
+
+Clarabel 0.11.1 at one thread took 1.38 ms in both batches on the 40×8
+problem, including construction and solve. Its model substitutes out the
+affine arguments of the exponential cones and retains the quadratic
+epigraph. Both solvers met the `1e-8` benchmark thresholds for objective
+agreement, feasibility and relative gap.
+
+The README comparison uses a separate clean build and covers all three
+sizes. Clarabel uses a tolerance of `1e-9` for feasibility and gap. At
+`1e-10` the 80×12 case returned `AlmostSolved`, although its measured
+metrics met the `1e-8` benchmark limits. The published run uses one
+setting across all sizes and requires `Solved` as well as the numerical
+checks. Timings from the two settings belong to separate comparisons.
+
+The focused group passed 928 checks in default, forced dense and legacy
+modes. Forced sparse mode reproduced the same two DEXP checks that fail
+on the baseline. An injected sparse factorization failure verified the
+retry and reproduced the dense result.
+
 ## Validation and limits
 
 T299 checks the contraction against independent Taylor jets, log-homogeneity

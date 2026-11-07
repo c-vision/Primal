@@ -1690,6 +1690,30 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
 }
 
 
+#ifdef SDP_IPM_CORRECTED
+/* Count the distinct entries of the orthant Schur block without forming
+ * it. Columns that touch the same rows can contribute to the same entry. */
+static int sdp_schur_within_budget(const SdpSpData *S, int m, double budget) {
+    if (budget < 0.0) return 0;
+    int *seen = calloc((size_t)(m > 0 ? m : 1), sizeof(int));
+    if (!seen) return 0;
+    for (int k = 0; k < m && budget >= 0.0; k++) {
+        for (int p = S->rp[k]; p < S->rp[k + 1] && budget >= 0.0; p++) {
+            int col = S->ri[p];
+            for (int q = S->cp[col]; q < S->cp[col + 1]; q++) {
+                int row = S->ci[q];
+                if (seen[row] != k + 1) {
+                    seen[row] = k + 1;
+                    budget -= 1.0;
+                }
+            }
+        }
+    }
+    free(seen);
+    return budget >= 0.0;
+}
+#endif
+
 /**
  * Primal-dual interior point method for conic problems (SDP/SOC/exp-power/LP/QP).
  *
@@ -1776,7 +1800,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
             double *const *Zexp, double *const *Sexp, const double *xwarm,
             const double *ywarm, int *fb_ok
 #ifdef SDP_IPM_CORRECTED
-            , double *ecorr, ExpConeScaleCache *escale
+            , double *ecorr, ExpConeScaleCache *escale, int *sparse_trial
 #endif
             )
 {
@@ -1896,6 +1920,26 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     SdpSpKkt spk[2]; memset(spk, 0, sizeof spk);
     SpluFact *sp_pc = NULL; double *sp_pcx = NULL; int sp_pcaug = -1;
     double sp_work = getenv("GMB_SDP_DENSE") ? HUGE_VAL : (getenv("GMB_SDP_SPARSE") ? 0.0 : SDP_SPARSE_WORK);
+#ifdef SDP_IPM_CORRECTED
+    /* Bound structural density in both forms of the orthant block. */
+    double order = (double)m + K + Ke;
+    if (sparse_trial && sp_work == SDP_SPARSE_WORK &&
+        nb == 0 && nsoc > 0 && nep > 0 && order >= 128) {
+        double entries = 0.0, augmented_entries = n + 2.0 * S->cp[n];
+        for (int i = 0; i < nsoc; i++) {
+            double width = socdims[i];
+            entries += width * (width + 2.0 * (S->sp[i + 1] - S->sp[i]));
+        }
+        for (int i = 0; i < nep; i++)
+            entries += 9.0 + 6.0 * (S->ep[i + 1] - S->ep[i]);
+        augmented_entries += entries;
+        if (augmented_entries <= 0.1 * (order + n) * (order + n) &&
+            sdp_schur_within_budget(S, m, 0.1 * order * order - entries)) {
+            *sparse_trial = 1;
+            sp_work = 0.0;
+        }
+    }
+#endif
     if (!ok) { status = 2; goto done; }
 
     /* Starting point: strictly inside every cone at once, because the barrier
@@ -3081,12 +3125,21 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
         Csoc, nep, ekind, ealpha, Cexp, max_iter, tol, rtol_pri, rtol_dual, rtol_gap, \
         near_rel, x, Xbar, y, Sbar, Zsoc, Ssoc, Zexp, Sexp, xwarm, ywarm, fb_ok
 #ifdef SDP_IPM_CORRECTED
-#define SDP_IPM_RUN(sec) sdp_ipm_run(SDP_IPM_ARGS(sec), ecorr, escale)
+    int sparse_trial = 0;
+#define SDP_IPM_RUN(sec) sdp_ipm_run(SDP_IPM_ARGS(sec), ecorr, escale, NULL)
 #else
 #define SDP_IPM_RUN(sec) sdp_ipm_run(SDP_IPM_ARGS(sec))
 #endif
     int first = getenv("GMB_EXP_DA") ? 1 : 0;
+#ifdef SDP_IPM_CORRECTED
+    int st = sdp_ipm_run(SDP_IPM_ARGS(first), ecorr, escale, &sparse_trial);
+    if (st != 0 && sparse_trial) {
+        if (getenv("GMB_DBG")) fprintf(stderr, "  [retry] original KKT routing after sparse status=%d\n", st);
+        st = SDP_IPM_RUN(first);
+    }
+#else
     int st = SDP_IPM_RUN(first);
+#endif
     if (st != 0 && !first && nep > 0 && nb == 0 && !getenv("GMB_NO_EXP_RETRY")) {
         size_t ns = (size_t)n + (size_t)m + 6 * (size_t)nep, o = 0;
         for (int i = 0; i < nsoc; i++) ns += 2 * (size_t)socdims[i];
