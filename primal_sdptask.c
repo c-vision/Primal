@@ -1659,7 +1659,7 @@ int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
          * optimum (see the forward-declaration comment). */
         status = solve_std_routed(sf->Aptr, sf->Arow, sf->Aval, NULL, NULL, NULL,
                                   sf->m, sf->n, sf->b, sf->c, t, xt, ystd, zst,
-                                  NULL, NULL, 0, NULL, NULL);
+                                  NULL, NULL, STD_METHOD_MIP_SLACK, NULL, NULL);
     }
     if (status == 0 || status == 2) {
         /* On an unbounded relaxation the simplex still fills its current

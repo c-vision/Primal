@@ -333,7 +333,7 @@ int solve_std_routed(const int *Aptr, const int *Arow, const double *Aval,
                             const double *x0, const double *y0, int method,
                             double *dray, double *pray)
 {
-    int simplex = (method == 0 || method == 4);
+    int simplex = (method == 0 || method == 4 || method == STD_METHOD_MIP_SLACK);
     iter_cb_begin(t);
     cb_fire(t, simplex ? PRIMAL_CALLBACK_BEGIN_SIMPLEX : PRIMAL_CALLBACK_BEGIN_INTPNT);
     int st = solve_std_routed_impl(Aptr, Arow, Aval, Qptr, Qrow, Qval, m, n, b, c,
@@ -342,6 +342,32 @@ int solve_std_routed(const int *Aptr, const int *Arow, const double *Aval,
     iter_cb_end();
     return st;
 }
+/* A slack start changes the pivot sequence. Check primal and dual
+ * feasibility and the objective gap before using the bound in B&B. */
+static int mip_slack_solution(const int *Ap, const int *Ai, const double *Av,
+                              int m, int n, const double *b, const double *c,
+                              const double *x, const double *y) {
+    double *ax = malloc((size_t)m * sizeof(double));
+    if (!ax) return 0;
+    csc_Ax(Ap, Ai, Av, m, n, x, ax);
+    double pobj = 0.0, dobj = 0.0;
+    int ok = 1;
+    for (int i = 0; i < m && ok; i++) {
+        ok = isfinite(y[i]) && fabs(ax[i] - b[i]) <= 1e-8 * (1.0 + fabs(b[i]));
+        dobj += b[i] * y[i];
+    }
+    free(ax);
+    for (int j = 0; j < n && ok; j++) {
+        double ay = 0.0;
+        for (int k = Ap[j]; k < Ap[j+1]; k++) ay += Av[k] * y[Ai[k]];
+        ok = isfinite(x[j]) && x[j] >= -1e-9 && isfinite(ay) &&
+             ay - c[j] <= 1e-9 * (1.0 + fabs(c[j]));
+        pobj += c[j] * x[j];
+    }
+    return ok && isfinite(pobj) && isfinite(dobj) &&
+           fabs(pobj-dobj) <= 1e-9 * (1.0 + fabs(pobj) + fabs(dobj));
+}
+
 /* Body of solve_std_routed: runs the engine named by method (0 tableau
  * simplex, 1 dense IPM, 2 sparse LP IPM, 3 sparse QP IPM, 4 dual simplex from
  * a crash basis) and returns its STD_* status. */
@@ -406,6 +432,21 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
      * basis starts the revised method (B^-1 + eta update) without phase 1. If
      * the basis is not primal feasible (st 1), singular (4) or does not close
      * (3), fall back to the tableau (phase 1+2). Kill-switch GMB_SIMPLEX_TABLEAU=1. */
+    if (method == STD_METHOD_MIP_SLACK) {
+        method = 0;
+        int slack = m > 0 && n >= m && !getenv("GMB_SIMPLEX_TABLEAU");
+        for (int i = 0; i < m && slack; i++) {
+            int j = n - m + i, p = Aptr[j];
+            slack = b[i] >= 0.0 && c[j] == 0.0 && Aptr[j+1] == p+1 &&
+                    Arow[p] == i && Aval[p] == 1.0;
+        }
+        if (slack && simplex_solve_std_slack(dA, m, n, b, c,
+                                            iter_cap(t->max_iter_simplex), xt, ystd) == 0 &&
+            mip_slack_solution(Aptr, Arow, Aval, m, n, b, c, xt, ystd)) {
+            free(dA);
+            return STD_OPT;
+        }
+    }
     int st = 3;
     if (!getenv("GMB_SIMPLEX_TABLEAU")) {
         int *bas = (int *)malloc((size_t)(m > 0 ? m : 1) * sizeof(int));

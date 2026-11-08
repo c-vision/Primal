@@ -44,6 +44,12 @@ int simplex_solve_std_tab(const double *A, int m, int n,
                           double *dray, double *pray,
                           int *basis_out, double *tab_out);
 
+/* Phase 2 with the last m columns forming a zero-cost identity basis.
+ * The caller checks the basis and that b is nonnegative. */
+int simplex_solve_std_slack(const double *A, int m, int n,
+                            const double *b, const double *c,
+                            int max_iter, double *x, double *y);
+
 /* Dual simplex: min c'x s.t. A x = b, x >= 0, from a DUAL-feasible basis
  * (`basis[m]`, column indices); `b` may have negative entries. Builds
  * B^-1 with Gauss-Jordan on [B|I], picks the row with the most negative RHS and

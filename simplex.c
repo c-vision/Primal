@@ -221,15 +221,15 @@ static int run_phase(Tab *t, int max_iter, int *ent_out) {
 
 /* Two-phase primal simplex driver on the tableau (phase 1 / phase 2).
  * Builds the initial tableau, extracts x, y and the Farkas rays. */
-int simplex_solve_std_tab(const double *A, int m, int n,
+static int simplex_solve_tab(const double *A, int m, int n,
                           const double *b, const double *c,
                           int max_iter, double *x, double *y,
                           double *dray, double *pray,
-                          int *basis_out, double *tab_out)
+                          int *basis_out, double *tab_out, int slack_basis)
 {
     Tab t;
     t.m = m; t.n = n;
-    t.ntot = n + m;
+    t.ntot = slack_basis ? n : n + m;
     t.stride = t.ntot + 1;
     t.T = (double *)calloc((size_t)(m + 1) * (size_t)t.stride, sizeof(double));
     t.basis = (int *)malloc((size_t)(m > 0 ? m : 1) * sizeof(int));
@@ -237,13 +237,16 @@ int simplex_solve_std_tab(const double *A, int m, int n,
 
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) t.T[i * t.stride + j] = A[i * n + j];
-        t.T[i * t.stride + n + i] = 1.0;
+        if (!slack_basis) t.T[i * t.stride + n + i] = 1.0;
         double bv = b[i];
         if (bv < 0.0 && bv > -1e-9) bv = 0.0;
         t.T[i * t.stride + t.ntot] = bv;
-        t.basis[i] = n + i;
+        t.basis[i] = slack_basis ? n - m + i : n + i;
     }
     double *red = t.T + m * t.stride;
+
+    int status;
+    if (slack_basis) goto phase2;
 
     /* ---------- phase 1 ---------- */
     for (int j = 0; j < t.ntot; j++) {
@@ -256,7 +259,7 @@ int simplex_solve_std_tab(const double *A, int m, int n,
         for (int i = 0; i < m; i++) s -= t.T[i * t.stride + t.ntot];
         red[t.ntot] = s;
     }
-    int status = run_phase(&t, max_iter, NULL);
+    status = run_phase(&t, max_iter, NULL);
     if (status == SIMP_MAXITER) goto done;
     if (status == SIMP_UNBOUNDED) { status = SIMP_MAXITER; goto done; } /* cannot happen */
 
@@ -284,6 +287,7 @@ int simplex_solve_std_tab(const double *A, int m, int n,
         /* else: redundant row, artificial stays basic at ~0 */
     }
 
+phase2:
     /* ---------- phase 2: rebuild cost row for current basis ---------- */
     for (int j = 0; j < t.ntot; j++) {
         double s = (j < n) ? c[j] : 0.0;
@@ -327,7 +331,8 @@ int simplex_solve_std_tab(const double *A, int m, int n,
             if (bi < n) x[bi] = v;
         }
     }
-    for (int r = 0; r < m; r++) y[r] = -red[n + r];
+    int identity = slack_basis ? n - m : n;
+    for (int r = 0; r < m; r++) y[r] = -red[identity + r];
 
 done:
     if (basis_out) for (int i = 0; i < m; i++) basis_out[i] = t.basis[i];
@@ -335,6 +340,22 @@ done:
     free(t.T);
     free(t.basis);
     return status;
+}
+
+int simplex_solve_std_tab(const double *A, int m, int n,
+                          const double *b, const double *c,
+                          int max_iter, double *x, double *y,
+                          double *dray, double *pray,
+                          int *basis_out, double *tab_out) {
+    return simplex_solve_tab(A, m, n, b, c, max_iter, x, y, dray, pray,
+                             basis_out, tab_out, 0);
+}
+
+int simplex_solve_std_slack(const double *A, int m, int n,
+                            const double *b, const double *c,
+                            int max_iter, double *x, double *y) {
+    return simplex_solve_tab(A, m, n, b, c, max_iter, x, y, NULL, NULL,
+                             NULL, NULL, 1);
 }
 
 /**

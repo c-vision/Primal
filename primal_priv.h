@@ -297,6 +297,7 @@ typedef struct { int n; int *idx; int *bkc; double *blc, *buc; } SavedRows;
 typedef struct { PRIMALtask_t t; int s; PRIMALrescodee rc; } MipKidJob;
 enum { P_INT = 0, P_DOU = 1, P_DOUI = 2 };
 enum { STD_OPT = 0, STD_INFEASIBLE, STD_UNBOUNDED, STD_STALLED, STD_MEMORY };
+#define STD_METHOD_MIP_SLACK 5
 
 /* the model store: defined once in primal_core.c */
 extern const PrimalParam PRIMAL_PARAMS[];
