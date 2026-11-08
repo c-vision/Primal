@@ -1,9 +1,9 @@
 # Benchmark methodology
 
-The README table dated 2026-11-07 measures `bd53531` on 32 instances across
-LP, QP, MILP, SOCP and SDP. Each timing is the median of five complete
-benchmark runs. The objective checks passed on every run and the printed
-objectives were stable. Bold marks the lowest displayed median in each row.
+The README table covers 32 instances. The LP, QP, SOCP and SDP rows use
+medians from five runs at `bd53531` on 2026-11-07. The MILP rows use
+medians from ten interleaved runs at `b452e46` on 2026-11-08. The objective
+checks passed on every run. Bold marks the lowest median in each row.
 The table uses six decimal places in seconds to show sub-millisecond times.
 The exponential-cone corrector measurements appear separately in the README.
 
@@ -15,14 +15,15 @@ The exponential-cone corrector measurements appear separately in the README.
 | C compiler | Apple clang 21.0.0, C99 `-O2 -Wall -Wextra -pedantic` |
 | NumPy / SciPy | 2.5.3 / 1.18.1 |
 | HiGHS used by SciPy | 1.12.0 |
+| HiGHS used by highspy for MILP | 1.15.1 |
 | Clarabel | 0.11.1 |
 | SCS | 3.3.1 |
 | SCIP / PySCIPOpt | 10.0 / 6.2.1 |
 
-These are CPU runs with each solver's default settings. Thread counts and
-tolerances were not normalized across solvers. The separately installed
-`highspy` package is not the HiGHS interface used for this table: LP reference
-times come from SciPy's `linprog(method="highs")`.
+The LP, QP, SOCP and SDP comparisons use the harness defaults. The MILP
+comparison uses one thread per solver and the same MPS input. It checks
+optimal status and objective agreement, plus Primal's feasibility and
+integrality to `1e-8`.
 
 ## What the timer includes
 
@@ -30,13 +31,13 @@ times come from SciPy's `linprog(method="highs")`.
   internal representation; model construction or MPS reading is excluded.
 - Clarabel: `solve()`, after the solver constructor. Setup is excluded.
 - SCS: the `scs.solve(...)` call, including setup.
-- HiGHS: the SciPy `linprog` call and its interface overhead.
+- HiGHS: SciPy's `linprog(method="highs")` for LP, including interface
+  overhead. For MILP, `highspy` times `run()` after model loading.
 - SCIP: optimization, with reading/building the model outside the timer.
 
 The bold values identify the lowest medians within those timing boundaries.
 Close medians can change order across runs.
-`N/A` is a missing measurement for this harness/interface; it is not a solver
-capability statement. In particular, HiGHS is not measured on the MILP rows.
+`N/A` denotes a missing measurement for that solver and instance.
 
 For SOCP, the family parameter n describes n free x coordinates and n/2 cone
 epigraph variables, so the model has 3n/2 scalar variables and one explicit
@@ -76,7 +77,8 @@ gap is approximately `3.13e-9`. Orders 14, 21 and 22 also pass T301 and took
 
 ## Reproduce
 
-Build all benchmark binaries before timing; keep the machine otherwise idle:
+To rerun the unified harness, build the benchmark binaries and keep the
+machine otherwise idle.
 
 ```sh
 make bench
@@ -93,6 +95,10 @@ The November 7 snapshot used a fresh isolated output directory. Its raw
 tables, objective check logs, aggregated table and binary hashes were
 retained under `out/readme-20261107/`. The November 5 snapshot is retained
 under `out/readme-20261105/`.
+
+The single-thread MILP comparison uses the same MPS fixtures with HiGHS
+and SCIP. Its comparison script, raw timings and binary hash are retained
+under `out/milp-20261108/` on the benchmark machine.
 
 The November 7 benchmark build was warning-free. For the earlier PEXP
 change, 928 focused checks passed with default, forced sparse, forced dense

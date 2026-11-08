@@ -172,9 +172,10 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 ## Benchmarks
 
-Measured on 2026-11-07 at `bd53531`, Apple Silicon (arm64), macOS 27.2,
-Apple clang 21, C99 `-O2`. Times are in seconds and show the median of five
-complete runs. **Bold** marks the lowest measured median in each row.
+CPU benchmarks on Apple Silicon (arm64), macOS 27.2, Apple clang 21,
+C99 `-O2`. Times are in seconds. **Bold** marks the lowest median in
+each row. LP, QP, SOCP and SDP use five runs at `bd53531` (2026-11-07).
+MILP uses ten interleaved runs at one thread at `b452e46` (2026-11-08).
 The objective checks passed in every run.
 
 <div>
@@ -188,9 +189,9 @@ The objective checks passed in every run.
 | qp_50x25 | qp | 50 x 25 | 1445 | 0.001604 | N/A | **0.000392** | N/A | N/A | 12.8014 |
 | qp_100x50 | qp | 100 x 50 | 5631 | 0.006800 | N/A | **0.002093** | N/A | N/A | 26.4052 |
 | qp_200x100 | qp | 200 x 100 | 22212 | 0.044115 | N/A | **0.007664** | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.289115 | N/A | N/A | N/A | **0.150934** | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 1.031619 | N/A | N/A | N/A | **0.267775** | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | 3.066108 | N/A | N/A | N/A | **1.010305** | 277.019 |
+| milp_40x20 | milp | 40 x 20 | 139 | 0.045042 | **0.042070** | N/A | N/A | 0.134153 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | 0.091407 | **0.085865** | N/A | N/A | 0.238516 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | **0.199763** | 0.317508 | N/A | N/A | 0.953599 | 277.019 |
 | socp_40 | socp | 60 x 1 | - | 0.000378 | N/A | **0.000097** | 0.000257 | N/A | 0.707107 |
 | socp_120 | socp | 180 x 1 | - | 0.000235 | N/A | **0.000219** | 0.000701 | N/A | 0.707107 |
 | socp_200 | socp | 300 x 1 | - | **0.000340** | N/A | 0.000423 | 0.001048 | N/A | 0.707107 |
