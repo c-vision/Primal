@@ -56,6 +56,7 @@ struct Presolve {
     int *row_map, *col_map;
     double *col_fix;
     POp *ops; int nops, opcap;
+    signed char *row_sign;               /* per original row: -1 if the reduced row was negated so that br >= 0 */
 };
 
 /* Fold an index and a coefficient into an FNV hash for duplicate detection.
@@ -178,6 +179,8 @@ int lp_presolve(const int *Aptr, const int *Arow, const double *Aval,
     p->row_map = (int *)malloc((size_t)(m > 0 ? m : 1) * sizeof(int));
     p->col_map = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
     p->col_fix = (double *)calloc((size_t)(n > 0 ? n : 1), sizeof(double));
+    p->row_sign = (signed char *)malloc((size_t)(m > 0 ? m : 1));
+    if (p->row_sign) for (int i = 0; i < m; i++) p->row_sign[i] = 1;
     char *alive_row = (char *)malloc((size_t)(m > 0 ? m : 1));
     char *alive_col = (char *)malloc((size_t)(n > 0 ? n : 1));
     double *bw = (double *)malloc((size_t)(m > 0 ? m : 1) * sizeof(double));
@@ -186,7 +189,7 @@ int lp_presolve(const int *Aptr, const int *Arow, const double *Aval,
     double *rval = (double *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(double));
     int *mstamp = (int *)calloc((size_t)(m > n ? m : n) + 1, sizeof(int));
     double *mval = (double *)calloc((size_t)(m > n ? m : n) + 1, sizeof(double));
-    if (!p->row_map || !p->col_map || !p->col_fix || !alive_row || !alive_col ||
+    if (!p->row_map || !p->col_map || !p->col_fix || !p->row_sign || !alive_row || !alive_col ||
         !bw || !rptr || !ridx || !rval || !mstamp || !mval) {
         free(alive_row); free(alive_col); free(bw); free(rptr); free(ridx); free(rval);
         free(mstamp); free(mval); presolve_free(p); return -1;
@@ -334,7 +337,13 @@ int lp_presolve(const int *Aptr, const int *Arow, const double *Aval,
     p->cr = (double *)malloc((size_t)(nr > 0 ? nr : 1) * sizeof(double));
     p->Arptr = (int *)calloc((size_t)(nr + 1), sizeof(int));
     if (!p->br || !p->cr || !p->Arptr) { free(alive_row); free(alive_col); free(bw); free(rptr); free(ridx); free(rval); free(mstamp); free(mval); presolve_free(p); return -1; }
-    for (int i = 0; i < m; i++) if (alive_row[i]) p->br[p->row_map[i]] = bw[i];
+    /* The engines take b >= 0.  Substituting a singleton can leave a surviving row with a negative
+     * reduced right-hand side (b_k - A_kj x_j), so such a row is negated and its sign recorded;
+     * the reduced multipliers are multiplied by the same sign in the postsolves. */
+    for (int i = 0; i < m; i++) if (alive_row[i]) {
+        p->row_sign[i] = (bw[i] < 0.0) ? -1 : 1;
+        p->br[p->row_map[i]] = p->row_sign[i] * bw[i];
+    }
     for (int j = 0; j < n; j++) if (alive_col[j]) p->cr[p->col_map[j]] = c[j];
     /* reduced CSC: count then fill */
     for (int j = 0; j < n; j++) {
@@ -354,7 +363,7 @@ int lp_presolve(const int *Aptr, const int *Arow, const double *Aval,
           int jj = p->col_map[j];
           for (int q = Aptr[j]; q < Aptr[j + 1]; q++) {
               int i = Arow[q]; if (!alive_row[i]) continue;
-              p->Arrow[w[jj]] = p->row_map[i]; p->Arval[w[jj]] = Aval[q]; w[jj]++;
+              p->Arrow[w[jj]] = p->row_map[i]; p->Arval[w[jj]] = p->row_sign[i] * Aval[q]; w[jj]++;
           }
       }
       free(w); }
@@ -440,7 +449,7 @@ void presolve_postsolve(const Presolve *p, const double *xred, const double *yre
     for (int j = 0; j < p->n; j++)
         xfull[j] = (p->col_map[j] >= 0) ? xred[p->col_map[j]] : p->col_fix[j];
     for (int i = 0; i < p->m; i++)
-        yfull[i] = (p->row_map[i] >= 0) ? yred[p->row_map[i]] : 0.0;
+        yfull[i] = (p->row_map[i] >= 0) ? (p->row_sign ? p->row_sign[i] : 1) * yred[p->row_map[i]] : 0.0;
     for (int o = p->nops - 1; o >= 0; o--) {
         const POp *op = &p->ops[o];
         if (op->type == OP_EMPTY_ROW) yfull[op->i] = 0.0;
@@ -483,7 +492,7 @@ void presolve_postsolve_dir(const Presolve *p, const double *rred, const double 
     for (int j = 0; j < p->n; j++)
         rfull[j] = (rred && p->col_map[j] >= 0) ? rred[p->col_map[j]] : 0.0;
     for (int i = 0; i < p->m; i++)
-        yfull[i] = (yred && p->row_map[i] >= 0) ? yred[p->row_map[i]] : 0.0;
+        yfull[i] = (yred && p->row_map[i] >= 0) ? (p->row_sign ? p->row_sign[i] : 1) * yred[p->row_map[i]] : 0.0;
     for (int o = p->nops - 1; o >= 0; o--) {
         const POp *op = &p->ops[o];
         if (op->type != OP_SINGLETON) continue;   /* empty/duplicate row: stays 0 */
@@ -507,6 +516,6 @@ void presolve_free(Presolve *p) {
     for (int o = 0; o < p->nops; o++) { free(p->ops[o].ks); free(p->ops[o].Akj); }
     free(p->ops);
     free(p->Arptr); free(p->Arrow); free(p->Arval); free(p->br); free(p->cr);
-    free(p->row_map); free(p->col_map); free(p->col_fix);
+    free(p->row_map); free(p->col_map); free(p->col_fix); free(p->row_sign);
     free(p);
 }

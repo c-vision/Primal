@@ -21424,8 +21424,74 @@ static void test_t304(void) {
     test_t304_size(80);
 }
 
+/* T305: LP presolve leaves a surviving row with a negative reduced right-hand side.
+ * A singleton row substitutes its variable into the other rows (b_k - A_kj x_j), which can make
+ * a surviving row's right-hand side negative; the engines take b >= 0, so the reduced row is
+ * negated and the reduced multipliers carry its sign back.  Before that, with the default
+ * presolve level, the infeasible LP of A answered OPTIMAL at x = (2,3,-2).
+ *   A: x = 2 ; x + y = 5 ; y + z = 1 ; x,y,z >= 0   (infeasible: y = 3 but y <= 1)
+ *      -> ERR_INFEASIBLE, PRIM_INFEAS_CER and a dual ray y with b'y > 0, A'y <= 0, at presolve
+ *      levels 0, 1 and 2 (the published ray must be the same statement everywhere).
+ *   B: x = 3 ; x - y + z = 1 ; y,z >= 0 ; min y   (feasible; reduced row -y + z = -2)
+ *      -> x = (3,2,0), objective 2, no infeasibility, strong duality, with presolve on and off. */
+static void test_t305(void) {
+    cur_name = "T305 presolve with a negative reduced right-hand side";
+    for (int lev = 0; lev <= 2; lev++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE_LEVEL, lev);
+        PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 3);
+        for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
+        PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2.0, 2.0);
+        PRIMAL_putarow(t, 1, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
+        PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 5.0, 5.0);
+        PRIMAL_putarow(t, 2, 2, (int[]){1, 2}, (double[]){1.0, 1.0});
+        PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 1.0, 1.0);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "T305 A infeasible LP is declared infeasible");
+        PRIMALsolstae ss = PRIMAL_SOL_STA_UNKNOWN;
+        PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &ss);
+        check(ss == PRIMAL_SOL_STA_PRIM_INFEAS_CER, "T305 A certificate status");
+        double y[3] = {0, 0, 0};
+        check_rc(PRIMAL_getdualray(t, y), PRIMAL_RES_OK, "T305 A the dual ray is there");
+        const double b[3] = {2.0, 5.0, 1.0};
+        double bty = 0.0, aty0 = y[0] + y[1], aty1 = y[1] + y[2], aty2 = y[2];
+        for (int i = 0; i < 3; i++) bty += b[i] * y[i];
+        check(bty > 1e-6, "T305 A b'y > 0");
+        check(aty0 <= 1e-9 && aty1 <= 1e-9 && aty2 <= 1e-9, "T305 A A'y <= 0");
+        pend(&p);
+    }
+    for (int pre = 0; pre <= 1; pre++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE, pre);
+        PRIMAL_appendvars(t, 3); PRIMAL_appendcons(t, 2);
+        for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
+        PRIMAL_putcj(t, 1, 1.0);
+        PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){1.0});
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 3.0, 3.0);
+        PRIMAL_putarow(t, 1, 3, (int[]){0, 1, 2}, (double[]){1.0, -1.0, 1.0});
+        PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 1.0, 1.0);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T305 B feasible LP solves");
+        double x[3], po, dob, pi, di;
+        PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
+        PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+        PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
+        PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pi);
+        PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &di);
+        close_enough_tol(x[0], 3.0, 1e-9, "T305 B x");
+        close_enough_tol(x[1], 2.0, 1e-9, "T305 B y");
+        close_enough_tol(x[2], 0.0, 1e-9, "T305 B z");
+        close_enough_tol(po, 2.0, 1e-9, "T305 B objective");
+        close_enough_tol(dob, po, 1e-9, "T305 B strong duality");
+        check(pi < 1e-9 && di < 1e-9, "T305 B primal and dual infeasibility");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t305();
     test_t304();
     test_t303();
     test_t302();
