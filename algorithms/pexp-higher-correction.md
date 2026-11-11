@@ -83,6 +83,13 @@ The corrected SOC/PEXP engine now estimates the density of both KKT forms
 before selecting the sparse path. If that attempt fails, the solver retries
 with the previous routing policy.
 
+When both sparse forms are eligible, the corrected engine starts with
+the scalar variables in the augmented KKT if their diagonal entries and
+links occupy fewer positions than the Schur block. On the 80×12 model,
+the order increases from 588 to 853 and the structural nonzeros decrease
+from 11,404 to 7,705. The final route still checks the restored solution
+against the task's tolerances.
+
 Two batches of nine alternating measurements against `5be1e52` gave:
 
 | Model | Previous routing (ms) | Sparse selection (ms) |
@@ -122,7 +129,7 @@ in public verification.
 On the three regression models, the number of completed predictor–corrector
 iterations fell from 29, 26 and 37 to 16, 16 and 21. The original-model
 quality checks passed at `1e-8`. The [README](../README.md#mixed-soc-and-exponential-cones)
-reports the refreshed timings.
+reports timings for the current routing and stopping policy.
 
 ## Validation and limits
 

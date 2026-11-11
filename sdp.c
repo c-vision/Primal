@@ -1692,25 +1692,26 @@ static int hsd_psd(int m, int n, const double *A, const double *b, const double 
 
 #ifdef SDP_IPM_CORRECTED
 /* Count the distinct entries of the orthant Schur block without forming
- * it. Columns that touch the same rows can contribute to the same entry. */
-static int sdp_schur_within_budget(const SdpSpData *S, int m, double budget) {
-    if (budget < 0.0) return 0;
+ * it. Return -1 if the structural budget is exceeded or allocation fails. */
+static double sdp_schur_entries(const SdpSpData *S, int m, double budget) {
+    if (budget < 0.0) return -1.0;
     int *seen = calloc((size_t)(m > 0 ? m : 1), sizeof(int));
-    if (!seen) return 0;
-    for (int k = 0; k < m && budget >= 0.0; k++) {
-        for (int p = S->rp[k]; p < S->rp[k + 1] && budget >= 0.0; p++) {
+    if (!seen) return -1.0;
+    double entries = 0.0;
+    for (int k = 0; k < m && entries <= budget; k++) {
+        for (int p = S->rp[k]; p < S->rp[k + 1] && entries <= budget; p++) {
             int col = S->ri[p];
             for (int q = S->cp[col]; q < S->cp[col + 1]; q++) {
                 int row = S->ci[q];
                 if (seen[row] != k + 1) {
                     seen[row] = k + 1;
-                    budget -= 1.0;
+                    entries += 1.0;
                 }
             }
         }
     }
     free(seen);
-    return budget >= 0.0;
+    return entries <= budget ? entries : -1.0;
 }
 #endif
 
@@ -1932,11 +1933,15 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
         }
         for (int i = 0; i < nep; i++)
             entries += 9.0 + 6.0 * (S->ep[i + 1] - S->ep[i]);
-        augmented_entries += entries;
-        if (augmented_entries <= 0.1 * (order + n) * (order + n) &&
-            sdp_schur_within_budget(S, m, 0.1 * order * order - entries)) {
-            *sparse_trial = 1;
-            sp_work = 0.0;
+        if (augmented_entries + entries <= 0.1 * (order + n) * (order + n)) {
+            double schur_entries = sdp_schur_entries(S, m, 0.1 * order * order - entries);
+            if (schur_entries >= 0.0) {
+                *sparse_trial = 1;
+                sp_work = 0.0;
+                /* Retain scalar variables when their diagonal and links
+                 * are sparser than the Schur block they would create. */
+                aug_guard = augmented_entries < schur_entries;
+            }
         }
     }
 #endif

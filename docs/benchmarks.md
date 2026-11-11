@@ -4,7 +4,7 @@ The README reports 32 instances measured on 2026-11-11. Each row
 shows the median of interleaved runs and highlights the fastest solver.
 The mixed SOC/PEXP comparison reports two medians from 21 interleaved
 measurements each. The refreshed mixed-cone timings and binary hashes
-are in `out/f156/final-pairs.json` on the benchmark machine.
+are in `out/f157/final-pairs.json` on the benchmark machine.
 
 | Family | Measurements per solver and instance | Accuracy checks |
 |---|---:|---|
