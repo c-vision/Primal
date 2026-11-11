@@ -7,6 +7,14 @@ checks passed on every run. Bold marks the lowest median in each row.
 The table uses six decimal places in seconds to show sub-millisecond times.
 The exponential-cone corrector measurements appear separately in the README.
 
+The LP50 Primal and Clarabel cells were refreshed on 2026-11-10 using
+18 interleaved measurements. Primal selects the sparse interior-point
+solver earlier, while explicit simplex selection remains available.
+Clarabel ran at one thread with tolerance settings of `1e-9`. Both
+results passed `1e-8` checks for objective agreement, primal and dual
+feasibility, and relative gap. The LP50 HiGHS cell retains its November 7
+measurement. Raw timings and binary hashes are in `out/f141/pairs.json`.
+
 ## Environment
 
 | Component | Measured configuration |

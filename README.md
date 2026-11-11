@@ -174,15 +174,18 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 CPU benchmarks on Apple Silicon (arm64), macOS 27.2, Apple clang 21,
 C99 `-O2`. Times are in seconds. **Bold** marks the lowest median in
-each row. LP, QP, SOCP and SDP use five runs at `bd53531` (2026-11-07).
+each row. Except for LP50, LP, QP, SOCP and SDP use five runs at
+`bd53531` (2026-11-07).
 MILP uses ten interleaved runs at one thread at `b452e46` (2026-11-08).
+The LP50 Primal and Clarabel cells use 18 interleaved runs (2026-11-10),
+with both solvers checked to `1e-8`. Its HiGHS cell uses the November 7 run.
 The objective checks passed in every run.
 
 <div>
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | 0.001053 | 0.001461 | **0.000166** | N/A | N/A | 64.1886 |
+| lp_50x25 | lp | 50 x 25 | 171 | 0.000326 | 0.001461 | **0.000179** | N/A | N/A | 64.1886 |
 | lp_100x50 | lp | 100 x 50 | 576 | 0.001388 | 0.001837 | **0.000648** | N/A | N/A | 121.946 |
 | lp_200x100 | lp | 200 x 100 | 2120 | 0.006212 | 0.003626 | **0.002039** | N/A | N/A | 284.367 |
 | lp_400x200 | lp | 400 x 200 | 8026 | 0.031574 | 0.012659 | **0.011852** | N/A | N/A | 546.481 |

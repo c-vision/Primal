@@ -151,7 +151,7 @@ static double *qcsc_to_dense(const int *Qptr, const int *Qrow, const double *Qva
 /* Decide the solver for a standard-form problem  min 1/2 x'Qx + c'x, A x = b,
  * x >= 0 (hasQ = 0 for LP). Returns 0 = dense tableau simplex, 1 = dense IPM,
  * 2 = sparse LP normal-equations IPM, 3 = sparse QP normal-equations IPM.
- * Large LPs (m*n > 1.5e6, m <= 2000) and large QPs with moderate m go sparse:
+ * LPs with m*n > 2000, m <= 2000, and large QPs with moderate m go sparse:
  * the dense tableau/LU would explode. For QP the density of Q is checked in
  * solve_std_routed (a dense Q falls back to the dense augmented IPM). MIP
  * relaxations always stay on the simplex. */
@@ -160,7 +160,7 @@ int std_route_method(int hasQ, int m, int n, PRIMALtask_t t) {
                       t->optimizer != PRIMAL_OPTIMIZER_DUAL_SIMPLEX);
     if (hasQ) return (n > 150 && m <= 600 && no_simplex) ? 3 : 1;
     int use_ipm = (t->optimizer == PRIMAL_OPTIMIZER_INTPNT);
-    int use_sparse = (m <= 2000 && (double)m * (double)n > 1.0e4 && no_simplex);
+    int use_sparse = (m <= 2000 && (double)m * (double)n > 2.0e3 && no_simplex);
     /* Bench/experiment hook: GMB_LP_SPARSE forces the sparse LP route below the
      * size threshold (opt-in, default off; it never overrides an explicit
      * simplex choice). */
