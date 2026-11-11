@@ -137,6 +137,132 @@ static LuFact *build_factor(const double *A, const double *Q, const double *D,
     return f;
 }
 
+typedef struct {
+    LuFact *reduced, *full;
+    int *map, *row;
+    double *weight;
+    int kept;
+} QpKkt;
+
+static void qp_kkt_free(QpKkt *K) {
+    dmat_lu_free(K->reduced); dmat_lu_free(K->full);
+    free(K->map); free(K->row); free(K->weight);
+    memset(K, 0, sizeof(*K));
+}
+
+/* Eliminate zero-Hessian columns with at most one equality entry.
+ * Their diagonal pivots change only the corresponding dual diagonal. */
+static int qp_kkt_reduce(QpKkt *K, const double *A, const double *Q,
+                         const double *D, int m, int n, double delta) {
+    if (!Q || n < 16) return 0;
+    K->map = malloc((size_t)n * sizeof(int));
+    K->row = malloc((size_t)n * sizeof(int));
+    K->weight = malloc((size_t)n * sizeof(double));
+    if (!K->map || !K->row || !K->weight) return 0;
+    for (int j = 0; j < n; j++) {
+        int eligible = D[j] + delta > 0.0 && isfinite(D[j] + delta);
+        int row = -1;
+        for (int k = 0; k < n && eligible; k++) eligible = Q[(size_t)j*n+k] == 0.0;
+        for (int i = 0; i < m && eligible; i++) {
+            if (A[(size_t)i*n+j] == 0.0) continue;
+            if (row >= 0) eligible = 0;
+            row = i;
+        }
+        K->map[j] = eligible ? -1 : K->kept++;
+        K->row[j] = row;
+        K->weight[j] = eligible ? 1.0 / (D[j] + delta) : 0.0;
+    }
+    if (n - K->kept < n / 4 || K->kept == 0) return 0;
+    int r = K->kept + m;
+    double *matrix = calloc((size_t)r*r, sizeof(double));
+    if (!matrix) return 0;
+    for (int i = 0; i < m; i++) matrix[(size_t)(K->kept+i)*r+K->kept+i] = -delta;
+    for (int j = 0; j < n; j++) {
+        int col = K->map[j];
+        if (col < 0) {
+            int i = K->row[j];
+            if (i >= 0) {
+                int k = K->kept + i;
+                double a = A[(size_t)i*n+j];
+                matrix[(size_t)k*r+k] += a * K->weight[j] * a;
+            }
+            continue;
+        }
+        for (int k = 0; k < n; k++)
+            if (K->map[k] >= 0) matrix[(size_t)col*r+K->map[k]] = -Q[(size_t)j*n+k];
+        matrix[(size_t)col*r+col] -= D[j] + delta;
+        for (int i = 0; i < m; i++) {
+            int k = K->kept + i;
+            matrix[(size_t)col*r+k] = matrix[(size_t)k*r+col] = A[(size_t)i*n+j];
+        }
+    }
+    K->reduced = dmat_lu_factor(matrix, r);
+    free(matrix);
+    return K->reduced != NULL;
+}
+
+static int qp_kkt_residual(const double *A, const double *Q, const double *D,
+                           int m, int n, double delta, const double *rhs,
+                           const double *x) {
+    for (int j = 0; j < n; j++) {
+        double value = -(D[j] + delta) * x[j];
+        double scale = 1.0 + fabs(rhs[j]) + fabs(value);
+        for (int k = 0; k < n; k++) {
+            double term = Q[(size_t)j*n+k] * x[k];
+            value -= term; scale += fabs(term);
+        }
+        for (int i = 0; i < m; i++) {
+            double term = A[(size_t)i*n+j] * x[n+i];
+            value += term; scale += fabs(term);
+        }
+        if (!isfinite(scale) || !(fabs(value-rhs[j]) <= 1e-9*scale)) return 0;
+    }
+    for (int i = 0; i < m; i++) {
+        double value = -delta * x[n+i];
+        double scale = 1.0 + fabs(rhs[n+i]) + fabs(value);
+        for (int j = 0; j < n; j++) {
+            double term = A[(size_t)i*n+j] * x[j];
+            value += term; scale += fabs(term);
+        }
+        if (!isfinite(scale) || !(fabs(value-rhs[n+i]) <= 1e-9*scale)) return 0;
+    }
+    return 1;
+}
+
+static int qp_kkt_solve(QpKkt *K, const double *A, const double *Q,
+                        const double *D, int m, int n, double delta, double *rhs) {
+    if (K->full) return dmat_lu_solve(K->full, rhs);
+    int r = K->kept + m;
+    double *work = malloc(((size_t)r+n+m) * sizeof(double));
+    if (work) {
+        double *full = work + r;
+        memcpy(work + K->kept, rhs + n, (size_t)m * sizeof(double));
+        for (int j = 0; j < n; j++) {
+            if (K->map[j] >= 0) work[K->map[j]] = rhs[j];
+            else if (K->row[j] >= 0) {
+                int i = K->row[j];
+                work[K->kept+i] += A[(size_t)i*n+j] * K->weight[j] * rhs[j];
+            }
+        }
+        if (dmat_lu_solve(K->reduced, work) == 0) {
+            memcpy(full + n, work + K->kept, (size_t)m * sizeof(double));
+            for (int j = 0; j < n; j++) {
+                int i = K->row[j];
+                full[j] = K->map[j] >= 0 ? work[K->map[j]] :
+                    ((i >= 0 ? A[(size_t)i*n+j] * full[n+i] : 0.0) - rhs[j]) * K->weight[j];
+            }
+            if (qp_kkt_residual(A, Q, D, m, n, delta, rhs, full)) {
+                memcpy(rhs, full, (size_t)(n+m) * sizeof(double));
+                free(work);
+                return 0;
+            }
+        }
+        free(work);
+    }
+    K->full = build_factor(A, Q, D, m, n, delta);
+    return K->full ? dmat_lu_solve(K->full, rhs) : -1;
+}
+
 /**
  * Solves an LP/QP in standard form using Mehrotra's primal-dual interior point.
  *
@@ -308,14 +434,16 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
         }
 
         /* factor (retry with larger regularization on failure) */
-        LuFact *f = NULL;
+        QpKkt factor = {0};
         double delta = 1e-8;
         for (int try = 0; try < 5; try++) {
-            f = build_factor(A, Q, D, m, n, delta);
-            if (f) break;
+            if (qp_kkt_reduce(&factor, A, Q, D, m, n, delta)) break;
+            qp_kkt_free(&factor);
+            factor.full = build_factor(A, Q, D, m, n, delta);
+            if (factor.full) break;
             delta *= 100.0;
         }
-        if (!f) { free(D); status = IPM_SINGULAR; break; }
+        if (!factor.full && !factor.reduced) { free(D); status = IPM_SINGULAR; break; }
 
         /* ---- affine predictor (sigma = 0) ---- */
         for (int j = 0; j < n; j++) rc[j] = x[j] * z[j];
@@ -324,7 +452,9 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
             rhs[j] = rd[j] + rc[j] / xj;
         }
         for (int i = 0; i < m; i++) rhs[n + i] = -rp[i];
-        dmat_lu_solve(f, rhs);
+        if (qp_kkt_solve(&factor, A, Q, D, m, n, delta, rhs)) {
+            qp_kkt_free(&factor); free(D); status = IPM_SINGULAR; break;
+        }
         for (int j = 0; j < n; j++) dxa[j] = rhs[j];
         for (int i = 0; i < m; i++) dya[i] = rhs[n + i];
         for (int j = 0; j < n; j++) {
@@ -351,6 +481,7 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
          * The first is the Mehrotra corrector (affine second-order term
          * dxa*dza); the later ones use the previous corrector's term
          * (higher-order corrector, MSK_IPAR_INTPNT_MAX_NUM_COR). */
+        int solve_failed = 0;
         for (int cor = 0; cor < g_intpnt_max_cor; cor++) {
             for (int j = 0; j < n; j++)
                 rc[j] = x[j] * z[j] - sigma * mu +
@@ -360,7 +491,10 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
                 rhs[j] = rd[j] + rc[j] / xj;
             }
             for (int i = 0; i < m; i++) rhs[n + i] = -rp[i];
-            dmat_lu_solve(f, rhs);
+            if (qp_kkt_solve(&factor, A, Q, D, m, n, delta, rhs)) {
+                solve_failed = 1;
+                break;
+            }
             for (int j = 0; j < n; j++) dx[j] = rhs[j];
             for (int i = 0; i < m; i++) dy[i] = rhs[n + i];
             for (int j = 0; j < n; j++) {
@@ -368,8 +502,9 @@ int ipm_solve_std(const double *A, const double *Q, int m, int n,
                 dz[j] = -(rc[j] + z[j] * dx[j]) / xj;
             }
         }
-        dmat_lu_free(f);
+        qp_kkt_free(&factor);
         free(D);
+        if (solve_failed) { status = IPM_SINGULAR; break; }
 
         /* step lengths with fraction-to-boundary */
         double ap_max = 1.0, ad_max = 1.0;
@@ -1004,6 +1139,40 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
  * delta on the diagonal, via the sparse Cholesky. Diagonal is always emitted.
  * The factor may carry a fill-reducing ordering, so it is solved with
  * spchol_solve_ord, which undoes it. */
+/* Dense Hessian block followed by diagonal-only slack columns. */
+static SpChol *qp_chol_dense_block(int n, int d, const int *p, const int *row,
+                                    const double *values) {
+    double *dense = calloc((size_t)d*d, sizeof(double));
+    if (!dense) return NULL;
+    for (int j = 0; j < d; j++)
+        for (int k = p[j]; k < p[j+1]; k++)
+            if (row[k] < d) dense[(size_t)row[k]*d+j] = values[k];
+    SpChol *L = spchol_factor_dense(d, dense);
+    free(dense);
+    if (!L) return NULL;
+    int start = L->Lp[d], total = start + n - d;
+    int *lp = realloc(L->Lp, ((size_t)n+1) * sizeof(int));
+    if (lp) L->Lp = lp;
+    int *li = realloc(L->Li, (size_t)total * sizeof(int));
+    if (li) L->Li = li;
+    double *lx = realloc(L->Lx, (size_t)total * sizeof(double));
+    if (lx) L->Lx = lx;
+    if (!lp || !li || !lx) { spchol_free(L); return NULL; }
+    for (int j = d; j < n; j++) {
+        double diagonal = 0.0;
+        for (int k = p[j]; k < p[j+1]; k++)
+            if (row[k] == j) diagonal += values[k];
+        if (!(diagonal > 1e-300) || !isfinite(diagonal)) { spchol_free(L); return NULL; }
+        int k = start + j - d;
+        L->Lp[j] = k;
+        L->Li[k] = j;
+        L->Lx[k] = sqrt(diagonal);
+    }
+    L->Lp[n] = total;
+    L->n = n;
+    return L;
+}
+
 static SpChol *spchol_from_dense(const double *Kd, int m,
                                  int *Kp, int *kcap, int **Ki, double **Kx,
                                  int **Kperm, int **Kpat, int *Kpatn) {
@@ -1231,6 +1400,16 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
     for (int j = 0; j < n; j++) { double a = fabs(c[j]); if (a > cnorm) cnorm = a; }
     for (int p = 0; p < nnzQ; p++) { double a = fabs(Qval[p]); if (a > cnorm) cnorm = a; }
 
+    int dense_q = 0;
+    size_t qentries = 0;
+    for (int j = 0; j < n; j++) for (int k = Qptr[j]; k < Qptr[j+1]; k++) {
+        if (Qval[k] == 0.0) continue;
+        if (Qrow[k] >= dense_q) dense_q = Qrow[k] + 1;
+        qentries++;
+    }
+    if (dense_q < 32 || dense_q > 512 ||
+        qentries < 0.4 * dense_q * (dense_q + 1)) dense_q = 0;
+
     int status = IPM_MAXITER, no_progress = 0;
     for (int it = 0; it < max_iter; it++) {
         if (primal_cb_iter_on) primal_cb_iter(90);
@@ -1271,7 +1450,8 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int j = 0; j < n; j++) D[j] = (z[j] + dd) / (x[j] + dp);
         for (int p = 0; p < nnzQ; p++) Mval[p] = Qval[p];
         for (int j = 0; j < n; j++) Mval[diagpos[j]] += D[j];
-        SpChol *Lm = spchol_factor(n, Qptr, Qrow, Mval);
+        SpChol *Lm = dense_q ? qp_chol_dense_block(n, dense_q, Qptr, Qrow, Mval) : NULL;
+        if (!Lm) Lm = spchol_factor(n, Qptr, Qrow, Mval);
         if (!Lm) { status = IPM_SINGULAR; break; }
 
         /* W = M^-1 A' (column i = M^-1 (row i of A)): all m right-hand sides

@@ -21376,8 +21376,52 @@ static void test_t303(void) {
     pend(&p);
 }
 
+/* With Q = I + ee'/n and c = -e/2, Qx + c = 0 at x = e/4.
+ * The ranged variables supply diagonal-only slack columns in standard form. */
+static void test_t304(void) {
+    cur_name = "T304 dense Hessian with bound slacks";
+    enum { n = 80, nnz = n*(n+1)/2 };
+    P p;
+    pbegin(&p);
+    PRIMAL_appendvars(p.task, n);
+    int qi[nnz], qj[nnz], nz = 0;
+    double qv[nnz];
+    for (int i = 0; i < n; i++) {
+        PRIMAL_putvarbound(p.task, i, PRIMAL_BK_RA, 0.0, 1.0);
+        PRIMAL_putcj(p.task, i, -0.5);
+        for (int j = 0; j <= i; j++) {
+            qi[nz] = i;
+            qj[nz] = j;
+            qv[nz++] = (i == j ? 1.0 : 0.0) + 1.0/n;
+        }
+    }
+    PRIMAL_putqobj(p.task, nz, qi, qj, qv);
+    const PRIMALoptimizer methods[] = {
+        PRIMAL_OPTIMIZER_INTPNT, PRIMAL_OPTIMIZER_PRIMAL_SIMPLEX
+    };
+    double objectives[2] = {NAN, NAN};
+    for (int k = 0; k < 2; k++) {
+        PRIMAL_putintparam(p.task, PRIMAL_IPAR_OPTIMIZER, methods[k]);
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "bounded QP solves");
+        double dual = NAN, pi = NAN, di = NAN, x[n];
+        PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &objectives[k]);
+        PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dual);
+        PRIMAL_getprimalinfeas(p.task, PRIMAL_SOL_ITR, &pi);
+        PRIMAL_getdualinfeas(p.task, PRIMAL_SOL_ITR, &di);
+        check(fabs(objectives[k] + n/16.0) < 1e-8 &&
+              fabs(objectives[k] - dual) < 1e-7 && pi < 1e-8 && di < 1e-8,
+              "bounded QP objective, feasibility and gap");
+        int got = PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x) == PRIMAL_RES_OK;
+        for (int j = 0; j < n && got; j++) got = fabs(x[j] - 0.25) < 1e-7;
+        check(got, "bounded QP point agrees with the analytic solution");
+    }
+    check(fabs(objectives[0] - objectives[1]) < 1e-8, "sparse and dense QP agree");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t304();
     test_t303();
     test_t302();
     test_t301();

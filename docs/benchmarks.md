@@ -1,6 +1,6 @@
 # Benchmark methodology
 
-The README table covers 32 instances. The QP, SOCP and SDP rows use
+The README table covers 32 instances. The SOCP and SDP rows use
 medians from five runs at `bd53531` on 2026-11-07. The MILP rows use
 medians from ten interleaved runs at `b452e46` on 2026-11-08. The objective
 checks passed on every run. Bold marks the lowest median in each row.
@@ -16,6 +16,14 @@ feasibility settings of `1e-9`. The three solvers passed the `1e-8`
 checks for objective agreement, feasibility, stationarity and relative
 gap. Raw timings and binary hashes are in `out/f143/final-pairs.json`.
 
+The QP rows use 18 interleaved measurements from 2026-11-11. The dense
+interior-point solver eliminates eligible slack columns and checks the
+reconstructed direction against the original equations. The sparse
+solver can factor a dense Hessian block separately from diagonal slack
+columns. Primal and Clarabel ran at one thread and passed the same
+`1e-8` accuracy checks as the LP comparison. Raw timings and binary
+hashes are in `out/f147/final-pairs.json`.
+
 ## Environment
 
 | Component | Measured configuration |
@@ -29,7 +37,7 @@ gap. Raw timings and binary hashes are in `out/f143/final-pairs.json`.
 | SCS | 3.3.1 |
 | SCIP / PySCIPOpt | 10.0 / 6.2.1 |
 
-The QP, SOCP and SDP comparisons use the harness defaults. The MILP
+The SOCP and SDP comparisons use the harness defaults. The MILP
 comparison uses one thread per solver and the same MPS input. It checks
 optimal status and objective agreement, plus Primal's feasibility and
 integrality to `1e-8`.
