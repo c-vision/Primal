@@ -7,7 +7,7 @@ pairs each.
 
 | Family | Measurements per solver and instance | Accuracy checks |
 |---|---:|---|
-| LP and QP | 18 | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
+| LP and QP | 18 (62 for QP50) | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
 | MILP | 10 | Optimal status and objective agreement, with Primal feasibility and integrality within `1e-8` |
 | SOCP | 62 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
 | SDP | 9 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
@@ -17,6 +17,9 @@ Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
 for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
 used `eps_abs=eps_rel=1e-8`. SDP references used their default
 tolerances.
+
+The QP50 refresh used two batches of 31 interleaved runs. The raw
+measurements and binary hashes are in `out/f150/confirmed-pairs.json`.
 
 ## Environment
 

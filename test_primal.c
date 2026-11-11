@@ -21378,9 +21378,8 @@ static void test_t303(void) {
 
 /* With Q = I + ee'/n and c = -e/2, Qx + c = 0 at x = e/4.
  * The ranged variables supply diagonal-only slack columns in standard form. */
-static void test_t304(void) {
-    cur_name = "T304 dense Hessian with bound slacks";
-    enum { n = 80, nnz = n*(n+1)/2 };
+static void test_t304_size(int n) {
+    int nnz = n*(n+1)/2;
     P p;
     pbegin(&p);
     PRIMAL_appendvars(p.task, n);
@@ -21417,6 +21416,12 @@ static void test_t304(void) {
     }
     check(fabs(objectives[0] - objectives[1]) < 1e-8, "sparse and dense QP agree");
     pend(&p);
+}
+
+static void test_t304(void) {
+    cur_name = "T304 dense Hessian with bound slacks";
+    test_t304_size(60);
+    test_t304_size(80);
 }
 
 /* test runner: executes all tests and prints the pass/fail summary. */

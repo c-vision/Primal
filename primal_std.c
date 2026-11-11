@@ -368,6 +368,31 @@ static int mip_slack_solution(const int *Ap, const int *Ai, const double *Av,
            fabs(pobj-dobj) <= 1e-9 * (1.0 + fabs(pobj) + fabs(dobj));
 }
 
+/* Prefer the condensed Newton system for a small dense Hessian
+ * followed by one diagonal, private slack column per row. */
+static int small_qp_condensable(const int *Ap, const int *Ai, const double *Av,
+                                const int *Qp, const int *Qi, const double *Qv,
+                                int m, int n) {
+    int d = n - m;
+    if (n > 150 || m <= 0 || d < 32) return 0;
+    unsigned char seen[150] = {0};
+    for (int j = d; j < n; j++) {
+        int a = Ap[j], q = Qp[j];
+        if (Ap[j + 1] - a != 1 || Qp[j + 1] - q != 1 ||
+            Av[a] == 0.0 || Qi[q] != j || seen[Ai[a]]) return 0;
+        seen[Ai[a]] = 1;
+    }
+    int entries = 0, extent = 0;
+    for (int j = 0; j < d; j++)
+        for (int p = Qp[j]; p < Qp[j + 1]; p++) {
+            if (Qv[p] == 0.0) continue;
+            if (Qi[p] >= d) return 0;
+            if (Qi[p] >= extent) extent = Qi[p] + 1;
+            entries++;
+        }
+    return extent >= 32 && entries >= 0.4 * extent * (extent + 1);
+}
+
 /* Body of solve_std_routed: runs the engine named by method (0 tableau
  * simplex, 1 dense IPM, 2 sparse LP IPM, 3 sparse QP IPM, 4 dual simplex from
  * a crash basis) and returns its STD_* status. */
@@ -399,6 +424,16 @@ static int solve_std_routed_impl(const int *Aptr, const int *Arow, const double 
                                 iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0), method);
     }
     if (method == 1) {
+        if (Qptr && t->intpnt_max_cor < 0 &&
+            t->optimizer != PRIMAL_OPTIMIZER_PRIMAL_SIMPLEX &&
+            t->optimizer != PRIMAL_OPTIMIZER_DUAL_SIMPLEX &&
+            small_qp_condensable(Aptr, Arow, Aval, Qptr, Qrow, Qval, m, n)) {
+            int st = ipm_solve_qp_csc(Aptr, Arow, Aval, Qptr, Qrow, Qval, m, n, b, c,
+                                     t->tol_qo_gap, t->tol_qo_pfeas, t->tol_qo_dfeas,
+                                     iter_cap(t->max_iter_intpnt), xt, ystd, zst, x0, y0);
+            if (st == 0 || ipm_obj_cut_hit())
+                return std_status(st, method);
+        }
         double *dA = csc_to_dense(Aptr, Arow, Aval, m, n);
         double *dQ = Qptr ? qcsc_to_dense(Qptr, Qrow, Qval, n) : NULL;
         if (!dA || (Qptr && !dQ)) { free(dA); free(dQ); return STD_MEMORY; }

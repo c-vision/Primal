@@ -175,7 +175,7 @@ Linux, macOS and the BSDs; on Windows use MinGW
 Measured on **2026-11-11** on Apple Silicon (arm64), macOS 27.2,
 with Apple clang 21 and C99 `-O2`. Times are in seconds. **Bold**
 marks the lowest median in each row. LP and QP use 18 interleaved runs,
-MILP uses 10, SOCP uses 62, and SDP uses 9. Every run passed its
+with 62 for QP50. MILP uses 10, SOCP uses 62, and SDP uses 9. Every run passed its
 family's objective check.
 
 <div>
@@ -186,7 +186,7 @@ family's objective check.
 | lp_100x50 | lp | 100 x 50 | 576 | **0.000721** | 0.002066 | 0.000796 | N/A | N/A | 121.946 |
 | lp_200x100 | lp | 200 x 100 | 2120 | **0.001669** | 0.004019 | 0.002514 | N/A | N/A | 284.367 |
 | lp_400x200 | lp | 400 x 200 | 8026 | **0.008006** | 0.014191 | 0.013104 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.001143 | N/A | **0.000491** | N/A | N/A | 12.8014 |
+| qp_50x25 | qp | 50 x 25 | 1445 | **0.000402** | N/A | 0.000490 | N/A | N/A | 12.8014 |
 | qp_100x50 | qp | 100 x 50 | 5631 | **0.001547** | N/A | 0.002457 | N/A | N/A | 26.4052 |
 | qp_200x100 | qp | 200 x 100 | 22212 | **0.007056** | N/A | 0.008128 | N/A | N/A | 55.9929 |
 | milp_40x20 | milp | 40 x 20 | 139 | **0.053068** | 0.058246 | N/A | N/A | 0.173830 | 143.955 |
