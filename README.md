@@ -172,6 +172,8 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 ## Benchmarks
 
+Latest verification (2026-11-11) covered the QP benchmarks and 606 targeted checks.
+
 CPU benchmarks on Apple Silicon (arm64), macOS 27.2, Apple clang 21,
 C99 `-O2`. Times are in seconds. **Bold** marks the lowest median in
 each row. SOCP and SDP use five runs at `bd53531` (2026-11-07).
@@ -188,9 +190,9 @@ The objective checks passed in every run.
 | lp_100x50 | lp | 100 x 50 | 576 | **0.000646** | 0.001589 | 0.000694 | N/A | N/A | 121.946 |
 | lp_200x100 | lp | 200 x 100 | 2120 | **0.001428** | 0.003346 | 0.002198 | N/A | N/A | 284.367 |
 | lp_400x200 | lp | 400 x 200 | 8026 | **0.006294** | 0.011767 | 0.010838 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.001200 | N/A | **0.000508** | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | 0.005680 | N/A | **0.002542** | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | 0.039194 | N/A | **0.008672** | N/A | N/A | 55.9929 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.001181 | N/A | **0.000476** | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | **0.001584** | N/A | 0.002613 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | **0.006993** | N/A | 0.008086 | N/A | N/A | 55.9929 |
 | milp_40x20 | milp | 40 x 20 | 139 | 0.045042 | **0.042070** | N/A | N/A | 0.134153 | 143.955 |
 | milp_60x30 | milp | 60 x 30 | 260 | 0.091407 | **0.085865** | N/A | N/A | 0.238516 | 200.846 |
 | milp_80x40 | milp | 80 x 40 | 460 | **0.199763** | 0.317508 | N/A | N/A | 0.953599 | 277.019 |

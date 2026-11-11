@@ -1232,6 +1232,82 @@ static SpChol *spchol_from_dense(const double *Kd, int m,
     return spchol_factor_ord(m, Kp, *Ki, *Kx);
 }
 
+/* With a private diagonal slack in each row, eliminating its step and
+ * multiplier gives M_ss + A_s' diag(weight) A_s. Only the lower
+ * triangle is read by the dense factorization. */
+static SpChol *qp_factor_condensed(int d, int m, const int *Qp, const int *Qi,
+                                  const double *Mv, const int *rp, const int *ri,
+                                  const double *rv, const int *slack,
+                                  double delta, double *weight, double *dense)
+{
+    memset(dense, 0, (size_t)d * d * sizeof(double));
+    for (int j = 0; j < d; j++)
+        for (int p = Qp[j]; p < Qp[j + 1]; p++)
+            if (Qi[p] < d) dense[(size_t)Qi[p] * d + j] = Mv[p];
+
+    for (int i = 0; i < m; i++) {
+        int s = slack[i];
+        double a = rv[s], ms = Mv[Qp[ri[s]]];
+        weight[i] = ms / (a * a + delta * ms);
+        if (!(weight[i] > 0.0) || !isfinite(weight[i])) return NULL;
+        for (int p = rp[i]; p < s; p++) {
+            double *row = dense + (size_t)ri[p] * d;
+            double v = rv[p] * weight[i];
+            for (int q = rp[i]; q <= p; q++) row[ri[q]] += v * rv[q];
+        }
+    }
+    return spchol_factor_dense(d, dense);
+}
+
+static int qp_solve_condensed(const SpChol *L, int n, int m, const int *Qp,
+                              const int *Qi, const double *Mv, const int *rp,
+                              const int *ri, const double *rv, const int *slack,
+                              const double *weight, double delta, const double *pr,
+                              const double *rhs, double *dx, double *dy, double *err)
+{
+    memcpy(dx, rhs, (size_t)L->n * sizeof(double));
+    for (int i = 0; i < m; i++) {
+        int s = slack[i];
+        double a = rv[s], ms = Mv[Qp[ri[s]]];
+        double offset = -weight[i] * pr[i] - (a / (a * a + delta * ms)) * rhs[ri[s]];
+        for (int p = rp[i]; p < s; p++) dx[ri[p]] += rv[p] * offset;
+    }
+    if (spchol_solve(L, dx)) return -1;
+    for (int i = 0; i < m; i++) {
+        int s = slack[i], j = ri[s];
+        double a = rv[s], ms = Mv[Qp[j]], residual = -pr[i];
+        for (int p = rp[i]; p < s; p++) residual -= rv[p] * dx[ri[p]];
+        double inv = 1.0 / (a * a + delta * ms);
+        dy[i] = inv * (ms * residual - a * rhs[j]);
+        dx[j] = inv * (a * residual + delta * rhs[j]);
+    }
+
+    /* Check the original regularized Newton equations before using the step. */
+    double scale = 1.0;
+    for (int j = 0; j < n; j++) {
+        err[j] = -rhs[j];
+        scale = fmax(scale, fabs(rhs[j]));
+        if (!isfinite(dx[j])) return -1;
+    }
+    for (int j = 0; j < n; j++)
+        for (int p = Qp[j]; p < Qp[j + 1]; p++) {
+            int k = Qi[p];
+            err[k] += Mv[p] * dx[j];
+            if (k != j) err[j] += Mv[p] * dx[k];
+        }
+    for (int i = 0; i < m; i++) {
+        double residual = pr[i] + delta * dy[i];
+        for (int p = rp[i]; p < rp[i + 1]; p++) {
+            residual += rv[p] * dx[ri[p]];
+            err[ri[p]] -= rv[p] * dy[i];
+        }
+        if (!(fabs(residual) <= 1e-9 * (1.0 + fabs(pr[i])))) return -1;
+    }
+    for (int j = 0; j < n; j++)
+        if (!(fabs(err[j]) <= 1e-9 * scale)) return -1;
+    return 0;
+}
+
 /**
  * Solves a QP in CSC format using sparse Mehrotra IPM with Q + D regularization.
  *
@@ -1409,6 +1485,24 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
     }
     if (dense_q < 32 || dense_q > 512 ||
         qentries < 0.4 * dense_q * (dense_q + 1)) dense_q = 0;
+    int d = n - m;
+    int *slack = NULL;
+    double *weight = NULL, *condensed = NULL;
+    if (dense_q && dense_q <= d && d <= 512) {
+        slack = malloc((size_t)m * sizeof(*slack));
+        weight = malloc((size_t)m * sizeof(*weight));
+        condensed = malloc((size_t)d * d * sizeof(*condensed));
+        if (!weight || !condensed) { free(slack); slack = NULL; }
+        for (int i = 0; slack && i < m; i++) {
+            int s = rptr[i + 1] - 1;
+            if (s < rptr[i] || ridx[s] < d ||
+                (s > rptr[i] && ridx[s - 1] >= d) ||
+                Aptr[ridx[s] + 1] - Aptr[ridx[s]] != 1 ||
+                Qptr[ridx[s] + 1] - Qptr[ridx[s]] != 1 || rval[s] == 0.0) {
+                free(slack); slack = NULL;
+            } else slack[i] = s;
+        }
+    }
 
     int status = IPM_MAXITER, no_progress = 0;
     for (int it = 0; it < max_iter; it++) {
@@ -1450,39 +1544,54 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int j = 0; j < n; j++) D[j] = (z[j] + dd) / (x[j] + dp);
         for (int p = 0; p < nnzQ; p++) Mval[p] = Qval[p];
         for (int j = 0; j < n; j++) Mval[diagpos[j]] += D[j];
-        SpChol *Lm = dense_q ? qp_chol_dense_block(n, dense_q, Qptr, Qrow, Mval) : NULL;
-        if (!Lm) Lm = spchol_factor(n, Qptr, Qrow, Mval);
-        if (!Lm) { status = IPM_SINGULAR; break; }
+        SpChol *Lc = slack ? qp_factor_condensed(d, m, Qptr, Qrow, Mval, rptr,
+                                                ridx, rval, slack, delta, weight, condensed) : NULL;
+        SpChol *Lm = NULL, *Lk = NULL;
+legacy:
+        if (!Lc) {
+            Lm = dense_q ? qp_chol_dense_block(n, dense_q, Qptr, Qrow, Mval) : NULL;
+            if (!Lm) Lm = spchol_factor(n, Qptr, Qrow, Mval);
+            if (!Lm) { status = IPM_SINGULAR; break; }
 
-        /* W = M^-1 A' (column i = M^-1 (row i of A)): all m right-hand sides
-         * in one pass over the factor.  The batched solve keeps the per-RHS
-         * operation order, so the result is what m spchol_solve calls gave. */
-        for (size_t q = 0; q < (size_t)n * (size_t)m; q++) W[q] = 0.0;
-        for (int i = 0; i < m; i++)
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) W[(size_t)ridx[p] * m + i] = rval[p];
-        if (spchol_solve_all(Lm, W, m)) { spchol_free(Lm); status = IPM_SINGULAR; break; }
-        /* Kd = A W + delta I */
-        for (int i = 0; i < m; i++)
-            for (int k = 0; k < m; k++) Kd[(size_t)i * m + k] = (i == k) ? delta : 0.0;
-        for (int i = 0; i < m; i++)
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) {
-                int j = ridx[p]; double a = rval[p]; const double *Wj = &W[(size_t)j * m];
-                for (int k = 0; k < m; k++) Kd[(size_t)i * m + k] += a * Wj[k];
-            }
-        SpChol *Lk = spchol_from_dense(Kd, m, Kp, &kcap, &Ki, &Kx, &Kperm, &Kpat, &Kpatn);
-        if (!Lk) { spchol_free(Lm); status = IPM_SINGULAR; break; }
+            /* W = M^-1 A' (column i = M^-1 (row i of A)): all m right-hand sides
+             * in one pass over the factor.  The batched solve keeps the per-RHS
+             * operation order, so the result is what m spchol_solve calls gave. */
+            for (size_t q = 0; q < (size_t)n * (size_t)m; q++) W[q] = 0.0;
+            for (int i = 0; i < m; i++)
+                for (int p = rptr[i]; p < rptr[i + 1]; p++) W[(size_t)ridx[p] * m + i] = rval[p];
+            if (spchol_solve_all(Lm, W, m)) { spchol_free(Lm); status = IPM_SINGULAR; break; }
+            /* Kd = A W + delta I */
+            for (int i = 0; i < m; i++)
+                for (int k = 0; k < m; k++) Kd[(size_t)i * m + k] = (i == k) ? delta : 0.0;
+            for (int i = 0; i < m; i++)
+                for (int p = rptr[i]; p < rptr[i + 1]; p++) {
+                    int j = ridx[p]; double a = rval[p]; const double *Wj = &W[(size_t)j * m];
+                    for (int k = 0; k < m; k++) Kd[(size_t)i * m + k] += a * Wj[k];
+                }
+            Lk = spchol_from_dense(Kd, m, Kp, &kcap, &Ki, &Kx, &Kperm, &Kpat, &Kpatn);
+            if (!Lk) { spchol_free(Lm); status = IPM_SINGULAR; break; }
+
+        }
 
         /* ---- affine predictor (target = -xz) ---- */
         for (int j = 0; j < n; j++) u[j] = -x[j] * z[j] / (x[j] + dp) - rd[j];
-        if (spchol_solve(Lm, u)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
-        for (int i = 0; i < m; i++) { double s = 0.0;
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * u[ridx[p]];
-            tmpm[i] = -rp[i] - s; }
-        if (spchol_solve_ord(Lk, tmpm)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
-        for (int i = 0; i < m; i++) dyA[i] = tmpm[i];
-        for (int j = 0; j < n; j++) { double s = u[j];
-            for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * dyA[i];
-            dxA[j] = s; }
+        if (Lc) {
+            if (qp_solve_condensed(Lc, n, m, Qptr, Qrow, Mval, rptr, ridx, rval,
+                                   slack, weight, delta, rp, u, dxA, dyA, tmpn)) {
+                spchol_free(Lc); Lc = NULL;
+                goto legacy;
+            }
+        } else {
+            if (spchol_solve(Lm, u)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
+            for (int i = 0; i < m; i++) { double s = 0.0;
+                for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * u[ridx[p]];
+                tmpm[i] = -rp[i] - s; }
+            if (spchol_solve_ord(Lk, tmpm)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
+            for (int i = 0; i < m; i++) dyA[i] = tmpm[i];
+            for (int j = 0; j < n; j++) { double s = u[j];
+                for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * dyA[i];
+                dxA[j] = s; }
+        }
         /* dzA = Q dxA - A'dyA + rd */
         for (int j = 0; j < n; j++) Atdy[j] = 0.0;
         for (int j = 0; j < n; j++)
@@ -1509,14 +1618,21 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
 
         /* ---- corrector ---- */
         for (int j = 0; j < n; j++) u[j] = (sigma*mu - x[j]*z[j] - dxA[j]*dzA[j]) / (x[j] + dp) - rd[j];
-        if (spchol_solve(Lm, u)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
-        for (int i = 0; i < m; i++) { double s = 0.0;
-            for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * u[ridx[p]];
-            tmpm[i] = -rp[i] - s; }
-        if (spchol_solve_ord(Lk, tmpm)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
-        for (int j = 0; j < n; j++) { double s = u[j];
-            for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * tmpm[i];
-            dxC[j] = s; }
+        if (Lc) {
+            int rc = qp_solve_condensed(Lc, n, m, Qptr, Qrow, Mval, rptr, ridx, rval,
+                                        slack, weight, delta, rp, u, dxC, tmpm, tmpn);
+            spchol_free(Lc); Lc = NULL;
+            if (rc) goto legacy;
+        } else {
+            if (spchol_solve(Lm, u)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
+            for (int i = 0; i < m; i++) { double s = 0.0;
+                for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * u[ridx[p]];
+                tmpm[i] = -rp[i] - s; }
+            if (spchol_solve_ord(Lk, tmpm)) { spchol_free(Lm); spchol_free(Lk); status = IPM_SINGULAR; break; }
+            for (int j = 0; j < n; j++) { double s = u[j];
+                for (int i = 0; i < m; i++) s += W[(size_t)j * m + i] * tmpm[i];
+                dxC[j] = s; }
+        }
         for (int j = 0; j < n; j++) Atdy[j] = 0.0;
         for (int j = 0; j < n; j++)
             for (int p = Aptr[j]; p < Aptr[j + 1]; p++) Atdy[j] += Aval[p] * tmpm[Arow[p]];
@@ -1546,6 +1662,7 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         for (int j = 0; j < n; j++) { x[j] += ap*dxC[j]; z[j] += ad*dzC[j]; }
         for (int i = 0; i < m; i++) y[i] += ad*tmpm[i];
     }
+    free(slack); free(weight); free(condensed);
     IPMQP_FREE();
 #undef IPMQP_FREE
     return status;

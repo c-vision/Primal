@@ -16,13 +16,14 @@ feasibility settings of `1e-9`. The three solvers passed the `1e-8`
 checks for objective agreement, feasibility, stationarity and relative
 gap. Raw timings and binary hashes are in `out/f143/final-pairs.json`.
 
-The QP rows use 18 interleaved measurements from 2026-11-11. The dense
-interior-point solver eliminates eligible slack columns and checks the
-reconstructed direction against the original equations. The sparse
-solver can factor a dense Hessian block separately from diagonal slack
-columns. Primal and Clarabel ran at one thread and passed the same
-`1e-8` accuracy checks as the LP comparison. Raw timings and binary
-hashes are in `out/f147/final-pairs.json`.
+The QP rows use 18 interleaved measurements from 2026-11-11. When
+each row has a private slack column with a diagonal Hessian entry,
+Primal can eliminate the slacks and their multipliers. It factors a
+system of order 200 on QP200, recovers the full direction and checks
+the residual in the original equations. Primal and Clarabel ran at
+one thread and passed the same `1e-8` accuracy checks as the LP
+comparison. Raw timings and binary hashes are in
+`out/f148/final-pairs.json`.
 
 ## Environment
 
