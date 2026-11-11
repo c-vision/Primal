@@ -109,6 +109,21 @@ modes. Forced sparse mode reproduced the same two DEXP checks that fail
 on the baseline. An injected sparse factorization failure verified the
 retry and reproduced the dense result.
 
+## Stopping with a verified point
+
+The corrected mixed route can finish the polish once its absolute primal
+and dual equation residuals meet the corresponding task tolerances,
+its relative gap is at most half the requested gap tolerance, and both
+cone margins are nonnegative. The final route gate still measures the
+restored point against all three declared relative tolerances. The gap
+margin allows for the different normalizations used in the solver and
+in public verification.
+
+On the three regression models, the number of completed predictor–corrector
+iterations fell from 29, 26 and 37 to 16, 16 and 21. The original-model
+quality checks passed at `1e-8`. The [README](../README.md#mixed-soc-and-exponential-cones)
+reports the refreshed timings.
+
 ## Validation and limits
 
 T299 checks the contraction against independent Taylor jets, log-homogeneity

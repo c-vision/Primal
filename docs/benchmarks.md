@@ -2,8 +2,9 @@
 
 The README reports 32 instances measured on 2026-11-11. Each row
 shows the median of interleaved runs and highlights the fastest solver.
-The mixed SOC/PEXP comparison reports two medians from nine alternating
-pairs each.
+The mixed SOC/PEXP comparison reports two medians from 21 interleaved
+measurements each. The refreshed mixed-cone timings and binary hashes
+are in `out/f156/final-pairs.json` on the benchmark machine.
 
 | Family | Measurements per solver and instance | Accuracy checks |
 |---|---:|---|
@@ -11,7 +12,7 @@ pairs each.
 | MILP | 10 | Optimal status and objective agreement, with Primal feasibility and integrality within `1e-8` |
 | SOCP | 62 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
 | SDP | 9 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
-| Mixed SOC/PEXP | 18 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
+| Mixed SOC/PEXP | 42 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
 
 Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
 for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
