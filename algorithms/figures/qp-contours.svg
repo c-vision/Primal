@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="500" viewBox="0 0 700 500" role="img" aria-labelledby="title desc">
+  <title id="title">Contours of a convex QP and its active constraint</title>
+  <desc id="desc">Circular contours of (x1^2+x2^2)/2 centred at the origin, the feasible region above the line x1+x2=2 and to the left of x1=3, and the constrained minimum (1,1) with objective 1, where the gradient (1,1) equals the multiplier 1 times the row normal (1,1). Analytic figure, optimum checked against PRIMAL at revision 1f2ddee.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#17212b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>
+  </defs>
+  <rect width="700" height="500" fill="#fff"/>
+  <clipPath id="win"><rect x="70.0" y="60.0" width="440.0" height="340.0"/></clipPath>
+  <text x="350.0" y="30.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">A convex QP: contours and the active constraint</text>
+  <g clip-path="url(#win)">
+  <path d="M70.0 128.0L422.0 400.0L422.0 60.0L70.0 60.0Z" fill="#dbeafe"/>
+  <circle cx="158.0" cy="332.0" r="88.0" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <circle cx="158.0" cy="332.0" r="124.5" fill="none" stroke="#b45309" stroke-width="2.5"/>
+  <circle cx="158.0" cy="332.0" r="176.0" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <circle cx="158.0" cy="332.0" r="248.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 5"/>
+  </g>
+  <line x1="70.0" y1="400.0" x2="524.0" y2="400.0" stroke="#17212b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="70.0" y1="400.0" x2="70.0" y2="46.0" stroke="#17212b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="70.0" y1="400.0" x2="70.0" y2="405.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="70.0" y="420.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">-1</text>
+  <line x1="158.0" y1="400.0" x2="158.0" y2="405.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="158.0" y="420.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">0</text>
+  <line x1="246.0" y1="400.0" x2="246.0" y2="405.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="246.0" y="420.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="334.0" y1="400.0" x2="334.0" y2="405.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="334.0" y="420.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="422.0" y1="400.0" x2="422.0" y2="405.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="422.0" y="420.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="510.0" y1="400.0" x2="510.0" y2="405.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="510.0" y="420.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">4</text>
+  <line x1="65.0" y1="400.0" x2="70.0" y2="400.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="405.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">-1</text>
+  <line x1="65.0" y1="332.0" x2="70.0" y2="332.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="337.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">0</text>
+  <line x1="65.0" y1="264.0" x2="70.0" y2="264.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="269.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="65.0" y1="196.0" x2="70.0" y2="196.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="201.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="65.0" y1="128.0" x2="70.0" y2="128.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="133.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="65.0" y1="60.0" x2="70.0" y2="60.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="65.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">4</text>
+  <text x="518.0" y="422.0" text-anchor="start" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x1</text>
+  <text x="64.0" y="42.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x2</text>
+  <line x1="70.0" y1="128.0" x2="422.0" y2="400.0" stroke="#155097" stroke-width="3.5"/>
+  <line x1="422.0" y1="400.0" x2="422.0" y2="60.0" stroke="#155097" stroke-width="2.0" stroke-dasharray="10 6"/>
+  <text x="74.4" y="111.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x1 + x2 = 2  (active)</text>
+  <text x="429.0" y="70.2" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x1 = 3  (inactive)</text>
+  <line x1="246.0" y1="264.0" x2="188.8" y2="308.2" stroke="#17212b" stroke-width="2.5" marker-end="url(#arr)"/>
+  <line x1="246.0" y1="264.0" x2="316.4" y2="209.6" stroke="#b45309" stroke-width="2.5" marker-end="url(#arrb)"/>
+  <text x="324.4" y="213.6" text-anchor="start" font-family="sans-serif" font-size="14" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">row normal (1, 1)</text>
+  <text x="78.8" y="283.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">-gradient (-1, -1)</text>
+  <rect x="240.0" y="258.0" width="12" height="12" fill="#17212b"/>
+  <text x="234.0" y="250.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">optimum (1, 1), f = 1</text>
+  <circle cx="158.0" cy="332.0" r="5" fill="#fff" stroke="#17212b" stroke-width="2"/>
+  <text x="78.8" y="374.2" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">O: unconstrained minimum (0, 0), infeasible</text>
+  <text x="70.0" y="452.0" text-anchor="start" font-family="sans-serif" font-size="13" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Circles: level sets of f = (x1^2 + x2^2) / 2 at 0.5, 1 (solid), 2 and 4.</text>
+  <text x="70.0" y="472.0" text-anchor="start" font-family="sans-serif" font-size="13" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">At the optimum the gradient (1, 1) equals the multiplier 1 times the row normal (1, 1).</text>
+</svg>

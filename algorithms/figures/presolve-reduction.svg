@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="430" viewBox="0 0 900 430" role="img" aria-labelledby="title desc">
+  <title id="title">Presolve removes singleton rows and lifts a Farkas vector back</title>
+  <desc id="desc">Three panels showing the 3 by 3 constraint matrix of x=2, x+y=5, y+z=1 with x,y,z nonnegative. Singleton row 1 fixes x=2 and is removed with column x; singleton row 2 then fixes y=3 and is removed with column y; the surviving row 3 reads z=-2, which is infeasible with a Farkas multiplier of -1. Replaying the removals in reverse with the homogeneous lift gives the multipliers (-1, 1, -1) on the original rows, with b'y=2 and A'y&lt;=0. Computed with lp_presolve and presolve_postsolve_dir at revision 1f2ddee.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#17212b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>
+  </defs>
+  <rect width="900" height="430" fill="#fff"/>
+  <text x="450.0" y="28.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Presolve on x = 2, x + y = 5, y + z = 1</text>
+  <text x="139.0" y="62.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">original</text>
+  <text x="113.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x</text>
+  <text x="159.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">y</text>
+  <text x="205.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">z</text>
+  <text x="252.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">rhs</text>
+  <text x="80.0" y="118.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r1</text>
+  <rect x="90.0" y="90.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="113.0" y="118.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="136.0" y="90.0" width="46.0" height="46.0" fill="#fff" stroke="#155097" stroke-width="1.5"/>
+  <rect x="182.0" y="90.0" width="46.0" height="46.0" fill="#fff" stroke="#155097" stroke-width="1.5"/>
+  <text x="252.0" y="118.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <text x="80.0" y="164.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r2</text>
+  <rect x="90.0" y="136.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="113.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="136.0" y="136.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="159.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="182.0" y="136.0" width="46.0" height="46.0" fill="#fff" stroke="#155097" stroke-width="1.5"/>
+  <text x="252.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">5</text>
+  <text x="80.0" y="210.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r3</text>
+  <rect x="90.0" y="182.0" width="46.0" height="46.0" fill="#fff" stroke="#155097" stroke-width="1.5"/>
+  <rect x="136.0" y="182.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="159.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="182.0" y="182.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="205.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <text x="252.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="283.0" y1="159.0" x2="330.0" y2="159.0" stroke="#17212b" stroke-width="2.0" marker-end="url(#arr)"/>
+  <text x="429.0" y="62.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">after r1 fixes x = 2</text>
+  <text x="403.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x</text>
+  <text x="449.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">y</text>
+  <text x="495.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">z</text>
+  <text x="542.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">rhs</text>
+  <text x="370.0" y="118.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r1</text>
+  <rect x="380.0" y="90.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="403.0" y="118.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="426.0" y="90.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="472.0" y="90.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="542.0" y="118.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="378.0" y1="113.0" x2="562.0" y2="113.0" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="370.0" y="164.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r2</text>
+  <rect x="380.0" y="136.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="403.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="426.0" y="136.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="449.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="472.0" y="136.0" width="46.0" height="46.0" fill="#fff" stroke="#155097" stroke-width="1.5"/>
+  <text x="542.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <text x="370.0" y="210.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r3</text>
+  <rect x="380.0" y="182.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="426.0" y="182.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="449.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="472.0" y="182.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="495.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <text x="542.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="573.0" y1="159.0" x2="620.0" y2="159.0" stroke="#17212b" stroke-width="2.0" marker-end="url(#arr)"/>
+  <text x="719.0" y="62.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">after r2 fixes y = 3</text>
+  <text x="693.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x</text>
+  <text x="739.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">y</text>
+  <text x="785.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">z</text>
+  <text x="832.0" y="86.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">rhs</text>
+  <text x="660.0" y="118.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r1</text>
+  <rect x="670.0" y="90.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="693.0" y="118.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="716.0" y="90.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="762.0" y="90.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="832.0" y="118.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="668.0" y1="113.0" x2="852.0" y2="113.0" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="660.0" y="164.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r2</text>
+  <rect x="670.0" y="136.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="693.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="716.0" y="136.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="739.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="762.0" y="136.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="832.0" y="164.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="668.0" y1="159.0" x2="852.0" y2="159.0" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="660.0" y="210.0" text-anchor="end" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">r3</text>
+  <rect x="670.0" y="182.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="716.0" y="182.0" width="46.0" height="46.0" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="739.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <rect x="762.0" y="182.0" width="46.0" height="46.0" fill="#dbeafe" stroke="#155097" stroke-width="1.5"/>
+  <text x="785.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <text x="832.0" y="210.0" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">-2</text>
+  <text x="50.0" y="270.0" text-anchor="start" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Panel 3: the surviving row r3 reads z = -2 with z &gt;= 0, so the reduced problem is infeasible.</text>
+  <text x="50.0" y="296.0" text-anchor="start" font-family="sans-serif" font-size="15" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Farkas vector of the reduced row: y3 = -1, since b'y = (-2)(-1) = 2 &gt; 0 and A'y = -1 &lt;= 0.</text>
+  <text x="50.0" y="330.0" text-anchor="start" font-family="sans-serif" font-size="15" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Reverse replay, homogeneous: y2 = -(A_{3y} y3) / A_{2y} = 1,   y1 = -(A_{2x} y2) / A_{1x} = -1.</text>
+  <text x="50.0" y="356.0" text-anchor="start" font-family="sans-serif" font-size="15" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Lifted: y = (-1, 1, -1);  b'y = -2 + 5 - 1 = 2 (unchanged);  A'y = (0, 0, -1) &lt;= 0.</text>
+  <text x="50.0" y="396.0" text-anchor="start" font-family="sans-serif" font-size="13" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Shaded cell: nonzero of an active row and column. Grey: removed. The right-hand side column shows the substitution b_k - A_kj x_j.</text>
+</svg>

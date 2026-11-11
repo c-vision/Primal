@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="500" viewBox="0 0 700 500" role="img" aria-labelledby="title desc">
+  <title id="title">A supporting hyperplane at the optimal vertex</title>
+  <desc id="desc">The polygon with vertices (0,0), (2,0), (2,2) and (0,4). At the optimal vertex (2,2) the two active constraints have normals (1,1) and (1,0); the objective gradient (3,2) equals 2 times the first plus 1 times the second, so it lies in the cone they span, shaded. Every line through (2,2) whose normal lies in that cone supports the polygon; the line 3x+2y=10 is one of them. Analytic figure, multipliers checked against PRIMAL at revision 1f2ddee.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#17212b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>
+  </defs>
+  <rect width="700" height="500" fill="#fff"/>
+  <text x="350.0" y="30.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Supporting lines at the optimal vertex</text>
+  <clipPath id="win"><rect x="70.0" y="60.0" width="470.0" height="330.0"/></clipPath>
+  <g clip-path="url(#win)">
+  <path d="M283.6 240.0L540.0 60.0L540.0 240.0Z" fill="#fde68a" stroke="none"/>
+  <path d="M112.7 360.0L283.6 360.0L283.6 240.0L112.7 120.0Z" fill="#dbeafe" stroke="none"/>
+  <line x1="70.0" y1="90.0" x2="540.0" y2="420.0" stroke="#155097" stroke-width="3.0"/>
+  <line x1="283.6" y1="390.0" x2="283.6" y2="60.0" stroke="#155097" stroke-width="3.0"/>
+  <line x1="112.7" y1="60.0" x2="426.1" y2="390.0" stroke="#b45309" stroke-width="2.5" stroke-dasharray="9 5"/>
+  </g>
+  <line x1="70.0" y1="390.0" x2="554.0" y2="390.0" stroke="#17212b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="70.0" y1="390.0" x2="70.0" y2="46.0" stroke="#17212b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="112.7" y1="390.0" x2="112.7" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="112.7" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">0</text>
+  <line x1="198.2" y1="390.0" x2="198.2" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="198.2" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="283.6" y1="390.0" x2="283.6" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="283.6" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="369.1" y1="390.0" x2="369.1" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="369.1" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="454.5" y1="390.0" x2="454.5" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="454.5" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">4</text>
+  <line x1="540.0" y1="390.0" x2="540.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="540.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">5</text>
+  <line x1="65.0" y1="360.0" x2="70.0" y2="360.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="365.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">0</text>
+  <line x1="65.0" y1="300.0" x2="70.0" y2="300.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="305.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="65.0" y1="240.0" x2="70.0" y2="240.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="245.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="65.0" y1="180.0" x2="70.0" y2="180.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="185.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="65.0" y1="120.0" x2="70.0" y2="120.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="125.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">4</text>
+  <line x1="65.0" y1="60.0" x2="70.0" y2="60.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="65.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">5</text>
+  <text x="548.0" y="412.0" text-anchor="start" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x</text>
+  <text x="64.0" y="42.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">y</text>
+  <line x1="283.6" y1="240.0" x2="360.5" y2="186.0" stroke="#155097" stroke-width="3.0" marker-end="url(#arr)"/>
+  <line x1="283.6" y1="240.0" x2="360.5" y2="240.0" stroke="#155097" stroke-width="3.0" marker-end="url(#arr)"/>
+  <line x1="283.6" y1="240.0" x2="424.6" y2="174.0" stroke="#b45309" stroke-width="3.5" marker-end="url(#arrb)"/>
+  <rect x="277.6" y="234.0" width="12" height="12" fill="#17212b"/>
+  <text x="296.5" y="147.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">n1 = (1, 1)</text>
+  <text x="368.5" y="262.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">n2 = (1, 0)</text>
+  <text x="434.6" y="178.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">g = (3, 2)</text>
+  <text x="121.3" y="147.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x + y = 4</text>
+  <text x="290.5" y="75.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x = 2</text>
+  <text x="121.3" y="69.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3x + 2y = 10</text>
+  <text x="121.3" y="339.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">feasible polygon</text>
+  <text x="273.6" y="264.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">(2, 2)</text>
+  <text x="70.0" y="452.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">g = 2 n1 + 1 n2: the gradient lies in the cone of the active normals (shaded),</text>
+  <text x="70.0" y="472.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">so every line through (2, 2) with a normal in that cone supports the polygon.</text>
+</svg>

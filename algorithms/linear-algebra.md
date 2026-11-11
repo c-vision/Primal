@@ -1,76 +1,48 @@
-# Linear algebra
+# Linear algebra: kernel inventory
 
-**Source:** `linalg.c` / `linalg.h`
+**Source:** `linalg.c` / `linalg.h`. **Verified against** revision `1f2ddee`.
 
-Everything PrimalSolver factors is in this file. There is no BLAS, no LAPACK, no
-external library: these are the kernels the whole solver stands on. They are
-small, dense/sparse symmetric, and written for the shapes the solver actually
-needs rather than for generality.
+Everything PrimalSolver factors is in this file. There is no BLAS, no LAPACK and no
+external library. The teaching chapter is [linear algebra for Newton and basis
+systems](linear_algebra.md); this page is the reference list of the kernels, what they
+assume, and who calls them.
 
-## What is available
+## Kernels
 
-| Kernel | Type | Used for |
-|---|---|---|
-| `dmat_lu` | dense, partial pivoting | simplex basis, dense augmented systems |
-| `smat_lu` | sparse, partial pivoting | sparse fallback paths |
-| `dmat_chol` | dense SPD | normal equations (QP, SOCP) |
-| `spchol_factor_ord` | sparse SPD, AMD ordering | normal equations for large sparse LPs and QPs |
-| `spldl` | sparse LDLᵀ, 1×1 and 2×2 pivots | indefinite KKT blocks with structurally zero diagonal |
-| `dmat_ldl_bk` | dense LDLᵀ, Bunch–Kaufman | indefinite dense systems |
-| `dmat_eig_jacobi` | symmetric eigenvalues + eigenvectors | QCQP encoding, smallest-eigenvalue checks |
+| Kernel | Algorithm | Fails when | Production callers |
+|---|---|---|---|
+| `dmat_lu_factor` / `dmat_lu_solve` | dense LU, partial pivoting, reusable factor | pivot below $10^{-300}$ (exactly singular): returns `NULL` | `ipm.c` (dense augmented system, QP reduction), `simplex.c` (duals of the dual simplex), `socp.c`, `sdp.c`, `primal_verdict.c`, `primal_misc.c`, `primal_quad.c` |
+| `dmat_lu_solve_comp` | same factor, Neumaier-compensated substitutions | as above | the degenerate PSD/SOC path of `sdp.c` |
+| `dmat_solve_lu` | one-shot LU, destroys its input | pivot below $10^{-14}$ (absolute) | legacy API |
+| `dmat_cholesky` / `dmat_chol_solve` | dense Cholesky | non-positive pivot | `expcone_corrector.c` |
+| `spchol_factor` | sparse left-looking Cholesky, natural order | non-positive pivot: returns `NULL` | `ipm.c`, `socp.c`, `primal_misc.c` |
+| `spchol_factor_ord` | the same with an AMD ordering applied inside | as above | `ipm.c`, `socp.c`, `primal_misc.c` |
+| `spchol_order` + `spchol_factor_perm` | ordering computed once, reused for a fixed pattern | as above | `ipm.c`, `socp.c` |
+| `spchol_factor_fail` | like `spchol_factor`; on a bad pivot also returns the shift that would repair it | as above | `socp.c` |
+| `spchol_factor_dense` | Cholesky of a matrix known to have a full lower triangle | as above | `ipm.c` |
+| `spchol_solve`, `spchol_solve_all` | natural-order solve, one or many right-hand sides | **refuse** an ordered factor | `ipm.c` |
+| `spchol_solve_ord` | solve through any factor, undoing its ordering | NULL input | `ipm.c`, `socp.c` |
+| `splu_factor` / `splu_factor_ord` | sparse LU, row pivoting, column ordering | pivot below $10^{-300}$ or a row that cannot grow; needs distinct row indices in a column | `socp.c`, `sdp.c` |
+| `sym_amd_order` | approximate minimum degree ordering | allocation failure: `NULL` | `sdp.c` |
+| `spqd_analyze` / `spqd_factor` / `spqd_solve` | LDL of a quasi-definite matrix with regularization | factor refuses | **experimental**, `socp.c` with `GMB_SOCP_LDL` |
+| `spldl_factor` / `spldl_solve` | sparse LDL with static 1×1 and 2×2 pivots | a block does not factor | no production caller; tests only |
+| `dmat_ldl_bk` | dense Bunch–Kaufman LDL | numerically singular | no production caller; tests only |
+| `sym_rcm_order` | reverse Cuthill–McKee ordering | | no production caller |
+| `dmat_eig_jacobi` | cyclic Jacobi, one-sided update; `evec` column $k$ is eigenvector $k$ | | QCQP encoding, PSD checks, the 3×3 metrics of the exp/power cones |
+| `dmat_eig_jacobi_twosided` | the same rotations with the two-sided update | | the experimental HSD path in `sdp.c` only |
 
-## The dense LU
-
-Partial pivoting on the largest available column. The allocation is explicit
-(`a` is caller-owned, `piv` and the scratch are returned), so no kernel decides
-on its own how much memory to take.
-
-## Sparse Cholesky
-
-Left-looking, with a fill-reducing **minimum-degree** ordering
-(`sym_amd`) and the permutation applied on solve. This is the path that makes
-large sparse LPs and QPs tractable: the interior-point method forms normal
-equations `K = A·M⁻¹·Aᵀ + δI` and factors `K` here, never the full KKT.
-
-The permutation travels with the factor: `spchol_solve_ord` applies it, and
-the natural-order solves (`spchol_solve`, `spchol_solve_all`) refuse an ordered
-factor. Read in its own order, an ordered factor answers the permuted system,
-a wrong vector with no error.
-
-Measured (`bench/`, sparse route forced on): a 400×200 LP solves in 0.57 s
-through this path versus 1.63 s dense — forcing the sparse route closes about
-2.9× of the gap to HiGHS on that size, the rest being algorithmic.
-
-## Sparse LDLᵀ with 2×2 pivots
-
-`spldl` exists because a KKT matrix has rows with **structurally zero
-diagonal** (an equality row contributes a zero on the diagonal block). Those
-rows need a 2×2 pivot pairing them with a neighbour. The 2×2 branch switches on
-only when the diagonal is near zero; a quasi-definite matrix stays on the 1×1
-path, so the common case is unchanged.
-
-Pivots are matched greedily on off-diagonal nonzeros, and `spldl_solve` applies
-the resulting permutation. The permutation is part of the factorization, not
-something the caller has to remember: forgetting it is a silent wrong answer,
-not a crash, so it lives inside the same file as the factor.
-
-Validated by a standalone oracle — backward error `‖Kx−b‖/(‖K‖·‖x‖+‖b‖) < 1e-9`
-on random indefinite matrices with structurally zero diagonals, and on the
-KKT family `[[H, Bᵀ],[B, 0]]` — under AddressSanitizer.
+An ordered `SpChol` carries its permutation. `spchol_solve` and `spchol_solve_all` return
+an error for it; `spchol_solve_ord` is the safe call.
 
 ## Eigenvalues
 
-`dmat_eig_jacobi` is the cyclic Jacobi method: `evec` is `n × n` row-major and
-**column k is eigenvector k**. It is used to encode QCQP constraints exactly
-([QCQP encoding](qcqp-encoding.md)) and to read the smallest eigenvalue of a PSD
-block. It is slow for large `n` by design — correctness over speed, at a size
-where the callers do not care.
+`dmat_eig_jacobi` stops when the off-diagonal sum of squares falls below
+$10^{-28}\|A\|_F^2$ (about $10^{-14}$ of the matrix), so the tolerance is relative. It is
+slow for large $n$ by design.
 
 ## Limits
 
-- No iterative refinement, no supernodal/multifrontal variants, no
-  rectangular or rank-deficient paths.
-- The sparse Cholesky assumes positive definiteness; the regularizing shift
-  `δI` that makes this true is the caller's responsibility.
-- `dmat_eig_jacobi` is not competitive with a tridiagonal reduction for
-  `n > ~500`; no such caller exists yet.
+- No iterative refinement; no supernodal or multifrontal variants.
+- The sparse Cholesky assumes positive definiteness; the regularizing shift is the
+  caller's responsibility.
+- `dmat_eig_jacobi` is not competitive with a tridiagonal reduction for large $n$.

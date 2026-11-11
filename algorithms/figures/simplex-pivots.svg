@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="500" viewBox="0 0 700 500" role="img" aria-labelledby="title desc">
+  <title id="title">Feasible polygon and two simplex pivots</title>
+  <desc id="desc">Feasible polygon with vertices (0,0), (2,0), (2,2) and (0,4) for maximize 3x+2y with x+y&lt;=4 and x&lt;=2. Two simplex pivots go from (0,0) to (2,0) and then to (2,2), where the objective is 10. Dashed lines are the level sets 3x+2y=6 and 3x+2y=10. Analytic figure, computed at revision 1f2ddee.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#17212b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>
+  </defs>
+  <rect width="700" height="500" fill="#fff"/>
+  <text x="350.0" y="30.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Two simplex pivots on max 3x + 2y</text>
+  <path d="M70.0 390.0L258.0 390.0L258.0 258.0L70.0 126.0Z" fill="#dbeafe" stroke="none"/>
+  <line x1="70.0" y1="126.0" x2="446.0" y2="390.0" stroke="#155097" stroke-width="3.0"/>
+  <line x1="258.0" y1="390.0" x2="258.0" y2="60.0" stroke="#155097" stroke-width="3.0"/>
+  <line x1="70.0" y1="192.0" x2="258.0" y2="390.0" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <line x1="70.0" y1="60.0" x2="383.3" y2="390.0" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <line x1="70.0" y1="390.0" x2="554.0" y2="390.0" stroke="#17212b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="70.0" y1="390.0" x2="70.0" y2="46.0" stroke="#17212b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="70.0" y1="390.0" x2="70.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="70.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">0</text>
+  <line x1="164.0" y1="390.0" x2="164.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="164.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="258.0" y1="390.0" x2="258.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="258.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="352.0" y1="390.0" x2="352.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="352.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="446.0" y1="390.0" x2="446.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="446.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">4</text>
+  <line x1="540.0" y1="390.0" x2="540.0" y2="395.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="540.0" y="410.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">5</text>
+  <line x1="65.0" y1="390.0" x2="70.0" y2="390.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="395.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">0</text>
+  <line x1="65.0" y1="324.0" x2="70.0" y2="324.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="329.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <line x1="65.0" y1="258.0" x2="70.0" y2="258.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="263.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <line x1="65.0" y1="192.0" x2="70.0" y2="192.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="197.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3</text>
+  <line x1="65.0" y1="126.0" x2="70.0" y2="126.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="131.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">4</text>
+  <line x1="65.0" y1="60.0" x2="70.0" y2="60.0" stroke="#17212b" stroke-width="1.0"/>
+  <text x="61.0" y="65.0" text-anchor="end" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">5</text>
+  <text x="548.0" y="412.0" text-anchor="start" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x</text>
+  <text x="64.0" y="42.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">y</text>
+  <text x="81.3" y="212.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3x + 2y = 6</text>
+  <text x="102.9" y="69.9" text-anchor="start" font-family="sans-serif" font-size="14" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">3x + 2y = 10</text>
+  <text x="356.7" y="304.2" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x + y = 4</text>
+  <text x="265.5" y="86.4" text-anchor="start" font-family="sans-serif" font-size="14" fill="#155097" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">x = 2</text>
+  <line x1="76.0" y1="390.0" x2="250.0" y2="390.0" stroke="#b45309" stroke-width="3.5" marker-end="url(#arrb)"/>
+  <line x1="258.0" y1="384.0" x2="258.0" y2="266.0" stroke="#b45309" stroke-width="3.5" marker-end="url(#arrb)"/>
+  <circle cx="70.0" cy="390.0" r="6" fill="#fff" stroke="#17212b" stroke-width="2.5"/>
+  <circle cx="258.0" cy="390.0" r="5" fill="#17212b"/>
+  <rect x="252.0" y="252.0" width="12" height="12" fill="#17212b"/>
+  <line x1="65.0" y1="121.0" x2="75.0" y2="131.0" stroke="#17212b" stroke-width="2.0"/>
+  <line x1="65.0" y1="131.0" x2="75.0" y2="121.0" stroke="#17212b" stroke-width="2.0"/>
+  <text x="80.0" y="118.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">(0, 4)  z = 8, not visited</text>
+  <text x="82.0" y="380.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">(0, 0)  z = 0</text>
+  <text x="268.0" y="380.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">(2, 0)  z = 6</text>
+  <text x="270.0" y="246.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">(2, 2)  z = 10, optimal</text>
+  <text x="164.0" y="376.0" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+  <text x="270.0" y="329.0" text-anchor="start" font-family="sans-serif" font-size="16" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">2</text>
+  <text x="70.0" y="440.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Pivot 1 (arrow 1): x enters the basis, slack 2 leaves</text>
+  <text x="70.0" y="460.0" text-anchor="start" font-family="sans-serif" font-size="14" fill="#b45309" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Pivot 2 (arrow 2): y enters the basis, slack 1 leaves</text>
+  <line x1="126.4" y1="307.5" x2="182.8" y2="281.1" stroke="#17212b" stroke-width="2.0" marker-end="url(#arr)"/>
+  <text x="79.4" y="267.9" text-anchor="start" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">increasing 3x + 2y</text>
+  <text x="70.0" y="482.0" text-anchor="start" font-family="sans-serif" font-size="13" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">Open circle: start. Filled circle: visited vertex. Square: optimum. Cross: unvisited vertex.</text>
+</svg>

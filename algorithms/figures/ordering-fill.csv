@@ -1,0 +1,8 @@
+# make_figures.c at revision 1f2ddee; spchol_factor (natural order) and spchol_factor_ord (AMD)
+# arrowhead: 10 x 10, hub first.  grid: g x g five-point Laplacian plus 0.1 I, natural row-by-row order
+case,n,nnz_K_lower,nnz_L_natural,nnz_L_amd
+arrowhead,10,19,55,19
+grid10x10,100,280,1009,656
+grid20x20,400,1160,8019,3729
+grid30x30,900,2640,27029,10351
+grid40x40,1600,4720,64039,21504
