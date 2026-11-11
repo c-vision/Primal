@@ -688,6 +688,9 @@ static double nsum_prod(const double *a, const double *b, int n) {
  * GMB_SDP_DENSE disables it. */
 #define SDP_SPARSE_WORK 4e8
 
+/* componentwise backward error a refactored solution must reach (a fresh LU reaches ~1e-16) */
+#define SDP_LU_BERR 1e-12
+
 /* One KKT pattern: the triplets of its first assembly, their merged CSC, and
  * the column ordering.  A later assembly emits the same triplets in the same
  * order and adds each value at map[t]. */
@@ -786,6 +789,25 @@ static double sdp_sp_resid(const SdpSpKkt *P, const double *x, const double *g,
     double rn = 0.0;
     for (int i = 0; i < n; i++) { r[i] = g[i] - (s[i] + c[i]); if (fabs(r[i]) > rn) rn = fabs(r[i]); }
     return rn;
+}
+
+/* Full factorization that leaves a factor whose STRUCTURE can be refactored later: exactly-zero entries
+ * (zero multipliers, zero fill, common at the first iterations when the arrow matrices of a SOC block
+ * are the identity) are kept in L and U, see splu_factor_keep. */
+static SpluFact *sdp_lu_factor_struct(const SdpSpKkt *P, int n) {
+    return splu_factor_keep(n, P->Ap, P->Ai, P->Ax, P->qperm);
+}
+
+/* Componentwise backward error max_i |g_i - (K x)_i| / (|g_i| + sum_j |K_ij x_j|) of a sparse pattern
+ * (rows with an exactly zero residual do not count); the residual itself is left in r. */
+static double sdp_sp_berr(const SdpSpKkt *P, const double *x, const double *g, double *r, double *den) {
+    int n = P->n;
+    for (int i = 0; i < n; i++) { r[i] = g[i]; den[i] = fabs(g[i]); }
+    for (int j = 0; j < n; j++) for (int p = P->Ap[j]; p < P->Ap[j + 1]; p++) {
+        int i = P->Ai[p]; double a = P->Ax[p] * x[j]; r[i] -= a; den[i] += fabs(a); }
+    double e = 0.0;
+    for (int i = 0; i < n; i++) { double q = fabs(r[i]); if (q > 0.0) { q /= (den[i] > 1e-300 ? den[i] : 1e-300); if (q > e) e = q; } }
+    return e;
 }
 
 /* Free the structure lists. */
@@ -1920,6 +1942,8 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
      * (eliminated / augmented), the structure lists, the predictor's factor */
     SdpSpKkt spk[2]; memset(spk, 0, sizeof spk);
     SpluFact *sp_pc = NULL; double *sp_pcx = NULL; int sp_pcaug = -1;
+    int lu_ref_off = getenv("GMB_NO_LU_REFACTOR") != NULL; long lu_nrefac = 0, lu_nrefused = 0;
+    SpluFact *sp_old = NULL; int sp_old_aug = -1;   /* the previous iteration's factor, kept to be refactored */
     double sp_work = getenv("GMB_SDP_DENSE") ? HUGE_VAL : (getenv("GMB_SDP_SPARSE") ? 0.0 : SDP_SPARSE_WORK);
 #ifdef SDP_IPM_CORRECTED
     /* Bound structural density in both forms of the orthant block. */
@@ -2008,7 +2032,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
 #endif
         dmat_lu_free(pc_factor); pc_factor = NULL;
         free(pc_matrix); pc_matrix = NULL;
-        splu_free(sp_pc); sp_pc = NULL;
+        splu_free(sp_old); sp_old = sp_pc; sp_old_aug = sp_pcaug; sp_pc = NULL;
         free(sp_pcx); sp_pcx = NULL; sp_pcaug = -1;
         if (primal_cb_iter_on) primal_cb_iter(34);
         ipmres R = ipm_resid(&C);
@@ -2352,9 +2376,21 @@ redo_dir:
                     if (refine_on) memcpy(gsc, Srhs, (size_t)Nsys * sizeof(double));
                     int reuse = pass == 1 && sp_pc && sp_pcaug == augx &&
                         memcmp(P->Ax, sp_pcx, (size_t)P->nnz * sizeof(double)) == 0;
-                    SpluFact *f = reuse ? sp_pc : splu_factor_ord(Nsys, P->Ap, P->Ai, P->Ax, P->qperm);
+                    SpluFact *f = NULL; int refac = 0;
+                    if (reuse) f = sp_pc;
+                    else if (!lu_ref_off && pass == 0 && sp_old && sp_old_aug == augx) {
+                        double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
+                        if (cpx && splu_refactor(sp_old, P->Ap, P->Ai, P->Ax) == 0) {
+                            f = sp_pc = sp_old; sp_old = NULL; sp_pcx = cpx; sp_pcaug = augx; refac = 1;
+                        } else { free(cpx); splu_free(sp_old); sp_old = NULL; lu_nrefused++; }
+                    }
+                    if (!f) f = lu_ref_off ? splu_factor_ord(Nsys, P->Ap, P->Ai, P->Ax, P->qperm) : sdp_lu_factor_struct(P, Nsys);
                     if (!f) { free(cc); free(refi); free(Srhs); status = 3; goto refine; }
-                    if (pass == 0) {
+                    double *lu_rhs = refac ? (double *)malloc(3 * (size_t)Nsys * sizeof(double)) : NULL;
+                    if (refac && !lu_rhs) { free(cc); free(refi); free(Srhs); status = 2; goto done; }
+                    if (refac) memcpy(lu_rhs, Srhs, (size_t)Nsys * sizeof(double));
+                    if (refac) { memcpy(sp_pcx, P->Ax, (size_t)P->nnz * sizeof(double)); lu_nrefac++; }
+                    if (pass == 0 && !refac) {
                         double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
                         if (cpx) {
                             splu_free(sp_pc); free(sp_pcx);
@@ -2367,6 +2403,33 @@ redo_dir:
                     if (splu_solve(f, Srhs) != 0) {
                         if (f != sp_pc) splu_free(f);
                         free(cc); free(refi); free(Srhs); status = 3; goto refine; }
+                    if (refac) {   /* a fixed pivot order can lose accuracy: verify, refine, else factor afresh */
+                        double *lr = lu_rhs + Nsys, *ld = lu_rhs + 2 * (size_t)Nsys;
+                        double e = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
+                        for (int it2 = 0; it2 < 2 && !(e <= SDP_LU_BERR); it2++) {
+                            memcpy(ld, lr, (size_t)Nsys * sizeof(double));
+                            if (splu_solve(f, ld) != 0) break;
+                            for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] += ld[b2];
+                            double e2 = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
+                            if (!(e2 < e)) { for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] -= ld[b2]; break; }
+                            e = e2;
+                        }
+                        e = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
+                        if (getenv("GMB_DBG")) fprintf(stderr, "  [lu] refactor berr=%.2e %s\n", e, e <= SDP_LU_BERR ? "accepted" : "REFUSED, full factor");
+                        if (!(e <= SDP_LU_BERR)) {
+                            lu_nrefused++; lu_nrefac--;
+                            splu_free(sp_pc); sp_pc = NULL; free(sp_pcx); sp_pcx = NULL; sp_pcaug = -1;
+                            f = sdp_lu_factor_struct(P, Nsys);
+                            if (!f) { free(lu_rhs); free(cc); free(refi); free(Srhs); status = 3; goto refine; }
+                            double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
+                            if (cpx) { memcpy(cpx, P->Ax, (size_t)P->nnz * sizeof(double)); sp_pc = f; sp_pcx = cpx; sp_pcaug = augx; }
+                            memcpy(Srhs, lu_rhs, (size_t)Nsys * sizeof(double));
+                            if (splu_solve(f, Srhs) != 0) {
+                                if (f != sp_pc) splu_free(f);
+                                free(lu_rhs); free(cc); free(refi); free(Srhs); status = 3; goto refine; }
+                        }
+                    }
+                    free(lu_rhs); lu_rhs = NULL;
                     for (int rif = 0; rif < 3 && refine_on; rif++) {
                         double rn = sdp_sp_resid(P, Srhs, gsc, rcor, ks, kc);
                         memcpy(dcor, rcor, (size_t)Nsys * sizeof(double));
@@ -2982,7 +3045,8 @@ refine:
 done:
     dmat_lu_free(pc_factor);
     free(pc_matrix);
-    splu_free(sp_pc); free(sp_pcx);
+    splu_free(sp_pc); free(sp_pcx); splu_free(sp_old);
+    if (getenv("GMB_DBG") && (lu_nrefac + lu_nrefused)) fprintf(stderr, "  [lu] refactorizations accepted=%ld refused=%ld\n", lu_nrefac, lu_nrefused);
     sdp_sp_free(&spk[0]); sdp_sp_free(&spk[1]);
     /* A point is in the outputs (accepted-and-demoted, or frozen) but the
      * native verdict is "not solved": the caller may publish it as a

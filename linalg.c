@@ -1098,7 +1098,7 @@ static int ctz64(unsigned long long x) {
         46, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19,  9, 13,  8,  7,  6 };
     return idx[((x & (0ULL - x)) * 0x03f79d71b4cb0a89ULL) >> 58];
 }
-SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm_in) {
+static SpluFact *splu_factor_impl(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm_in, int keep_zeros) {
     if (n < 0 || !Ap) return NULL;
     if (primal_cb_iter_on) primal_cb_iter(79);
     SpluFact *F = (SpluFact *)calloc(1, sizeof(SpluFact));
@@ -1237,7 +1237,7 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
             int qi = slot[i];
             if (qi < 0) continue;
             double aik = rows[i].cv[qi];
-            if (aik == 0.0) { continue; }
+            if (aik == 0.0 && !keep_zeros) { continue; }
             double mult = aik / piv;
             rows[i].cv[qi] = mult;                 /* store L[i][k] in place */
             /* rows[i](cols>k) -= mult * rows[k](cols>k), with fill via marker */
@@ -1268,7 +1268,7 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
                 rows[i].cap = nc;
             }
             rows[i].cols = 0;
-            for (int a = 0; a < nt; a++) { int col = touch[a]; double v = w[col]; if (v != 0.0) { if(inc)inc[(size_t)col*words+(size_t)i/64]|=1ULL<<(i&63);
+            for (int a = 0; a < nt; a++) { int col = touch[a]; double v = w[col]; if (keep_zeros || v != 0.0) { if(inc)inc[(size_t)col*words+(size_t)i/64]|=1ULL<<(i&63);
                 if (cl && fst[col] == stamp && cl_push(cl,cln,clcap,col,i)) singular = 2;   /* fill: a new column of row i */
                 rows[i].cols |= 1ULL << (col & 63); rows[i].ci[newnz] = col; rows[i].cv[newnz] = v; newnz++; } }
             rows[i].nz = newnz;
@@ -1316,6 +1316,17 @@ SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax,
     for (int i = 0; i < n; i++) { free(rows[i].ci); free(rows[i].cv); }
     free(rows);
     return F;
+}
+
+SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm_in) {
+    return splu_factor_impl(n, Ap, Ai, Ax, qperm_in, 0);
+}
+
+/* As splu_factor_ord, but entries that are exactly zero are KEPT in L and U (a zero multiplier, a zero
+ * fill): the structure then depends only on the pattern and the pivot order, not on cancellations, which
+ * is what splu_refactor needs to reuse it with other values. */
+SpluFact *splu_factor_keep(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm_in) {
+    return splu_factor_impl(n, Ap, Ai, Ax, qperm_in, 1);
 }
 
 /* Solves A x = rhs, rhs overwritten with x.  A scratch copy receives the row
@@ -1501,12 +1512,14 @@ int spqd_solve(SpQd *F, double *rhs) {
     return 0;
 }
 
+static void splu_ref_free(struct SpluRef *R);
 /* NULL-safe, and safe on a HALF-BUILT struct: splu_factor calloc's the record
  * and calls this on its error paths, where only some of the arrays exist.  A
  * new field added to SpluFact has to be released here as well, or every one of
  * those paths leaks it. */
 void splu_free(SpluFact *F) {
     if (!F) return;
+    splu_ref_free(F->ref);
     free(F->perm); free(F->qperm); free(F->Lp); free(F->Li); free(F->Lx); free(F->Up); free(F->Ui); free(F->Ux);
     free(F);
 }
@@ -1916,4 +1929,102 @@ int dmat_ldl_bk_solve(const SpBK *F, double *rhs) {
 void dmat_ldl_bk_free(SpBK *F) {
     if (!F) return;
     free(F->perm); free(F->piv2); free(F->LU); free(F);
+}
+
+/* ===================== numerical refactorization (attempts.md F156) =====================
+ * splu_factor_ord pays for its generality at every call: SRow records grown with realloc, a pivot
+ * search, column incidence bitsets, the extraction of L and U.  Inside an interior point the
+ * pattern is fixed and the values move a little, so the previous factor already holds what is
+ * expensive to find: the permutations and the structure of L and U.  The refactorization is a
+ * row-by-row (IKJ) elimination of B = P A Q in exactly those positions:
+ *     for row i:  w <- B(i,:);  for k in L(i,:) ascending:  l = w[k]/U(k,k);  w[j] -= l U(k,j), j > k
+ *                 L(i,k) <- l;  U(i,:) <- w
+ * It does the same arithmetic as the elimination for the same pivots, only without the search.  The
+ * structure is a SUPERSET of what the new values need except in one case, an entry the old
+ * elimination dropped because it was exactly 0.0: an update that lands outside the stored pattern is
+ * detected (stamped columns) and refused. */
+struct SpluRef {
+    int n;
+    int *Bp, *Bj, *Bx;   /* B = P A Q by position rows: entries (position column, index into Ax) */
+    int *Rp, *Rk, *Rx;   /* L by rows: row i -> (k, index into Lx), k ascending */
+    int *dg;             /* index into Ux of the diagonal of row i */
+    int *mark;           /* stamp per position column */
+    double *w;
+};
+
+static void splu_ref_free(struct SpluRef *R) {
+    if (!R) return;
+    free(R->Bp); free(R->Bj); free(R->Bx); free(R->Rp); free(R->Rk); free(R->Rx);
+    free(R->dg); free(R->mark); free(R->w); free(R);
+}
+
+static struct SpluRef *splu_ref_build(const SpluFact *F, const int *Ap, const int *Ai) {
+    int n = F->n, nnz = Ap[n];
+    struct SpluRef *R = (struct SpluRef *)calloc(1, sizeof *R);
+    if (!R) return NULL;
+    R->n = n;
+    int *ipos = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));   /* original row -> position */
+    int *iq = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));     /* original column -> position */
+    R->Bp = (int *)calloc((size_t)n + 1, sizeof(int)); R->Rp = (int *)calloc((size_t)n + 1, sizeof(int));
+    R->Bj = (int *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(int)); R->Bx = (int *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(int));
+    int lnz = F->Lp[n];
+    R->Rk = (int *)malloc((size_t)(lnz > 0 ? lnz : 1) * sizeof(int)); R->Rx = (int *)malloc((size_t)(lnz > 0 ? lnz : 1) * sizeof(int));
+    R->dg = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
+    R->mark = (int *)calloc((size_t)(n > 0 ? n : 1), sizeof(int)); R->w = (double *)calloc((size_t)(n > 0 ? n : 1), sizeof(double));
+    int *cur = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
+    if (!ipos || !iq || !R->Bp || !R->Rp || !R->Bj || !R->Bx || !R->Rk || !R->Rx || !R->dg || !R->mark || !R->w || !cur) {
+        free(ipos); free(iq); free(cur); splu_ref_free(R); return NULL; }
+    for (int k = 0; k < n; k++) { ipos[F->perm[k]] = k; iq[F->qperm[k]] = k; }
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) R->Bp[ipos[Ai[p]] + 1]++;
+    for (int i = 0; i < n; i++) R->Bp[i + 1] += R->Bp[i];
+    for (int i = 0; i < n; i++) cur[i] = R->Bp[i];
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) {
+        int i = ipos[Ai[p]], q = cur[i]++; R->Bj[q] = iq[j]; R->Bx[q] = p; }
+    for (int p = 0; p < lnz; p++) R->Rp[F->Li[p] + 1]++;
+    for (int i = 0; i < n; i++) R->Rp[i + 1] += R->Rp[i];
+    for (int i = 0; i < n; i++) cur[i] = R->Rp[i];
+    for (int j = 0; j < n; j++) for (int p = F->Lp[j]; p < F->Lp[j + 1]; p++) {
+        int i = F->Li[p], q = cur[i]++; R->Rk[q] = j; R->Rx[q] = p; }
+    for (int i = 0; i < n; i++) {
+        int d = -1;
+        for (int q = F->Up[i]; q < F->Up[i + 1]; q++) if (F->Ui[q] == i) { d = q; break; }
+        if (d < 0) { free(ipos); free(iq); free(cur); splu_ref_free(R); return NULL; }
+        R->dg[i] = d;
+    }
+    free(ipos); free(iq); free(cur);
+    return R;
+}
+
+int splu_refactor(SpluFact *F, const int *Ap, const int *Ai, const double *Ax) {
+    if (!F || !Ap || !Ai || !Ax || !F->Lp || !F->Up) return -1;
+    if (!F->ref) { F->ref = splu_ref_build(F, Ap, Ai); if (!F->ref) return -1; }
+    struct SpluRef *R = F->ref;
+    int n = F->n, stamp = 0;
+    double *w = R->w;
+    for (int i = 0; i < n; i++) {
+        stamp++;
+        for (int q = R->Rp[i]; q < R->Rp[i + 1]; q++) R->mark[R->Rk[q]] = stamp;
+        for (int q = F->Up[i]; q < F->Up[i + 1]; q++) R->mark[F->Ui[q]] = stamp;
+        for (int e = R->Bp[i]; e < R->Bp[i + 1]; e++) {
+            if (R->mark[R->Bj[e]] != stamp) { if (getenv("GMB_REF_DBG")) fprintf(stderr, "  [refactor] A entry outside structure at row %d col %d\n", i, R->Bj[e]); return -1; }
+            w[R->Bj[e]] = Ax[R->Bx[e]];
+        }
+        for (int q = R->Rp[i]; q < R->Rp[i + 1]; q++) {
+            int k = R->Rk[q];
+            double l = w[k] / F->Ux[R->dg[k]];
+            w[k] = 0.0;
+            F->Lx[R->Rx[q]] = l;
+            if (l == 0.0) continue;
+            for (int u = F->Up[k]; u < F->Up[k + 1]; u++) {
+                int j = F->Ui[u];
+                if (j <= k) continue;
+                if (R->mark[j] != stamp) { if (getenv("GMB_REF_DBG")) fprintf(stderr, "  [refactor] fill outside structure at row %d (k=%d) col %d\n", i, k, j); return -1; }
+                w[j] -= l * F->Ux[u];
+            }
+        }
+        for (int q = F->Up[i]; q < F->Up[i + 1]; q++) { F->Ux[q] = w[F->Ui[q]]; w[F->Ui[q]] = 0.0; }
+        double piv = F->Ux[R->dg[i]];
+        if (!(fabs(piv) > 1e-300) || !isfinite(piv)) { if (getenv("GMB_REF_DBG")) fprintf(stderr, "  [refactor] bad pivot %g at row %d\n", piv, i); return -1; }
+    }
+    return 0;
 }

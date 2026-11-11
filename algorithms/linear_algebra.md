@@ -65,7 +65,7 @@ $Au=\tfrac85+\tfrac25=2=g$.
 | same, compensated sweeps | LU, Neumaier-compensated substitutions | `dmat_lu_solve_comp` | the degenerate PSD/SOC path of `sdp.c` only |
 | symmetric positive definite, dense | Cholesky | `dmat_cholesky`, `dmat_chol_solve` | the small PEXP corrector (`expcone_corrector.c`) |
 | symmetric positive definite, sparse | left-looking sparse Cholesky, optional AMD ordering | `spchol_factor`, `spchol_factor_ord`, `spchol_factor_perm`, `spchol_factor_dense`, `spchol_factor_fail` | sparse LP and QP normal equations and the condensed QP (`ipm.c`), SOCP normal equations (`socp.c`), `PRIMAL_computesparsecholesky` (`primal_misc.c`) |
-| general, sparse | sparse LU, row pivoting, column ordering | `splu_factor`, `splu_factor_ord` | the augmented SOCP fallback (`socp.c`) and the sparse KKT of `sdp.c` |
+| general, sparse | sparse LU, row pivoting, column ordering; numerical refactorization of a kept structure | `splu_factor`, `splu_factor_ord`, `splu_factor_keep`, `splu_refactor` | the augmented SOCP fallback (`socp.c`) and the sparse KKT of `sdp.c` |
 | quasi-definite, sparse | LDL with regularization | `spqd_analyze`, `spqd_factor`, `spqd_solve` | **experimental** symmetric SOCP KKT, only with `GMB_SOCP_LDL` ([symmetric SOCP KKT](socp-symmetric-kkt.md)) |
 | symmetric indefinite | LDL with static 2×2 pivots; dense Bunch–Kaufman | `spldl_factor`; `dmat_ldl_bk` | **no production call site** at this revision; exercised by `test_primal.c` |
 | symmetric, dense | Jacobi eigenvalues | `dmat_eig_jacobi`, `dmat_eig_jacobi_twosided` | QCQP encoding, PSD step checks, SDP, the 3×3 metrics of the exp/power cones; the two-sided form only for the experimental HSD path |

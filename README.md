@@ -236,9 +236,9 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) |
 |---|---:|---:|
-| 20×4 | 2.37 / 2.30 | **0.35 / 0.36** |
-| 40×8 | 6.70 / 6.99 | **0.72 / 0.74** |
-| 80×12 | 20.23 / 19.66 | **3.10 / 3.00** |
+| 20×4 | 1.76 / 1.81 | **0.29 / 0.31** |
+| 40×8 | 4.06 / 4.42 | **0.60 / 0.57** |
+| 80×12 | 11.25 / 11.23 | **2.66 / 2.66** |
 
 Measured on 2026-11-11. Each cell shows two medians from 21 interleaved
 measurements per series. Primal timings cover `PRIMAL_optimize`. Clarabel 0.11.1

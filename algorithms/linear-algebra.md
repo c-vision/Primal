@@ -22,7 +22,7 @@ assume, and who calls them.
 | `spchol_factor_dense` | Cholesky of a matrix known to have a full lower triangle | as above | `ipm.c` |
 | `spchol_solve`, `spchol_solve_all` | natural-order solve, one or many right-hand sides | **refuse** an ordered factor | `ipm.c` |
 | `spchol_solve_ord` | solve through any factor, undoing its ordering | NULL input | `ipm.c`, `socp.c` |
-| `splu_factor` / `splu_factor_ord` | sparse LU, row pivoting, column ordering | pivot below $10^{-300}$ or a row that cannot grow; needs distinct row indices in a column | `socp.c`, `sdp.c` |
+| `splu_factor` / `splu_factor_ord` / `splu_factor_keep` / `splu_refactor` | sparse LU, row pivoting, column ordering; refactorization reusing permutations and structure | pivot below $10^{-300}$ or a row that cannot grow; needs distinct row indices in a column | `socp.c`, `sdp.c` |
 | `sym_amd_order` | approximate minimum degree ordering | allocation failure: `NULL` | `sdp.c` |
 | `spqd_analyze` / `spqd_factor` / `spqd_solve` | LDL of a quasi-definite matrix with regularization | factor refuses | **experimental**, `socp.c` with `GMB_SOCP_LDL` |
 | `spldl_factor` / `spldl_solve` | sparse LDL with static 1×1 and 2×2 pivots | a block does not factor | no production caller; tests only |

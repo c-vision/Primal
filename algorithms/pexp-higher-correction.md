@@ -131,6 +131,35 @@ iterations fell from 29, 26 and 37 to 16, 16 and 21. The original-model
 quality checks passed at `1e-8`. The [README](../README.md#mixed-soc-and-exponential-cones)
 reports timings for the current routing and stopping policy.
 
+## Refactoring the sparse LU
+
+The sparse KKT pattern is fixed for the whole solve, only its values move. After
+the first factorization of an iteration sequence the corrected engine keeps the
+factor and, at the start of every later iteration, recomputes only its values
+with `splu_refactor` (`linalg.c`): the row and column permutations and the
+structure of L and U are reused, no pivot search is done and nothing is
+allocated. The first factorization uses `splu_factor_keep`, which keeps entries
+that are exactly zero (a zero multiplier, a zero fill) so that the structure
+does not depend on cancellations: the arrow matrices of a SOC block start as the
+identity and fill in later.
+
+The pivot order of an earlier iterate can be less stable than a fresh one, so
+every refactored solution is checked on the system that was factored: its
+componentwise backward error must be at most `1e-12` (a fresh factor reaches
+about `1e-16`; the refactored solutions measured `1e-15` to `3e-13`), with up to
+two refinement steps with the same factor. A solution that does not pass, or a
+refactorization that does not fit the old structure, falls back to a full
+factorization with a new pivot order. On the three regression models the
+refactorization was accepted in 14 of 15, 14 of 15 and 18 of 19 factorizations.
+`GMB_NO_LU_REFACTOR` disables it. Test `T308` checks refactored solutions
+against fresh factors, repeated refactorization of one factor, the refusal of a
+zero pivot and the kept zeros.
+
+Median solve time of nine runs against the previous routing (`9f09b1c`):
+20×4 from 2.29 to 1.82 ms, 40×8 from 6.53 to 4.56 ms and 80×12 from 20.1 to
+12.7 ms. The [README](../README.md#mixed-soc-and-exponential-cones) reports the
+timings of the benchmark harness.
+
 ## Validation and limits
 
 T299 checks the contraction against independent Taylor jets, log-homogeneity

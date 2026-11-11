@@ -160,12 +160,23 @@ typedef struct {
     int *qperm;    /* n: column permutation (position -> original column), fill-reducing */
     int *Lp, *Li; double *Lx;   /* L in CSC, unit diagonal implicit */
     int *Up, *Ui; double *Ux;   /* U in CSR by position row: Up[i]..Up[i+1] are row i's columns */
+    struct SpluRef *ref;        /* structure of splu_refactor, built on its first call and owned by the factor */
 } SpluFact;
+
+/* Numerical REFACTORIZATION: recompute L and U for new values Ax of the SAME pattern (Ap, Ai) the
+ * factor was made from, keeping its row and column permutations and its sparsity structure (no pivot
+ * search, no allocation after the first call).  Returns 0 on success and -1 when the new values do
+ * not fit the old factor: a pivot that is zero or not finite, or an update that falls outside the
+ * stored structure (a fill entry that was exactly zero when the factor was made and is not now).  On
+ * -1 the factor is unusable and the caller must call splu_factor_ord again.  The fixed pivot order
+ * can be less stable than a fresh one, so the caller is expected to check the residual. */
+int splu_refactor(SpluFact *F, const int *Ap, const int *Ai, const double *Ax);
 
 /* Factor a sparse non-symmetric A with row pivoting and column ordering.
  * Returns NULL when singular or on allocation failure. */
 SpluFact *splu_factor(int n, const int *Ap, const int *Ai, const double *Ax);
 SpluFact *splu_factor_ord(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm);
+SpluFact *splu_factor_keep(int n, const int *Ap, const int *Ai, const double *Ax, const int *qperm);
 int *sym_amd_order(int n, const int *Ap, const int *Ai);
 int *sym_rcm_order(int n, const int *Ap, const int *Ai);
 /* solves A x = rhs in place (rhs overwritten with x). 0 ok, -1 singular. */

@@ -21617,8 +21617,97 @@ static void test_t307(void) {
         }
 }
 
+/* T308: numerical refactorization of the sparse LU (splu_refactor, F156).
+ * A random sparse matrix with a few EXPLICIT zero entries is factored with splu_factor_keep (zeros
+ * kept in the structure); new values, including nonzero values where the first ones were 0.0, go
+ * through splu_refactor and must solve like a fresh factor of the new values (backward error), the
+ * same factor must refactor several times in a row, a zero pivot must be refused with -1, and a
+ * factor made WITHOUT keeping zeros must refuse values that fall into a dropped position. */
+static double t308_berr(int n, const int *Ap, const int *Ai, const double *Ax, const double *x, const double *b) {
+    double *r = (double *)malloc((size_t)n * sizeof(double)), *d = (double *)malloc((size_t)n * sizeof(double)), e = 0.0;
+    for (int i = 0; i < n; i++) { r[i] = b[i]; d[i] = fabs(b[i]); }
+    for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) { double a = Ax[p] * x[j]; r[Ai[p]] -= a; d[Ai[p]] += fabs(a); }
+    for (int i = 0; i < n; i++) { double q = fabs(r[i]) / (d[i] > 1e-300 ? d[i] : 1e-300); if (q > e) e = q; }
+    free(r); free(d);
+    return e;
+}
+
+static void test_t308(void) {
+    cur_name = "T308 sparse LU numerical refactorization";
+    const int n = 80;
+    unsigned st = 4242u;
+#define T308_RND() (st = st * 1103515245u + 12345u, (double)((st >> 16) & 0x7fff) / 32767.0)
+    int *Ap = (int *)malloc((size_t)(n + 1) * sizeof(int)), *Ai = (int *)malloc((size_t)n * 8 * sizeof(int));
+    double *A0 = (double *)malloc((size_t)n * 8 * sizeof(double)), *A1 = (double *)malloc((size_t)n * 8 * sizeof(double));
+    double *b = (double *)malloc((size_t)n * sizeof(double)), *x = (double *)malloc((size_t)n * sizeof(double));
+    char *seen = (char *)calloc((size_t)n, 1);
+    int nz = 0, nzero = 0;
+    for (int j = 0; j < n; j++) {
+        Ap[j] = nz;
+        memset(seen, 0, (size_t)n);
+        Ai[nz] = j; A0[nz] = A1[nz] = 5.0 + T308_RND(); seen[j] = 1; nz++;
+        for (int t = 0; t < 4; t++) {
+            int i = (int)(T308_RND() * n) % n;
+            if (seen[i]) continue;
+            seen[i] = 1; Ai[nz] = i;
+            double v = T308_RND() * 2.0 - 1.0;
+            int zero = T308_RND() < 0.25;
+            A0[nz] = zero ? 0.0 : v; A1[nz] = v + (zero ? 0.5 : 0.0); nzero += zero; nz++;
+        }
+    }
+    Ap[n] = nz;
+    check(nzero > 3, "T308 the matrix has explicit zero entries");
+    for (int i = 0; i < n; i++) b[i] = sin(1.0 + i);
+    SpluFact *F = splu_factor_keep(n, Ap, Ai, A0, NULL);
+    check(F != NULL, "T308 factor with zeros kept");
+    if (F) {
+        for (int rep = 0; rep < 3; rep++) {
+            double *Av = (double *)malloc((size_t)nz * sizeof(double));
+            for (int p = 0; p < nz; p++) Av[p] = A1[p] * (1.0 + 0.05 * rep * (T308_RND() - 0.5));
+            check(splu_refactor(F, Ap, Ai, Av) == 0, "T308 refactorization accepts the new values");
+            memcpy(x, b, (size_t)n * sizeof(double));
+            check(splu_solve(F, x) == 0, "T308 solve with the refactored factor");
+            check(t308_berr(n, Ap, Ai, Av, x, b) < 1e-12, "T308 refactored solution has a small backward error");
+            SpluFact *G = splu_factor_ord(n, Ap, Ai, Av, NULL);
+            double *y = (double *)malloc((size_t)n * sizeof(double)); double dm = 0.0;
+            memcpy(y, b, (size_t)n * sizeof(double));
+            if (G && splu_solve(G, y) == 0) for (int i = 0; i < n; i++) dm = fmax(dm, fabs(x[i] - y[i]));
+            check(G != NULL && dm < 1e-9, "T308 same solution as a fresh factor of the new values");
+            splu_free(G); free(y); free(Av);
+        }
+        /* a zero pivot is refused */
+        double *Az = (double *)malloc((size_t)nz * sizeof(double));
+        memcpy(Az, A1, (size_t)nz * sizeof(double));
+        for (int j = 0; j < n; j++) for (int p = Ap[j]; p < Ap[j + 1]; p++) Az[p] = 0.0;
+        check(splu_refactor(F, Ap, Ai, Az) == -1, "T308 a zero matrix is refused");
+        free(Az);
+    }
+    splu_free(F);
+    /* without kept zeros a position dropped at the first factorization is outside the structure */
+    {
+        /* [[1,1,0],[1,1,1],[0,1,1]] with the (1,1) entry such that elimination cancels exactly */
+        int ap[4] = { 0, 2, 5, 7 }, ai[7] = { 0, 1, 0, 1, 2, 1, 2 };
+        double a0[7] = { 1, 1, 1, 1, 1, 1, 1 }, a1[7] = { 1, 1, 1, 3, 1, 1, 1 };
+        SpluFact *H = splu_factor_ord(3, ap, ai, a0, NULL);     /* row 1 - row 0 cancels (1,1) to 0.0: dropped */
+        check(H != NULL, "T308 factor without kept zeros");
+        if (H) {
+            int rc = splu_refactor(H, ap, ai, a1);
+            check(rc == -1 || rc == 0, "T308 a dropped position is refused or happens to be inside the structure");
+            if (rc == 0) {
+                double bb[3] = { 1, 2, 3 }, xx[3] = { 1, 2, 3 };
+                splu_solve(H, xx);
+                check(t308_berr(3, ap, ai, a1, xx, bb) < 1e-12, "T308 if accepted the solution is right");
+            }
+        }
+        splu_free(H);
+    }
+    free(Ap); free(Ai); free(A0); free(A1); free(b); free(x); free(seen);
+#undef T308_RND
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t308();
     test_t307();
     test_t306();
     test_t305();
