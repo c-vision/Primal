@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380" viewBox="0 0 640 380" role="img" aria-labelledby="title desc">
+  <title id="title">Lorentz cone section at u₂ = 0</title>
+  <desc id="desc">The shaded region lies above the V-shaped boundary t = |u₁|. The origin is the apex.</desc>
+  <rect width="640" height="380" fill="#fff"/>
+  <text x="320" y="29" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#17212b">Lorentz cone section at u₂ = 0</text>
+  <path d="M110 80H530L320 290Z" fill="#dbeafe"/>
+  <path d="M110 80L320 290L530 80" fill="none" stroke="#155097" stroke-width="3"/>
+  <path d="M65 290H565m-9-5 9 5-9 5M320 323V62m-5 9 5-9 5 9" fill="none" stroke="#17212b" stroke-width="1.5"/>
+  <path d="M215 285v10m210-10v10m-110-110h10m-10-105h10" stroke="#17212b"/>
+  <circle cx="320" cy="290" r="4" fill="#17212b"/>
+  <g font-family="sans-serif" font-size="16" fill="#17212b">
+    <text x="578" y="296">u₁</text>
+    <text x="333" y="71">t</text>
+    <text x="201" y="317">−1</text>
+    <text x="327" y="317">0</text>
+    <text x="420" y="317">1</text>
+    <text x="298" y="190">1</text>
+    <text x="298" y="85">2</text>
+    <text x="336" y="136">t &gt; |u₁|</text>
+    <text x="481" y="169">t = |u₁|</text>
+    <text x="424" y="252">infeasible</text>
+  </g>
+</svg>

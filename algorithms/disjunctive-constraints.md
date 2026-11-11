@@ -48,15 +48,50 @@ clause is an AND of domains over affine expressions.
 `sum termsizelist`; `afeidxlist` runs to the sum of the clauses' domain
 dimensions. `b` has the same sign convention as an ACC: `F x + g − b`.
 
-Encoding is big-M: one binary selector per clause, and the rows that select
-which clause is active. The consequence is the same as for the MIP: the rows
-are **emitted and not withdrawn**, so an ACC/DJC slot that has been written
-cannot be rewritten — it would need different rows.
+### Row-wise big-M formulation
 
-**Only linear domains are representable in a DJC.** A conic domain is an
-argument error, and that is a declared limitation rather than a gap: the
-backend is a big-M MIP, and there is no MIP big-M encoding for a nonlinear cone
-here.
+Let $z_d\in\{0,1\}$ select clause $d$. For each inequality
+$a^Tx\le\beta$ of that clause, PRIMAL emits
+
+$$
+a^Tx+M_{d,i}z_d\le\beta+M_{d,i},
+\qquad \sum_d z_d\ge1.
+$$
+
+When $z_d=1$, the original inequality applies. When $z_d=0$, the
+row is relaxed by $M_{d,i}$. On a box $l\le x\le u$, the largest
+left-hand side is obtained by choosing $u_j$ for $a_j\ge0$ and
+$l_j$ for $a_j<0$. The encoder uses
+
+$$
+M_{d,i}=\max\!\left(0,\sum_{a_j\ge0}a_j u_j+
+                              \sum_{a_j<0}a_j l_j-\beta\right).
+$$
+
+In [primal_djc.c](../primal_djc.c), `djc_encode` and
+`djc_rewrite_row` use this bound when the selected terms are finite.
+If a selected term is nonfinite, the implementation uses `DJC_BIGM = 1e6`.
+This fallback can restrict an inactive clause when its true violation
+exceeds the constant. A loose finite $M$ can weaken the relaxation
+and worsen scaling.
+
+For $0\le x\le10$ and $x\le2$ or $x\ge6$, the two upper-form
+rows are $x\le2$ and $-x\le-6$. Their constants are $8$ and $6$.
+The emitted rows are $x+8z_1\le10$ and $-x+6z_2\le0$, with
+$z_1+z_2\ge1$. The relaxed point $x=4$, $z_1=z_2=1/2$ satisfies
+the encoded LP and illustrates the role of integrality.
+
+### Supported domains and updates
+
+The domain registry used by ACCs includes nonlinear cones. DJC validation
+accepts exactly `R`, `RZERO`, `RPLUS` and `RMINUS`.
+`R` contributes no row, `RZERO` contributes two opposite inequalities,
+and the other two domains contribute one inequality with the appropriate
+sign. A nonlinear cone in a DJC yields `PRIMAL_RES_ERR_ARG`.
+
+A filled DJC slot keeps its selector variables and row layout. Accepted
+edits to referenced AFEs can refresh the coefficients and right-hand sides
+of those rows through `primal_djc_sync`.
 
 ## SOS1 / SOS2
 
@@ -75,8 +110,12 @@ root box has to be relaxed for the lower bound to remain valid.
 
 ## Limits
 
-- Big-M everywhere: no ideal formulation, no big-M free encoding.
+- The DJC formulation uses big-M and its relaxation strength depends on the row bounds.
 - No rewriting of an existing disjunctive slot.
 - A clause made only of unconstrained (`ℝ`) domains is always true and emits no
   rows.
 - No ray or certificate is derived from a disjunction.
+
+## Reference
+
+- J. P. Vielma, [Mixed Integer Linear Programming Formulation Techniques](https://doi.org/10.1137/130915303), 2015.

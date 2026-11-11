@@ -56,7 +56,7 @@ must be read back before the solution getters are used: `appendacc`,
 A `puta*` call is a **replace** of that row or column, not an append: the row is
 cleared and rewritten. Writing the same `(i, j)` twice inside one call stores
 two entries and the operator `getaij` reports their sum; the storage readers
-report both entries. See [certificates](certificates.md) for why those two
+report both entries. See [certificates](../algorithms/certificates.md) for why those two
 readings are deliberately different.
 
 ## Solving and reading the solution
@@ -86,7 +86,7 @@ if (rc == PRIMAL_RES_OK) {
 | `getsolsta`, `getprosta` | solution and problem status |
 
 Every solution getter answers `PRIMAL_RES_ERR_ARG` when there is no point to
-deliver. See [certificates](certificates.md) — this is a contract, not a
+deliver. See [certificates](../algorithms/certificates.md) — this is a contract, not a
 detail.
 
 ## Reading the model back
@@ -149,7 +149,7 @@ their reports match the plain ones exactly.
   parameter meaning and the accepted range are in `primal.h` and at runtime via
   `getcodedesc`.
 - **Concurrency is documented for one solve only.** `PRIMAL_IPAR_NUM_THREADS`
-  parallelizes *inside* a solve ([branch and bound](branch-and-bound.md)).
+  parallelizes *inside* a solve ([branch and bound](../algorithms/branch-and-bound.md)).
   Driving a single task from two threads at once is not supported and carries
   no lock; separate tasks and separate environments are independent.
 - **About half the declared parameters do not change the solve yet** — accepted,
@@ -161,5 +161,5 @@ their reports match the plain ones exactly.
 - `c_examples/mosek_comparison/*.c` — 48 small ports, each with its expected
   optimum checked
 - `c_examples/*.c`, `c_examples/finance/*.c`, `c_examples/books/*.c` — the larger models
-- [certificates](certificates.md) — what a status guarantees
+- [certificates](../algorithms/certificates.md) — what a status guarantees
 - [I/O formats](io-formats.md) — MPS, LP, OPF, CBF

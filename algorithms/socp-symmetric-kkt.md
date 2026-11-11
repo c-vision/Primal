@@ -97,7 +97,7 @@ crossings and the rounded-negative R+ guard. The full O2 suite now passes
 5176 checks with both backends; full ASan+UBSan runs pass 5174 and fail
 only the two T197 checks with either backend, without sanitizer diagnostics.
 See the independent validation and remaining
-HSD diagnosis in [the regression analysis](sanitizer-regression-analysis.md).
+HSD diagnosis in [the regression analysis](../docs/sanitizer-regression-analysis.md).
 
 A separate 31-pair confirmation gives SOCP 120: 1.736 → 1.307 ms and SOCP
 200: 3.151 → 1.125 ms. A contemporaneous 21-run comparison against Clarabel

@@ -32,7 +32,7 @@ Every answer comes with its evidence: the primal and dual points, so you can
 check feasibility, complementarity and the duality gap yourself; a Farkas
 vector when the model is infeasible; a recession direction when it is
 unbounded. A certificate status is never reported without the vector that
-proves it. [Details](docs/certificates.md).
+proves it. [Details](algorithms/certificates.md).
 
 ## Example
 
@@ -244,17 +244,14 @@ Measured on 2026-11-11. Each cell shows two medians from nine alternating
 pairs per series. Primal timings cover `PRIMAL_optimize`. Clarabel 0.11.1
 runs at one thread and includes solver construction. The results met
 the `1e-8` benchmark checks for objective agreement, feasibility,
-stationarity and relative gap. See the [mixed-cone benchmark notes](docs/pexp-higher-correction.md#sparse-kkt-selection).
+stationarity and relative gap. See the [mixed-cone benchmark notes](algorithms/pexp-higher-correction.md#sparse-kkt-selection).
 
 ## Documentation
 
-One page per algorithm, starting at [docs/README.md](docs/README.md):
-[simplex](docs/simplex.md) · [interior point](docs/interior-point.md) ·
-[SOCP](docs/conic-socp.md) · [SDP](docs/sdp.md) ·
-[exp & power cones](docs/exp-power-cones.md) ·
-[branch & bound](docs/branch-and-bound.md) ·
-[certificates](docs/certificates.md) · [API guide](docs/api.md) ·
-[I/O formats](docs/io-formats.md)
+The [algorithm guide](algorithms/README.md) follows the numerical methods
+from model formulation through solution verification. See the
+[API guide](docs/api.md) and [I/O formats](docs/io-formats.md) for reference
+material.
 
 ## License
 

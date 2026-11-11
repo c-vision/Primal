@@ -5,7 +5,7 @@ del codice; nessun nuovo benchmark eseguito, nessuna accelerazione dimostrata
 da questa analisi. Le pagine upstream `stable`, `dev`, `main` e `latest` sono
 mobili: prima di implementare, fissare versione e commit della fonte scelta.
 Il seguito implementativo F110 e le nuove misure sono documentati in
-[higher-order PEXP correction](pexp-higher-correction.md); la dichiarazione
+[higher-order PEXP correction](../algorithms/pexp-higher-correction.md); la dichiarazione
 iniziale qui sopra riguarda la sola ricerca del 4 novembre.
 
 ## Conclusione operativa
