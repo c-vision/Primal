@@ -1972,7 +1972,9 @@ PRIMALrescodee PRIMAL_getsnx(PRIMALtask_t t, PRIMALsolt which, PRIMALrealt *snx)
  *   lower bound, = 0 if both (ranged or fixed);  rho_j >= 0 if x_j has a finite
  *   lower bound, <= 0 if it has a finite upper bound, = 0 if both (bounded) or
  *   free;  and s * c'rho < 0 (s = +1 min, -1 max).
- * Both are scaled to max |.| = 1. A vector is handed out only when it measured
+ * The same sign holds on the conic route (one sign, not two): there the cone members of A'y replace the
+ * "nonnegative variable" test, the vector satisfies -A'y in K* on every cone and, on a row, y > 0 pairs with
+ * the lower side and y < 0 with the upper side. Both are scaled to max |.| = 1. A vector is handed out only when it measured
  * as one of the two alternatives in the form the solver actually solved; until
  * then the getters answer PRIMAL_RES_ERR_ARG, exactly as a solution getter does
  * for a problem with no solution. The same holds for a dual ray whose support

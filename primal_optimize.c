@@ -422,6 +422,9 @@ PRIMALrescodee opt_routes(PRIMALtask_t t) {
                   : (status == STD_UNBOUNDED && t->has_pray) ? PRIMAL_SOL_STA_DUAL_INFEAS_CER
                   : PRIMAL_SOL_STA_UNKNOWN;
         for (int j = 0; j < nvar; j++) t->x[j] = 0.0;
+        /* a verdict without its vector stays readable in getprosta (primal.h) */
+        if (status == STD_INFEASIBLE && !t->has_dray) t->prosta = PRIMAL_PRO_STA_PRIM_INFEAS;
+        else if (status == STD_UNBOUNDED && !t->has_pray) t->prosta = PRIMAL_PRO_STA_DUAL_INFEAS;
         tlog(t, status == STD_INFEASIBLE ? (t->has_dray ? "primal infeasible\n"
                                                         : "primal infeasible (ray not certified)\n")
               : status == STD_UNBOUNDED ? (t->has_pray ? "dual infeasible (unbounded)\n"

@@ -611,6 +611,48 @@ int solve_std_conc(const int *Aptr, const int *Arow, const double *Aval,
     return st;
 }
 
+/* The dual ray as the USER's model reads it.  The candidate was measured in the standard
+ * form that produced it, which can carry bounds the user never wrote: bound_tighten derives
+ * x_j >= l_j from one row and the engine then proves infeasibility against that bound, so the
+ * vector on the rows alone is not a proof (x1 + x2 <= 1 with x1 + x2 >= 2: the ray (-1, 0) is
+ * only valid because both variables were fixed at 1 from the two rows).  Here the vector is
+ * measured on the model's own rows and bounds, by the statement primal.h promises:
+ *   L = sum_{y>0} y_i lc_i + sum_{y<0} y_i uc_i          (every row has the side it needs)
+ *   d = A'y;  U = sum_{d>0} d_j ux_j + sum_{d<0} d_j lx_j (|d_j| <= atol is read as 0)
+ *   L - U > 1e-8 (1 + sum |y_i b_i|)
+ * i.e. y'A x >= L > U >= y'A x for every x in the bounds: no x exists.  y is in the
+ * published sign (y > 0 on a lower side, y < 0 on an upper side) and has max |y| = 1. */
+static int dual_ray_user_measured(PRIMALtask_t t, const double *y) {
+    int *ptr = NULL, *sub = NULL; double *val = NULL;
+    if (!build_csc(t, &ptr, &sub, &val)) return 0;
+    int ok = 1;
+    double L = 0.0, sc = 1.0, maxcol = 0.0;
+    for (int i = 0; i < t->numcon && ok; i++) {
+        if (!(fabs(y[i]) > 1e-12)) continue;
+        double lo, up; bound_range(t->bkc[i], t->blc[i], t->buc[i], &lo, &up);
+        double b = y[i] > 0.0 ? lo : up;
+        if (!isfinite(b)) { ok = 0; break; }
+        L += y[i] * b; sc += fabs(y[i] * b);
+    }
+    for (int j = 0; j < t->numvar && ok; j++) {
+        double s = 0.0;
+        for (int k = ptr[j]; k < ptr[j + 1]; k++) s += fabs(val[k]);
+        if (s > maxcol) maxcol = s;
+    }
+    double atol = 1e-8 * (1.0 + maxcol), U = 0.0;
+    for (int j = 0; j < t->numvar && ok; j++) {
+        double d = 0.0;
+        for (int k = ptr[j]; k < ptr[j + 1]; k++) d += val[k] * y[sub[k]];
+        if (fabs(d) <= atol) continue;
+        double lo, up; bound_range(t->bkx[j], t->blx[j], t->bux[j], &lo, &up);
+        double b = d > 0.0 ? up : lo;
+        if (!isfinite(b)) { ok = 0; break; }
+        U += d * b; sc += fabs(d * b);
+    }
+    free(ptr); free(sub); free(val);
+    return ok && (L - U) > 1e-8 * sc;
+}
+
 /* Measure the two standard-space candidates and publish the ones that are
  * witnesses.  Returns the status the caller reports: a stalled solve is
  * upgraded only by a vector that proves one of the two alternatives, and a
@@ -636,7 +678,12 @@ int ray_publish(PRIMALtask_t t, const StdForm *sf,
              * negated sum of the row images (see stdform_map_y) */
             for (int i = 0; i < sf->ncon; i++) t->dray[i] = -rs[i] * ymin[i];
             free(ymin);
-            t->has_dray = 1;
+            /* measured in the standard form, now in the user's model (see dual_ray_user_measured) */
+            double mxy = 0.0;
+            for (int i = 0; i < sf->ncon; i++) if (fabs(t->dray[i]) > mxy) mxy = fabs(t->dray[i]);
+            if (mxy > 0.0) for (int i = 0; i < sf->ncon; i++) t->dray[i] /= mxy;
+            if (mxy > 0.0 && dual_ray_user_measured(t, t->dray)) t->has_dray = 1;
+            else { for (int i = 0; i < sf->ncon; i++) t->dray[i] = 0.0; dy = 0; }
         } else dy = 0;
     }
     if (px && !dy) {                     /* infeasibility dominates unboundedness */

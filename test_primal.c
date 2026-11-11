@@ -13380,24 +13380,25 @@ static int t101_verdict(PRIMALtask_t t, PRIMALrescodee want_rc, int want_pro,
                PRIMAL_getdualray(t, w) == PRIMAL_RES_ERR_ARG;
 
     if (want_ray == 2) {
-        /* dual ray: normalized, d = A'y in K* on every cone, the
-         * signed combination of the RHS terms negative */
+        /* dual ray, in the sign of primal.h: normalized; with u = -w, d = A'u in K* on every cone and the
+         * signed combination of the RHS terms of u negative (equivalently -A'w in K*, sum w_i b_i(active) > 0) */
         if (sta != PRIMAL_SOL_STA_PRIM_INFEAS_CER) return 0;
         if (PRIMAL_getprimalray(t, v) != PRIMAL_RES_ERR_ARG) return 0;
         if (PRIMAL_getdualray(t, w) != PRIMAL_RES_OK) return 0;
         double mx = 0.0;
         for (int i = 0; i < nc; i++) if (fabs(w[i]) > mx) mx = fabs(w[i]);
         if (fabs(mx - 1.0) > 1e-9) return 0;
-        double d[16] = {0}, contrib = 0.0;
+        double d[16] = {0}, contrib = 0.0, u[16] = {0};
+        for (int i = 0; i < nc; i++) u[i] = -w[i];
         for (int i = 0; i < nc; i++) {
             for (int j = 0; j < nv; j++) {
-                double a; if (PRIMAL_getaij(t, i, j, &a) == PRIMAL_RES_OK) d[j] += w[i] * a;
+                double a; if (PRIMAL_getaij(t, i, j, &a) == PRIMAL_RES_OK) d[j] += u[i] * a;
             }
             PRIMALboundkeye bk; double bl, bu;
             PRIMAL_getconbound(t, i, &bk, &bl, &bu);
             double rhs = (bk == PRIMAL_BK_UP) ? bu : (bk == PRIMAL_BK_FX) ? bl : bl;
-            if (bk == PRIMAL_BK_RA) rhs = (w[i] > 0.0) ? bu : bl;
-            contrib += w[i] * rhs;
+            if (bk == PRIMAL_BK_RA) rhs = (u[i] > 0.0) ? bu : bl;
+            contrib += u[i] * rhs;
         }
         if (!(contrib < -1e-8)) return 0;
         int nk_all = 0;
@@ -21489,8 +21490,137 @@ static void test_t305(void) {
     }
 }
 
+/* T306: a published dual ray must be a Farkas certificate of the USER's model.
+ * bound_tighten derives x_j bounds from the rows and the engine then proves infeasibility
+ * against them, so a vector that measures in the standard form can fail on the rows the user
+ * wrote.  x1 + x2 <= 1 with x1 + x2 >= 2 (x >= 0) used to publish y = (-1, 0) with presolve on
+ * (the rows alone are feasible); the vector is now re-measured on the model's own rows and
+ * bounds and withheld when it does not measure, the verdict staying in getprosta.
+ *   measure: L = sum_{y>0} y_i lc_i + sum_{y<0} y_i uc_i,  d = A'y,
+ *            U = sum_{d>0} d_j ux_j + sum_{d<0} d_j lx_j,  L > U   (primal.h: y > 0 lower side).
+ *   A, C: infeasible, ERR_INFEASIBLE and PRIM_INFEAS at presolve levels 0, 1, 2; a published ray
+ *         measures; at level 0 a ray is published.
+ *   B: unbounded LP keeps its primal ray at every level. */
+static int t306_dual_measures(const double *y, int m, int n, const double *A,
+                              const double *lc, const double *uc, const double *lx, const double *ux) {
+    double L = 0.0, U = 0.0;
+    for (int i = 0; i < m; i++) {
+        if (fabs(y[i]) <= 1e-12) continue;
+        double b = y[i] > 0.0 ? lc[i] : uc[i];
+        if (!isfinite(b)) return 0;
+        L += y[i] * b;
+    }
+    for (int j = 0; j < n; j++) {
+        double d = 0.0;
+        for (int i = 0; i < m; i++) d += A[i * n + j] * y[i];
+        if (fabs(d) <= 1e-9) continue;
+        double b = d > 0.0 ? ux[j] : lx[j];
+        if (!isfinite(b)) return 0;
+        U += d * b;
+    }
+    return L - U > 1e-8;
+}
+
+static void test_t306(void) {
+    cur_name = "T306 dual ray measured on the user's model";
+    const double A[4] = { 1, 1, 1, 1 };
+    const double lc[2] = { -INFINITY, 2.0 }, uc[2] = { 1.0, INFINITY };
+    for (int ub = 0; ub <= 1; ub++)
+        for (int lev = 0; lev <= 2; lev++) {
+            P p; pbegin(&p);
+            PRIMALtask_t t = p.task;
+            PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE_LEVEL, lev);
+            PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 2);
+            double lx[2] = { 0.0, 0.0 }, ux[2] = { INFINITY, INFINITY };
+            for (int j = 0; j < 2; j++) {
+                if (ub) { ux[j] = 5.0; PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 5.0); }
+                else PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
+            }
+            PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
+            PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 1.0);
+            PRIMAL_putarow(t, 1, 2, (int[]){0, 1}, (double[]){1.0, 1.0});
+            PRIMAL_putconbound(t, 1, PRIMAL_BK_LO, 2.0, INFINITY);
+            check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "T306 A infeasible");
+            PRIMALprostae ps = PRIMAL_PRO_STA_UNKNOWN; PRIMALsolstae ss = PRIMAL_SOL_STA_UNKNOWN;
+            PRIMAL_getprosta(t, PRIMAL_SOL_ITR, &ps); PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &ss);
+            check(ps == PRIMAL_PRO_STA_PRIM_INFEAS, "T306 A the verdict is PRIM_INFEAS with or without a ray");
+            double y[2] = { 0, 0 };
+            int have = PRIMAL_getdualray(t, y) == PRIMAL_RES_OK;
+            check((ss == PRIMAL_SOL_STA_PRIM_INFEAS_CER) == have, "T306 A the certificate status names a published ray");
+            if (lev == 0) check(have, "T306 A the ray is published without presolve");
+            if (have) check(t306_dual_measures(y, 2, 2, A, lc, uc, lx, ux), "T306 A a published ray measures on the user's model");
+            pend(&p);
+        }
+    for (int lev = 0; lev <= 2; lev++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE_LEVEL, lev);
+        PRIMAL_appendvars(t, 2); PRIMAL_appendcons(t, 1);
+        for (int j = 0; j < 2; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, INFINITY);
+        PRIMAL_putcj(t, 0, -1.0); PRIMAL_putcj(t, 1, -2.0);
+        PRIMAL_putarow(t, 0, 2, (int[]){0, 1}, (double[]){-1.0, 1.0});
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_UP, -INFINITY, 1.0);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_UNBOUNDED, "T306 B unbounded");
+        double r[2] = { 0, 0 };
+        check_rc(PRIMAL_getprimalray(t, r), PRIMAL_RES_OK, "T306 B the primal ray is there");
+        check(r[0] >= -1e-9 && r[1] >= -1e-9 && -r[0] + r[1] <= 1e-9 && -r[0] - 2.0 * r[1] < -1e-6,
+              "T306 B the primal ray measures");
+        pend(&p);
+    }
+}
+
+/* T307: the dual ray has ONE sign, the one primal.h states, on the LP route and on the conic route.
+ *   contract: y > 0 on a row's lower side, y < 0 on its upper side, L = sum y_i b_i(active) > 0, and
+ *   -A'y in K* on the nonnegative orthant (LP) or on the cone members (conic).
+ * The conic route measures the textbook form (y >= 0 on an upper side, A'y in K*, signed right side
+ * negative), which is the negative of that vector, and used to publish it as it was: the same row
+ * x0 = -1 gave y = -1 with x0 >= 0 and y = +1 with x0 in a cone.  Cases (row on the first member of
+ * a Lorentz cone, so the row alone is infeasible): equality x0 = -1, upper x0 <= -1, lower -x0 >= 1,
+ * and the LP equality x0 = -1, x0 >= 0.  Each must measure by the same code. */
+static int t307_measures(PRIMALtask_t t, int conic) {
+    (void)conic;
+    double y[1] = { 0 };
+    if (PRIMAL_getdualray(t, y) != PRIMAL_RES_OK) return 0;
+    PRIMALboundkeye bk; double bl, bu, a;
+    PRIMAL_getconbound(t, 0, &bk, &bl, &bu);
+    PRIMAL_getaij(t, 0, 0, &a);
+    double lo = (bk == PRIMAL_BK_LO || bk == PRIMAL_BK_FX || bk == PRIMAL_BK_RA) ? bl : -INFINITY;
+    double up = (bk == PRIMAL_BK_UP || bk == PRIMAL_BK_FX || bk == PRIMAL_BK_RA) ? (bk == PRIMAL_BK_FX ? bl : bu) : INFINITY;
+    double b = y[0] > 0.0 ? lo : up;
+    if (!isfinite(b) || fabs(y[0]) < 1e-9) return 0;
+    if (!(y[0] * b > 1e-9)) return 0;                 /* L > 0 */
+    double d = -a * y[0];                              /* -A'y on the first member */
+    return d >= -1e-12;                               /* conic: -A'y in Q_3 needs d0 >= 0 (no row on the other members); LP: A'y <= 0 */
+}
+
+static void test_t307(void) {
+    cur_name = "T307 dual ray sign, LP and conic";
+    struct { PRIMALboundkeye bk; double bl, bu, a; } cs[3] = {
+        { PRIMAL_BK_FX, -1.0, -1.0, 1.0 },
+        { PRIMAL_BK_UP, -INFINITY, -1.0, 1.0 },
+        { PRIMAL_BK_LO, 1.0, INFINITY, -1.0 },
+    };
+    for (int c = 0; c < 3; c++)
+        for (int conic = 0; conic <= 1; conic++) {
+            if (!conic && c != 0) continue;
+            P p; pbegin(&p);
+            PRIMALtask_t t = p.task;
+            PRIMAL_appendvars(t, conic ? 3 : 1); PRIMAL_appendcons(t, 1);
+            for (int j = 0; j < (conic ? 3 : 1); j++)
+                PRIMAL_putvarbound(t, j, conic ? PRIMAL_BK_FR : PRIMAL_BK_LO, conic ? -INFINITY : 0.0, INFINITY);
+            PRIMAL_putarow(t, 0, 1, (int[]){0}, (double[]){cs[c].a});
+            PRIMAL_putconbound(t, 0, cs[c].bk, cs[c].bl, cs[c].bu);
+            if (conic) PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 3, (int[]){0, 1, 2});
+            check_rc(PRIMAL_optimize(t), PRIMAL_RES_ERR_INFEASIBLE, "T307 infeasible");
+            check(t307_measures(t, conic), "T307 the published dual ray is in the sign of primal.h");
+            pend(&p);
+        }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t307();
+    test_t306();
     test_t305();
     test_t304();
     test_t303();

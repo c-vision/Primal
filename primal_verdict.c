@@ -192,7 +192,8 @@ double cone_dual_worst(PRIMALtask_t t, int s, int *nmeas, int verb) {
  * set) and the stdform candidate carries no bound multipliers anyway. Mirrors
  * sdp_ray_measures on the dual side, sign included: the row multiplier must be
  * >= 0 on a row with an upper side and <= 0 on one with a lower side, and the
- * `d in K*` test pins the overall sign. */
+ * `d in K*` test pins the overall sign.  What is PUBLISHED is the negative of that vector, the
+ * sign of primal.h and of the LP route (y > 0 on a lower side, -A'y in K*, sum y_i b_i(active) > 0). */
 static int conic_dual_ray_measures(PRIMALtask_t t, int nrowmodel, double *y) {
     if (!y || nrowmodel <= 0 || t->numcones <= 0) return 0;
     /* With bars the certificate would also carry the compressed block, which
@@ -245,7 +246,11 @@ static int conic_dual_ray_measures(PRIMALtask_t t, int nrowmodel, double *y) {
         }
         free(d);
         if (signok && cones_ok && contrib < -1e-8 * (1.0 + scale)) {
-            if (sgn) for (int r = 0; r < nrowmodel; r++) y[r] = -y[r];
+            /* published in the sign of primal.h (the LP route's): y > 0 on a lower side,
+             * y < 0 on an upper side, -A'y in K*, sum y_i b_i(active) > 0.  The measure above
+             * is the textbook form (y >= 0 on an upper side, d in K*, signed RHS negative),
+             * which is the NEGATIVE of that vector: y_user = -y_textbook. */
+            if (!sgn) for (int r = 0; r < nrowmodel; r++) y[r] = -y[r];
             return 1;
         }
     }
