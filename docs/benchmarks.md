@@ -1,29 +1,22 @@
 # Benchmark methodology
 
-The README table covers 32 instances. The SOCP and SDP rows use
-medians from five runs at `bd53531` on 2026-11-07. The MILP rows use
-medians from ten interleaved runs at `b452e46` on 2026-11-08. The objective
-checks passed on every run. Bold marks the lowest median in each row.
-The table uses six decimal places in seconds to show sub-millisecond times.
-The exponential-cone corrector measurements appear separately in the README.
+The README reports 32 instances measured on 2026-11-11. Each row
+shows the median of interleaved runs and highlights the fastest solver.
+The mixed SOC/PEXP comparison reports two medians from nine alternating
+pairs each.
 
-The LP rows use 18 interleaved measurements from 2026-11-10. Primal
-eliminates eligible variable bound equations from the interior-point
-linear system, reconstructs their multipliers and checks the original
-system residual. LP400 factors a system of order 200 after eliminating
-400 rows. Primal and Clarabel ran at one thread. Clarabel and HiGHS used
-feasibility settings of `1e-9`. The three solvers passed the `1e-8`
-checks for objective agreement, feasibility, stationarity and relative
-gap. Raw timings and binary hashes are in `out/f143/final-pairs.json`.
+| Family | Measurements per solver and instance | Accuracy checks |
+|---|---:|---|
+| LP and QP | 18 | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
+| MILP | 10 | Optimal status and objective agreement, with Primal feasibility and integrality within `1e-8` |
+| SOCP | 62 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
+| SDP | 9 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
+| Mixed SOC/PEXP | 18 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
 
-The QP rows use 18 interleaved measurements from 2026-11-11. When
-each row has a private slack column with a diagonal Hessian entry,
-Primal can eliminate the slacks and their multipliers. It factors a
-system of order 200 on QP200, recovers the full direction and checks
-the residual in the original equations. Primal and Clarabel ran at
-one thread and passed the same `1e-8` accuracy checks as the LP
-comparison. Raw timings and binary hashes are in
-`out/f148/final-pairs.json`.
+Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
+for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
+used `eps_abs=eps_rel=1e-8`. SDP references used their default
+tolerances.
 
 ## Environment
 
@@ -37,11 +30,6 @@ comparison. Raw timings and binary hashes are in
 | Clarabel | 0.11.1 |
 | SCS | 3.3.1 |
 | SCIP / PySCIPOpt | 10.0 / 6.2.1 |
-
-The SOCP and SDP comparisons use the harness defaults. The MILP
-comparison uses one thread per solver and the same MPS input. It checks
-optimal status and objective agreement, plus Primal's feasibility and
-integrality to `1e-8`.
 
 ## What the timer includes
 
@@ -64,11 +52,9 @@ For SDP, the d×d size describes the PSD matrix, not d scalar variables.
 
 ## Accuracy limits
 
-The LP/QP/MILP objective cross-check allows a difference of
-`1e-5*(1+abs(objective))`. SOCP uses an analytic objective check of `1e-4`
-absolute; SDP uses `1e-4*(1+abs(analytic objective))`. These checks detect
-large disagreements. They do not establish a common KKT tolerance, cone
-feasibility or certificate quality across all timed results.
+The SDP timing comparison checks the analytic objective. The SOCP and
+SDP objective columns show analytic reference values. See the table
+above for the checks applied to each family.
 
 In the accuracy audit of the SDP sweep before the fixes, d=20 returned
 `rc=0` with objective -140.19172 versus analytic reference -140.1919, about
@@ -109,15 +95,8 @@ The harness and deterministic instances live under `bench/`; the aggregator
 lives in `tools/bench_repeat.py`. On the development machine these dependencies
 were supplied by the existing `env-bench` environment.
 
-The November 7 snapshot used a fresh isolated output directory. Its raw
-tables, objective check logs, aggregated table and binary hashes were
-retained under `out/readme-20261107/`. The November 5 snapshot is retained
-under `out/readme-20261105/`.
-
-The single-thread MILP comparison uses the same MPS fixtures with HiGHS
-and SCIP. Its comparison script, raw timings and binary hash are retained
-under `out/milp-20261108/` on the benchmark machine.
-
-The November 7 benchmark build was warning-free. For the earlier PEXP
-change, 928 focused checks passed with default, forced sparse, forced dense
-and legacy routes.
+The 2026-11-11 snapshot used an isolated build. The comparison scripts,
+raw timings, accuracy checks and binary hashes are retained under
+`out/readme-20261111/` on the benchmark machine. The unified harness
+provides a quick cross-check. The snapshot scripts add the family-specific
+settings, timing precision and accuracy checks described above.

@@ -676,11 +676,26 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
              * Keep dense LU for a single large, dense-ish cone. */
             int sparse_conic = (Nsys >= 300 && ncones_solver >= 16) ||
                                (Nsys >= 800) || (getenv("GMB_SOCP_SPARSE") != NULL);
-            int st = sparse_conic
+            /* Small SOC blocks with coordinate slacks and few equalities
+             * also have little fill in the normal equations. */
+            int prefer_sparse = !sparse_conic && Nsys >= 96 && neq <= 4 &&
+                                ncones_solver >= 16 && !nb && !nNlin;
+            int small_soc = 0;
+            for (int kk = 0; prefer_sparse && kk < ncones_solver; kk++) {
+                if (cones[kk].type == 0) continue;
+                if (cones[kk].nmem != 3) prefer_sparse = 0;
+                small_soc++;
+            }
+            prefer_sparse = prefer_sparse && small_soc >= 16;
+            for (int i = 0; prefer_sparse && i < Nsys - ntot - neq; i++)
+                if (G->row[i].nz != 1) prefer_sparse = 0;
+            int st = sparse_conic || prefer_sparse
                 ? conic_solve_fixed(t,
                     ntot,neq,E,d,c,ncones_solver,cones,G,h,rowKind,rowIdx,
                     t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm)
-                : conic_dense_run(ntot,neq,E,d,c,ncones_solver,cones,G,h,
+                : 1;
+            if (!sparse_conic && st != 0)
+                st = conic_dense_run(ntot,neq,E,d,c,ncones_solver,cones,G,h,
                     t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm);
             /* A dense solve that fails gets one sparse attempt on the same
              * system before the round gives up; only a SUCCESS replaces its
@@ -694,7 +709,7 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
              * that succeeds is untouched.  The rescue uses the production
              * NT/LU engines only: with the opt-in GMB_SOCP_LDL backend one
              * T212 node still failed at -O0 and under sanitizers. */
-            if (st != 0 && !sparse_conic &&
+            if (st != 0 && !sparse_conic && !prefer_sparse &&
                 conic_sparse_run(ntot, neq, E, d, c, ncones_solver, cones, G, h,
                                   t->tol_co_gap, tol_out, iter_cap(t->max_iter_intpnt), xs, ys, lm,0) == 0)
                 st = 0;

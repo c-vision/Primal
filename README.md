@@ -172,52 +172,48 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 ## Benchmarks
 
-Latest verification (2026-11-11) covered the QP benchmarks and 606 targeted checks.
-
-CPU benchmarks on Apple Silicon (arm64), macOS 27.2, Apple clang 21,
-C99 `-O2`. Times are in seconds. **Bold** marks the lowest median in
-each row. SOCP and SDP use five runs at `bd53531` (2026-11-07).
-MILP uses ten interleaved runs at one thread at `b452e46` (2026-11-08).
-LP (2026-11-10) and QP (2026-11-11) each use 18 interleaved runs
-with accuracy checks at `1e-8`.
-The objective checks passed in every run.
+Measured on **2026-11-11** on Apple Silicon (arm64), macOS 27.2,
+with Apple clang 21 and C99 `-O2`. Times are in seconds. **Bold**
+marks the lowest median in each row. LP and QP use 18 interleaved runs,
+MILP uses 10, SOCP uses 62, and SDP uses 9. Every run passed its
+family's objective check.
 
 <div>
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | **0.000150** | 0.001140 | 0.000164 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | **0.000646** | 0.001589 | 0.000694 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | **0.001428** | 0.003346 | 0.002198 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | **0.006294** | 0.011767 | 0.010838 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | 0.001181 | N/A | **0.000476** | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | **0.001584** | N/A | 0.002613 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | **0.006993** | N/A | 0.008086 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | 0.045042 | **0.042070** | N/A | N/A | 0.134153 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | 0.091407 | **0.085865** | N/A | N/A | 0.238516 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | **0.199763** | 0.317508 | N/A | N/A | 0.953599 | 277.019 |
-| socp_40 | socp | 60 x 1 | - | 0.000378 | N/A | **0.000097** | 0.000257 | N/A | 0.707107 |
-| socp_120 | socp | 180 x 1 | - | 0.000235 | N/A | **0.000219** | 0.000701 | N/A | 0.707107 |
-| socp_200 | socp | 300 x 1 | - | **0.000340** | N/A | 0.000423 | 0.001048 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | **0.000025** | N/A | 0.000123 | 0.000200 | N/A | -9.83233 |
-| sdp_5 | sdp | 5 x 5 | - | **0.000010** | N/A | 0.000134 | 0.000192 | N/A | -4.79948 |
-| sdp_6 | sdp | 6 x 6 | - | **0.000010** | N/A | 0.000163 | 0.000215 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | **0.000011** | N/A | 0.000252 | 0.000403 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | **0.000012** | N/A | 0.000404 | 0.000461 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | **0.000014** | N/A | 0.000539 | 0.000380 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | **0.000015** | N/A | 0.000678 | 0.000682 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | **0.000018** | N/A | 0.001086 | 0.001724 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | **0.000019** | N/A | 0.001677 | 0.000890 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | **0.000023** | N/A | 0.001840 | 0.000974 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | **0.000026** | N/A | 0.001892 | 0.001008 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | **0.000030** | N/A | 0.002332 | 0.001260 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | **0.000032** | N/A | 0.003333 | 0.001454 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | **0.000039** | N/A | 0.004184 | 0.001667 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | **0.000045** | N/A | 0.004503 | 0.001992 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | **0.000046** | N/A | 0.004267 | 0.001919 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | **0.000060** | N/A | 0.006773 | 0.002362 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | **0.000058** | N/A | 0.009405 | 0.003735 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | **0.000069** | N/A | 0.010784 | 0.008129 | N/A | -149.613 |
+| lp_50x25 | lp | 50 x 25 | 171 | **0.000160** | 0.001518 | 0.000175 | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | **0.000721** | 0.002066 | 0.000796 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | **0.001669** | 0.004019 | 0.002514 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | **0.008006** | 0.014191 | 0.013104 | N/A | N/A | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | 0.001143 | N/A | **0.000491** | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | **0.001547** | N/A | 0.002457 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | **0.007056** | N/A | 0.008128 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | **0.053068** | 0.058246 | N/A | N/A | 0.173830 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | **0.112310** | 0.112808 | N/A | N/A | 0.312520 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | **0.243778** | 0.413754 | N/A | N/A | 1.189466 | 277.019 |
+| socp_40 | socp | 60 x 1 | - | **0.000079** | N/A | 0.000095 | 0.000305 | N/A | 0.707107 |
+| socp_120 | socp | 180 x 1 | - | **0.000217** | N/A | 0.000244 | 0.000959 | N/A | 0.707107 |
+| socp_200 | socp | 300 x 1 | - | **0.000383** | N/A | 0.000482 | 0.001470 | N/A | 0.707107 |
+| sdp_4 | sdp | 4 x 4 | - | **0.000025** | N/A | 0.000122 | 0.000259 | N/A | -9.83233 |
+| sdp_5 | sdp | 5 x 5 | - | **0.000025** | N/A | 0.000180 | 0.000301 | N/A | -4.79948 |
+| sdp_6 | sdp | 6 x 6 | - | **0.000027** | N/A | 0.000198 | 0.000340 | N/A | -10.2438 |
+| sdp_7 | sdp | 7 x 7 | - | **0.000029** | N/A | 0.000281 | 0.000530 | N/A | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | **0.000033** | N/A | 0.000468 | 0.000661 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | **0.000035** | N/A | 0.000636 | 0.000559 | N/A | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | **0.000038** | N/A | 0.000727 | 0.000777 | N/A | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | **0.000045** | N/A | 0.001228 | 0.001825 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | **0.000042** | N/A | 0.001821 | 0.001072 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | **0.000049** | N/A | 0.002078 | 0.001210 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | **0.000050** | N/A | 0.002018 | 0.001178 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | **0.000053** | N/A | 0.002326 | 0.001385 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | **0.000061** | N/A | 0.003633 | 0.001640 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | **0.000064** | N/A | 0.004422 | 0.002016 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | **0.000081** | N/A | 0.005030 | 0.002294 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | **0.000078** | N/A | 0.004630 | 0.002172 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | **0.000092** | N/A | 0.006371 | 0.002735 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | **0.000115** | N/A | 0.008960 | 0.004241 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | **0.000100** | N/A | 0.011312 | 0.008835 | N/A | -149.613 |
 
 </div>
 
@@ -234,20 +230,21 @@ accuracy checks and reproduction.
 
 ### Mixed SOC and exponential cones
 
-The regression models combine one rotated quadratic cone with a primal
-exponential cone per observation. Sizes give observations × features.
+Each regression model uses one rotated quadratic cone for the quadratic
+penalty and one primal exponential cone per observation. Sizes give
+observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) |
 |---|---:|---:|
-| 20×4 | 3.39 / 3.46 | **0.26 / 0.19** |
-| 40×8 | 10.50 / 10.10 | **0.58 / 0.58** |
-| 80×12 | 43.38 / 43.31 | **2.62 / 2.58** |
+| 20×4 | 3.84 / 4.03 | **0.29 / 0.24** |
+| 40×8 | 10.37 / 11.06 | **0.71 / 0.63** |
+| 80×12 | 50.81 / 50.19 | **2.72 / 2.81** |
 
-Measured on 2026-11-07. Each cell shows two medians from nine alternating
+Measured on 2026-11-11. Each cell shows two medians from nine alternating
 pairs per series. Primal timings cover `PRIMAL_optimize`. Clarabel 0.11.1
 runs at one thread and includes solver construction. The results met
-the `1e-8` benchmark checks for objective agreement, feasibility and
-relative gap. See the [mixed-cone benchmark notes](docs/pexp-higher-correction.md#sparse-kkt-selection).
+the `1e-8` benchmark checks for objective agreement, feasibility,
+stationarity and relative gap. See the [mixed-cone benchmark notes](docs/pexp-higher-correction.md#sparse-kkt-selection).
 
 ## Documentation
 
