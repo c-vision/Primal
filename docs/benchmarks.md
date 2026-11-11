@@ -7,7 +7,7 @@ pairs each.
 
 | Family | Measurements per solver and instance | Accuracy checks |
 |---|---:|---|
-| LP and QP | 18 (62 for QP50) | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
+| LP and QP | 18 | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
 | MILP | 10 | Optimal status and objective agreement, with Primal feasibility and integrality within `1e-8` |
 | SOCP | 62 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
 | SDP | 9 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
@@ -17,9 +17,6 @@ Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
 for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
 used `eps_abs=eps_rel=1e-8`. SDP references used their default
 tolerances.
-
-The QP50 refresh used two batches of 31 interleaved runs. The raw
-measurements and binary hashes are in `out/f150/confirmed-pairs.json`.
 
 ## Environment
 
@@ -98,8 +95,16 @@ The harness and deterministic instances live under `bench/`; the aggregator
 lives in `tools/bench_repeat.py`. On the development machine these dependencies
 were supplied by the existing `env-bench` environment.
 
-The 2026-11-11 snapshot used an isolated build. The comparison scripts,
-raw timings, accuracy checks and binary hashes are retained under
-`out/readme-20261111/` on the benchmark machine. The unified harness
+The 2026-11-11 snapshot used an isolated build. It was refreshed the same day
+on a build of the tree that carries the presolve and dual-ray corrections; the
+comparison scripts, raw timings, accuracy checks and binary hashes are retained
+under `out/readme-20261111r/` on the benchmark machine (the earlier measurement
+is in `out/readme-20261111/`). The refresh ran on a machine with other
+processes (load average 10 to 15 on 18 cores), with the solvers interleaved so
+that every instance saw the same conditions. Two MILP rows are within noise of
+HiGHS: on `milp_40x20` the first full run gave 53.2 ms for Primal and 48.4 ms for
+HiGHS, and a later repeat of the MILP family (the one in the table) 52.3 ms and
+53.2 ms; on `milp_60x30` the two runs gave 108.1 and 104.9 ms against 97.5 and
+105.8 ms. The unified harness
 provides a quick cross-check. The snapshot scripts add the family-specific
 settings, timing precision and accuracy checks described above.

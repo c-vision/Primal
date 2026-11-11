@@ -1,148 +1,174 @@
-# Certificates of infeasibility and unboundedness
+# Certificates of infeasibility, unboundedness and optimality
 
-In mathematical optimization, a solver must not simply assert that a problem has
-no solution; it must produce an independently checkable **certificate**
-(witness) proving that assertion. This chapter derives Farkas' Lemma, recession
-directions, PRIMAL's sign and normalization conventions, and explains why a
-certificate is published only when verified by direct measurement on the original model.
+**Verified against** revision `1f2ddee` plus the presolve correction `2c48c87`, with the measurements taken at `24b408a` and the user-space ray check of `T306`: `primal_std.c`, `primal_optimize.c`, `primal_verdict.c`,
+`primal_sdptask.c`, `presolve.c`, `sdp.c`, `primal.h`. The vectors quoted below were returned by `PRIMAL_optimize`
+and the ray getters.
 
-## Farkas' Lemma and theorems of alternatives
+## Learning objectives and prerequisites
 
-### Linear primal–dual alternatives
+After this chapter you can:
 
-For the standard linear inequality system $A x \le b, x \ge 0$, exactly one of
-the following two systems has a solution (Farkas' Lemma):
-1. **Primal feasible:** There exists $x \in \mathbb{R}^n$ such that $A x \le b, x \ge 0$.
-2. **Infeasibility certificate (Dual ray):** There exists $y \in \mathbb{R}^m$ such that:
-   $$
-   y \ge 0, \quad A^T y \ge 0, \quad b^T y < 0.
-   $$
+- state Farkas' alternatives for the standard form and for a cone, and check a given vector against them by substitution;
+- say what PRIMAL's ray getters promise, how a candidate ray is normalized and measured, and in which cases a verdict is
+  returned **without** a vector;
+- follow a candidate ray from the engine through the presolve lift and the measurement of `ray_publish`;
+- read the five-case table of what the public API returns for infeasible and unbounded LP, SOC and SDP models;
+- explain the fixed-diagonal optimality certificate of the SDP route as a measured certificate.
 
-If both held, we would have $0 \le y^T (A x) = (A^T y)^T x \le y^T b < 0$, a direct contradiction.
+Prerequisites: [duality and dual cones](mathematical_foundations.md), [presolve](presolve.md) (the homogeneous lift),
+[simplex](simplex.md).
 
-For PRIMAL's standard min-normalized equality form ($A x = b, x \ge 0$):
-- **Primal infeasibility witness:** A vector $y \in \mathbb{R}^m$ satisfying:
-  $$
-  A^T y \le 0, \qquad b^T y > 0.
-  $$
-- **Primal unboundedness witness (Primal ray):** A recession direction $\rho \in \mathbb{R}^n$ satisfying:
-  $$
-  \rho \ge 0, \qquad A \rho = 0, \qquad c^T \rho < 0.
-  $$
+## Farkas alternatives
 
-```mermaid
-flowchart LR
-    Solve[Solver terminates on extreme ray] --> M[ray_publish / sdp_ray_measures]
-    M --> Test{Does ray satisfy Farkas conditions on original model?}
-    Test -->|Yes| Pub[Publish ray via getprimalray / getdualray]
-    Test -->|No| Unk[Publish UNKNOWN status, zero vectors withheld]
+For the standard form $Ax=b,\ x\ge0$ exactly one of the two systems has a solution:
+
+$$
+\text{(P)}\ \ Ax=b,\ x\ge0\qquad\text{or}\qquad
+\text{(D)}\ \ A^\top y\le0,\ \ b^\top y>0 .
+$$
+
+They cannot both hold: $0\ge(A^\top y)^\top x=y^\top Ax=y^\top b>0$. A vector $y$ satisfying (D) *proves* that (P) is infeasible and
+can be checked by two matrix–vector products, which is why the solver reports it instead of just asserting infeasibility. Dually, if
+(P) is feasible, a direction $\rho\ge0$ with $A\rho=0$ and $c^\top\rho<0$ is a **recession direction** along which
+$\min c^\top x$ is unbounded: $x+\lambda\rho$ stays feasible and $c^\top(x+\lambda\rho)\to-\infty$.
+
+For $\min c^\top x$, $Ax=b$, $x\in\mathcal K$ the same argument gives
+
+$$
+\text{infeasible: }\exists y:\ -A^\top y\in\mathcal K^*,\ b^\top y>0;\qquad
+\text{unbounded: }\exists\rho\in\mathcal K:\ A\rho=0,\ c^\top\rho<0 .
+$$
+
+(If $x\in\mathcal K$ is feasible then $y^\top b=(A^\top y)^\top x\le0$.) For $\mathcal K=\mathbb R^n_+$, $\mathcal K^*=\mathbb R^n_+$ and this is (D).
+In the SDP case $\mathcal K=\mathbb S^n_+$ and $A^\top y=\sum_ky_kA_k$ is a matrix.
+
+The two alternatives are not exhaustive for conic problems: a conic system can be infeasible without a strict certificate (a limit of
+certificates) and the solver may fail to find any vector. Not having a certificate is therefore *not* a statement about the model.
+
+## What the ray getters promise
+
+[`primal.h`](../primal.h#L1962) states the contract: `PRIMAL_getdualray` fills one entry per constraint with a vector measured as
+$\sum_iy_ib_i^{\rm active}>0$ and $A^\top y\le0$ on every nonnegative variable; `PRIMAL_getprimalray` fills one entry per
+variable with a recession direction ($(A\rho)_i\le0$ on a row with an upper bound, $\ge0$ with a lower bound, $=0$ on a ranged or
+fixed row; $\rho_j\ge0$ if $x_j$ has a finite lower bound, $\le0$ with a finite upper bound; and $s\,c^\top\rho<0$ with
+$s=+1$ for minimization). Both are scaled to $\max|\cdot|=1$. A getter answers `PRIMAL_RES_ERR_ARG` when no vector was published.
+The status names the vector: `PRIMAL_SOL_STA_PRIM_INFEAS_CER` / `DUAL_INFEAS_CER` appear **only** with the vector beside them.
+Where a verdict exists without a vector, `solsta` stays `UNKNOWN` and the verdict is read with `PRIMAL_getprosta`.
+
+## One candidate, measured and published
+
+```text
+RAY-PUBLISH(engine status, candidate y, candidate rho)                  # primal_std.c:619
+ 1  y   <- dual candidate in the standard form;   rho <- primal candidate
+ 2  dual_ray_measured(y):   y <- y / max|y|;
+        A'y <= 1e-8 (1 + max column sum |A|)  componentwise   and   b'y > 1e-8 (1 + sum|b|)
+ 3  ray_representable(y):   reject if y puts weight on a row that came from x_j <= u_j,
+        or on BOTH sides of a ranged constraint (no one-number-per-constraint image)
+ 4  prim_ray_measured(rho): rho <- rho / max|rho|;  rho_j >= -1e-8(1+maxcol);
+        |A rho|_inf <= 1e-7 max|A| n   and   c'rho < -1e-8 (1 + sum|c|)
+ 5  if the dual candidate measured:   map it to the user's rows (stdform_map_y, row scaling and sign), publish, return INFEASIBLE
+ 6  else if the primal candidate measured:   map to the user's columns (stdform_map_dir, column scaling), publish, return UNBOUNDED
+        (infeasibility dominates unboundedness: a ray is a statement about the feasible set)
+ 7  else return the engine's own status: it stands, only the vector is withheld
 ```
 
-## Conic Farkas alternatives
+Where the candidates come from: the **tableau simplex** writes its own witness (an artificial objective $>0$ at the end of phase I gives
+$y$; a ratio test with no leaving row gives $\rho$). The **interior-point** routes write none and offer their last iterate to the same
+measurement. When presolve removed singleton rows or columns the candidate is lifted by the linear, constant-free pass
+`presolve_postsolve_dir` ([presolve](presolve.md)) before measurement. A status of INFEASIBLE or UNBOUNDED from the engine is kept
+("a positive phase-1 optimum and a ratio test with no leaving row are proofs about the system that was solved"): what the measurement
+decides is whether a vector goes with it.
 
-For general conic problems $\min c^T x$ subject to $A x = b, x \in \mathcal{K}$:
-- **Primal infeasibility:** There exists $y \in \mathbb{R}^m$ such that:
-  $$
-  -A^T y \in \mathcal{K}^*, \qquad b^T y > 0.
-  $$
-- **Dual infeasibility (Primal recession):** There exists $\rho \in \mathcal{K}$ such that:
-  $$
-  A \rho = 0, \qquad c^T \rho < 0.
-  $$
+## Worked examples, measured
 
-## Normalization and sign conventions in PRIMAL
+**Infeasible LP.** $x=2,\ x+y=5,\ y+z=1,\ x,y,z\ge0$. Then $y=3$ and $z=-2$: infeasible. By substitution,
+$y^\star=(-1,1,-1)$ gives $A^\top y^\star=(-1+1,\ 1-1,\ -1)=(0,0,-1)\le0$ and $b^\top y^\star=-2+5-1=2>0$. `PRIMAL_optimize` returns
+`ERR_INFEASIBLE` (1002), `solsta=PRIM_INFEAS_CER` and `PRIMAL_getdualray` returns exactly $(-1,1,-1)$ at presolve levels 0, 1 and 2
+(test `T305`, which is also the regression test of [the presolve correction](presolve.md#right-hand-sides-that-become-negative)).
 
-Both rays are normalized by their $\infty$-norm:
+**Unbounded LP.** $\min-x_1-2x_2$ s.t. $-x_1+x_2\le1$, $x\ge0$. The direction $\rho=(1,1)$: $A\rho=-1+1=0\le0$,
+$\rho\ge0$, $c^\top\rho=-3<0$. `PRIMAL_optimize` returns `ERR_UNBOUNDED` (1003), `solsta=DUAL_INFEAS_CER` and `PRIMAL_getprimalray`
+returns $(1,1)$ (so does $(2,1)$ scaled to $(1,0.5)$, also a valid ray: the certificate is a *cone* of directions).
 
-$$
-\|\rho\|_\infty = \max_j |\rho_j| = 1, \qquad \|y\|_\infty = \max_i |y_i| = 1.
-$$
+**Unbounded SOC.** $\min-x_0$ with $(x_0,x_1,x_2)\in Q_3$. The direction $\rho=(1,0,1)$ is in $Q_3$ (boundary: $1=\|(0,1)\|$),
+$c^\top\rho=-1<0$. The solver returns it as the primal ray.
 
-Normalization places the numerical verification on the scale of the user's model
-rather than the internal scale of solver presolve or preconditioning.
+**Infeasible conic, with a dual ray.** $x_0=-1$ with $x_0$ in the first coordinate of $Q_3$. The vector $y=-1$ gives
+$-A^\top y=(1,0,0)\in Q_3=\mathcal K^*$ and $b^\top y=(-1)(-1)=1>0$: the conic Farkas condition of the formulas above. `PRIMAL_getdualray` returns
+$y=-1$ here and also on the LP route for $x_0=-1,\ x_0\ge0$: **one sign on both routes**, the one of `primal.h` ($y>0$ on a lower side, $y<0$ on an upper side,
+$-A^\top y\in\mathcal K^*$, $\sum y_ib_i^{\rm active}>0$). The conic route measures the textbook form ($y\ge0$ on an upper side, $d=A^\top y\in\mathcal K^*$, signed right-hand side
+negative) and publishes its negative; before that was done (test `T307`) it returned $y=+1$, the opposite of the LP route.
 
-Dual multipliers $y$ and reduced costs $z$ follow standard sensitivity conventions:
-- $y_i > 0$: The constraint is active at its **upper** bound.
-- $y_i < 0$: The constraint is active at its **lower** bound.
-- $z_j > 0$: The variable is at its **upper** bound.
-- $z_j < 0$: The variable is at its **lower** bound.
+**Infeasible SDP.** $X_{11}=1,\ X_{22}=1,\ X_{12}=2,\ X\succeq0$: $\det X=1-4<0$. By hand, $y=(-1,-1,\tfrac32)$ gives
+$-\sum_ky_kA_k=\begin{pmatrix}1&-\tfrac34\\-\tfrac34&1\end{pmatrix}\succeq0$ (with $A_3=\tfrac12(E_{12}+E_{21})$) and
+$b^\top y=-1-1+2\cdot\tfrac32=1>0$. `PRIMAL_optimize` returns `ERR_INFEASIBLE` and `PRIMAL_getprosta` reports `PRIM_INFEAS`, but **no vector**:
+`solsta=UNKNOWN`, both ray getters answer `ERR_ARG` (the compressed bar block has no image as one number per constraint).
 
-The dual objective for general models is evaluated as:
+**A conic model with no verdict.** $x_0=x_1=x_2=1$, $(x_0,x_1,x_2)\in Q_3$ is infeasible ($1<\sqrt2$) but the route ends with
+`TRM_MAX_ITER` (1007), `solsta=UNKNOWN`, `prosta=UNKNOWN`: the line search could find no descent step and neither relaxation (see next
+section) proved anything. The model is infeasible; the solver says nothing, which is the honest answer when it cannot measure a witness.
 
-$$
-\text{dobj} = c_{\mathrm{fix}} - \sum_i y_i b_i^{\mathrm{act}} - \sum_j z_j x_{b,j}^{\mathrm{act}} - \frac{1}{2} x^T Q x.
-$$
+| model | return | `solsta` | `prosta` | dual ray | primal ray |
+|---|---|---|---|---|---|
+| infeasible LP ($x+y\le1,\ x+y\ge2$, presolve off) | 1002 | 5 `PRIM_INFEAS_CER` | 4 | $(-1,1)$ | no |
+| unbounded LP | 1003 | 6 `DUAL_INFEAS_CER` | 5 | no | $(1,1)$ |
+| infeasible SOC ($x_0=-1$) | 1002 | 5 | 4 | $y=-1$ | no |
+| unbounded SOC | 1003 | 6 | 5 | no | $(1,0,1)$ |
+| infeasible SDP | 1002 | 0 `UNKNOWN` | 4 | no | no |
+| SOC infeasible but not proved | 1007 | 0 | 0 | no | no |
 
-## Worked examples
+*Table: measured with `PRIMAL_optimize`, `PRIMAL_getsolsta`, `PRIMAL_getprosta` and the two getters at `24b408a`.*
 
-### Infeasible example
+> **Ray re-measured on the user's model.** The first row is only certified with presolve off. With presolve on (levels 1 and 2),
+> `bound_tighten` derives $x_1\ge1$ and $x_2\le1$ from the two rows and fixes both variables, and the engine proves infeasibility
+> against those *derived* bounds: the vector $(-1,0)$ it returns measures in the standard form but is not a certificate of the rows the user wrote
+> (the first row alone is feasible). Before the correction tested by `T306` that vector was published; now `ray_publish`
+> re-measures every dual ray on the model's own rows and bounds ($L=\sum_{y_i>0}y_i\,l_i+\sum_{y_i<0}y_i\,u_i$ against
+> $U=\sum_{d_j>0}d_jx^{\max}_j+\sum_{d_j<0}d_jx^{\min}_j$ with $d=A^\top y$, and $L>U$) and withholds a ray that fails. The verdict stays readable
+> (`rc=1002`, `prosta=PRIM_INFEAS`, `solsta=UNKNOWN`, `PRIMAL_getdualray` answers `ERR_ARG`); the row of the table above is therefore a *with-presolve-off* row, and with
+> presolve on this model has a verdict and no vector. The ray is not recovered by a re-solve without bound tightening.
 
-Consider:
+## Conic and SDP routes: verdicts measured on relaxations
 
-$$
-x_1 + x_2 \le 1, \qquad -x_1 - x_2 \le -2, \qquad x_1, x_2 \ge 0.
-$$
+A conic route that ends without a point answers two questions about the *model* on linear relaxations, each chosen so that its answer
+is sound ([`conic_no_answer_verdict`](../primal_verdict.c#L359)): infeasibility is tested on an LP that **contains** the cones (an LP infeasible on a
+subset proves nothing), unboundedness on one **inside** the cones (a direction of a wider set is not a direction of the model). A dual
+vector is published only if $d\in\mathcal K^*$ holds on every cone block with the signed right-hand side negative
+([`conic_dual_ray_measures`](../primal_verdict.c#L196)); a recession direction is published as the user's primal ray only for a model with no
+bar variables ([`conic_publish_pray`](../primal_verdict.c#L259)). Otherwise the verdict is `prosta` alone. In the tangent-cut SDP route a point sitting on the artificial box cap
+$\pm$`SDP_BIGM` is not an answer: [`bar_cap_verdict`](../primal_sdptask.c#L1096) publishes an unbounded verdict only when a
+recession direction is measured on the model's own rows and cones, and otherwise no verdict ([SDP](semidefinite_programming.md)).
+Mixed-integer infeasibility and the tangent-cut route likewise leave the verdict in `prosta` (relaxation rays do not certify integer infeasibility).
 
-Adding slack variables gives $x_1 + x_2 + s_1 = 1$ and $-x_1 - x_2 + s_2 = -2$ with $s_1, s_2 \ge 0$.
-Summing the two equations yields $s_1 + s_2 = -1$, which is impossible for nonnegative slacks.
+## An optimality certificate that is measured: the fixed-diagonal SDP
 
-In PRIMAL's format:
-$A = \begin{bmatrix} 1 & 1 \\ -1 & -1 \end{bmatrix}$, $b = \begin{bmatrix} 1 \\ -2 \end{bmatrix}$.
-Choose dual multiplier $y = [1, 1]^T$:
-$$
-A^T y = \begin{bmatrix} 1 & -1 \\ 1 & -1 \end{bmatrix} \begin{bmatrix} 1 \\ 1 \end{bmatrix} = \begin{bmatrix} 0 \\ 0 \end{bmatrix} \le 0, \qquad
-b^T y = 1(1) + (-2)(1) = -1 < 0.
-$$
-Normalizing by $\|y\|_\infty = 1$ gives the dual ray $y = [1, 1]^T$, certifying primal infeasibility.
+Certificates are not only for failure. For $\min\langle C,X\rangle$ with fixed positive diagonals, [`sdp_fixed_diagonal`](../sdp.c#L2995) builds
+$X=\hat u\hat u^\top$ and a dual slack $S$ with $S\hat u=0$ and a Laplacian structure, and **measures** the primal residual, the dual residual
+and the gap against the same tolerances as the iterative route; only if all pass is the point returned
+([SDP chapter](semidefinite_programming.md#the-fixed-diagonal-certificate-no-iteration)). On the example $C=\begin{pmatrix}0&-1\\-1&0\end{pmatrix}$ it
+returns $X^\star=\begin{pmatrix}1&1\\1&1\end{pmatrix}$, $S^\star=\begin{pmatrix}1&-1\\-1&1\end{pmatrix}$ with primal and dual objective $-2$: the pair satisfies
+$\mathcal A(X)=b$, $S=C-\mathcal A^*(y)\succeq0$, $\langle X,S\rangle=0$, which is optimality by weak duality.
 
-### Unbounded example
+## Costs and limits
 
-Consider:
+- A measurement costs two sparse products; it is negligible next to the solve.
+- A tolerance family $10^{-8}$ (relative to the column and right-hand side scales) separates a certificate from a near miss. A ray that misses
+  is not "almost a proof": the status falls back to the engine's claim without a vector, or to `UNKNOWN`.
+- Variable-bound rows and two-sided ranged rows have no one-number-per-constraint dual image, so a dual ray that needs them is withheld
+  (`ray_representable`).
+- For conic, SDP, MIP and tangent-cut routes a verdict can exist without a vector, by design.
 
-$$
-\min -x_1 - 2 x_2 \quad \text{s.t.} \quad -x_1 + x_2 \le 1, \quad x_1, x_2 \ge 0.
-$$
+## Exercise
 
-Consider direction $\rho = [2, 1]^T \ge 0$.
-Checking the constraint row:
-$$
-A \rho = [-1, 1] \begin{bmatrix} 2 \\ 1 \end{bmatrix} = -2 + 1 = -1 \le 0.
-$$
-The objective improves along $\rho$:
-$$
-c^T \rho = [-1, -2] \begin{bmatrix} 2 \\ 1 \end{bmatrix} = -4 < 0.
-$$
-For any $t \ge 0$, the point $x(t) = t \rho$ remains feasible and $c^T x(t) = -4 t \to -\infty$.
-Normalizing $\rho$ by $\|\rho\|_\infty = 2$ gives the primal ray $\rho^* = [1, 0.5]^T$, certified by `PRIMAL_getprimalray`.
+For the infeasible LP $x_1+x_2\le1,\ x_1+x_2\ge2,\ x\ge0$ write it in the standard form with a slack and a surplus, find a vector satisfying
+(D) and compare it with what the solver returns with presolve off.
 
-## Verification in PRIMAL implementation
-
-1. **Simplex ray generation (`simplex.c`):**
-   - Phase-I simplex terminates with an artificial objective $> 0$ when an LP is infeasible,
-     extracting the dual ray directly from the basis inverse row.
-   - When the primal ratio test finds no exiting basic variable, the pivot direction yields
-     the primal ray $\rho$.
-2. **Presolve ray lifting (`presolve.c`):**
-   When presolve eliminates singleton rows, empty columns, or duplicate constraints,
-   `presolve_postsolve_dir` lifts the ray back to original coordinates using a homogeneous
-   adjoint pass ($y_i = -\sum_k A_{kj} y_k / A_{ij}$ without constant shifts).
-3. **Measurement before publication (`primal_verdict.c`):**
-   In `ray_publish`, the candidate ray is evaluated against the user's unscaled constraint matrices.
-   If $\|A^T y\|_\infty > \text{tol}$ or $b^T y \le 0$, the certificate is rejected and the solver
-   reports status `PRIM_UNKNOWN`.
-
-| Problem Type | Status Code | Vector availability |
-|---|---|---|
-| LP / QP Infeasible | `PRIM_PRIMAL_INFEAS_CER` | `PRIMAL_getdualray` |
-| LP / QP Unbounded | `PRIM_DUAL_INFEAS_CER` | `PRIMAL_getprimalray` |
-| Conic Infeasible (no PSD) | `PRIM_PRIMAL_INFEAS_CER` | `PRIMAL_getdualray` |
-| Conic Unbounded (no PSD) | `PRIM_DUAL_INFEAS_CER` | `PRIMAL_getprimalray` |
-| PSD Bar / Mixed SDP | `PRIM_UNKNOWN` (in `prosta`) | None (compressed bar format has no vector image) |
-| Tangent-cut outer approx | `PRIM_UNKNOWN` (in `prosta`) | None (tangent cut lifting is not certified) |
-| MIP infeasible | `PRIM_UNKNOWN` (in `prosta`) | None (relaxation rays do not certify integer infeasibility) |
+*Answer.* $x_1+x_2+s_1=1$, $x_1+x_2-s_2=2$, so $A=\begin{pmatrix}1&1&1&0\\1&1&0&-1\end{pmatrix}$, $b=(1,2)$. Conditions: $A^\top y=(y_1+y_2,\ y_1+y_2,\ y_1,\ -y_2)\le0$, i.e.
+$y_1\le0$, $y_2\ge0$, $y_1+y_2\le0$; and $b^\top y=y_1+2y_2>0$. Take $y=(-1,1)$: $A^\top y=(0,0,-1,-1)\le0$ and $b^\top y=1>0$. With presolve off
+the solver returns $(-1,1)$ for the two user rows (upper row $x_1+x_2\le1$ first), the same vector.
 
 ## References
 
-- J. Farkas, [Über die Theorie der einfachen Ungleichungen](https://doi.org/10.5169/seals-840954), Journal für die reine und angewandte Mathematik, 1902.
-- A. Schrijver, [Theory of Linear and Integer Programming](https://www.wiley.com/en-us/Theory+of+Linear+and+Integer+Programming-p-9780471982326), Wiley, 1998.
-- S. Boyd and L. Vandenberghe, [Convex Optimization](https://web.stanford.edu/~boyd/cvxbook/), Section 5.8 (Theorems of alternatives).
+- J. Farkas, [Theorie der einfachen Ungleichungen](https://doi.org/10.1515/crll.1902.124.1), *Journal für die reine und angewandte Mathematik* 124:1–27, 1902.
+- A. Schrijver, *Theory of Linear and Integer Programming*, Wiley, 1986 (reprinted 1998).
+- S. Boyd and L. Vandenberghe, [*Convex Optimization*](https://web.stanford.edu/~boyd/cvxbook/), Cambridge University Press, 2004, section 5.8.

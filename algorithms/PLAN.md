@@ -31,9 +31,9 @@ existing notes until the replacement covers the same verified material.
 | 3 | [`exponential_cone.md`](exponential_cone.md) | Split the EXP material from [the shared note](exp-power-cones.md). Derive the epigraph perspective, closure, barrier, gradient and Hessian. Match PRIMAL's coordinate order and dual conventions. Explain the native scaling, PEXP corrector, routing and tangent-cut fallback from `expcone.c`, `expcone_corrector.c`, `sdp.c` and `primal_conicopt.c`. | Completed — verified at `1f2ddee` |
 | 3 | [`power_cone.md`](power_cone.md) | Derive weighted geometric-mean geometry and the barrier in the code's coordinate order. Distinguish primal and dual parameterizations. Work a fractional-power epigraph and plot slices for several exponents. Audit `expcone.c` and the shared native/fallback routes. | Completed — verified at `1f2ddee` |
 | 4 | [`mixed_integer_optimization.md`](mixed_integer_optimization.md) | Trace node relaxations, branching, bounds, pruning and incumbent acceptance in `primal_mip.c` and `primal_mip_opt.c`. Draw a branch-and-bound tree. Explain probing, cuts and heuristics with their implemented scope. Link the [ACC/DJC case study](disjunctive-constraints.md) and distinguish integrality from feasibility tolerances. | Completed — verified at `1f2ddee` |
-| 4 | [`certificates.md`](certificates.md) | Derive Farkas alternatives and recession conditions. Verify signs and normalization from `simplex.c`, `primal_std.c` and `primal_verdict.c`. Work infeasible and unbounded examples by substitution, then trace their mapped rays through the public getters. | Draft — see [audit](#audit-of-the-drafts) |
-| 4 | [`numerical_stability.md`](numerical_stability.md) | Derive scaling and residual normalization from the relevant routines in `scaling.c`, `ipm.c`, `socp.c` and `sdp.c`. Compare residuals in scaled and original units. Explain pivot tests, refinement, stopping criteria and near-optimal acceptance with route-specific conditions. | Draft — see [audit](#audit-of-the-drafts) |
-| 4 | [`architecture.md`](architecture.md) | Follow `PRIMAL_optimize` from model dispatch to postsolve, certificate validation and public getters. Diagram routing and fallbacks. Trace one LP, one QP and one mixed-cone model through actual functions. | Draft — see [audit](#audit-of-the-drafts) |
+| 4 | [`certificates.md`](certificates.md) | Derive Farkas alternatives and recession conditions. Verify signs and normalization from `simplex.c`, `primal_std.c` and `primal_verdict.c`. Work infeasible and unbounded examples by substitution, then trace their mapped rays through the public getters. | Completed — verified at `1f2ddee` |
+| 4 | [`numerical_stability.md`](numerical_stability.md) | Derive scaling and residual normalization from the relevant routines in `scaling.c`, `ipm.c`, `socp.c` and `sdp.c`. Compare residuals in scaled and original units. Explain pivot tests, refinement, stopping criteria and near-optimal acceptance with route-specific conditions. | Completed — verified at `1f2ddee` |
+| 4 | [`architecture.md`](architecture.md) | Follow `PRIMAL_optimize` from model dispatch to postsolve, certificate validation and public getters. Diagram routing and fallbacks. Trace one LP, one QP and one mixed-cone model through actual functions. | Completed — verified at `1f2ddee` |
 
 Technical notes on [tangent cuts](tangent-cuts.md), [QCQP encoding](qcqp-encoding.md)
 and [disjunctive constraints](disjunctive-constraints.md) can remain companion
@@ -65,6 +65,13 @@ A dash in the test column means no dedicated `T<n>` case was found for the
 change; the chapter must then give a reproducible example instead.
 
 ## Audit of the drafts
+
+**Status (2026-11-11, later the same day): closed.** Every gap below was
+addressed in the rewrite of the fifteen chapters, each of which now carries
+learning objectives, a derivation, pseudocode, source links, a verified worked
+example, a figure or measured trace, costs and failure modes, an exercise with
+its answer and checked references. The text of the original audit follows as a
+record of what was found.
 
 Audited on 2026-11-11 against `1f2ddee` (structure, links, coverage of the
 changes above, and spot checks of implementation claims). Every chapter has a

@@ -23,7 +23,7 @@ are the axes in any reading.
 ## Non-convex domains are refused
 
 The encoder measures the scale of each spectrum and refuses the whole model
-beyond a **relative** threshold `1e-9 · max(1, max|λ|)`, with the reason printed
+beyond a **relative** threshold `tol · max(1, max|λ|)` with `tol = PRIMAL_DPAR_SEMIDEFINITE_TOL_APPROX` (default `1e-10`), with the reason printed
 on stderr.
 
 Two properties of that threshold are deliberate:

@@ -32,6 +32,8 @@
  *   elliptope-slices.svg     analytic   three slices of the 3x3 unit-diagonal PSD set and the line that touches the best one
  *   exp-cone-section.svg     analytic   sections of t >= u exp(v/u) and the optimum of min t s.t. u + v = 2
  *   power-cone-section.svg   analytic   sections u = 1 of the power cones and the optimum of min t with u = 1, v = 2
+ *   scaling-equilibration.svg computed  exponents of a badly scaled 6x6 matrix before and after scale_equilibrate
+ *   dispatch.svg             static     the dispatch order of opt_routes (a diagram read from the code, no data)
  *   supporting-hyperplane.svg analytic  the optimal vertex of the same LP, its normal cone and the
  *                                       supporting lines that touch the polygon there
  *
@@ -52,6 +54,7 @@
 #include "presolve.h"
 #include "linalg.h"
 #include "expcone.h"
+#include "scaling.h"
 
 #define INK "#17212b"
 #define BLUE "#155097"
@@ -1010,6 +1013,114 @@ static void fig_powercone(const char *dir) {
     fclose(f);
 }
 
+/* ------------------------------------------------------------------------- */
+/* Figure 11: power-of-two equilibration of a badly scaled matrix              */
+
+static void heat_cell(FILE *f, double x, double y, double w, double h, double e, double lo, double hi) {
+    /* white (small) -> dark blue (large) by the binary exponent e */
+    double t = (e - lo) / (hi - lo); if (t < 0) t = 0; if (t > 1) t = 1;
+    int r = (int)(255 - t * (255 - 21)), g = (int)(255 - t * (255 - 80)), b = (int)(255 - t * (255 - 151));
+    fprintf(f, "  <rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"rgb(%d,%d,%d)\" stroke=\"#fff\" stroke-width=\"2\"/>\n", x, y, w, h, r, g, b);
+    char s[16]; snprintf(s, sizeof s, "%d", (int)floor(e + 0.5));
+    fprintf(f, "  <text x=\"%.1f\" y=\"%.1f\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"14\" fill=\"%s\">%s</text>\n",
+            x + w / 2, y + h / 2 + 5, t > 0.55 ? "#fff" : INK, s);
+}
+
+static void fig_scaling(const char *dir) {
+    enum { N = 6 };
+    static const int ei[N] = { 10, 0, -6, 4, -12, 7 }, fj[N] = { -5, 8, 0, -9, 3, 6 };
+    double A[N][N], A0[N][N];
+    unsigned st = 12345u;
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++) {
+            st = st * 1103515245u + 12345u;
+            double mant = 1.0 + ((st >> 16) & 0x7fff) / 32768.0;
+            A0[i][j] = A[i][j] = ldexp(mant, ei[i] + fj[j]);
+        }
+    int ptr[N + 1], sub[N * N]; double val[N * N], lc[N], uc[N], lx[N], ux[N], c[N], r[N], d[N];
+    int k = 0;
+    for (int j = 0; j < N; j++) { ptr[j] = k; for (int i = 0; i < N; i++) { sub[k] = i; val[k] = A[i][j]; k++; } }
+    ptr[N] = k;
+    for (int i = 0; i < N; i++) { lc[i] = uc[i] = 1.0; }
+    for (int j = 0; j < N; j++) { lx[j] = 0.0; ux[j] = 1e30; c[j] = 1.0; }
+    scale_equilibrate(N, N, ptr, sub, val, lc, uc, lx, ux, c, NULL, r, d);
+    double amin0 = 1e300, amax0 = 0, amin1 = 1e300, amax1 = 0;
+    for (int j = 0; j < N; j++)
+        for (int q = ptr[j]; q < ptr[j + 1]; q++) {
+            int i = sub[q];
+            if (val[q] != r[i] * d[j] * A0[i][j]) fail("scaling: the scaled entry is not exactly r_i d_j a_ij");
+            int e1; double m1 = frexp(r[i], &e1); if (m1 != 0.5) fail("scaling: a row factor is not a power of two");
+            m1 = frexp(d[j], &e1); if (m1 != 0.5) fail("scaling: a column factor is not a power of two");
+            A[i][j] = val[q];
+            amin0 = fmin(amin0, A0[i][j]); amax0 = fmax(amax0, A0[i][j]);
+            amin1 = fmin(amin1, val[q]); amax1 = fmax(amax1, val[q]);
+        }
+    double spread0 = amax0 / amin0, spread1 = amax1 / amin1;
+    if (!(spread1 < 1e-3 * spread0)) fail("scaling: the spread did not shrink");
+
+    char name[512]; snprintf(name, sizeof name, "%s/scaling-equilibration.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open scaling-equilibration.svg");
+    char desc[900];
+    snprintf(desc, sizeof desc, "Binary exponents of the entries of a 6x6 matrix before and after scale_equilibrate. Before, the exponents run from %d to %d "
+             "(ratio of largest to smallest entry %.1e); after four passes of power-of-two row and column scaling they lie between %d and %d (ratio %.1f). "
+             "Every scaled entry equals r_i d_j a_ij exactly. Computed with scale_equilibrate at revision %s.",
+             (int)floor(log2(amin0)), (int)floor(log2(amax0)), spread0, (int)floor(log2(amin1)), (int)floor(log2(amax1)), spread1, g_rev);
+    svg_begin(f, 800, 460, "Equilibration of a badly scaled matrix", desc);
+    text(f, 400, 30, "middle", 20, INK, "Power-of-two equilibration: exponent of each entry, round(log2 |a_ij|)");
+    for (int pane = 0; pane < 2; pane++) {
+        double ox = 50 + pane * 400, oy = 70, cs = 52;
+        for (int i = 0; i < N; i++)
+            for (int j = 0; j < N; j++)
+                heat_cell(f, ox + j * cs, oy + i * cs, cs, cs, log2(pane ? A[i][j] : A0[i][j]), -20, 18);
+        char s[96];
+        snprintf(s, sizeof s, pane ? "after:  largest / smallest = %.1f" : "before: largest / smallest = %.1e", pane ? spread1 : spread0);
+        text(f, ox + N * cs / 2, oy + N * cs + 30, "middle", 15, INK, s);
+    }
+    text(f, 400, 448, "middle", 13, GREY, "Darker = larger entry. Scaled entry = r_i d_j a_ij with r_i, d_j powers of two: exact in floating point.");
+    svg_end(f);
+    fclose(f);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Figure 12: the dispatch of PRIMAL_optimize (static diagram of opt_routes)    */
+
+static void box(FILE *f, double x, double y, double w, double h, const char *fill, const char *stroke,
+                const char *l1, const char *l2, const char *l3) {
+    fprintf(f, "  <rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" rx=\"6\" fill=\"%s\" stroke=\"%s\" stroke-width=\"1.8\"/>\n", x, y, w, h, fill, stroke);
+    int n = (l1 ? 1 : 0) + (l2 ? 1 : 0) + (l3 ? 1 : 0), k = 0;
+    double y0 = y + h / 2 - (n - 1) * 9 + 4;
+    const char *ls[3] = { l1, l2, l3 };
+    for (int i = 0; i < 3; i++) if (ls[i]) { text(f, x + w / 2, y0 + 18 * k, "middle", i == 0 ? 14 : 12, i == 0 ? INK : GREY, ls[i]); k++; }
+}
+
+static void fig_architecture(const char *dir) {
+    char name[512]; snprintf(name, sizeof name, "%s/dispatch.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open dispatch.svg");
+    char desc[700];
+    snprintf(desc, sizeof desc, "Dispatch of PRIMAL_optimize: opt_routes tests, in order, integer variables or SOS (branch and bound), bar variables "
+             "(semidefinite interior point, tangent-cut fallback), quadratic rows or a QP objective with cones (rotated cone encoding), cones "
+             "(exponential and power natively, then the conic route) and otherwise the LP/QP standard form pipeline. Static diagram read from opt_routes at revision %s.", g_rev);
+    svg_begin(f, 900, 640, "Dispatch of PRIMAL_optimize", desc);
+    text(f, 450, 28, "middle", 20, INK, "How PRIMAL_optimize dispatches a model (opt_routes, in this order)");
+    box(f, 60, 44, 280, 44, FILL, BLUE, "PRIMAL_optimize", "primal_verdict.c:889  deadlines, callbacks", NULL);
+    line(f, 200, 88, 200, 104, INK, 1.8, NULL, "arr");
+    box(f, 60, 106, 280, 44, FILL, BLUE, "opt_routes", "opt_prepare, validate ranged bounds", NULL);
+    static const char *q[5] = { "integer or SOS variables?", "bar variables?", "quadratic rows, or QP objective with cones?", "cones?", "otherwise" };
+    static const char *r1[5] = { "optimize_mip", "no quadratic part: optimize_sdp_ipm", "optimize_quad", "exp/power: optimize_sdp_ipm, then", "LP / QP standard-form leg" };
+    static const char *r2[5] = { "branch and bound over relaxations", "else optimize_quad;  failure: optimize_sdp (cuts)", "rotated-cone encoding, conic shadow task", "optimize_conic: socp.c or tangent cuts", "row_redundant, bound_tighten, scale_equilibrate," };
+    static const char *r3[5] = { NULL, NULL, NULL, NULL, "stdform_build, lp_presolve (LP), simplex | IPM, postsolve" };
+    for (int i = 0; i < 5; i++) {
+        double y = 176 + i * 78;
+        line(f, 200, i == 0 ? 150 : y - 26, 200, y, INK, 1.8, NULL, "arr");
+        box(f, 60, y, 280, 52, "#fff", GREY, q[i], i < 4 ? "yes: take this route, stop" : "no previous test applied", NULL);
+        line(f, 340, y + 26, 400, y + 26, ORANGE, 2.2, NULL, "arrb");
+        box(f, 400, y, 440, 52, i == 4 ? "#fef3c7" : FILL, i == 4 ? ORANGE : BLUE, r1[i], r2[i], r3[i]);
+    }
+    box(f, 60, 576, 780, 46, "#f3f4f6", GREY, "After the route returns (PRIMAL_optimize)", "conic acceptance: conic_primal_cone_worst, conic_dual_verdict, conic_no_answer_verdict;  LP: intpnt_identify_basis, crossover cleanup", NULL);
+    svg_end(f);
+    fclose(f);
+}
+
 int main(int argc, char **argv) {
     const char *dir = ".";
     if (argc > 1) g_rev = argv[1];
@@ -1023,6 +1134,8 @@ int main(int argc, char **argv) {
     fig_elliptope(dir);
     fig_expcone(dir);
     fig_powercone(dir);
-    printf("make_figures: wrote simplex-pivots.svg, lp-central-path.svg, lp-central-path-trace.csv, qp-contours.svg, supporting-hyperplane.svg, presolve-reduction.svg, cholesky-ordering.svg, ordering-fill.csv, elliptope-slices.svg, exp-cone-section.svg, power-cone-section.svg in %s (revision %s)\n", dir, g_rev);
+    fig_scaling(dir);
+    fig_architecture(dir);
+    printf("make_figures: wrote simplex-pivots.svg, lp-central-path.svg, lp-central-path-trace.csv, qp-contours.svg, supporting-hyperplane.svg, presolve-reduction.svg, cholesky-ordering.svg, ordering-fill.csv, elliptope-slices.svg, exp-cone-section.svg, power-cone-section.svg, scaling-equilibration.svg, dispatch.svg in %s (revision %s)\n", dir, g_rev);
     return 0;
 }

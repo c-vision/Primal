@@ -13,6 +13,8 @@ closed form that the program checks against the solver, except the small static 
 | `cholesky-ordering.svg`, `ordering-fill.csv` | measured | `make_figures.c` | the factors of `spchol_factor` and `spchol_factor_ord` solve the same system |
 | `elliptope-slices.svg` | analytic | `make_figures.c` | the minimum on each slice equals the closed form, via `PRIMAL_optimize` |
 | `exp-cone-section.svg`, `power-cone-section.svg` | analytic | `make_figures.c` | membership of points on both sides of every curve with `expcone_barrier`; the optimum against the API |
+| `scaling-equilibration.svg` | computed | `make_figures.c` | every scaled entry equals `r_i d_j a_ij` exactly and every factor is a power of two |
+| `dispatch.svg` | static | `make_figures.c` | none: a diagram read from `opt_routes`, checked by the three traces of the architecture chapter |
 | `lorentz-section.svg` | analytic | by hand (static) | none |
 
 The generators exit with a non-zero status if a check fails.

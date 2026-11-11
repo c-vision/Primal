@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" role="img" aria-labelledby="title desc">
+  <title id="title">Dispatch of PRIMAL_optimize</title>
+  <desc id="desc">Dispatch of PRIMAL_optimize: opt_routes tests, in order, integer variables or SOS (branch and bound), bar variables (semidefinite interior point, tangent-cut fallback), quadratic rows or a QP objective with cones (rotated cone encoding), cones (exponential and power natively, then the conic route) and otherwise the LP/QP standard form pipeline. Static diagram read from opt_routes at revision 1f2ddee.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#17212b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>
+  </defs>
+  <rect width="900" height="640" fill="#fff"/>
+  <text x="450.0" y="28.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">How PRIMAL_optimize dispatches a model (opt_routes, in this order)</text>
+  <rect x="60.0" y="44.0" width="280.0" height="44.0" rx="6" fill="#dbeafe" stroke="#155097" stroke-width="1.8"/>
+  <text x="200.0" y="61.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">PRIMAL_optimize</text>
+  <text x="200.0" y="79.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">primal_verdict.c:889  deadlines, callbacks</text>
+  <line x1="200.0" y1="88.0" x2="200.0" y2="104.0" stroke="#17212b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="60.0" y="106.0" width="280.0" height="44.0" rx="6" fill="#dbeafe" stroke="#155097" stroke-width="1.8"/>
+  <text x="200.0" y="123.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">opt_routes</text>
+  <text x="200.0" y="141.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">opt_prepare, validate ranged bounds</text>
+  <line x1="200.0" y1="150.0" x2="200.0" y2="176.0" stroke="#17212b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="60.0" y="176.0" width="280.0" height="52.0" rx="6" fill="#fff" stroke="#6b7280" stroke-width="1.8"/>
+  <text x="200.0" y="197.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">integer or SOS variables?</text>
+  <text x="200.0" y="215.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">yes: take this route, stop</text>
+  <line x1="340.0" y1="202.0" x2="400.0" y2="202.0" stroke="#b45309" stroke-width="2.2" marker-end="url(#arrb)"/>
+  <rect x="400.0" y="176.0" width="440.0" height="52.0" rx="6" fill="#dbeafe" stroke="#155097" stroke-width="1.8"/>
+  <text x="620.0" y="197.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">optimize_mip</text>
+  <text x="620.0" y="215.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">branch and bound over relaxations</text>
+  <line x1="200.0" y1="228.0" x2="200.0" y2="254.0" stroke="#17212b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="60.0" y="254.0" width="280.0" height="52.0" rx="6" fill="#fff" stroke="#6b7280" stroke-width="1.8"/>
+  <text x="200.0" y="275.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">bar variables?</text>
+  <text x="200.0" y="293.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">yes: take this route, stop</text>
+  <line x1="340.0" y1="280.0" x2="400.0" y2="280.0" stroke="#b45309" stroke-width="2.2" marker-end="url(#arrb)"/>
+  <rect x="400.0" y="254.0" width="440.0" height="52.0" rx="6" fill="#dbeafe" stroke="#155097" stroke-width="1.8"/>
+  <text x="620.0" y="275.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">no quadratic part: optimize_sdp_ipm</text>
+  <text x="620.0" y="293.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">else optimize_quad;  failure: optimize_sdp (cuts)</text>
+  <line x1="200.0" y1="306.0" x2="200.0" y2="332.0" stroke="#17212b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="60.0" y="332.0" width="280.0" height="52.0" rx="6" fill="#fff" stroke="#6b7280" stroke-width="1.8"/>
+  <text x="200.0" y="353.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">quadratic rows, or QP objective with cones?</text>
+  <text x="200.0" y="371.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">yes: take this route, stop</text>
+  <line x1="340.0" y1="358.0" x2="400.0" y2="358.0" stroke="#b45309" stroke-width="2.2" marker-end="url(#arrb)"/>
+  <rect x="400.0" y="332.0" width="440.0" height="52.0" rx="6" fill="#dbeafe" stroke="#155097" stroke-width="1.8"/>
+  <text x="620.0" y="353.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">optimize_quad</text>
+  <text x="620.0" y="371.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">rotated-cone encoding, conic shadow task</text>
+  <line x1="200.0" y1="384.0" x2="200.0" y2="410.0" stroke="#17212b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="60.0" y="410.0" width="280.0" height="52.0" rx="6" fill="#fff" stroke="#6b7280" stroke-width="1.8"/>
+  <text x="200.0" y="431.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">cones?</text>
+  <text x="200.0" y="449.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">yes: take this route, stop</text>
+  <line x1="340.0" y1="436.0" x2="400.0" y2="436.0" stroke="#b45309" stroke-width="2.2" marker-end="url(#arrb)"/>
+  <rect x="400.0" y="410.0" width="440.0" height="52.0" rx="6" fill="#dbeafe" stroke="#155097" stroke-width="1.8"/>
+  <text x="620.0" y="431.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">exp/power: optimize_sdp_ipm, then</text>
+  <text x="620.0" y="449.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">optimize_conic: socp.c or tangent cuts</text>
+  <line x1="200.0" y1="462.0" x2="200.0" y2="488.0" stroke="#17212b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="60.0" y="488.0" width="280.0" height="52.0" rx="6" fill="#fff" stroke="#6b7280" stroke-width="1.8"/>
+  <text x="200.0" y="509.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">otherwise</text>
+  <text x="200.0" y="527.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">no previous test applied</text>
+  <line x1="340.0" y1="514.0" x2="400.0" y2="514.0" stroke="#b45309" stroke-width="2.2" marker-end="url(#arrb)"/>
+  <rect x="400.0" y="488.0" width="440.0" height="52.0" rx="6" fill="#fef3c7" stroke="#b45309" stroke-width="1.8"/>
+  <text x="620.0" y="500.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">LP / QP standard-form leg</text>
+  <text x="620.0" y="518.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">row_redundant, bound_tighten, scale_equilibrate,</text>
+  <text x="620.0" y="536.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">stdform_build, lp_presolve (LP), simplex | IPM, postsolve</text>
+  <rect x="60.0" y="576.0" width="780.0" height="46.0" rx="6" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.8"/>
+  <text x="450.0" y="594.0" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#17212b" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">After the route returns (PRIMAL_optimize)</text>
+  <text x="450.0" y="612.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#6b7280" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">conic acceptance: conic_primal_cone_worst, conic_dual_verdict, conic_no_answer_verdict;  LP: intpnt_identify_basis, crossover cleanup</text>
+</svg>

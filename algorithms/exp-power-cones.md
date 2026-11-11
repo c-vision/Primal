@@ -11,8 +11,8 @@ approximated.
 
 | Type | Membership | Note |
 |---|---|---|
-| `PEXP` | `t ≥ u·e^(v/u)`, `u, v ≥ 0` | the exponential cone |
-| `DEXP` | as `PEXP` with `u ≤ 0` | its mirror |
+| `PEXP` | `t ≥ u·e^(v/u)`, `u ≥ 0` (`v` is free) | the exponential cone |
+| `DEXP` | `x ∈ DEXP ⇔ −x ∈ PEXP`, i.e. `t ≤ u·e^(v/u)`, `u ≤ 0` | the negative of `PEXP` (not its dual cone) |
 | `PPOW(a)` | `t^a·u^(1−a) ≥ \|v\|` | 0 < a < 1, power cone |
 | `RPOW(a)` | `√2·t^a·u^(1−a) ≥ \|v\|` | rotated power cone |
 
