@@ -486,6 +486,183 @@ static SpChol *factor_K(const int *Aptr, const int *Arow, const double *Aval,
     return spchol_factor_ord(m, Kp, *Ki, *Kx);
 }
 
+/* A bound row contains one shared column and one private slack. The
+ * eliminated block is diagonal. Form its Schur complement by combining
+ * the two positive weights, without subtracting nearly equal products. */
+typedef struct {
+    SpChol *factor, *fallback;
+    int m, n, reduced, eliminated;
+    int *map, *rows;
+    double *diagonal, *coupling;
+    const int *Ap, *Ai;
+    const double *Av, *theta;
+    double delta;
+} LpNormal;
+
+static void lp_normal_free(LpNormal *F) {
+    if (!F) return;
+    spchol_free(F->factor); spchol_free(F->fallback);
+    free(F->map); free(F->rows);
+    free(F->diagonal); free(F->coupling);
+    free(F);
+}
+
+static LpNormal *lp_normal_reduce(const int *Ap, const int *Ai, const double *Av,
+                                 const double *theta, int m, int n, double delta,
+                                 const int *rp, const int *ri, const double *rv) {
+    LpNormal *F = calloc(1, sizeof(*F));
+    int *owner = malloc((size_t)n * sizeof(int));
+    int *private_col = malloc((size_t)m * sizeof(int));
+    double *a = malloc((size_t)m * sizeof(double));
+    double *slack = malloc((size_t)m * sizeof(double));
+    double *dense = NULL;
+    if (!F || !owner || !private_col || !a || !slack) goto fail;
+    F->m = m; F->n = n; F->Ap = Ap; F->Ai = Ai;
+    F->Av = Av; F->theta = theta; F->delta = delta;
+    F->map = calloc((size_t)m, sizeof(int));
+    F->rows = malloc((size_t)m * sizeof(int));
+    if (!F->map || !F->rows) goto fail;
+    for (int j = 0; j < n; j++) owner[j] = -1;
+    for (int i = m - 1; i >= 0; i--) {
+        if (rp[i+1] - rp[i] != 2) continue;
+        int p = rp[i], q = p + 1;
+        if (Ap[ri[q]+1] - Ap[ri[q]] != 1) {
+            if (Ap[ri[p]+1] - Ap[ri[p]] != 1) continue;
+            int tmp = p; p = q; q = tmp;
+        }
+        int col = ri[p], priv = ri[q], e = F->eliminated;
+        if (owner[col] >= 0 || rv[p] == 0.0 || rv[q] == 0.0) continue;
+        owner[col] = e; private_col[e] = priv;
+        a[e] = rv[p]; slack[e] = rv[q]; F->rows[e] = i;
+        F->map[i] = -1; F->eliminated++;
+    }
+    if (F->eliminated == 0 || F->eliminated < m / 3 || F->eliminated == m) goto fail;
+    for (int i = 0; i < m; i++)
+        if (F->map[i] != -1) F->map[i] = F->reduced++;
+    int r = F->reduced, count = F->eliminated;
+    /* The reduced factor is dense. Leave larger systems on sparse Cholesky. */
+    if (r > 256) goto fail;
+    dense = calloc((size_t)r * r, sizeof(double));
+    F->diagonal = malloc((size_t)count * sizeof(double));
+    F->coupling = calloc((size_t)count * r, sizeof(double));
+    if (!dense || !F->diagonal || !F->coupling) goto fail;
+    for (int j = 0; j < n; j++) {
+        double weight = theta[j];
+        int e = owner[j];
+        if (e >= 0) {
+            double rest = theta[private_col[e]] * slack[e] * slack[e] + delta;
+            double diagonal = theta[j] * a[e] * a[e] + rest;
+            if (!(diagonal > 0.0) || !isfinite(diagonal)) goto fail;
+            F->diagonal[e] = diagonal;
+            double ratio = theta[j] * a[e] / diagonal;
+            weight = theta[j] * (rest / diagonal);
+            for (int p = Ap[j]; p < Ap[j+1]; p++) {
+                int i = F->map[Ai[p]];
+                if (i >= 0) F->coupling[(size_t)e*r+i] += ratio * Av[p];
+            }
+        }
+        if (!(weight > 0.0) || !isfinite(weight)) goto fail;
+        for (int p = Ap[j]; p < Ap[j+1]; p++) {
+            int i = F->map[Ai[p]];
+            if (i < 0) continue;
+            double value = Av[p] * weight;
+            for (int q = p; q < Ap[j+1]; q++) {
+                int k = F->map[Ai[q]];
+                if (k < 0) continue;
+                if (i >= k) dense[(size_t)i*r+k] += value * Av[q];
+                else dense[(size_t)k*r+i] += value * Av[q];
+            }
+        }
+    }
+    for (int i = 0; i < r; i++) dense[(size_t)i*r+i] += delta;
+    F->factor = spchol_factor_dense(r, dense);
+    if (!F->factor) goto fail;
+    free(owner); free(private_col); free(a); free(slack); free(dense);
+    return F;
+fail:
+    free(owner); free(private_col); free(a); free(slack); free(dense);
+    lp_normal_free(F);
+    return NULL;
+}
+
+static LpNormal *lp_normal_factor(const int *Ap, const int *Ai, const double *Av,
+                                  const double *theta, int m, int n, double delta,
+                                  double *Kd, int *Kp, int *cap, int **Ki, double **Kx,
+                                  int **perm, int **pattern, int *pattern_n,
+                                  const int *rp, const int *ri, const double *rv) {
+    LpNormal *F = lp_normal_reduce(Ap, Ai, Av, theta, m, n, delta, rp, ri, rv);
+    if (F) return F;
+    F = calloc(1, sizeof(*F));
+    if (!F) return NULL;
+    F->factor = factor_K(Ap, Ai, Av, theta, m, n, delta, Kd, Kp, cap, Ki, Kx,
+                         perm, pattern, pattern_n);
+    if (!F->factor) { free(F); return NULL; }
+    F->m = m;
+    return F;
+}
+
+/* Keep the original right-hand side until the reconstructed solve passes.
+ * A failed residual check retries through the full normal equations. */
+static int lp_normal_full_solve(LpNormal *F, double *rhs) {
+    if (!F->fallback) {
+        double *dense = calloc((size_t)F->m * F->m, sizeof(double));
+        int *p = malloc((size_t)(F->m + 1) * sizeof(int));
+        int *i = NULL, *perm = NULL, *pattern = NULL, cap = 0, pattern_n = -1;
+        double *values = NULL;
+        if (dense && p)
+            F->fallback = factor_K(F->Ap, F->Ai, F->Av, F->theta, F->m, F->n,
+                                    F->delta, dense, p, &cap, &i, &values,
+                                    &perm, &pattern, &pattern_n);
+        free(dense); free(p); free(i); free(values); free(perm); free(pattern);
+    }
+    return F->fallback ? spchol_solve_ord(F->fallback, rhs) : -1;
+}
+
+static int lp_normal_solve(LpNormal *F, double *rhs) {
+    if (!F->eliminated) return spchol_solve_ord(F->factor, rhs);
+    if (F->fallback) return spchol_solve_ord(F->fallback, rhs);
+    int m = F->m, n = F->n, r = F->reduced;
+    double *work = calloc((size_t)n + 3*(size_t)m + r, sizeof(double));
+    if (!work) return lp_normal_full_solve(F, rhs);
+    double *solution = work, *reduced = solution + m;
+    double *aty = reduced + r, *residual = aty + n, *scale = residual + m;
+    for (int i = 0; i < m; i++)
+        if (F->map[i] >= 0) reduced[F->map[i]] = rhs[i];
+    for (int e = 0; e < F->eliminated; e++) {
+        double value = rhs[F->rows[e]];
+        for (int i = 0; i < r; i++) reduced[i] -= F->coupling[(size_t)e*r+i] * value;
+    }
+    int rc = spchol_solve_ord(F->factor, reduced);
+    if (rc == 0) {
+        for (int i = 0; i < m; i++)
+            if (F->map[i] >= 0) solution[i] = reduced[F->map[i]];
+        for (int e = 0; e < F->eliminated; e++) {
+            double value = rhs[F->rows[e]] / F->diagonal[e];
+            for (int i = 0; i < r; i++) value -= F->coupling[(size_t)e*r+i] * reduced[i];
+            solution[F->rows[e]] = value;
+        }
+        for (int i = 0; i < m; i++) {
+            residual[i] = F->delta * solution[i] - rhs[i];
+            scale[i] = 1.0 + fabs(rhs[i]) + fabs(F->delta * solution[i]);
+        }
+        for (int j = 0; j < n; j++) {
+            for (int p = F->Ap[j]; p < F->Ap[j+1]; p++)
+                aty[j] += F->Av[p] * solution[F->Ai[p]];
+            for (int p = F->Ap[j]; p < F->Ap[j+1]; p++) {
+                int i = F->Ai[p];
+                double value = F->Av[p] * F->theta[j] * aty[j];
+                residual[i] += value; scale[i] += fabs(value);
+            }
+        }
+        for (int i = 0; i < m; i++)
+            if (!isfinite(solution[i]) || !isfinite(residual[i]) || !isfinite(scale[i]) ||
+                fabs(residual[i]) > 1e-9 * scale[i]) rc = -1;
+    }
+    if (rc == 0) memcpy(rhs, solution, (size_t)m * sizeof(double));
+    free(work);
+    return rc == 0 ? 0 : lp_normal_full_solve(F, rhs);
+}
+
 /**
  * Solves an LP in CSC format using sparse Mehrotra IPM (normal equations).
  *
@@ -612,21 +789,23 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
     } else {
         /* Mehrotra least-squares init with Theta = I */
         for (int j = 0; j < n; j++) theta[j] = 1.0;
-        SpChol *L0 = NULL;
+        LpNormal *L0 = NULL;
         double delta0 = 1e-9;
         for (int tries = 0; tries < 6 && !L0; tries++) {
-            L0 = factor_K(Aptr, Arow, Aval, theta, m, n, delta0, Kd, Kp, &kcap, &Ki, &Kx,
-                          &Kperm, &Kpat, &Kpatn);
+            L0 = lp_normal_factor(Aptr, Arow, Aval, theta, m, n, delta0, Kd, Kp, &kcap, &Ki, &Kx,
+                          &Kperm, &Kpat, &Kpatn, rptr, ridx, rval);
             if (!L0) delta0 *= 100.0;
         }
         if (!L0) { IPMSP_FREE(); return IPM_SINGULAR; }
+        if (L0->eliminated && getenv("GMB_DBG"))
+            fprintf(stderr, "spipm normal rows=%d reduced=%d\n", m, L0->reduced);
         /* x_hat = 1 + A' u,  (AA'+dI) u = b - A*1 */
         for (int i = 0; i < m; i++) {
             double s = b[i];
             for (int p = rptr[i]; p < rptr[i + 1]; p++) s -= rval[p];
             tmpm[i] = s;
         }
-        if (spchol_solve_ord(L0, tmpm) != 0) { spchol_free(L0); IPMSP_FREE(); return IPM_SINGULAR; }
+        if (lp_normal_solve(L0, tmpm) != 0) { lp_normal_free(L0); IPMSP_FREE(); return IPM_SINGULAR; }
         for (int j = 0; j < n; j++) x[j] = 1.0;
         for (int j = 0; j < n; j++)
             for (int p = Aptr[j]; p < Aptr[j + 1]; p++)
@@ -637,14 +816,14 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
             for (int p = rptr[i]; p < rptr[i + 1]; p++) s += rval[p] * c[ridx[p]];
             tmpm[i] = s;
         }
-        if (spchol_solve_ord(L0, tmpm) != 0) { spchol_free(L0); IPMSP_FREE(); return IPM_SINGULAR; }
+        if (lp_normal_solve(L0, tmpm) != 0) { lp_normal_free(L0); IPMSP_FREE(); return IPM_SINGULAR; }
         for (int i = 0; i < m; i++) y[i] = tmpm[i];
         for (int j = 0; j < n; j++) tmpn[j] = 0.0;
         for (int j = 0; j < n; j++)
             for (int p = Aptr[j]; p < Aptr[j + 1]; p++)
                 tmpn[j] += Aval[p] * y[Arow[p]];
         for (int j = 0; j < n; j++) z[j] = c[j] - tmpn[j];
-        spchol_free(L0);
+        lp_normal_free(L0);
         /* positivity shifts */
         double minx = 0.0, minz = 0.0;
         for (int j = 0; j < n; j++) { if (x[j] < minx) minx = x[j]; if (z[j] < minz) minz = z[j]; }
@@ -716,10 +895,10 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
             theta[j] = (x[j] + dp_reg) / (z[j] + dd_reg);
 
         /* ---- factor K (delta escalated) ---- */
-        SpChol *L = NULL;
+        LpNormal *L = NULL;
         for (int tries = 0; tries < 6 && !L; tries++) {
-            L = factor_K(Aptr, Arow, Aval, theta, m, n, delta, Kd, Kp, &kcap, &Ki, &Kx,
-                         &Kperm, &Kpat, &Kpatn);
+            L = lp_normal_factor(Aptr, Arow, Aval, theta, m, n, delta, Kd, Kp, &kcap, &Ki, &Kx,
+                         &Kperm, &Kpat, &Kpatn, rptr, ridx, rval);
             if (!L) { delta *= 100.0; if (delta > 1e4) break; }
         }
         if (!L) { status = IPM_SINGULAR; break; }
@@ -732,7 +911,7 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
             for (int p = rptr[i]; p < rptr[i + 1]; p++)
                 Ag[i] += rval[p] * g[ridx[p]];
         for (int i = 0; i < m; i++) tmpm[i] = -rp[i] - Ag[i];
-        if (spchol_solve_ord(L, tmpm) != 0) { spchol_free(L); status = IPM_SINGULAR; break; }
+        if (lp_normal_solve(L, tmpm) != 0) { lp_normal_free(L); status = IPM_SINGULAR; break; }
         for (int i = 0; i < m; i++) dyA[i] = tmpm[i];
         for (int j = 0; j < n; j++) tmpn[j] = 0.0;
         for (int j = 0; j < n; j++)
@@ -765,7 +944,7 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
             for (int p = rptr[i]; p < rptr[i + 1]; p++)
                 Ag[i] += rval[p] * g[ridx[p]];
         for (int i = 0; i < m; i++) tmpm[i] = -rp[i] - Ag[i];
-        if (spchol_solve_ord(L, tmpm) != 0) { spchol_free(L); status = IPM_SINGULAR; break; }
+        if (lp_normal_solve(L, tmpm) != 0) { lp_normal_free(L); status = IPM_SINGULAR; break; }
         for (int j = 0; j < n; j++) tmpn[j] = 0.0;
         for (int j = 0; j < n; j++)
             for (int p = Aptr[j]; p < Aptr[j + 1]; p++)
@@ -774,7 +953,7 @@ int ipm_solve_std_csc(const int *Aptr, const int *Arow, const double *Aval,
             dxC[j] = g[j] + theta[j] * tmpn[j];
             dzC[j] = rd[j] - tmpn[j];
         }
-        spchol_free(L);
+        lp_normal_free(L);
 
         double ap_max = 1.0, ad_max = 1.0;
         for (int j = 0; j < n; j++) {

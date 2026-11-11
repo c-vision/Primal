@@ -1,19 +1,20 @@
 # Benchmark methodology
 
-The README table covers 32 instances. The LP, QP, SOCP and SDP rows use
+The README table covers 32 instances. The QP, SOCP and SDP rows use
 medians from five runs at `bd53531` on 2026-11-07. The MILP rows use
 medians from ten interleaved runs at `b452e46` on 2026-11-08. The objective
 checks passed on every run. Bold marks the lowest median in each row.
 The table uses six decimal places in seconds to show sub-millisecond times.
 The exponential-cone corrector measurements appear separately in the README.
 
-The LP50 Primal and Clarabel cells were refreshed on 2026-11-10 using
-18 interleaved measurements. Primal selects the sparse interior-point
-solver earlier, while explicit simplex selection remains available.
-Clarabel ran at one thread with tolerance settings of `1e-9`. Both
-results passed `1e-8` checks for objective agreement, primal and dual
-feasibility, and relative gap. The LP50 HiGHS cell retains its November 7
-measurement. Raw timings and binary hashes are in `out/f141/pairs.json`.
+The LP rows use 18 interleaved measurements from 2026-11-10. Primal
+eliminates eligible variable bound equations from the interior-point
+linear system, reconstructs their multipliers and checks the original
+system residual. LP400 factors a system of order 200 after eliminating
+400 rows. Primal and Clarabel ran at one thread. Clarabel and HiGHS used
+feasibility settings of `1e-9`. The three solvers passed the `1e-8`
+checks for objective agreement, feasibility, stationarity and relative
+gap. Raw timings and binary hashes are in `out/f143/final-pairs.json`.
 
 ## Environment
 
@@ -28,7 +29,7 @@ measurement. Raw timings and binary hashes are in `out/f141/pairs.json`.
 | SCS | 3.3.1 |
 | SCIP / PySCIPOpt | 10.0 / 6.2.1 |
 
-The LP, QP, SOCP and SDP comparisons use the harness defaults. The MILP
+The QP, SOCP and SDP comparisons use the harness defaults. The MILP
 comparison uses one thread per solver and the same MPS input. It checks
 optimal status and objective agreement, plus Primal's feasibility and
 integrality to `1e-8`.

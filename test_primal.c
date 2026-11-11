@@ -21332,8 +21332,53 @@ static void test_t302(void) {
     check(!sdp_progress_stalled(.96,&reference,&elapsed,16),"late improvement grants another full window");
 }
 
+/* Each pair must sum to at least 1.25. Its cheaper variable takes
+ * its upper bound and the expensive one supplies the remaining 0.25. */
+static void test_t303(void) {
+    cur_name = "T303 sparse LP with active variable bounds";
+    enum { pairs = 20, vars = 2 * pairs };
+    P p;
+    pbegin(&p);
+    PRIMAL_appendvars(p.task, vars);
+    PRIMAL_appendcons(p.task, pairs);
+    for (int k = 0; k < pairs; k++) {
+        int indices[] = {2*k, 2*k+1};
+        double values[] = {1.0, 1.0};
+        PRIMAL_putarow(p.task, k, 2, indices, values);
+        PRIMAL_putconbound(p.task, k, PRIMAL_BK_LO, 1.25, INFINITY);
+        for (int j = 0; j < 2; j++) {
+            PRIMAL_putvarbound(p.task, indices[j], PRIMAL_BK_RA, 0.0, 1.0);
+            PRIMAL_putcj(p.task, indices[j], j + 1.0);
+        }
+    }
+    const PRIMALoptimizer methods[] = {
+        PRIMAL_OPTIMIZER_INTPNT, PRIMAL_OPTIMIZER_PRIMAL_SIMPLEX
+    };
+    double objectives[2] = {NAN, NAN};
+    for (int k = 0; k < 2; k++) {
+        PRIMAL_putintparam(p.task, PRIMAL_IPAR_OPTIMIZER, methods[k]);
+        check_rc(PRIMAL_optimize(p.task), PRIMAL_RES_OK, "bounded LP solves");
+        double dual = NAN, pi = NAN, di = NAN, x[vars];
+        check_rc(PRIMAL_getprimalobj(p.task, PRIMAL_SOL_ITR, &objectives[k]),
+                 PRIMAL_RES_OK, "bounded LP primal objective");
+        PRIMAL_getdualobj(p.task, PRIMAL_SOL_ITR, &dual);
+        PRIMAL_getprimalinfeas(p.task, PRIMAL_SOL_ITR, &pi);
+        PRIMAL_getdualinfeas(p.task, PRIMAL_SOL_ITR, &di);
+        check(fabs(objectives[k] - 30.0) <= 3e-7 && pi <= 1e-8 && di <= 1e-8 &&
+              fabs(objectives[k] - dual) <= 1e-8 * (1.0 + fabs(objectives[k]) + fabs(dual)),
+              "bounded LP objective, feasibility and gap");
+        int got = PRIMAL_getxx(p.task, PRIMAL_SOL_ITR, x) == PRIMAL_RES_OK;
+        for (int i = 0; i < pairs && got; i++)
+            got = fabs(x[2*i] - 1.0) <= 1e-7 && fabs(x[2*i+1] - 0.25) <= 1e-7;
+        check(got, "bounded LP point has the expected active bounds");
+    }
+    check(fabs(objectives[0] - objectives[1]) <= 3e-7, "IPM and simplex agree");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t303();
     test_t302();
     test_t301();
     test_t300();
