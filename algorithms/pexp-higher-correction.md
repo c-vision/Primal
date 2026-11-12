@@ -219,3 +219,15 @@ lines compared byte for byte on 40×8).
 Interleaved medians against the previous engine (three series of 31 pairs):
 **5.0% at 20×4**, **3.5% at 40×8** and **3.0% at 80×12**; objectives are
 bit-identical and the targeted guards pass 945/0.
+
+## Spectral factors evaluated once
+
+`spd_from_eig` applies `V diag(lam^p) V'` to a 3×3 matrix whose eigendecomposition
+is already known. The same `pow(ev[k], p)` used to be evaluated inside the
+triple loop, 27 times per application; the factors do not depend on `i` or `j`.
+They are now computed once (three `pow` calls) and reused. The function and the
+order of the products are unchanged, so the results are bit-identical.
+
+Interleaved medians (three series of 31 pairs, plus the README harness):
+**4–5% at 80×12** and **5–6% at 40×8**; 20×4 ranges from −0.5% to −5.3%.
+The targeted guards pass 945/0.

@@ -187,10 +187,17 @@ static void mm3(const double *A, const double *B, double *C) {
  * an eigenvalue is not positive and finite.  Used to avoid re-diagonalising a
  * matrix that the block's metric pass has just diagonalised. */
 static int spd_from_eig(const double *ev, const double *V, double p, double *Out) {
-    for (int k = 0; k < 3; k++) if (!(ev[k] > 0.0) || !isfinite(ev[k])) return -1;
+    /* The three factors do not depend on i or j: the same pow used to be
+     * evaluated 27 times inside the triple loop.  Hoisting it changes neither
+     * the function nor the order of the products, so the result is identical. */
+    double fac[3];
+    for (int k = 0; k < 3; k++) {
+        if (!(ev[k] > 0.0) || !isfinite(ev[k])) return -1;
+        fac[k] = pow(ev[k], p);
+    }
     for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) {
         double s = 0.0;
-        for (int k = 0; k < 3; k++) s += pow(ev[k], p) * V[i * 3 + k] * V[j * 3 + k];
+        for (int k = 0; k < 3; k++) s += fac[k] * V[i * 3 + k] * V[j * 3 + k];
         Out[i * 3 + j] = s;
     }
     return 0;
