@@ -4,6 +4,7 @@
 module Bindings
 
 using Libdl
+import PrimalSolver_jll
 
 ###############################################################################
 # Low-level ccall binding to libprimal (the PrimalSolver C99 shared library).
@@ -17,25 +18,27 @@ const PRIMAL_LIBNAME = Sys.iswindows() ? "libprimal.dll" :
 const _PKG_DIR = dirname(dirname(@__FILE__))       # .../PrimalSolver/julia
 
 function _primaldl()
-    # Look for the library next to this module (deps/), then in the C repo's
-    # out/ directory, then on the system loader path.
-    candidates = [
-        joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME),
-        joinpath(dirname(_PKG_DIR), "out", PRIMAL_LIBNAME),
-        PRIMAL_LIBNAME,
-    ]
-    for c in candidates
+    # 1. Explicit override (development, or a system-wide install).
+    haskey(ENV, "PRIMAL_LIB") && return ENV["PRIMAL_LIB"]
+    # 2. A library built from this checkout: deps/, then the C repo's out/.
+    for c in (joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME),
+              joinpath(dirname(_PKG_DIR), "out", PRIMAL_LIBNAME))
         isfile(c) && return c
     end
-    # Not built yet: Pkg.add runs deps/build.jl, Pkg.develop does not, so the
-    # first use compiles it (once, in its own process: a C compiler is needed).
+    # 3. Installed from the registry: the PrimalSolver_jll artifact is the
+    #    prebuilt library, so no C compiler is needed.
+    isfile(PrimalSolver_jll.libprimal) && return PrimalSolver_jll.libprimal
+    # 4. Development checkout without a build: compile once, in its own
+    #    process (Pkg.add runs deps/build.jl, Pkg.develop does not).
     build = joinpath(_PKG_DIR, "deps", "build.jl")
-    if isfile(build)
+    sources = get(ENV, "PRIMAL_C_SRC", dirname(_PKG_DIR))
+    if isfile(build) && isfile(joinpath(sources, "primal.h"))
         @info "Primal: compiling the C library (first use)"
         run(`$(Base.julia_cmd()) --startup-file=no $build`)
-        isfile(candidates[1]) && return candidates[1]
+        dep = joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME)
+        isfile(dep) && return dep
     end
-    error("libprimal shared library not found; run deps/build.jl or set PRIMAL_C_SRC")
+    error("libprimal shared library not found: install PrimalSolver_jll, run deps/build.jl, or set PRIMAL_LIB")
 end
 
 const _LIB = Ref{Any}(nothing)

@@ -25,14 +25,21 @@ const PKG_ROOT = dirname(HERE)                       # .../PrimalSolver/julia
 const REPO_ROOT = dirname(PKG_ROOT)
 const SRC_DIR = something(PRIMAL_C_SRC, REPO_ROOT)
 
-isfile(joinpath(SRC_DIR, "primal.h")) ||
-    error("primal.h not found in $SRC_DIR (set PRIMAL_C_SRC)")
+# Installed from the registry (Pkg.add of the package tarball, which carries no
+# C sources): PrimalSolver_jll provides the prebuilt shared library, so there is
+# nothing to compile. The build step must succeed anyway — Pkg runs it for every
+# installed package that has deps/build.jl.
+if !isfile(joinpath(SRC_DIR, "primal.h"))
+    println("[Primal.jl] no C sources under $SRC_DIR; using PrimalSolver_jll")
+    exit(0)
+end
 
-# Gather the 33 C translation units that make up the library (LIBSRCS from the
-# C Makefile): the 11 base files plus all primal_*.c TU's.
+# Gather the C translation units that make up the library (LIBSRCS from the
+# C Makefile): the base files plus all primal_*.c TU's.
 BASE_SRCS = [
-    "linalg.c", "stdform.c", "simplex.c", "ipm.c", "socp.c", "sdp.c",
-    "expcone.c", "mpsio.c", "cbf.c", "scaling.c", "presolve.c",
+    "linalg.c", "stdform.c", "simplex.c", "ipm.c", "socp.c", "conic_matrix.c",
+    "sdp.c", "sdp_corrected.c", "expcone.c", "expcone_corrector.c",
+    "mpsio.c", "cbf.c", "scaling.c", "presolve.c",
 ]
 
 srcs = String[]

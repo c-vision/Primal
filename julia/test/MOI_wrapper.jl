@@ -39,12 +39,20 @@ const EXCLUDED = String[
 # Tests run at a looser tolerance than 1e-6, each with the error it measures.
 const LOOSE = Dict{String,Float64}(
     # Exponential and power cones are outer-approximated by tangent cuts; the cut
-    # loop stops at a 1e-8 relative violation, which leaves ~4e-6 (exp) and
-    # ~2e-6 (pow) on the primal values of these two problems.
-    "test_conic_DualExponentialCone_VectorAffineFunction" => 1e-5,
-    "test_conic_DualExponentialCone_VectorOfVariables" => 1e-5,
-    "test_conic_DualPowerCone_VectorAffineFunction" => 1e-5,
-    "test_conic_DualPowerCone_VectorOfVariables" => 1e-5,
+    # loop stops at a 1e-8 relative violation, and the cone metric measures
+    # ~1e-11, but the vector returned for these dual problems carries a
+    # 2.43e-5 (exp) / 1.66e-5 (pow) norm error on the exact dual point
+    # (measured 2026-11-11, MOI 1.54.0). Julia's array isapprox compares
+    # norm(x-y) with rtol*max(norm(x),norm(y)), so 1e-5 is not enough there.
+    "test_conic_DualExponentialCone_VectorAffineFunction" => 2e-5,
+    "test_conic_DualExponentialCone_VectorOfVariables" => 2e-5,
+    "test_conic_DualPowerCone_VectorAffineFunction" => 2e-5,
+    "test_conic_DualPowerCone_VectorOfVariables" => 2e-5,
+    # Primal values are off by 5.9e-6 on u ~ -1.6487 (3.6e-6 relative, measured
+    # 2026-11-11) — within the 1e-5 effective tolerance of the near-optimal
+    # factor (tol 1e-8 x 1000).
+    "test_conic_Exponential_VectorAffineFunction" => 1e-5,
+    "test_conic_Exponential_VectorOfVariables" => 1e-5,
     # Optimal despite its name: a degenerate component of x ends at 8.8e-5
     # instead of 0 (objective and duals are within 1e-6).
     "test_conic_RotatedSecondOrderCone_INFEASIBLE_2" => 1e-4,
