@@ -142,11 +142,24 @@ static double soc_step(const double *v, const double *dv, int k) {
     double sq = sqrt(disc), r2 = (-B + sq) / (2 * A);
     return (r2 > 0 && r2 < 1) ? r2 : 1;
 }
-/* max step t in [0,1] keeping z + t*dz in the exp/power cone interior. */
-static double expcone_maxstep(int kind, double alpha, const double *z, const double *dz) {
+/* Round up to the bisection grid so an accepted trial cannot hide a
+ * tighter step from the original 50-round search. */
+static double exp_step_probe(double cap) {
+#ifdef SDP_IPM_CORRECTED
+    return ceil(cap * 0x1p50) * 0x1p-50;
+#else
+    (void)cap;
+    return 1.0;
+#endif
+}
+
+/* Bound the step keeping z + t*dz interior. A tested probe at or
+ * above cap suffices because the caller takes the minimum with cap. */
+static double expcone_maxstep(int kind, double alpha, const double *z, const double *dz, double cap) {
     double lo = 0.0, hi = 1.0, fv, x[3];
-    for (int a = 0; a < 3; a++) x[a] = z[a] + dz[a];
-    if (expcone_barrier(kind, alpha, x, &fv) == 0) return 1.0;
+    double probe = exp_step_probe(cap);
+    for (int a = 0; a < 3; a++) x[a] = z[a] + probe * dz[a];
+    if (expcone_barrier(kind, alpha, x, &fv) == 0) return probe;
     for (int it = 0; it < 50; it++) {
         double mid = 0.5 * (lo + hi);
         for (int a = 0; a < 3; a++) x[a] = z[a] + mid * dz[a];
@@ -156,10 +169,11 @@ static double expcone_maxstep(int kind, double alpha, const double *z, const dou
 }
 /* Same for the dual variable, which lives in the DUAL cone K* (these cones are
  * not self-dual, so testing membership in K would clamp the dual step to 0). */
-static double expcone_dual_maxstep(int kind, double alpha, const double *s, const double *ds) {
+static double expcone_dual_maxstep(int kind, double alpha, const double *s, const double *ds, double cap) {
     double lo = 0.0, hi = 1.0, x[3];
-    for (int a = 0; a < 3; a++) x[a] = s[a] + ds[a];
-    if (expcone_dual_in(kind, alpha, x)) return 1.0;
+    double probe = exp_step_probe(cap);
+    for (int a = 0; a < 3; a++) x[a] = s[a] + probe * ds[a];
+    if (expcone_dual_in(kind, alpha, x)) return probe;
     for (int it = 0; it < 50; it++) {
         double mid = 0.5 * (lo + hi);
         for (int a = 0; a < 3; a++) x[a] = s[a] + mid * ds[a];
@@ -806,7 +820,11 @@ static double sdp_sp_berr(const SdpSpKkt *P, const double *x, const double *g, d
     for (int j = 0; j < n; j++) for (int p = P->Ap[j]; p < P->Ap[j + 1]; p++) {
         int i = P->Ai[p]; double a = P->Ax[p] * x[j]; r[i] -= a; den[i] += fabs(a); }
     double e = 0.0;
-    for (int i = 0; i < n; i++) { double q = fabs(r[i]); if (q > 0.0) { q /= (den[i] > 1e-300 ? den[i] : 1e-300); if (q > e) e = q; } }
+    for (int i = 0; i < n; i++) {
+        if (!isfinite(x[i]) || !isfinite(r[i]) || !isfinite(den[i])) return HUGE_VAL;
+        double q = fabs(r[i]) / fmax(den[i], 1e-300);
+        if (q > e) e = q;
+    }
     return e;
 }
 
@@ -1941,7 +1959,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     /* sparse KKT (see SDP_SPARSE_WORK): one pattern per form of the R_+ block
      * (eliminated / augmented), the structure lists, the predictor's factor */
     SdpSpKkt spk[2]; memset(spk, 0, sizeof spk);
-    SpluFact *sp_pc = NULL; double *sp_pcx = NULL; int sp_pcaug = -1;
+    SpluFact *sp_pc = NULL; double *sp_pcx = NULL; int sp_pcaug = -1, sp_pc_refactored = 0;
     int lu_ref_off = getenv("GMB_NO_LU_REFACTOR") != NULL; long lu_nrefac = 0, lu_nrefused = 0;
     SpluFact *sp_old = NULL; int sp_old_aug = -1;   /* the previous iteration's factor, kept to be refactored */
     double sp_work = getenv("GMB_SDP_DENSE") ? HUGE_VAL : (getenv("GMB_SDP_SPARSE") ? 0.0 : SDP_SPARSE_WORK);
@@ -2033,7 +2051,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
         dmat_lu_free(pc_factor); pc_factor = NULL;
         free(pc_matrix); pc_matrix = NULL;
         splu_free(sp_old); sp_old = sp_pc; sp_old_aug = sp_pcaug; sp_pc = NULL;
-        free(sp_pcx); sp_pcx = NULL; sp_pcaug = -1;
+        free(sp_pcx); sp_pcx = NULL; sp_pcaug = -1; sp_pc_refactored = 0;
         if (primal_cb_iter_on) primal_cb_iter(34);
         ipmres R = ipm_resid(&C);
         double mu = R.mu;
@@ -2381,44 +2399,48 @@ redo_dir:
                     else if (!lu_ref_off && pass == 0 && sp_old && sp_old_aug == augx) {
                         double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
                         if (cpx && splu_refactor(sp_old, P->Ap, P->Ai, P->Ax) == 0) {
-                            f = sp_pc = sp_old; sp_old = NULL; sp_pcx = cpx; sp_pcaug = augx; refac = 1;
+                            f = sp_pc = sp_old; sp_old = NULL; sp_pcx = cpx; sp_pcaug = augx; sp_pc_refactored = refac = 1;
                         } else { free(cpx); splu_free(sp_old); sp_old = NULL; lu_nrefused++; }
                     }
                     if (!f) f = lu_ref_off ? splu_factor_ord(Nsys, P->Ap, P->Ai, P->Ax, P->qperm) : sdp_lu_factor_struct(P, Nsys);
                     if (!f) { free(cc); free(refi); free(Srhs); status = 3; goto refine; }
-                    double *lu_rhs = refac ? (double *)malloc(3 * (size_t)Nsys * sizeof(double)) : NULL;
-                    if (refac && !lu_rhs) { free(cc); free(refi); free(Srhs); status = 2; goto done; }
-                    if (refac) memcpy(lu_rhs, Srhs, (size_t)Nsys * sizeof(double));
+                    int verify_lu = refac || (reuse && sp_pc_refactored);
+                    double *lu_rhs = verify_lu ? (double *)malloc(3 * (size_t)Nsys * sizeof(double)) : NULL;
+                    if (verify_lu && !lu_rhs) { free(cc); free(refi); free(Srhs); status = 2; goto done; }
+                    if (verify_lu) memcpy(lu_rhs, Srhs, (size_t)Nsys * sizeof(double));
                     if (refac) { memcpy(sp_pcx, P->Ax, (size_t)P->nnz * sizeof(double)); lu_nrefac++; }
                     if (pass == 0 && !refac) {
                         double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
                         if (cpx) {
                             splu_free(sp_pc); free(sp_pcx);
                             memcpy(cpx, P->Ax, (size_t)P->nnz * sizeof(double));
-                            sp_pc = f; sp_pcx = cpx; sp_pcaug = augx;
+                            sp_pc = f; sp_pcx = cpx; sp_pcaug = augx; sp_pc_refactored = 0;
                         }
                     }
                     if (getenv("GMB_DBG")) fprintf(stderr,
                         "  [kkt] pass=%d n=%d reuse=%d sparse nnz=%d\n", pass, Nsys, reuse, P->nnz);
-                    if (splu_solve(f, Srhs) != 0) {
+                    int solve_failed = splu_solve(f, Srhs) != 0;
+                    if (solve_failed && !verify_lu) {
                         if (f != sp_pc) splu_free(f);
-                        free(cc); free(refi); free(Srhs); status = 3; goto refine; }
-                    if (refac) {   /* a fixed pivot order can lose accuracy: verify, refine, else factor afresh */
+                        free(cc); free(refi); free(Srhs); status = 3; goto refine;
+                    }
+                    if (verify_lu) {
                         double *lr = lu_rhs + Nsys, *ld = lu_rhs + 2 * (size_t)Nsys;
-                        double e = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
-                        for (int it2 = 0; it2 < 2 && !(e <= SDP_LU_BERR); it2++) {
+                        double e = solve_failed ? HUGE_VAL : sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
+                        for (int it2 = 0; it2 < 2 && isfinite(e) && e > SDP_LU_BERR; it2++) {
                             memcpy(ld, lr, (size_t)Nsys * sizeof(double));
                             if (splu_solve(f, ld) != 0) break;
                             for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] += ld[b2];
                             double e2 = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
-                            if (!(e2 < e)) { for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] -= ld[b2]; break; }
+                            if (!(e2 < e)) { e = HUGE_VAL; break; }
                             e = e2;
                         }
-                        e = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
                         if (getenv("GMB_DBG")) fprintf(stderr, "  [lu] refactor berr=%.2e %s\n", e, e <= SDP_LU_BERR ? "accepted" : "REFUSED, full factor");
                         if (!(e <= SDP_LU_BERR)) {
-                            lu_nrefused++; lu_nrefac--;
+                            lu_nrefused++;
+                            lu_nrefac--;
                             splu_free(sp_pc); sp_pc = NULL; free(sp_pcx); sp_pcx = NULL; sp_pcaug = -1;
+                            sp_pc_refactored = 0;
                             f = sdp_lu_factor_struct(P, Nsys);
                             if (!f) { free(lu_rhs); free(cc); free(refi); free(Srhs); status = 3; goto refine; }
                             double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
@@ -2767,7 +2789,7 @@ redo_dir:
                     const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); ap = psd_step_limit(d, t3, ap, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL);
                     const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); ad = psd_step_limit(d, t3, ad, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
-                for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
+                for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i, ap); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i, ad); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
                 if (ad > 1) ad = 1;
                 double mua = 0;
@@ -2821,7 +2843,7 @@ redo_dir:
                     const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); ap = psd_step_limit(d, t3, ap, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL);
                     const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); ad = psd_step_limit(d, t3, ad, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
-                for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i); if (a < ad) ad = a; }
+                for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i, ap); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i, ad); if (a < ad) ad = a; }
                 if (ap > 1) ap = 1;
                 if (ad > 1) ad = 1;
                 /* SECANT mode: one step length for both sides.  The secant

@@ -144,8 +144,9 @@ does not depend on cancellations: the arrow matrices of a SOC block start as the
 identity and fill in later.
 
 The pivot order of an earlier iterate can be less stable than a fresh one, so
-every refactored solution is checked on the system that was factored: its
-componentwise backward error must be at most `1e-12` (a fresh factor reaches
+both predictor and corrector directions using a refactored factor are
+checked on the system that was factored. Their componentwise backward
+error must be finite and at most `1e-12` (a fresh factor reaches
 about `1e-16`; the refactored solutions measured `1e-15` to `3e-13`), with up to
 two refinement steps with the same factor. A solution that does not pass, or a
 refactorization that does not fit the old structure, falls back to a full
@@ -159,6 +160,14 @@ Median solve time of nine runs against the previous routing (`9f09b1c`):
 20×4 from 2.29 to 1.82 ms, 40×8 from 6.53 to 4.56 ms and 80×12 from 20.1 to
 12.7 ms. The [README](../README.md#mixed-soc-and-exponential-cones) reports the
 timings of the benchmark harness.
+
+## Cone step bounds
+
+The corrected route tests each exponential or power block at the smallest
+step allowed by the blocks examined so far, rounded upward to the grid of
+the existing 50-round bisection. If that point is interior, the block cannot
+tighten the step and needs no bisection. A rejected probe uses the original
+search. The solver checks primal and dual cone membership separately.
 
 ## Validation and limits
 
