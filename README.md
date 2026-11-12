@@ -236,11 +236,11 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) |
 |---|---:|---:|
-| 20×4 | 1.06 / 1.08 | **0.25 / 0.25** |
-| 40×8 | 3.15 / 3.05 | **0.56 / 0.54** |
-| 80×12 | 6.94 / 6.91 | **2.55 / 2.60** |
+| 20×4 | 1.01 / 1.02 | **0.35 / 0.34** |
+| 40×8 | 2.84 / 2.76 | **0.60 / 0.59** |
+| 80×12 | 6.14 / 6.11 | **2.53 / 2.52** |
 
-Measured on 2026-11-11. Each cell shows two medians from 21 interleaved
+Measured on 2026-11-12. Each cell shows two medians from 21 interleaved
 measurements per series. Primal timings cover `PRIMAL_optimize`. Clarabel 0.11.1
 runs at one thread and includes solver construction. The results met
 the `1e-8` benchmark checks for objective agreement, feasibility,

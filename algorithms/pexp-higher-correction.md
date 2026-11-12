@@ -169,6 +169,18 @@ the existing 50-round bisection. If that point is interior, the block cannot
 tighten the step and needs no bisection. A rejected probe uses the original
 search. The solver checks primal and dual cone membership separately.
 
+## Corrector assembly and ordering
+
+The sparse corrected route can keep the predictor's equilibrated KKT
+matrix, row and column scales, and cone residual terms for the corrector.
+This requires the same orthant form and valid scaling caches for all
+exponential and power blocks. The corrector still forms its own centered
+right-hand side and runs the residual check when using a refactored LU.
+
+The minimum-degree ordering uses a bounded index of active nodes by
+degree. It keeps the original lowest-index tie break. Large problems
+and allocation failures use the linear search.
+
 ## Validation and limits
 
 T299 checks the contraction against independent Taylor jets, log-homogeneity

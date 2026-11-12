@@ -713,13 +713,14 @@ typedef struct {
     int *tr, *tc; double *tv;   /* first assembly, freed once the pattern is built */
     int *Ap, *Ai, *map;         /* CSC of the merged pattern; triplet -> position */
     double *Ax;
+    double *scale;              /* row scales, column scales and invariant RHS terms */
     int *qperm;                 /* fill-reducing column order (sym_amd_order) */
 } SdpSpKkt;
 
 /* Free one KKT pattern and everything it owns. */
 static void sdp_sp_free(SdpSpKkt *P) {
     free(P->tr); free(P->tc); free(P->tv);
-    free(P->Ap); free(P->Ai); free(P->map); free(P->Ax); free(P->qperm);
+    free(P->Ap); free(P->Ai); free(P->map); free(P->Ax); free(P->scale); free(P->qperm);
     memset(P, 0, sizeof *P);
 }
 
@@ -2247,9 +2248,21 @@ redo_dir:
                   dwork += (double)m * m * cols; }
                 if (Nsys > 0 && dwork >= sp_work) {
                     SdpSpKkt *P = &spk[augx];
-                    if (P->built) for (int p = 0; p < P->nnz; p++) P->Ax[p] = 0.0;
+                    int rhs_only = 0;
+#ifdef SDP_IPM_CORRECTED
+                    /* Same iterate and orthant form. Cached exp rows depend
+                     * on sigma only through the RHS. A missing cache or a
+                     * direction retry with another form rebuilds the matrix. */
+                    if (pass == 0 && nb == 0 && !P->scale)
+                        P->scale = malloc(3 * (size_t)Nsys * sizeof(double));
+                    rhs_only = pass == 1 && nb == 0 && P->scale && sp_pc && sp_pcaug == augx;
+                    for (int i = 0; rhs_only && i < nep; i++)
+                        rhs_only = escale[i].valid;
+#endif
+                    double *offset = P->scale ? P->scale + 2 * (size_t)Nsys : NULL;
+                    if (P->built && !rhs_only) for (int p = 0; p < P->nnz; p++) P->Ax[p] = 0.0;
                     int sp_nt = 0, sp_bad = 0;
-#define SPE(R, C, V) do { double v_ = (V);                                              \
+#define SPE(R, C, V) do { if (rhs_only) break; double v_ = (V);              \
                           if (!P->built) { if (sdp_sp_push(P, (R), (C), v_)) sp_bad = 1; } \
                           else if (sp_nt < P->ntrip) P->Ax[P->map[sp_nt]] += v_;         \
                           else sp_bad = 1;                                                \
@@ -2289,7 +2302,7 @@ redo_dir:
                     for (int j = 0; j < nb; j++)
                         for (int q = S->bp[j]; q < S->bp[j + 1]; q++) { int k = S->bi[q];
                             Srhs[k] -= trAB(dims[j], MTQ(q), gblk + (size_t)j * dmax2); }
-                    if (!augx) for (int i = 0; i < n; i++) {
+                    if (!augx && !rhs_only) for (int i = 0; i < n; i++) {
                         double th = xs[i] / ss[i];
                         for (int p = S->cp[i]; p < S->cp[i + 1]; p++)
                             for (int q = S->cp[i]; q < S->cp[i + 1]; q++)
@@ -2302,22 +2315,30 @@ redo_dir:
                     /* SOC blocks: arrow-matrix cone equation */
                     for (int i = 0; i < nsoc; i++) { int kk = socdims[i];
                         const double *zi = Zsoc[i], *si = Ssoc[i];
-                        soc_arrow(zi, kk, Az); soc_arrow(si, kk, As);
-                        for (int a = 0; a < kk; a++) rds[a] = -Csoc[i][a] + si[a];
-                        for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
-                            const double *ak = S->sv[q]; double yk = y[k];
-                            for (int a = 0; a < kk; a++) rds[a] += yk * ak[a]; }
+                        soc_arrow(zi, kk, Az);
+                        if (!rhs_only) {
+                            soc_arrow(si, kk, As);
+                            for (int a = 0; a < kk; a++) rds[a] = -Csoc[i][a] + si[a];
+                            for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
+                                const double *ak = S->sv[q]; double yk = y[k];
+                                for (int a = 0; a < kk; a++) rds[a] += yk * ak[a]; }
+                        }
                         for (int a = 0; a < kk; a++) soc_e[a] = (a == 0) ? 1.0 : 0.0;
                         soc_arrow_mul(Az, si, kk, rcs);
                         for (int a = 0; a < kk; a++) rcs[a] = -rcs[a] + sigma * mu * soc_e[a];
                         int bi = m + soff[i];
                         for (int a = 0; a < kk; a++) {
                             for (int b = 0; b < kk; b++) SPE(bi + a, bi + b, As[a * kk + b]);
-                            for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
+                            for (int q = S->sp[i]; !rhs_only && q < S->sp[i + 1]; q++) { int k = S->si[q];
                                 const double *ak = S->sv[q];
                                 double t = 0; for (int b = 0; b < kk; b++) t += Az[a * kk + b] * ak[b];
                                 SPE(bi + a, k, -t); }
-                            double t = 0; for (int b = 0; b < kk; b++) t += Az[a * kk + b] * rds[b];
+                            double t = 0.0;
+                            if (rhs_only) t = offset[bi + a];
+                            else {
+                                for (int b = 0; b < kk; b++) t += Az[a * kk + b] * rds[b];
+                                if (offset) offset[bi + a] = t;
+                            }
                             Srhs[bi + a] = rcs[a] + t;
                         }
                         for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
@@ -2346,11 +2367,15 @@ redo_dir:
 #ifdef SDP_IPM_CORRECTED
                         if (pass == 1) for (int a = 0; a < 3; a++) rt[a] -= ecorr[3*i+a] * inv;
 #endif
-                        for (int a = 0; a < 3; a++) rde[a] = (-Cexp[i][a] + es[3 * i + a]) * inv;
-                        for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                            const double *ak = S->ev[q]; double yk = y[k];
-                            for (int a = 0; a < 3; a++) rde[a] += yk * ak[a] * inv; }
                         int bi = m + K + 3 * i;
+                        if (rhs_only) memcpy(rde, offset + bi, sizeof rde);
+                        else {
+                            for (int a = 0; a < 3; a++) rde[a] = (-Cexp[i][a] + es[3 * i + a]) * inv;
+                            for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
+                                const double *ak = S->ev[q]; double yk = y[k];
+                                for (int a = 0; a < 3; a++) rde[a] += yk * ak[a] * inv; }
+                            if (offset) memcpy(offset + bi, rde, sizeof rde);
+                        }
                         for (int a = 0; a < 3; a++) {
                             for (int b = 0; b < 3; b++) SPE(bi + a, bi + b, Tin[a * 3 + b]);
                             for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
@@ -2362,14 +2387,17 @@ redo_dir:
                             for (int a = 0; a < 3; a++) SPE(k, bi + a, ak[a]); }
                     }
 #undef SPE
-                    if (!sp_bad && P->built && sp_nt != P->ntrip) sp_bad = 1;
+                    if (!rhs_only && !sp_bad && P->built && sp_nt != P->ntrip) sp_bad = 1;
                     if (!sp_bad && !P->built && sdp_sp_build(P, Nsys)) sp_bad = 1;
                     free(gblk);
                     if (sp_bad) {   /* out of memory, or a pattern that moved (a bug) */
                         free(Srhs); free(rr); free(cc); status = 2; goto done; }
                     /* the dense route's Jacobi equilibration, entry by entry */
                     for (int i = 0; i < Nsys; i++) { rr[i] = 1.0; cc[i] = 1.0; }
-                    if (nep > 0 || nb > 0) {
+                    if (rhs_only) {
+                        for (int i = 0; i < Nsys; i++) Srhs[i] *= P->scale[i];
+                        memcpy(cc, P->scale + Nsys, (size_t)Nsys * sizeof(double));
+                    } else if (nep > 0 || nb > 0) {
                         for (int i = 0; i < Nsys; i++) rr[i] = 0.0;
                         for (int p = 0; p < P->nnz; p++) { double a = fabs(P->Ax[p]);
                             if (a > rr[P->Ai[p]]) rr[P->Ai[p]] = a; }
@@ -2382,6 +2410,12 @@ redo_dir:
                             for (int p = P->Ap[jc]; p < P->Ap[jc + 1]; p++) P->Ax[p] *= cc[jc];
                         }
                     }
+#ifdef SDP_IPM_CORRECTED
+                    if (pass == 0 && P->scale) {
+                        memcpy(P->scale, rr, (size_t)Nsys * sizeof(double));
+                        memcpy(P->scale + Nsys, cc, (size_t)Nsys * sizeof(double));
+                    }
+#endif
                     free(rr);
                     /* refinement: the dense route's rule (POLISH ONLY, a round
                      * kept only while it shrinks the residual) */
@@ -2393,7 +2427,7 @@ redo_dir:
                            *kc = refi ? refi + 4 * Nsys : NULL;
                     if (refine_on) memcpy(gsc, Srhs, (size_t)Nsys * sizeof(double));
                     int reuse = pass == 1 && sp_pc && sp_pcaug == augx &&
-                        memcmp(P->Ax, sp_pcx, (size_t)P->nnz * sizeof(double)) == 0;
+                        (rhs_only || memcmp(P->Ax, sp_pcx, (size_t)P->nnz * sizeof(double)) == 0);
                     SpluFact *f = NULL; int refac = 0;
                     if (reuse) f = sp_pc;
                     else if (!lu_ref_off && pass == 0 && sp_old && sp_old_aug == augx) {

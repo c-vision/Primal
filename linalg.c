@@ -954,9 +954,11 @@ static int amd_add(int **a, int *cnt, int *cap, int x) {
 /* Minimum-degree fill-reducing ordering of a symmetric sparsity pattern.
  * (Ap,Ai) is CSC; each entry (i,j) is treated as an undirected edge i-j.
  * Returns perm[n] (perm[k] = original index placed at position k), or NULL.
- * Explicit-fill minimum degree with a linear min search; used to order the
+ * Explicit-fill minimum degree with a bounded index by degree; used to order the
  * augmented conic KKT system before the sparse LU (the natural order can give
  * 80x fill-in there). */
+static int ctz64(unsigned long long x);
+
 static int *sym_amd(int n, const int *Ap, const int *Ai) {
     if (n <= 0 || !Ap || !Ai) return NULL;
     if (primal_cb_iter_on) primal_cb_iter(84);
@@ -979,14 +981,38 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
             if (i == j || i < 0 || i >= n) continue;
             if (amd_add(&adj[i], &deg[i], &cap[i], j) || amd_add(&adj[j], &deg[j], &cap[j], i)) ok = 0;
         }
+    /* One bit per node in its current degree bucket, capped at 512 KiB.
+     * Scanning each bucket in index order preserves the old tie break. */
+    size_t words = ((size_t)n + 63) / 64;
+    unsigned long long *bucket = NULL;
+    if ((size_t)n <= (512u * 1024u / sizeof(*bucket)) / words) {
+        bucket = calloc((size_t)n * words, sizeof(*bucket));
+        if (bucket) for (int i = 0; i < n; i++)
+            bucket[(size_t)deg[i] * words + i / 64] |= 1ULL << (i & 63);
+    }
     int sst = 0;
     for (int step = 0; step < n && ok; step++) {
         int v = -1;
-        for (int i = 0; i < n; i++) if (!rem[i] && (v < 0 || deg[i] < deg[v])) v = i;
+        if (bucket) {
+            for (int d = 0; d < n && v < 0; d++)
+                for (size_t w = 0; w < words; w++) {
+                    unsigned long long bits = bucket[(size_t)d * words + w];
+                    if (bits) { v = (int)(64 * w) + ctz64(bits); break; }
+                }
+        } else {
+            for (int i = 0; i < n; i++) if (!rem[i] && (v < 0 || deg[i] < deg[v])) v = i;
+        }
         if (v < 0) { ok = 0; break; }
         perm[step] = v; rem[v] = 1;
         int nn = 0;
         for (int q = 0; q < deg[v]; q++) { int u = adj[v][q]; if (!rem[u]) nbr[nn++] = u; }
+        if (bucket) {
+            bucket[(size_t)deg[v] * words + v / 64] &= ~(1ULL << (v & 63));
+            for (int a = 0; a < nn; a++) {
+                int u = nbr[a];
+                bucket[(size_t)deg[u] * words + u / 64] &= ~(1ULL << (u & 63));
+            }
+        }
         for (int a = 0; a < nn; a++) { int u = nbr[a];   /* detach v */
             for (int q = 0; q < deg[u]; q++) if (adj[u][q] == v) { adj[u][q] = adj[u][deg[u] - 1]; deg[u]--; break; } }
         for (int a = 0; a < nn && ok; a++) { int u = nbr[a];   /* fill: neighbourhood -> clique */
@@ -996,7 +1022,12 @@ static int *sym_amd(int n, const int *Ap, const int *Ai) {
                 if (w == u || seen[w] == sst) continue;
                 if (amd_add(&adj[u], &deg[u], &cap[u], w) || amd_add(&adj[w], &deg[w], &cap[w], u)) { ok = 0; break; } }
         }
+        if (bucket) for (int a = 0; a < nn; a++) {
+            int u = nbr[a];
+            bucket[(size_t)deg[u] * words + u / 64] |= 1ULL << (u & 63);
+        }
     }
+    free(bucket);
     for (int i = 0; i < n; i++) free(adj[i]);
     free(adj); free(deg); free(cap); free(rem); free(seen); free(nbr);
     if (!ok) { free(perm); return NULL; }
