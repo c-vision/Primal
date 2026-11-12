@@ -410,7 +410,8 @@ typedef struct {
 
 /* Evaluates Hessians, scaling point and margins for one exp/power block.
  * Fills the expnt struct; degrades gracefully when the dual chain is missing. */
-static int nt_eval(int kind, double alpha, const double *z, const double *s, expnt *M) {
+static int nt_eval(int kind, double alpha, const double *z, const double *s, expnt *M,
+                   int want_metrics) {
     double Hw[9], ev[3], V[9], tmp[9], zn;
     M->have_s = 0;
     M->condz = M->conds = M->rel = M->mz = M->ms = M->wn = -1.0;
@@ -423,10 +424,12 @@ static int nt_eval(int kind, double alpha, const double *z, const double *s, exp
      * the running mu, and at mu = 1e-12 its own strict inequalities and the
      * residual check of expcone_dual_point stop meaning anything. */
     for (int i = 0; i < 3; i++) M->sn[i] = s[i] / M->gap;
-    eig3(M->Hz, ev, V);
-    M->condz = spread3(ev);
-    M->mz = expcone_margin(kind, alpha, z);
-    M->ms = expcone_dual_margin(kind, alpha, M->sn);
+    if (want_metrics) {
+        eig3(M->Hz, ev, V);
+        M->condz = spread3(ev);
+        M->mz = expcone_margin(kind, alpha, z);
+        M->ms = expcone_dual_margin(kind, alpha, M->sn);
+    }
     /* A dual direction outside int K* is not a scaling CHOICE, it is the
      * situation at a tight optimum: s belongs to the boundary of K* there, so
      * the Hessian-NT chain is simply unavailable and the row degrades to the
@@ -445,8 +448,10 @@ static int nt_eval(int kind, double alpha, const double *z, const double *s, exp
         eig3(M->Mid, M->evMid, M->VMid);
         M->rel = spread3(M->evMid);
     }
-    zn = fabs(z[0]) + fabs(z[1]) + fabs(z[2]);
-    if (zn > 0.0) M->wn = (fabs(M->W[0]) + fabs(M->W[1]) + fabs(M->W[2])) / zn;
+    if (want_metrics) {
+        zn = fabs(z[0]) + fabs(z[1]) + fabs(z[2]);
+        if (zn > 0.0) M->wn = (fabs(M->W[0]) + fabs(M->W[1]) + fabs(M->W[2])) / zn;
+    }
     M->have_s = (M->conds > 0.0 && M->rel > 0.0);
     return 0;
 }
@@ -471,7 +476,7 @@ static int nt_eval(int kind, double alpha, const double *z, const double *s, exp
  *       Returns -1 if z or s not in interior, or metrics unavailable.
  */
 int expcone_nt_metrics(int kind, double alpha, const double *z, const double *s, double *m) {
-    expnt M; int rc = nt_eval(kind, alpha, z, s, &M);
+    expnt M; int rc = nt_eval(kind, alpha, z, s, &M, 1);
     m[EXPCONE_EV_GAP] = M.gap;   m[EXPCONE_EV_CONDZ] = M.condz;
     m[EXPCONE_EV_CONDS] = M.conds; m[EXPCONE_EV_REL] = M.rel;
     m[EXPCONE_EV_MZ] = M.mz;     m[EXPCONE_EV_MS] = M.ms;
@@ -538,7 +543,7 @@ int expcone_scaling(int kind, double alpha, const double *z, const double *s,
     double g[3], Hish[9], Mr[9], tmp[9];
     int nt = 0;
     if (scale) *scale = 0.0;
-    if (nt_eval(kind, alpha, z, s, &M)) return -1;
+    if (nt_eval(kind, alpha, z, s, &M, 0)) return -1;
     if (expcone_grad(kind, alpha, z, g)) return -1;
     if (M.have_s &&
         !spd_from_eig(M.evHs, M.VHs, -0.5, Hish) &&

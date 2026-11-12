@@ -205,3 +205,17 @@ Measured 2026-11-11 with interleaved baseline/candidate probes on the three
 regression models (machine load ~9.3): median reduction **5.6% at 40×8** and
 **4.0% at 80×12** across the series; 20×4 is in the noise. Targeted guards
 (T77–T83, T90, T91, T171, T172, T298–T300, T308) pass 945/0.
+
+## Metrics only when asked
+
+`nt_eval` also produced `condz`, the two cone margins and `wn`. They are read by
+`expcone_nt_metrics`, which the solver calls only under `GMB_DBG`; the scaling
+path uses none of them. `nt_eval` now takes `want_metrics`: the scaling passes 0
+and the metrics pass passes 1. The dual Hessian at `z` is still evaluated — it is
+the fallback scaling — while its eigendecomposition and the two margin
+logarithms are skipped. The `[expm]` trace under `GMB_DBG` is unchanged (1320
+lines compared byte for byte on 40×8).
+
+Interleaved medians against the previous engine (three series of 31 pairs):
+**5.0% at 20×4**, **3.5% at 40×8** and **3.0% at 80×12**; objectives are
+bit-identical and the targeted guards pass 945/0.
