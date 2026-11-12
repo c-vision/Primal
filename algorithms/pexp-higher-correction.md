@@ -188,3 +188,20 @@ HEAD and are preserved as measurement failures in the local attempts log.
 The table above uses the replacement isolated baseline, whose library hash
 was checked before and after the comparisons. Future comparisons must never
 run the shared-tree Makefile against a frozen baseline output directory.
+
+## Reusing the 3x3 eigendecomposition
+
+`nt_eval` diagonalises three 3x3 matrices per block and iteration: the dual
+Hessian at `z` (for `condz`), the inverse Hessian at the scaling point `W` (for
+`conds` and `Hs^(1/2)`), and the sandwiched `Hs^(1/2) Hz Hs^(1/2)` (for `rel`).
+The scaling step then asked for `Hs^(-1/2)` and the sandwich's `+1/2` power,
+re-diagonalising the same two matrices with the same deterministic Jacobi
+routine: six eigendecompositions where three suffice. The decompositions are now
+stored in `expnt` (`evHs/VHs`, `evMid/VMid`) and the spectral function is applied
+from them. The arithmetic is unchanged, so objectives and getters are
+bit-identical, not merely within tolerance.
+
+Measured 2026-11-11 with interleaved baseline/candidate probes on the three
+regression models (machine load ~9.3): median reduction **5.6% at 40×8** and
+**4.0% at 80×12** across the series; 20×4 is in the noise. Targeted guards
+(T77–T83, T90, T91, T171, T172, T298–T300, T308) pass 945/0.

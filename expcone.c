@@ -182,11 +182,11 @@ static void mm3(const double *A, const double *B, double *C) {
     for (int i = 0; i < 9; i++) C[i] = t[i];
 }
 
-/* M symmetric positive definite -> Out = V diag(lam^p) V'. -1 if not PD. */
-static int spd_pow3(const double *M, double p, double *Out) {
-    double A[9], ev[3], V[9];
-    for (int i = 0; i < 9; i++) A[i] = 0.5 * (M[i] + M[(i % 3) * 3 + i / 3]);
-    dmat_eig_jacobi(3, A, ev, V);
+/* Out = V diag(lam^p) V' from an eigendecomposition already computed by eig3.
+ * Same loop order as the former spd_pow3, so the values are identical.  -1 if
+ * an eigenvalue is not positive and finite.  Used to avoid re-diagonalising a
+ * matrix that the block's metric pass has just diagonalised. */
+static int spd_from_eig(const double *ev, const double *V, double p, double *Out) {
     for (int k = 0; k < 3; k++) if (!(ev[k] > 0.0) || !isfinite(ev[k])) return -1;
     for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) {
         double s = 0.0;
@@ -400,6 +400,10 @@ static double expcone_dual_margin(int kind, double alpha, const double *s) {
 /* Everything the scaling decision needs, evaluated once. */
 typedef struct {
     double Hz[9], Hs[9], Mid[9], W[3], sn[3];
+    /* Eigendecompositions of Hs and Mid, computed once by nt_eval.  The
+     * scaling asks for Hs^(+1/2) and Mid^(+1/2) and re-diagonalising the same
+     * matrices (deterministic Jacobi, unchanged inputs) only repeated work. */
+    double evHs[3], VHs[9], evMid[3], VMid[9];
     double gap, condz, conds, rel, mz, ms, wn;
     int have_s;                       /* W, Hs, Mid and conds/rel are usable */
 } expnt;
@@ -431,15 +435,15 @@ static int nt_eval(int kind, double alpha, const double *z, const double *s, exp
     if (!expcone_dual_in(kind, alpha, M->sn)) return 0;
     if (expcone_dual_point(kind, alpha, M->sn, M->W)) return 0;
     if (expcone_hess(kind, alpha, M->W, Hw) || mat3inv(Hw, M->Hs)) return 0;
-    eig3(M->Hs, ev, V);
-    M->conds = spread3(ev);
-    if (!spd_pow3(M->Hs, 0.5, tmp)) {
+    eig3(M->Hs, M->evHs, M->VHs);
+    M->conds = spread3(M->evHs);
+    if (!spd_from_eig(M->evHs, M->VHs, 0.5, tmp)) {
         double S[9];
         mm3(tmp, M->Hz, M->Mid);                    /* H_s^{1/2} H_z */
         mm3(M->Mid, tmp, S);                         /* ... times H_s^{1/2} */
         for (int i = 0; i < 9; i++) M->Mid[i] = S[i];
-        eig3(M->Mid, ev, V);
-        M->rel = spread3(ev);
+        eig3(M->Mid, M->evMid, M->VMid);
+        M->rel = spread3(M->evMid);
     }
     zn = fabs(z[0]) + fabs(z[1]) + fabs(z[2]);
     if (zn > 0.0) M->wn = (fabs(M->W[0]) + fabs(M->W[1]) + fabs(M->W[2])) / zn;
@@ -537,7 +541,8 @@ int expcone_scaling(int kind, double alpha, const double *z, const double *s,
     if (nt_eval(kind, alpha, z, s, &M)) return -1;
     if (expcone_grad(kind, alpha, z, g)) return -1;
     if (M.have_s &&
-        !spd_pow3(M.Hs, -0.5, Hish) && !spd_pow3(M.Mid, 0.5, Mr)) {
+        !spd_from_eig(M.evHs, M.VHs, -0.5, Hish) &&
+        !spd_from_eig(M.evMid, M.VMid, 0.5, Mr)) {
         /* The Hessian-NT chain.  Its eligibility is the whole criterion and it
          * is not a matter of taste: sn = s/scale in int K* is exactly what
          * gives the scaling point W, hence H_s = (grad^2 f(W))^{-1}, hence the
