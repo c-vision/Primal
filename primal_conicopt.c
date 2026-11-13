@@ -689,6 +689,21 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             prefer_sparse = prefer_sparse && small_soc >= 16;
             for (int i = 0; prefer_sparse && i < Nsys - ntot - neq; i++)
                 if (G->row[i].nz != 1) prefer_sparse = 0;
+            /* Small rotated blocks with fixed coordinates benefit from
+             * eliminating those coordinates before factorization. Each
+             * rotated slack row touches at most two variables. */
+            if (!sparse_conic && !prefer_sparse && !nb && !nNlin &&
+                Nsys >= 48 && neq == 0 && t->numcones >= 5) {
+                int coordinate_blocks = 1, fixed_coordinate = 0;
+                for (int k = 0; coordinate_blocks && k < t->numcones; k++) {
+                    coordinate_blocks = t->cone_type[k] == PRIMAL_CT_RQUAD &&
+                                        t->cone_nmem[k] <= 16;
+                    if (coordinate_blocks)
+                        for (int j = 0; j < t->cone_nmem[k]; j++)
+                            fixed_coordinate |= t->bkx[t->cone_mem[k][j]] == PRIMAL_BK_FX;
+                }
+                prefer_sparse = coordinate_blocks && fixed_coordinate;
+            }
             int st = sparse_conic || prefer_sparse
                 ? conic_solve_fixed(t,
                     ntot,neq,E,d,c,ncones_solver,cones,G,h,rowKind,rowIdx,

@@ -318,6 +318,31 @@ sparsa*. Le tre soglie coinvolte: `order >= 128` (misto, gia' tolta),
 `Nsys >= 300 && ncones >= 16` (`primal_conicopt.c`, rotta SOC), `nsoc > 0`
 (esclude la classe exp sia dalla prova sparsa sia dalla secante-prima).
 
+### Verifica dopo le modifiche al routing SOC ed EXP
+
+Mediane di 7 con baseline `f97fff2`, patch e Clarabel sullo stesso modello
+(`d=8`, `rho=0.50`, `rep=1`). Tempi in ms. Il gap relativo e i residui
+pubblici di PRIMAL sono sotto 1e-8 su tutti i casi. Lo scarto obiettivo
+relativo massimo rispetto a Clarabel è 2.6e-8.
+
+| Famiglia | Blocchi | PRIMAL prima | PRIMAL dopo | Clarabel |
+|---|---:|---:|---:|---:|
+| Misto | 10 | 1.030 | 1.036 | 0.174 |
+| Misto | 20 | 1.036 | 1.042 | 0.244 |
+| Misto | 40 | 1.270 | 1.271 | 0.432 |
+| Misto | 80 | 2.289 | 2.273 | 0.960 |
+| SOC | 10 | 41.797 | 1.260 | 0.364 |
+| SOC | 20 | 2.430 | 2.398 | 0.734 |
+| SOC | 40 | 5.112 | 5.017 | 1.230 |
+| SOC | 80 | 8.932 | 8.804 | 2.363 |
+| EXP | 10 | 3.774 | 1.973 | 0.253 |
+| EXP | 20 | 8.062 | 1.509 | 0.345 |
+| EXP | 40 | 27.970 | 3.304 | 0.501 |
+| EXP | 80 | 666.700 | 6.836 | 0.827 |
+
+EXP80 termina nell'IPM sparso senza tagli. SOC10 termina sul percorso sparso
+in 33 iterazioni. L'obiettivo di 2× rispetto a Clarabel resta aperto.
+
 ## 3. Come estendere
 
 ```sh

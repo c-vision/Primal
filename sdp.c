@@ -1996,7 +1996,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
      * (bench/pexp_bench.c, 20x4: 0.98 ms sparse against 2.75 ms dense). */
     double order = (double)m + K + Ke;
     if (sparse_trial && sp_work == SDP_SPARSE_WORK &&
-        nb == 0 && nsoc > 0 && nep > 0) {
+        nb == 0 && nep > 0) {
         double entries = 0.0, augmented_entries = n + 2.0 * S->cp[n];
         for (int i = 0; i < nsoc; i++) {
             double width = socdims[i];
@@ -3308,10 +3308,15 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
      * PEXP cones and no SOC, so it is outside this class and unaffected.
      * GMB_NO_EXP_SECANT_FIRST restores the old order for measurement. */
     int da_only = getenv("GMB_EXP_DA") != NULL;
+    int prefer_secant = nsoc > 0;
+#ifdef SDP_IPM_CORRECTED
+    prefer_secant = 1; /* This engine also handles large pure PEXP models. */
+#endif
     int first = da_only ||
-                (getenv("GMB_NO_EXP_SECANT_FIRST") == NULL && nep > 0 && nb == 0 && nsoc > 0);
+                (getenv("GMB_NO_EXP_SECANT_FIRST") == NULL && nep > 0 && nb == 0 && prefer_secant);
 #ifdef SDP_IPM_CORRECTED
     int st = sdp_ipm_run(SDP_IPM_ARGS(first), ecorr, escale, &sparse_trial);
+    if (nsoc == 0) goto free_corrector; /* Caller retries with the original engine. */
     if (st != 0 && sparse_trial) {
         if (getenv("GMB_DBG")) fprintf(stderr, "  [retry] original KKT routing after sparse status=%d\n", st);
         st = SDP_IPM_RUN(first);
@@ -3345,6 +3350,7 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
 #undef SDP_IPM_RUN
 #undef SDP_IPM_ARGS
 #ifdef SDP_IPM_CORRECTED
+free_corrector:
     free(ecorr);
     free(escale);
 #endif

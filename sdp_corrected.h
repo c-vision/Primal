@@ -21,6 +21,9 @@
 #define SDP_CORRECTED_H
 #include "sdp.h"
 
+/* Smaller pure PEXP problems retain the original scaling order. */
+#define SDP_PEXP_PURE_MIN_BLOCKS 10
+
 /* Internal separately compiled higher-order PEXP engine. */
 int sdp_ipm_csr_corrected(int m, int n, const SdpCsr *A, const double *b, const double *c,
             int nb, const int *dims,

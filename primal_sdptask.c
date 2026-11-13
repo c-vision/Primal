@@ -641,18 +641,28 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
         SdpBlk BA = { Bp, Brow, Bval };
         SdpBlk BS = { Sp, Srow, (const double *const *)Sval };
         SdpBlk BE = { Ep, Erow, (const double *const *)Eval };
-        /* The PEXP corrector is validated on mixed SOC/exp models.  Keep
-         * pure exp, power-only and PSD models on their existing engine. */
+        /* Try the corrected engine on mixed SOC/PEXP and larger pure PEXP
+         * models. If the pure PEXP trial cannot certify its point, let the
+         * original engine run before the dispatcher considers cuts. */
         int higher = 0;
-        if (nsoc > 0 && nb == 0 && !getenv("GMB_NO_EXP_HIGHER"))
+        int pure_pexp = nsoc == 0 && nep >= SDP_PEXP_PURE_MIN_BLOCKS;
+        for (int i = 0; pure_pexp && i < nep; i++)
+            pure_pexp = t->cone_type[eOf[i]] == PRIMAL_CT_PEXP;
+        if ((nsoc > 0 || pure_pexp) && nb == 0 && !getenv("GMB_NO_EXP_HIGHER"))
             for (int i = 0; i < nep; i++) if (ekind[i] == EXPCONE_PEXP) higher = 1;
-        int st = (higher ? sdp_ipm_csr_corrected : sdp_ipm_csr)(mTot, nv2, &A2, b2, c2, nb, t->barDim,
+        int st;
+        do {
+            st = (higher ? sdp_ipm_csr_corrected : sdp_ipm_csr)(mTot, nv2, &A2, b2, c2, nb, t->barDim,
                          (const double *const *)Cbar, &BA,
                          nsoc, socdim, (const double *const *)Csoc, &BS,
                          nep, ekind, ealpha, (const double *const *)Cexp, &BE,
                          iter_cap(t->max_iter_intpnt), 1e-7, t->tol_co_pfeas, t->tol_co_dfeas, t->tol_co_gap,
                          t->tol_near_rel,
                          x2, Xb, y2, Sb, Zsoc, Ssoc, Zexp, Sexp, xwarm2, ywarm2, &fb);
+            if (st == 0 || !higher || !pure_pexp || getenv("GMB_EXP_DA") ||
+                getenv("GMB_NO_EXP_RETRY")) break;
+            higher = 0;
+        } while (1);
         if (getenv("GMB_DBG")) {
                 fprintf(stderr, "  [phase] sdp_ipm solve=%.4fs\n",
                     (double)(clock() - g_phase_t0) / (double)CLOCKS_PER_SEC);

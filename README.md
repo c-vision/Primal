@@ -20,8 +20,9 @@ point and a status you can check rather than trust.
   with fixed diagonal and compatible objective signs, Primal constructs
   the primal and dual solution directly.
 - **Exponential and power cones** — native interior point with closed-form
-  barriers. Mixed SOC and primal exponential models use a higher-order
-  corrector and select a sparse KKT solve when the system is sparse.
+  barriers. Mixed SOC and primal exponential models, and larger models with
+  only primal exponential cones, can use a higher-order corrector and a
+  sparse KKT solve.
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
 - **Modeling** — affine conic constraints (ACC), disjunctive constraints
   (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.

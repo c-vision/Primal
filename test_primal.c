@@ -21705,8 +21705,48 @@ static void test_t308(void) {
 #undef T308_RND
 }
 
+/* T309: a pure PEXP system with shared affine links and a known optimum. */
+static void test_t309(void) {
+    enum { blocks = 20, one = 2 * blocks + 1 };
+    cur_name = "T309 pure exponential cones with shared affine links";
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    PRIMAL_appendvars(t, one + 1);
+    PRIMAL_appendcons(t, blocks);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putvarbound(t, one, PRIMAL_BK_FX, 1.0, 1.0);
+    double want = 0.0;
+    for (int i = 0; i < blocks; i++) {
+        int v = 1 + 2 * i, u = v + 1;
+        double bias = 0.05 * (i / 2);
+        double sign = i % 2 ? -1.0 : 1.0;
+        want += exp(bias);
+        PRIMAL_putvarbound(t, v, PRIMAL_BK_LO, 0.0, INFINITY);
+        PRIMAL_putvarbound(t, u, PRIMAL_BK_FR, 0.0, 0.0);
+        PRIMAL_putcj(t, v, 1.0);
+        PRIMAL_putarow(t, i, 2, (int[]){0, u}, (double[]){sign, -1.0});
+        PRIMAL_putconbound(t, i, PRIMAL_BK_FX, -bias, -bias);
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0.0, 3, (int[]){v, one, u});
+    }
+    double x[one + 1] = {0}, po = 0.0, dob = 0.0, pf = INFINITY, df = INFINITY;
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T309 optimize");
+    check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T309 get solution");
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &po);
+    PRIMAL_getdualobj(t, PRIMAL_SOL_ITR, &dob);
+    PRIMAL_getprimalinfeas(t, PRIMAL_SOL_ITR, &pf);
+    PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &df);
+    close_enough_tol(po, want, 1e-7, "T309 primal objective at x=0");
+    close_enough_tol(dob, want, 1e-7, "T309 dual objective at x=0");
+    check(pf < 1e-8 && df < 1e-8, "T309 primal and dual residuals");
+    /* The reduced objective is want*cosh(x), so the objective error
+     * bounds the squared error in x. */
+    check(0.5 * want * x[0] * x[0] < 1e-7, "T309 minimizer");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t309();
     test_t308();
     test_t307();
     test_t306();
