@@ -221,8 +221,21 @@ def parse_sdp_sweep(dmin=4, dmax=SDP_DMAX):
     return rows
 
 
+def fmt_time(t):
+    """Seconds, with enough digits for the sub-millisecond rows.
+
+    A single %.4f prints 0.0000 for every SDP row (20-90 us), which is not a
+    measurement; a fixed %.7f leaves "0.0002000" on the large cells.
+    """
+    s = "%.7f" % t
+    s = s.rstrip("0")
+    if len(s.split(".")[1]) < 4:
+        s = "%.4f" % t
+    return s
+
+
 def fmt(t):
-    return "%.4f" % t if t is not None else "N/A"
+    return "N/A" if t is None else fmt_time(t)
 
 
 def main():
@@ -283,8 +296,9 @@ def main():
         for nm2, ob in (("clarabel", oc), ("scs", os_)):
             if ob is not None and abs(ob - ref) > 1e-4:
                 mism.append("socp_%d %s=%g" % (n, nm2, ob))
+        # run_socp (bench/conic_bench.c) builds n + n/2 variables and 1 row.
         print("| socp_%d | socp | %d x 1 | - | %s | N/A | %s | %s | N/A | %.6f |" %
-              (n, n, pcell, fmt(tc), fmt(ts), ref))
+              (n, 3 * n // 2, pcell, fmt(tc), fmt(ts), ref))
     # ---- SDP: the same closed-form family swept over the block size d ----
     ps_sdp = parse_sdp_sweep(4, SDP_DMAX)
     for d in range(4, SDP_DMAX + 1):

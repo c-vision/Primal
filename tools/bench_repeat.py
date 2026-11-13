@@ -104,7 +104,11 @@ def aggregate(python, runs, timeout):
                 if any(x is None for x in vals):
                     row.append(v)                      # e.g. "N/A" in every run
                 else:
-                    row.append("%.4f" % statistics.median(vals))
+                    # same precision rule as bench_all.fmt
+                    m = statistics.median(vals)
+                    t = "%.7f" % m
+                    t = t.rstrip("0")
+                    row.append(t if len(t.split(".")[1]) >= 4 else "%.4f" % m)
             else:
                 row.append(v)                          # objective: never medianed
         out[k] = row
