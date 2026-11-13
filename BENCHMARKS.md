@@ -275,6 +275,49 @@ divario** (102×→36×) sui LP di taglia media, ma il residuo resta **algoritmi
 routing. Il MILP non ne beneficia (le rilassate restano sul simplesso).
 
 
+## 3-ter. SOC / EXP / misto contro Clarabel — matrice 2026-11-13 {#matrice-soc-exp}
+
+Non entra nel `README.md`: il divario sulle due classi pure e' ancora troppo
+grande perche' una tabella lo presenti come stato del progetto. Vive qui come
+misura di riferimento, e la condizione per pubblicarla e' scritta nel bug
+`Bugs/(open) - Divario-Clarabel-Su-SOC-EXP` del vault.
+
+Generatore `bench/pexp_matrix.c`, runner `bench/pexp_matrix.py` (costruisce il
+riferimento Clarabel **sulla stessa istanza** e asserisce che gli obiettivi
+coincidano; quell'asserzione ha scoperto che il generatore non inizializzava il
+seme). Mediane di 5, d=8, rho=0.50, rep=1, una thread, tol 1e-9 su Clarabel.
+Tempi in ms; "it" e' il conteggio delle iterazioni, "rotta" la forma del KKT.
+
+| famiglia | blocchi | noi | Clarabel | rapporto | rotta | it |
+|---|---:|---:|---:|---:|---|---|
+| misto | 10 | 2.20 | 0.12 | 18.7x | denso | 19 |
+| misto | 20 | 1.30 | 0.21 | 6.3x | sparso | 25 |
+| misto | 40 | 1.57 | 0.38 | 4.1x | sparso | 17 |
+| misto | 80 | 2.70 | 0.90 | 3.0x | sparso | 18 |
+| solo SOC | 10 | 43.68 | 0.28 | **153.6x** | denso, stalla | 391 |
+| solo SOC | 20 | 2.53 | 0.67 | 3.8x | socp | 26 |
+| solo SOC | 40 | 5.29 | 1.13 | 4.7x | socp | 30 |
+| solo SOC | 80 | 9.44 | 2.84 | 3.3x | socp | 27 |
+| solo EXP | 10 | 6.72 | 0.17 | 39.3x | denso | 61 |
+| solo EXP | 20 | 12.33 | 0.29 | 43.2x | denso | 49 |
+| solo EXP | 40 | 36.73 | 0.35 | **104.8x** | denso | 53 |
+| solo EXP | 80 | 657.65 | 0.65 | **1019x** | denso + tagli | 30, 15 round |
+
+Densita' dei link (n=40, d=12): misto 2.11 / 2.31 / 2.86 ms per rho 0.25/0.5/1.0
+(Clarabel 0.41 / 0.58 / 0.46) -> 5.1x / 4.0x / 6.3x; solo EXP resta 39-151x,
+solo SOC piatto perche' non ha righe (e' il controllo).
+
+Degenerazione per replicazione (n=40): misto 1.53 -> 2.83 -> 5.08 ms con rep
+1/2/4 (Clarabel 0.36 -> 0.83 -> 1.44, rapporto stabile 3.4-4.2x); solo EXP
+36.9 -> 196.0 -> 94.9 ms (78-306x). La degenerazione costa dimensione, non
+iterazioni (misto 17 -> 21 -> 21).
+
+Lettura: il costo per iterazione non e' il collo (0.05-0.35 ms sparso contro
+0.9-1.5 denso); lo sono *quale motore parte* e *se il modello entra nella prova
+sparsa*. Le tre soglie coinvolte: `order >= 128` (misto, gia' tolta),
+`Nsys >= 300 && ncones >= 16` (`primal_conicopt.c`, rotta SOC), `nsoc > 0`
+(esclude la classe exp sia dalla prova sparsa sia dalla secante-prima).
+
 ## 3. Come estendere
 
 ```sh
@@ -346,3 +389,4 @@ PrimalSolver e con la stessa accuratezza 1e-8; SCS è più veloce ancora ma
 | 2026-11-11 | **F162 — metriche exp solo su richiesta** (`expcone.c`): `nt_eval` calcolava `condz` (eig di `Hz`), `mz`, `ms`, `wn` a ogni blocco/iterazione, ma `expcone_nt_metrics` e' chiamata solo sotto `GMB_DBG`. `want_metrics` (0 dallo scaling, 1 dalle metriche) salta 1 eig e i log delle margin. Mediane mixed 20×4 **1.09/1.09**, 40×8 **3.27/3.32**, 80×12 **7.27/7.24** ms; `[expm]` identico, obiettivi bit-identici, guardie 945/0. |
 | 2026-11-11 | **F165 — fattori spettrali una volta** (`expcone.c`): `spd_from_eig` chiamava `pow(ev[k],p)` 27 volte (triplo ciclo i,j,k) per applicazione; ora 3, stessa funzione e stesso ordine (bit-identico). Mediane mixed 20×4 **1.06/1.08**, 40×8 **3.15/3.05**, 80×12 **6.94/6.91** ms contro Clarabel 0.25/0.25, 0.56/0.54, 2.55/2.60; guardie 945/0. |
 | 2026-11-12 | **Tabella canonica rilanciata** con `tools/bench_repeat.py --runs 15` (obiettivi identici in tutte e 15) e **tabella mista** con `bench/pexp_bench.py --runs 21` — il generatore misto ora sta nel repo (`bench/pexp_bench.c`), non in una directory gitignorata: 20×4 **0.59**, 40×8 **1.37**, 80×12 **3.73** ms contro Clarabel 0.29 / 0.63 / 2.72. Corretti due artefatti del harness: `"%.4f"` quantizzava il tempo Primal a 0.1 ms (lp_50x25: 156 µs stampati come 0.0002) e `conic_bench`/`sdp_sweep` cronometravano a freddo la prima solve (socp_40 134 → **88 µs** con la warm-up). Le colonne aggiornate stanno nel `README.md`; §2 resta la fotografia del 2026-10-03. |
+| 2026-11-13 | **Matrice SOC/EXP/misto contro Clarabel** (`bench/pexp_matrix.*`, §3-ter): misto 3.0-6.3x, solo SOC 3.3-8.4x con **153.6x** a 10 blocchi (il denso stalla a 391 iterazioni), solo EXP **39-1019x** (a 80 blocchi il nativo non converge e partono 15 round di tagli). Nessuna patch al solver; il confronto **non** entra nel README finche' il divario non e' ridotto (bug aperto nel vault). |
