@@ -2345,6 +2345,13 @@ redo_dir:
                             const double *ak = S->sv[q];
                             for (int a = 0; a < kk; a++) SPE(k, bi + a, ak[a]); }
                     }
+                    /* The sparse trial can drop zero-valued data links.
+                     * Their values are fixed for the lifetime of the pattern.
+                     * A retry rebuilds the original pattern. */
+                    int omit_zeros = 0;
+#ifdef SDP_IPM_CORRECTED
+                    omit_zeros = augx && sparse_trial && *sparse_trial;
+#endif
                     /* exp/power blocks: scaled cone equation (see the dense loop) */
                     for (int i = 0; i < nep; i++) {
                         double Th[9], Tin[9], rt[3], rde[3], sc = 0.0, inv;
@@ -2378,13 +2385,17 @@ redo_dir:
                         }
                         for (int a = 0; a < 3; a++) {
                             for (int b = 0; b < 3; b++) SPE(bi + a, bi + b, Tin[a * 3 + b]);
-                            for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
-                                SPE(bi + a, k, -S->ev[q][a] * inv); }
+                            for (int q = S->ep[i]; q < S->ep[i + 1]; q++) {
+                                double coefficient = S->ev[q][a];
+                                if (!omit_zeros || coefficient != 0.0)
+                                    SPE(bi + a, S->ei[q], -coefficient * inv);
+                            }
                             Srhs[bi + a] = rt[a] + rde[a];
                         }
                         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
                             const double *ak = S->ev[q];
-                            for (int a = 0; a < 3; a++) SPE(k, bi + a, ak[a]); }
+                            for (int a = 0; a < 3; a++)
+                                if (!omit_zeros || ak[a] != 0.0) SPE(k, bi + a, ak[a]); }
                     }
 #undef SPE
                     if (!rhs_only && !sp_bad && P->built && sp_nt != P->ntrip) sp_bad = 1;
