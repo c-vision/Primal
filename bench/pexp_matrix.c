@@ -88,6 +88,7 @@ int main(int argc, char **argv) {
     int is_exp = strcmp(fam, "exp") == 0;
     int is_mix = strcmp(fam, "mix") == 0;
     if (!is_soc && !is_exp && !is_mix) { fprintf(stderr, "unknown family\n"); return 2; }
+    rng_state = 11235813u;   /* the sequence bench/pexp_matrix.py repeats */
 
     int nb = n * rep;              /* cone blocks after replication */
     int nrow = (is_soc ? 0 : nb);  /* exp/mix: one linking row per block */
@@ -223,6 +224,30 @@ int main(int argc, char **argv) {
     PRIMAL_getdualobj(task, PRIMAL_SOL_ITR, &dobj);
     PRIMAL_getprimalinfeas(task, PRIMAL_SOL_ITR, &pinf);
     PRIMAL_getdualinfeas(task, PRIMAL_SOL_ITR, &dinf);
+    /* PEXP_MATRIX_DUMP=1 reports the model as the solver saw it and the worst
+     * cone slack of the published point: the two numbers that tell a different
+     * instance from a different answer.  (It exists because this generator once
+     * forgot to seed its RNG and measured a different model than its Python
+     * twin; the objective check in the runner is what caught it.) */
+    if (getenv("PEXP_MATRIX_DUMP")) {
+        int nv2 = 0, nc2 = 0, nk2 = 0;
+        PRIMAL_getnumvar(task, &nv2); PRIMAL_getnumcon(task, &nc2);
+        PRIMAL_getnumcone(task, &nk2);
+        double *x = (double *)malloc((size_t)NV * sizeof(double));
+        double worst = 0.0;
+        if (x) {
+            PRIMAL_getxx(task, PRIMAL_SOL_ITR, x);
+            for (int k = 0; k < nb; k++) {
+                double v = 0.0;
+                for (int j = 0; j < d; j++) v += x[k * d + j] * x[k * d + j];
+                double sl = (is_soc ? 2.0 * x[dx + k] : 0.0) - v;
+                if (sl < worst) worst = sl;
+            }
+        }
+        fprintf(stderr, "model nv=%d nc=%d ncone=%d cx0=%.17g worst=%.3e\n",
+                nv2, nc2, nk2, cx[0], worst);
+        free(x);
+    }
     printf("matrix,%s,%d,%d,%.2f,%d,%d,%d,%.9f,%.12g,%.12g,%.3e,%.3e\n",
            fam, n, d, rho, rep, nb, nrow, t1 - t0, pobj, dobj, pinf, dinf);
     if (rc != PRIMAL_RES_OK)
