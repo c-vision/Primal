@@ -48,6 +48,21 @@ The bold values identify the lowest medians within those timing boundaries.
 Close medians can change order across runs.
 `N/A` denotes a missing measurement for that solver and instance.
 
+Two harness effects were fixed on 2026-11-12, both of which had produced a
+spurious "Clarabel is faster" cell:
+
+- `bench_all.solve_ps` printed the Primal time with `%.4f`, i.e. quantized to
+  0.1 ms. At `lp_50x25` (0.16 ms) that rounded 0.000156 up to 0.000200, a 28%
+  distortion that flipped the row.
+- `conic_bench` and `sdp_sweep` timed their first solve cold. Measured on
+  `socp_40`: 130-150 us cold against 80-90 us warm, because the cold code paths
+  and the first allocator trip are larger than the solve. Both harnesses now run
+  one discarded solve per family before the timed loop.
+
+`lp_100x50` remains within 6% between Primal and Clarabel (0.00069 against
+0.00068 measured directly) and its order can change between runs; that is a
+genuine tie, not an artifact.
+
 For SOCP, the family parameter n describes n free x coordinates and n/2 cone
 epigraph variables, so the model has 3n/2 scalar variables and one explicit
 equality; `bench/bench_all.py` reports that count (the old harness printed n,
