@@ -6,10 +6,11 @@
 *~
 
 # benchmark harness: tracked (the Makefile builds bench/, so a clone needs it).
-# The result write-ups stay local for now.
-/BENCHMARKS.md
+# BENCHMARKS.md and COMPARISON.md are tracked since 2026-11-13: write-ups that
+# are not in the repository drift in silence (see the SDP note in
+# algorithms/sdp.md and the 4242/4706 incident).
+# README.full.md stays local; it must still be kept current (Startup-Protocol).
 /README.full.md
-/COMPARISON.md
 
 # python bytecode (created importing bench/*.py)
 __pycache__/
