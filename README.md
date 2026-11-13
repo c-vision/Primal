@@ -261,22 +261,22 @@ SOC in addition to the listed exponential blocks. Times are medians of 11
 alternating runs, with debug tracing disabled. Primal timings cover
 `PRIMAL_optimize`. Clarabel 0.11.1 uses one thread and includes solver
 construction. Primal's public residuals and relative gap were below
-`1e-8`, and the maximum scaled objective difference was `2.6e-8`.
+`1e-8`, and the maximum scaled objective difference was `2.6e-08`.
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | 0.671 | **0.396** | 1.69× |
-| SOC | 20 | 1.130 | **0.842** | 1.34× |
-| SOC | 40 | 1.497 | **1.425** | 1.05× |
-| SOC | 80 | 4.274 | **2.700** | 1.58× |
-| EXP | 10 | 1.632 | **0.237** | 6.90× |
-| EXP | 20 | 0.659 | **0.315** | 2.09× |
-| EXP | 40 | 1.236 | **0.481** | 2.57× |
-| EXP | 80 | 1.662 | **0.810** | 2.05× |
-| Mixed | 10 | 1.417 | **0.193** | 7.36× |
-| Mixed | 20 | 1.300 | **0.304** | 4.27× |
-| Mixed | 40 | 1.568 | **0.489** | 3.21× |
-| Mixed | 80 | 2.741 | **1.099** | 2.50× |
+| SOC | 10 | 0.623 | **0.355** | 1.75× |
+| SOC | 20 | 0.952 | **0.724** | 1.31× |
+| SOC | 40 | 1.263 | **1.192** | 1.06× |
+| SOC | 80 | 3.832 | **2.362** | 1.62× |
+| EXP | 10 | 0.565 | **0.198** | 2.86× |
+| EXP | 20 | 0.544 | **0.270** | 2.02× |
+| EXP | 40 | 1.017 | **0.404** | 2.52× |
+| EXP | 80 | 1.444 | **0.698** | 2.07× |
+| Mixed | 10 | 0.553 | **0.178** | 3.11× |
+| Mixed | 20 | 1.040 | **0.243** | 4.28× |
+| Mixed | 40 | 1.282 | **0.412** | 3.11× |
+| Mixed | 80 | 2.323 | **0.949** | 2.45× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
 checks objective agreement. See [the detailed results](BENCHMARKS.md) for

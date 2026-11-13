@@ -2005,7 +2005,10 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
         for (int i = 0; i < nep; i++)
             entries += 9.0 + 6.0 * (S->ep[i + 1] - S->ep[i]);
         if (augmented_entries + entries <= 0.1 * (order + n) * (order + n)) {
-            double schur_entries = sdp_schur_entries(S, m, 0.1 * order * order - entries);
+            /* The secant KKT keeps the orthant variables explicitly. A
+             * dense hypothetical Schur block cannot veto that sparse form. */
+            double schur_entries = secant ? 0.0 :
+                sdp_schur_entries(S, m, 0.1 * order * order - entries);
             if (schur_entries >= 0.0) {
                 *sparse_trial = 1;
                 sp_work = 0.0;
