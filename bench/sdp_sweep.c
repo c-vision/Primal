@@ -35,7 +35,7 @@ static unsigned rng_state;
 static double urand(void) { rng_state = rng_state * 1103515245u + 12345u; return (double)((rng_state >> 16) & 0x7fff) / 32767.0; }
 static double now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (double)ts.tv_sec + 1e-9 * (double)ts.tv_nsec; }
 
-static int run_sdp(int d, int seed) {
+static int run_sdp(int d, int seed, int quiet) {
     rng_state = (unsigned)seed;
     double v[128], sumabs = 0.0;
     for (int i = 0; i < d; i++) { v[i] = urand() * 2.0 - 1.0; sumabs += fabs(v[i]); }
@@ -64,7 +64,7 @@ static int run_sdp(int d, int seed) {
     double sec = now() - a;
     double obj = 0.0;
     if (rc == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
-    printf("%d,%.8g,%.6f,%d,%.8g\n", d, obj, sec, (int)rc, expected);
+    if (!quiet) printf("%d,%.8g,%.6f,%d,%.8g\n", d, obj, sec, (int)rc, expected);
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return rc == PRIMAL_RES_OK ? 0 : 1;
 }
@@ -81,6 +81,9 @@ int main(int argc, char **argv) {
         return 2;
     }
     printf("d,obj,seconds,rc,expected\n");
-    for (int d = dmin; d <= dmax; d++) run_sdp(d, 200 + d);
+    /* Discarded warm-up: the d=4 row is tens of microseconds, where the first
+     * solve's cold paths are a large share of the cell. */
+    (void)run_sdp(dmin, 200 + dmin, 1);
+    for (int d = dmin; d <= dmax; d++) run_sdp(d, 200 + d, 0);
     return 0;
 }

@@ -75,7 +75,9 @@ def solve_ps(path):
         rc, _, _, obj, sec = out.stdout.strip().split(",")
         if rc != "0":
             return "N/A", None
-        return "%.4f" % float(sec), float(obj)
+        # NOT "%.4f": it quantizes every LP/QP/MILP time to 0.1 ms, which at
+        # these sizes (0.15 ms) is a 30% distortion of the cell.
+        return "%.6f" % float(sec), float(obj)
     except Exception:
         return "N/A", None
 

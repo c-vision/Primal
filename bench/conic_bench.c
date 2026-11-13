@@ -63,7 +63,7 @@ static double urand(void) {
 }
 
 /* Solve one SOCP instance of size n and print its CSV line. */
-static int run_socp(int n, int seed) {
+static int run_socp(int n, int seed, int quiet) {
     (void)seed;
     int K = n / 2;
     PRIMALenv_t env = NULL; PRIMAL_makeenv(&env, NULL);
@@ -91,13 +91,13 @@ static int run_socp(int n, int seed) {
     double sec = now() - a;
     double obj = 0.0;
     if (rc == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
-    printf("socp,%d,%d,%.8g,%.6f,rc=%d\n", n, K, obj, sec, (int)rc);
+    if (!quiet) printf("socp,%d,%d,%.8g,%.6f,rc=%d\n", n, K, obj, sec, (int)rc);
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return rc == PRIMAL_RES_OK ? 0 : 1;
 }
 
 /* Solve one SDP instance of dimension d and print its CSV line. */
-static int run_sdp(int d, int seed) {
+static int run_sdp(int d, int seed, int quiet) {
     rng_state = (unsigned)seed;
     double v[16];
     double sumabs = 0.0;
@@ -136,7 +136,7 @@ static int run_sdp(int d, int seed) {
     double sec = now() - a;
     double obj = 0.0;
     if (rc == PRIMAL_RES_OK) PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, &obj);
-    printf("sdp,%d,%d,%.8g,%.6f,rc=%d,expected=%.8g\n",
+    if (!quiet) printf("sdp,%d,%d,%.8g,%.6f,rc=%d,expected=%.8g\n",
            d, d, obj, sec, (int)rc, expected);
     PRIMAL_deletetask(&t); PRIMAL_deleteenv(&env);
     return rc == PRIMAL_RES_OK ? 0 : 1;
@@ -146,7 +146,12 @@ static int run_sdp(int d, int seed) {
 int main(void) {
     printf("class,n,size,obj,seconds,rc[,expected]\n");
     int rc = 0;
-    for (int n = 40; n <= 200; n += 80) rc |= run_socp(n, 100 + n);
-    for (int d = 4; d <= 8; d += 1) rc |= run_sdp(d, 200 + d);
+    /* One discarded solve per family: at 40-130 us the cold code paths and the
+     * first allocator trip are larger than the measurement itself (measured:
+     * socp_40 130-150 us cold against 80-90 us warm). */
+    (void)run_socp(40, 140, 1);
+    (void)run_sdp(4, 204, 1);
+    for (int n = 40; n <= 200; n += 80) rc |= run_socp(n, 100 + n, 0);
+    for (int d = 4; d <= 8; d += 1) rc |= run_sdp(d, 200 + d, 0);
     return rc;
 }
