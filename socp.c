@@ -1271,6 +1271,54 @@ static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,co
     for(int i=0;i<p;i++){double a=fabs(d[i]);if(a>dnorm)dnorm=a;}
     for(int k=0;k<K;k++){double a=fabs(h[k]);if(a>hnorm)hnorm=a;}
     for(int j=0;j<n;j++){double a=fabs(c[j]);if(a>cnorm)cnorm=a;}
+    /* A rotated cone with one fixed axial member has two opposite
+     * affine offsets and one shared free coordinate. Match that shape,
+     * seed its free coordinate at the objective's scale, then require
+     * strict feasibility of the complete slack before using the start. */
+    if (p == 0 && ncones > 1) {
+        int started = 0, interior = 1;
+        for (int k = 0; k < ncones; k++) {
+            int o = off[k], kk = cones[k].nmem;
+            if (cones[k].type == 0 || kk < 3) continue;
+            int a = SG.rp[o], b = SG.rp[o+1];
+            if (b-a != 1 || SG.rp[o+2]-b != 1 || SG.ri[a] != SG.ri[b] ||
+                SG.rv[a] != fabs(SG.rv[b]) || SG.rv[a] <= 0.0 ||
+                h[o] <= 0.0 || h[o+1] != -copysign(h[o], SG.rv[b])) continue;
+            double seed = h[o] / SG.rv[a];
+            double transverse = 0.0;
+            int axial = SG.ri[a];
+            for (int i = 2; i < kk; i++) {
+                int q = SG.rp[o+i];
+                if (SG.rp[o+i+1]-q != 1 || SG.rv[q] == 0.0) continue;
+                transverse = hypot(transverse,c[SG.ri[q]] / SG.rv[q]);
+            }
+            if (c[axial] > 0.0) {
+                double ratio = transverse / c[axial];
+                seed *= fmax(1.0,0.5*ratio*ratio);
+            }
+            if (isfinite(seed) && seed > 0.0) {
+                xs[SG.ri[a]] = seed;
+                started = 1;
+            }
+        }
+        if (started) {
+            sp_row(&SG,xs,rg,K);
+            for (int i = 0; i < K; i++) rg[i] += h[i];
+            for (int k = 0; interior && k < ncones; k++) {
+                int o = off[k], kk = cones[k].nmem;
+                if (cones[k].type == 0) {
+                    for (int i = 0; interior && i < kk; i++)
+                        interior = rg[o+i] > 0.0 && isfinite(rg[o+i]);
+                } else {
+                    double norm = 0.0;
+                    for (int i = 1; i < kk; i++) norm = hypot(norm, rg[o+i]);
+                    interior = rg[o] > norm && isfinite(rg[o]);
+                }
+            }
+            if (interior) memcpy(s,rg,(size_t)K*sizeof(*s));
+            else memset(xs,0,(size_t)n*sizeof(*xs));
+        }
+    }
     int no_progress=0, blocked=0, recoveries=0;
     for(int it=0;it<max_iter;it++){
         if(primal_cb_iter_on) primal_cb_iter(34);

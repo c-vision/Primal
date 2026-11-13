@@ -277,10 +277,8 @@ routing. Il MILP non ne beneficia (le rilassate restano sul simplesso).
 
 ## 3-ter. SOC / EXP / misto contro Clarabel — matrice 2026-11-13 {#matrice-soc-exp}
 
-Non entra nel `README.md`: il divario sulle due classi pure e' ancora troppo
-grande perche' una tabella lo presenti come stato del progetto. Vive qui come
-misura di riferimento, e la condizione per pubblicarla e' scritta nel bug
-`Bugs/(open) - Divario-Clarabel-Su-SOC-EXP` del vault.
+La tabella seguente è la baseline della matrice. Il confronto aggiornato
+è nel [README](README.md#soc-exponential-and-mixed-cone-matrix).
 
 Generatore `bench/pexp_matrix.c`, runner `bench/pexp_matrix.py` (costruisce il
 riferimento Clarabel **sulla stessa istanza** e asserisce che gli obiettivi
@@ -360,6 +358,21 @@ Mediane di 11 prove alternate sullo stesso modello (`d=8`, `rho=0.50`,
 | 80 | 8.886 | 1.991 | 0.981 | 2.03× |
 | 100 | 9.006 | 2.431 | 1.273 | 1.91× |
 | 160 | 18.660 | 5.345 | 2.193 | 2.44× |
+
+### Avvio ammissibile per SOC ruotati con un membro fissato
+
+Il solver prova uno slack iniziale scalato sui costi e lo usa solo se
+tutti i blocchi sono strettamente ammissibili. Mediane della seconda
+serie di 11 prove alternate (`d=8`, `rho=0.50`, `rep=1`). Tempi in ms.
+
+| Blocchi SOC | PRIMAL prima | PRIMAL dopo | Clarabel |
+|---:|---:|---:|---:|
+| 10 | 1.786 | 0.743 | 0.483 |
+| 20 | 3.236 | 1.286 | 1.053 |
+| 40 | 7.290 | 1.862 | 1.839 |
+| 80 | 12.454 | 5.284 | 3.315 |
+
+Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ## 3. Come estendere
 

@@ -253,6 +253,35 @@ runs at one thread and includes solver construction. See the
 [mixed-cone benchmark notes](algorithms/pexp-higher-correction.md#mixed-soc-and-exponential-cones-2026-11-12)
 for what moved the numbers.
 
+### SOC, exponential, and mixed cone matrix
+
+Measured on **2026-11-13** with the same generated instances in both solvers
+(`d=8`, link density `0.50`, one replica). Mixed instances have one rotated
+SOC in addition to the listed exponential blocks. Times are medians of 11
+alternating runs, with debug tracing disabled. Primal timings cover
+`PRIMAL_optimize`. Clarabel 0.11.1 uses one thread and includes solver
+construction. Primal's public residuals and relative gap were below
+`1e-8`, and the maximum scaled objective difference was `2.6e-8`.
+
+| Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
+|---|---:|---:|---:|---:|
+| SOC | 10 | 0.671 | **0.396** | 1.69× |
+| SOC | 20 | 1.130 | **0.842** | 1.34× |
+| SOC | 40 | 1.497 | **1.425** | 1.05× |
+| SOC | 80 | 4.274 | **2.700** | 1.58× |
+| EXP | 10 | 1.632 | **0.237** | 6.90× |
+| EXP | 20 | 0.659 | **0.315** | 2.09× |
+| EXP | 40 | 1.236 | **0.481** | 2.57× |
+| EXP | 80 | 1.662 | **0.810** | 2.05× |
+| Mixed | 10 | 1.417 | **0.193** | 7.36× |
+| Mixed | 20 | 1.300 | **0.304** | 4.27× |
+| Mixed | 40 | 1.568 | **0.489** | 3.21× |
+| Mixed | 80 | 2.741 | **1.099** | 2.50× |
+
+The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
+checks objective agreement. See [the detailed results](BENCHMARKS.md) for
+solver routes and iteration counts.
+
 ## Documentation
 
 The [algorithm guide](algorithms/README.md) follows the numerical methods
