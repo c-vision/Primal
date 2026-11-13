@@ -1989,10 +1989,14 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     SpluFact *sp_old = NULL; int sp_old_aug = -1;   /* the previous iteration's factor, kept to be refactored */
     double sp_work = getenv("GMB_SDP_DENSE") ? HUGE_VAL : (getenv("GMB_SDP_SPARSE") ? 0.0 : SDP_SPARSE_WORK);
 #ifdef SDP_IPM_CORRECTED
-    /* Bound structural density in both forms of the orthant block. */
+    /* Bound structural density in both forms of the orthant block.  There is
+     * deliberately no size floor: the density test below is the criterion, and
+     * the floor that used to stand here (`order >= 128`) sent a mixed model at
+     * order 112 to the dense route where the sparse one is 2.8x faster
+     * (bench/pexp_bench.c, 20x4: 0.98 ms sparse against 2.75 ms dense). */
     double order = (double)m + K + Ke;
     if (sparse_trial && sp_work == SDP_SPARSE_WORK &&
-        nb == 0 && nsoc > 0 && nep > 0 && order >= 128) {
+        nb == 0 && nsoc > 0 && nep > 0) {
         double entries = 0.0, augmented_entries = n + 2.0 * S->cp[n];
         for (int i = 0; i < nsoc; i++) {
             double width = socdims[i];
@@ -3294,7 +3298,18 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
 #else
 #define SDP_IPM_RUN(sec) sdp_ipm_run(SDP_IPM_ARGS(sec))
 #endif
-    int first = getenv("GMB_EXP_DA") ? 1 : 0;
+    /* Which engine runs first.  GMB_EXP_DA keeps its old meaning: the secant
+     * engine alone.  On a model with both a SOC block and exp/power blocks the
+     * secant engine is the first choice and the Hessian-NT chain is the retry:
+     * measured on bench/pexp_bench (20x4, 40x8, 80x12) the secant is 18-29%
+     * faster than the NT chain, and the in-class model that the retry was
+     * introduced for (logistic_large, 40 PEXP + 1 RQUAD) is solved by the
+     * secant, not by the chain.  The recorded counter-example, gp1, has three
+     * PEXP cones and no SOC, so it is outside this class and unaffected.
+     * GMB_NO_EXP_SECANT_FIRST restores the old order for measurement. */
+    int da_only = getenv("GMB_EXP_DA") != NULL;
+    int first = da_only ||
+                (getenv("GMB_NO_EXP_SECANT_FIRST") == NULL && nep > 0 && nb == 0 && nsoc > 0);
 #ifdef SDP_IPM_CORRECTED
     int st = sdp_ipm_run(SDP_IPM_ARGS(first), ecorr, escale, &sparse_trial);
     if (st != 0 && sparse_trial) {
@@ -3304,7 +3319,7 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
 #else
     int st = SDP_IPM_RUN(first);
 #endif
-    if (st != 0 && !first && nep > 0 && nb == 0 && !getenv("GMB_NO_EXP_RETRY")) {
+    if (st != 0 && !da_only && nep > 0 && nb == 0 && !getenv("GMB_NO_EXP_RETRY")) {
         size_t ns = (size_t)n + (size_t)m + 6 * (size_t)nep, o = 0;
         for (int i = 0; i < nsoc; i++) ns += 2 * (size_t)socdims[i];
         double *save = (double *)malloc(ns * sizeof(double));
@@ -3318,8 +3333,9 @@ int sdp_ipm_csr(int m, int n, const SdpCsr *Acsr, const double *b, const double 
             for (int i = 0; i < nsoc; i++) { SDP_CP(Zsoc[i], socdims[i], out); SDP_CP(Ssoc[i], socdims[i], out); } \
             for (int i = 0; i < nep; i++) { SDP_CP(Zexp[i], 3, out); SDP_CP(Sexp[i], 3, out); } } while (0)
             SDP_ALL(1);
-            if (getenv("GMB_DBG")) fprintf(stderr, "  [retry] exp/power secant mode after status=%d\n", st);
-            if (SDP_IPM_RUN(1) == 0) st = 0;
+            if (getenv("GMB_DBG")) fprintf(stderr, "  [retry] exp/power %s mode after status=%d\n",
+                                          first ? "Hessian-NT" : "secant", st);
+            if (SDP_IPM_RUN(first ? 0 : 1) == 0) st = 0;
             else { SDP_ALL(0); if (fb_ok) *fb_ok = fb0; }
 #undef SDP_ALL
 #undef SDP_CP

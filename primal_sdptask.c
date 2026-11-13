@@ -79,14 +79,14 @@ static int sdp_bar_row(PRIMALtask_t t, int k, int r, double **symPq, SdpBarList 
 
 /* Free the block data of the conversion: the PSD lists (BL, each matrix and
  * the list arrays) and the SOC and exp/power vectors.  NULL-safe. */
-static void sdp_blocks_free(int nb, SdpBarList *BL, int nsv, double **Sval, int nep, double **Eval) {
+static void sdp_blocks_free(int nb, SdpBarList *BL, int nsv, double **Sval, int nev, double **Eval) {
     if (BL) for (int b = 0; b < nb; b++) {
         for (int e = 0; e < BL[b].n; e++) free(BL[b].val[e]);
         free(BL[b].row); free(BL[b].val); }
     free(BL);
     if (Sval) for (int q = 0; q < nsv; q++) free(Sval[q]);
     free(Sval);
-    if (Eval) for (int q = 0; q < 3 * nep; q++) free(Eval[q]);
+    if (Eval) for (int q = 0; q < nev; q++) free(Eval[q]);
     free(Eval);
 }
 
@@ -319,6 +319,9 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     }
 
     /* ---- represent each scalar var as const + sum coef * newvar (>= 0) ---- */
+    int *absBlk = NULL, *absPos = NULL, *memCnt = NULL;   /* absorbed cone members, see below */
+    SdpTri TE = { 0, 0, NULL, NULL, NULL };               /* exp-block entries: r = row, c = 3*block + coordinate */
+    int nElink = 0, nEval = 0;
     int nv2 = 0, m2 = 0;
     int *vN = (int *)calloc((size_t)(nvar > 0 ? nvar : 1), sizeof(int));
     int *vIdx = (int *)calloc((size_t)(nvar > 0 ? nvar : 1) * 2, sizeof(int));
@@ -331,6 +334,40 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     int *rowSlack = (int *)malloc((size_t)(ncon > 0 ? ncon : 1) * 2 * sizeof(int));
     if (!vN || !vIdx || !vCoef || !vConst || !varRow || !varSlack || !varCap || !rowOf || !rowSlack) goto fail_row;
     for (int i = 0; i < nvar; i++) { varRow[i] = -1; varSlack[i] = -1; varCap[i] = 0.0; }
+    /* ---- cone members that ARE the cone coordinate (attempts.md F201) ----
+     * A member of an exp/power cone normally becomes a new coordinate z_a tied to its variable by a
+     * linking row z_a - sg*x = 0, and the variable stays as a scalar column (two when it is free).
+     * When the variable sits in exactly one position of one cone and is free -- or carries only a
+     * bound the cone already implies (the t and u coordinates are nonnegative) -- it is absorbed:
+     * no scalar column, no linking row; its coefficients in the data rows act on the block directly
+     * and its cost goes to the block.  The model is the same, the KKT system is smaller. */
+    absBlk = (int *)malloc((size_t)(nvar > 0 ? nvar : 1) * sizeof(int));
+    absPos = (int *)calloc((size_t)(nvar > 0 ? nvar : 1), sizeof(int));
+    memCnt = (int *)calloc((size_t)(nvar > 0 ? nvar : 1), sizeof(int));
+    if (!absBlk || !absPos || !memCnt) goto fail_row;
+    for (int i = 0; i < nvar; i++) absBlk[i] = -1;
+    for (int k = 0; k < t->numcones; k++)
+        for (int a = 0; a < t->cone_nmem[k]; a++) memCnt[t->cone_mem[k][a]]++;
+    if (!getenv("GMB_NO_EXP_ABSORB"))
+        for (int i = 0; i < nep; i++) {
+            const int *mem = t->cone_mem[eOf[i]];
+            for (int a = 0; a < 3; a++) {
+                int v = mem[a], bk = t->bkx[v];
+                double lo = t->blx[v], up = t->bux[v];
+                if (memCnt[v] != 1 || t->vartype[v] != PRIMAL_VAR_TYPE_CONT) continue;
+                if (bk == PRIMAL_BK_RA) {
+                    if (!isfinite(lo) && !isfinite(up)) bk = PRIMAL_BK_FR;
+                    else if (!isfinite(lo)) bk = PRIMAL_BK_UP;
+                    else if (!isfinite(up)) bk = PRIMAL_BK_LO;
+                }
+                int ok = bk == PRIMAL_BK_FR;
+                /* z_0 and z_1 are nonnegative in PEXP, PPOW and RPOW; x = sg*z */
+                if (a < 2 && eSgn[i] > 0 && bk == PRIMAL_BK_LO && lo <= 0.0) ok = 1;
+                if (a < 2 && eSgn[i] < 0 && bk == PRIMAL_BK_UP && up >= 0.0) ok = 1;
+                if (ok) { absBlk[v] = i; absPos[v] = a; }
+            }
+        }
+    for (int i = 0; i < nep; i++) for (int a = 0; a < 3; a++) if (absBlk[t->cone_mem[eOf[i]][a]] != i || absPos[t->cone_mem[eOf[i]][a]] != a) nElink++;
     for (int i = 0; i < nvar; i++) {
         int bk = t->bkx[i];
         double lo = t->blx[i], up = t->bux[i];
@@ -339,6 +376,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             else if (!isfinite(lo)) bk = PRIMAL_BK_UP;
             else if (!isfinite(up)) bk = PRIMAL_BK_LO;
         }
+        if (absBlk[i] >= 0) { vN[i] = 0; vConst[i] = 0.0; continue; }
         if (bk == PRIMAL_BK_FR) { vN[i] = 2; vIdx[2*i] = nv2++; vIdx[2*i+1] = nv2++; vCoef[2*i] = 1.0; vCoef[2*i+1] = -1.0; }
         else if (bk == PRIMAL_BK_LO) { vN[i] = 1; vIdx[2*i] = nv2++; vCoef[2*i] = 1.0; vConst[i] = lo; }
         else if (bk == PRIMAL_BK_UP) { vN[i] = 1; vIdx[2*i] = nv2++; vCoef[2*i] = -1.0; vConst[i] = up; }
@@ -357,7 +395,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
         else if (bk == PRIMAL_BK_FX) { m2 += 1; rowSlack[2*k] = rowSlack[2*k+1] = -1; }
         else { m2 += 1; rowSlack[2*k] = nv2++; rowSlack[2*k+1] = -1; }
     }
-    int mTot = m2 + nSocVar + 3 * nep;
+    int mTot = m2 + nSocVar + nElink;
     /* E2 (mTot x nv2) is built as triplets, never as an array: see SdpTri.
      * The block data are lists (SdpBlk): PSD blocks per block (BL), SOC and
      * exp/power blocks by their linking rows, consecutive per cone. */
@@ -373,12 +411,11 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     double **Sval = (double **)calloc((size_t)(nSocVar > 0 ? nSocVar : 1), sizeof(double *));
     double **Cexp = (double **)calloc((size_t)(nep > 0 ? nep : 1), sizeof(double *));
     int *Ep = (int *)malloc(((size_t)nep + 1) * sizeof(int));
-    int *Erow = (int *)malloc((size_t)(nep > 0 ? 3 * nep : 1) * sizeof(int));
-    double **Eval = (double **)calloc((size_t)(nep > 0 ? 3 * nep : 1), sizeof(double *));
-    if (!b2 || !c2 || !BL || !Csoc || !Sp || !Srow || !Sval || !Cexp || !Ep || !Erow || !Eval) goto fail_exp;
+    int *Erow = NULL;
+    double **Eval = NULL;
+    if (!b2 || !c2 || !BL || !Csoc || !Sp || !Srow || !Sval || !Cexp || !Ep) goto fail_exp;
     for (int i = 0; i < nsoc; i++) Sp[i] = socOf[i];
     Sp[nsoc] = nSocVar;
-    for (int i = 0; i <= nep; i++) Ep[i] = 3 * i;
     for (int i = 0; i < nsoc; i++) {
         Csoc[i] = (double *)calloc((size_t)socdim[i], sizeof(double));
         if (!Csoc[i]) goto fail_abar;
@@ -391,26 +428,24 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     for (int i = 0; i < nep; i++) {
         Cexp[i] = (double *)calloc(3, sizeof(double));
         if (!Cexp[i]) goto fail_abar;
-        for (int a = 0; a < 3; a++) {
-            Erow[3 * i + a] = m2 + nSocVar + 3 * i + a;
-            Eval[3 * i + a] = (double *)calloc(3, sizeof(double));
-            if (!Eval[3 * i + a]) goto fail_abar;
-        }
     }
 #define E2ADD(r_, c_, v_) do { if (sdp_tri_add(&T2, (r_), (c_), (v_))) goto fail_abar; } while (0)
     for (int i = 0; i < nvar; i++) { double ci = s * t->c[i];
+        if (absBlk[i] >= 0) Cexp[absBlk[i]][absPos[i]] += ci * (double)eSgn[absBlk[i]];
         for (int p = 0; p < vN[i]; p++) c2[vIdx[2*i+p]] += ci * vCoef[2*i+p]; }
     for (int k = 0; k < ncon; k++) {
         if (rowOf[k] < 0) continue;
         int r = rowOf[k], bk = t->bkc[k];
         double bb = 0.0;
         for (int e = arp[k]; e < arp[k + 1]; e++) { int i = arj[e]; double a = arv[e]; if (a == 0.0) continue;
+            if (absBlk[i] >= 0) { if (sdp_tri_add(&TE, r, 3 * absBlk[i] + absPos[i], a * (double)eSgn[absBlk[i]])) goto fail_abar; continue; }
             bb += a * vConst[i];
             for (int p = 0; p < vN[i]; p++) E2ADD(r, vIdx[2*i+p], a * vCoef[2*i+p]); }
         if (sdp_bar_row(t, k, r, symPq, BL, bkp, bkb)) goto fail_abar;
         if (bk == PRIMAL_BK_RA) {
             int r2 = r + 1;
             for (int e = arp[k]; e < arp[k + 1]; e++) { int i = arj[e]; double a = arv[e]; if (a == 0.0) continue;
+                if (absBlk[i] >= 0) { if (sdp_tri_add(&TE, r2, 3 * absBlk[i] + absPos[i], a * (double)eSgn[absBlk[i]])) goto fail_abar; continue; }
                 for (int p = 0; p < vN[i]; p++) E2ADD(r2, vIdx[2*i+p], a * vCoef[2*i+p]); }
             if (sdp_bar_row(t, k, r2, symPq, BL, bkp, bkb)) goto fail_abar;
             E2ADD(r, rowSlack[2*k], -1.0); b2[r] = t->blc[k] - bb;
@@ -470,17 +505,60 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     }
     /* ---- exp/power linking rows: z_a = sg * x_{mem[a]}, sg = -1 for DEXP
      * (DEXP = -PEXP) and +1 for PEXP/PPOW/RPOW ---- */
-    for (int i = 0; i < nep; i++) {
+    for (int i = 0, lr = 0; i < nep; i++) {
         const int *mem = t->cone_mem[eOf[i]];
         const double sg = (double)eSgn[i];
         for (int a = 0; a < 3; a++) {
-            int r = m2 + nSocVar + 3 * i + a, v = mem[a];
-            Eval[3 * i + a][a] = 1.0;
+            int v = mem[a];
+            if (absBlk[v] == i && absPos[v] == a) continue;
+            int r = m2 + nSocVar + lr++;
+            if (sdp_tri_add(&TE, r, 3 * i + a, 1.0)) goto fail_abar;
             b2[r] = sg * vConst[v];
             for (int p = 0; p < vN[v]; p++) E2ADD(r, vIdx[2*v+p], -(sg * vCoef[2*v+p]));
         }
     }
 #undef E2ADD
+    {   /* exp/power block lists from the triplets: per block the rows ascending, one entry per row */
+        int *bc = (int *)calloc((size_t)nep + 2, sizeof(int));
+        int *ord = (int *)malloc((size_t)(TE.n > 0 ? TE.n : 1) * sizeof(int));
+        if (!bc || !ord) { free(bc); free(ord); goto fail_abar; }
+        for (int q = 0; q < TE.n; q++) bc[TE.c[q] / 3 + 1]++;
+        for (int i = 0; i < nep; i++) bc[i + 1] += bc[i];
+        {   int *cur = (int *)malloc((size_t)(nep > 0 ? nep : 1) * sizeof(int));
+            if (!cur) { free(bc); free(ord); goto fail_abar; }
+            for (int i = 0; i < nep; i++) cur[i] = bc[i];
+            for (int q = 0; q < TE.n; q++) ord[cur[TE.c[q] / 3]++] = q;
+            free(cur); }
+        for (int i = 0; i < nep; i++)          /* rows ascending inside a block (stable insertion sort) */
+            for (int a = bc[i] + 1; a < bc[i + 1]; a++) {
+                int q = ord[a], b = a - 1;
+                while (b >= bc[i] && TE.r[ord[b]] > TE.r[q]) { ord[b + 1] = ord[b]; b--; }
+                ord[b + 1] = q;
+            }
+        for (int i = 0; i < nep; i++)
+            for (int a = bc[i]; a < bc[i + 1]; a++)
+                if (a == bc[i] || TE.r[ord[a]] != TE.r[ord[a - 1]]) nEval++;
+        Erow = (int *)malloc((size_t)(nEval > 0 ? nEval : 1) * sizeof(int));
+        Eval = (double **)calloc((size_t)(nEval > 0 ? nEval : 1), sizeof(double *));
+        if (!Erow || !Eval) { free(bc); free(ord); goto fail_abar; }
+        int w = 0;
+        for (int i = 0; i < nep; i++) {
+            Ep[i] = w;
+            for (int a = bc[i]; a < bc[i + 1]; a++) {
+                int q = ord[a];
+                if (a == bc[i] || TE.r[q] != TE.r[ord[a - 1]]) {
+                    Erow[w] = TE.r[q];
+                    Eval[w] = (double *)calloc(3, sizeof(double));
+                    if (!Eval[w]) { free(bc); free(ord); goto fail_abar; }
+                    w++;
+                }
+                Eval[w - 1][TE.c[q] % 3] += TE.v[q];
+            }
+        }
+        Ep[nep] = w;
+        free(bc); free(ord);
+        free(TE.r); free(TE.c); free(TE.v); TE.r = TE.c = NULL; TE.v = NULL; TE.n = TE.cap = 0;
+    }
     if (sdp_tri_csr(&T2, mTot, nv2, &E2p, &E2i, &E2v)) goto fail_abar;
     {   /* the PSD block lists, flattened block by block */
         int tot = 0;
@@ -609,6 +687,8 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
             for (int i = 0; i < nvar; i++) { double v = vConst[i];
                 for (int p = 0; p < vN[i]; p++) v += vCoef[2*i+p] * x2[vIdx[2*i+p]];
                 t->x[i] = v; }
+            for (int i = 0; i < nvar; i++)
+                if (absBlk[i] >= 0) t->x[i] = (double)eSgn[absBlk[i]] * Zexp[absBlk[i]][absPos[i]];
             for (int j = 0; j < nb; j++) { int d = t->barDim[j];
                 for (int a = 0; a < d * d; a++) t->barx[j][a] = Xb[j][a]; }
             for (int k = 0; k < ncon; k++) t->y[k] = (rowOf[k] >= 0) ? -s * y2[rowOf[k]] : 0.0;
@@ -673,9 +753,10 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
     for (int i = 0; i < nep; i++) { free(Zexp ? Zexp[i] : NULL); free(Sexp ? Sexp[i] : NULL); }
     free(Xb); free(Sb); free(Zsoc); free(Ssoc); free(Zexp); free(Sexp); free(x2); free(y2);
     free(xwarm2); free(ywarm2);
-    sdp_blocks_free(nb, BL, nSocVar, Sval, nep, Eval);
+    sdp_blocks_free(nb, BL, nSocVar, Sval, nEval, Eval);
     free(Bp); free(Brow); free(Bval); free(Sp); free(Srow); free(Ep); free(Erow);
     free(E2p); free(E2i); free(E2v); free(b2); free(c2);
+    free(absBlk); free(absPos); free(memCnt);
     for (int i = 0; i < nsoc; i++) free(Csoc[i]);
     for (int i = 0; i < nep; i++) free(Cexp[i]);
     free(Csoc); free(Cexp);
@@ -694,12 +775,13 @@ fail_abar:
     if (Csoc) for (int i = 0; i < nsoc; i++) free(Csoc[i]);
     if (Cexp) for (int i = 0; i < nep; i++) free(Cexp[i]);
 fail_exp:
-    sdp_blocks_free(nb, BL, nSocVar, Sval, nep, Eval);
+    sdp_blocks_free(nb, BL, nSocVar, Sval, nEval, Eval);
     free(Bp); free(Brow); free(Bval); free(Sp); free(Srow); free(Ep); free(Erow);
     free(Csoc); free(Cexp);
     free(T2.r); free(T2.c); free(T2.v); free(E2p); free(E2i); free(E2v);
     free(b2); free(c2);
 fail_row:
+    free(absBlk); free(absPos); free(memCnt); free(TE.r); free(TE.c); free(TE.v);
     free(vN); free(vIdx); free(vCoef); free(vConst);
     free(arp); free(arj); free(arv); free(bkp); free(bkb);
     free(varRow); free(varSlack); free(varCap);

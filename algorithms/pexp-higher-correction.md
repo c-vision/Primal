@@ -116,6 +116,50 @@ modes. Forced sparse mode reproduced the same two DEXP checks that fail
 on the baseline. An injected sparse factorization failure verified the
 retry and reproduced the dense result.
 
+### Mixed SOC and exponential cones, 2026-11-12
+
+Three changes closed most of the gap on the mixed class, each measured on
+`bench/pexp_bench.c` (the instance that used to live only in a scratch
+directory; `bench/pexp_bench.py` rebuilds the table and asserts the optima):
+
+- **No size floor on the sparse trial.** The trial required `order >= 128`
+  on top of the density estimate. With cone-member absorption (below) the
+  20×4 model lands at order 112 and took the dense route, where the sparse
+  one is 2.8× faster (0.98 ms against 2.75 ms). The density estimate is now
+  the only criterion.
+- **Cone-member absorption.** A cone member whose variable occurs in exactly
+  one cone position and is free — or carries only a bound the cone implies —
+  stops being a scalar column plus a linking row: its coefficients act on the
+  block directly and its cost joins the block's cost. Measured: order
+  222 → 112, 438 → 238, 854 → 454 on 20×4/40×8/80×12.
+- **Secant first on the mixed class.** With both a SOC block and exp/power
+  blocks the secant engine runs first and the Hessian-NT chain is the retry
+  (it was the other way round). The recorded counter-example that kept the
+  chain first, `gp1`, has three PEXP cones and no SOC, so it is outside the
+  class; `logistic_large` (40 PEXP + 1 RQUAD) is in the class and is solved
+  by the secant.
+
+Medians of 15 interleaved runs per build, before and after:
+
+| Model | Before (ms) | After (ms) | Gain |
+|---|---:|---:|---:|
+| 20×4 | 0.99 | 0.70 | 29% |
+| 40×8 | 2.37 | 1.45 | 39% |
+| 80×12 | 7.39 | 3.68 | 50% |
+
+The published point was compared field by field between the two builds
+(`x`, `y`, `slx`, `sux` in `--dump` mode): it agrees to 1e-5 relative, well
+inside what two different trajectories of a scaled cone problem can be
+expected to agree, and it measures in the model (`rel_pri`, `rel_dual`,
+`rel_gap` inside `1e-8`, `[cones] rel_slack = 0`). The focused conic/exp
+group (T36, T47, T75-T83, T86, T87, T90-T92, T96, T97, T100, T101, T161,
+T172) passes with `PASS: 993 FAIL: 0`.
+
+Known deviation: absorption makes `PRIMAL_putxx` silently partial — the warm
+value of an absorbed variable is not used to seed the cone coordinate. The
+infeasible-start engine does not need it; a caller that relies on the warm
+point for those variables loses it.
+
 ## Stopping with a verified point
 
 The corrected mixed route can finish the polish once its absolute primal
