@@ -115,9 +115,9 @@ Wheels for macOS and Linux are on PyPI. Examples are in
 
 ## Julia
 
-The package **`Primal`** lives in [`julia/`](julia/) and is also a
+The package **`PrimalSolver`** lives in [`julia/`](julia/) and is also a
 [JuMP](https://jump.dev) solver. To install it next to JuMP (Julia 1.10 or
-later and a C compiler; the first `using Primal` compiles the C library):
+later and a C compiler; the first `using PrimalSolver` compiles the C library):
 
 ```sh
 git clone https://github.com/c-vision/Primal.git
@@ -125,9 +125,9 @@ julia -e 'using Pkg; Pkg.develop(path="Primal/julia"); Pkg.add("JuMP")'
 ```
 
 ```julia
-using JuMP, Primal
+using JuMP, PrimalSolver
 
-model = Model(Primal.Optimizer)
+model = Model(PrimalSolver.Optimizer)
 @variable(model, 0 <= x <= 3.5)
 @variable(model, y >= 0)
 @constraint(model, c, x + y <= 4)
@@ -172,48 +172,49 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 ## Benchmarks
 
-Measured on **2026-11-11** on Apple Silicon (arm64), macOS 27.2,
+Measured on **2026-11-12** on Apple Silicon (arm64), macOS 27.2,
 with Apple clang 21 and C99 `-O2`. Times are in seconds. **Bold**
-marks the lowest median in each row. LP and QP use 18 interleaved runs,
-MILP uses 10, SOCP uses 62, and SDP uses 9. Every run passed its
-family's objective check.
+marks the lowest median in each row. Each cell is the median of **15**
+independent aggregations of `bench/bench_all.py`
+(`tools/bench_repeat.py --runs 15`); the objective column is identical in all
+5, and every aggregation runs the cross-solver objective check.
 
 <div>
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | **0.000155** | 0.001244 | 0.000186 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | **0.000667** | 0.001680 | 0.000692 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | **0.001452** | 0.003473 | 0.002213 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | **0.006628** | 0.012103 | 0.011252 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | **0.000387** | N/A | 0.000436 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | **0.001417** | N/A | 0.002323 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | **0.006521** | N/A | 0.007768 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | **0.052348** | 0.053213 | N/A | N/A | 0.163044 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | **0.104906** | 0.105812 | N/A | N/A | 0.285295 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | **0.231495** | 0.384718 | N/A | N/A | 1.131415 | 277.019 |
-| socp_40 | socp | 60 x 1 | - | **0.000068** | N/A | 0.000087 | 0.000278 | N/A | 0.707107 |
-| socp_120 | socp | 180 x 1 | - | **0.000187** | N/A | 0.000217 | 0.000892 | N/A | 0.707107 |
-| socp_200 | socp | 300 x 1 | - | **0.000336** | N/A | 0.000438 | 0.001414 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | **0.000020** | N/A | 0.000108 | 0.000209 | N/A | -9.83233 |
-| sdp_5 | sdp | 5 x 5 | - | **0.000021** | N/A | 0.000141 | 0.000246 | N/A | -4.79948 |
-| sdp_6 | sdp | 6 x 6 | - | **0.000025** | N/A | 0.000185 | 0.000292 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | **0.000026** | N/A | 0.000278 | 0.000490 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | **0.000028** | N/A | 0.000400 | 0.000546 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | **0.000034** | N/A | 0.000556 | 0.000460 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | **0.000035** | N/A | 0.000704 | 0.000766 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | **0.000036** | N/A | 0.001114 | 0.001677 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | **0.000041** | N/A | 0.001643 | 0.000958 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | **0.000046** | N/A | 0.001894 | 0.001100 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | **0.000048** | N/A | 0.002047 | 0.001160 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | **0.000052** | N/A | 0.002475 | 0.001420 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | **0.000058** | N/A | 0.003542 | 0.001554 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | **0.000062** | N/A | 0.004304 | 0.001870 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | **0.000066** | N/A | 0.004575 | 0.002122 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | **0.000071** | N/A | 0.004198 | 0.002016 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | **0.000085** | N/A | 0.006187 | 0.002674 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | **0.000087** | N/A | 0.008716 | 0.004171 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | **0.000095** | N/A | 0.010539 | 0.008599 | N/A | -149.613 |
+| lp_50x25 | lp | 50 x 25 | 171 | 0.0002 | 0.0018469 | **0.0001729** | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | **0.0006** | 0.0020062 | 0.000723 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | **0.0016** | 0.0039667 | 0.0021485 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | **0.0073** | 0.013067 | 0.0133544 | N/A | N/A | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | **0.0004** | N/A | 0.0004198 | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | **0.0016** | N/A | 0.0022352 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | **0.0065** | N/A | 0.0078989 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | **0.0497** | N/A | N/A | N/A | 0.1614309 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | **0.1026** | N/A | N/A | N/A | 0.2892254 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | **0.2235** | N/A | N/A | N/A | 1.1191591 | 277.019 |
+| socp_40 | socp | 60 x 1 | - | 0.000136 | N/A | **0.0001001** | 0.0003133 | N/A | 0.707107 |
+| socp_120 | socp | 180 x 1 | - | **0.000198** | N/A | 0.0002286 | 0.0007305 | N/A | 0.707107 |
+| socp_200 | socp | 300 x 1 | - | **0.000298** | N/A | 0.0004684 | 0.0011015 | N/A | 0.707107 |
+| sdp_4 | sdp | 4 x 4 | - | **0.000027** | N/A | 0.0001677 | 0.000218 | N/A | -9.83233 |
+| sdp_5 | sdp | 5 x 5 | - | **0.00001** | N/A | 0.0001435 | 0.0002089 | N/A | -4.79948 |
+| sdp_6 | sdp | 6 x 6 | - | **0.00001** | N/A | 0.0001958 | 0.0002428 | N/A | -10.2438 |
+| sdp_7 | sdp | 7 x 7 | - | **0.000012** | N/A | 0.000265 | 0.0004205 | N/A | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | **0.000014** | N/A | 0.0004052 | 0.0004866 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | **0.000016** | N/A | 0.0005773 | 0.0003954 | N/A | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | **0.000017** | N/A | 0.0007208 | 0.0007054 | N/A | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | **0.00002** | N/A | 0.0011122 | 0.0017001 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | **0.000021** | N/A | 0.0017985 | 0.0009701 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | **0.000026** | N/A | 0.0020243 | 0.0011125 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | **0.000029** | N/A | 0.0020907 | 0.0010707 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | **0.000032** | N/A | 0.002432 | 0.001329 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | **0.000032** | N/A | 0.0035239 | 0.0014924 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | **0.000041** | N/A | 0.0043605 | 0.0018023 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | **0.000048** | N/A | 0.0045971 | 0.0020848 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | **0.000047** | N/A | 0.004302 | 0.0020414 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | **0.000066** | N/A | 0.0066506 | 0.0024955 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | **0.00006** | N/A | 0.0092842 | 0.0039946 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | **0.000077** | N/A | 0.0107491 | 0.0086255 | N/A | -149.613 |
 
 </div>
 
@@ -234,17 +235,22 @@ Each regression model uses one rotated quadratic cone for the quadratic
 penalty and one primal exponential cone per observation. Sizes give
 observations × features.
 
-| Instance | Primal (ms) | Clarabel (ms) |
-|---|---:|---:|
-| 20×4 | 0.91 / 0.94 | **0.32 / 0.28** |
-| 40×8 | 2.60 / 2.57 | **0.67 / 0.62** |
-| 80×12 | 6.58 / 6.54 | **2.88 / 2.77** |
+| Instance | Primal (ms) | Clarabel (ms) | ratio |
+|---|---:|---:|---:|
+| 20×4 | 0.59 | **0.29** | 2.1× |
+| 40×8 | 1.37 | **0.63** | 2.2× |
+| 80×12 | 3.73 | **2.72** | 1.4× |
 
-Measured on 2026-11-12. Each cell shows two medians from 21 interleaved
-measurements per series. Primal timings cover `PRIMAL_optimize`. Clarabel 0.11.1
-runs at one thread and includes solver construction. The results met
-the `1e-8` benchmark checks for objective agreement, feasibility,
-stationarity and relative gap. See the [mixed-cone benchmark notes](algorithms/pexp-higher-correction.md#sparse-kkt-selection).
+Measured on 2026-11-12 with `bench/pexp_bench.py --runs 21`, repeated three
+times: each cell is the median of the three medians, from interleaved runs of
+both solvers. The instance is generated by
+`bench/pexp_bench.c` from its own seed, so the table is reproducible from a
+clean checkout; the script asserts every answer against the known optima
+(`18.718151648415301`, `47.09337729630259`, `81.84315908327622`) and the
+`1e-8` relative triple. Primal timings cover `PRIMAL_optimize`; Clarabel 0.11.1
+runs at one thread and includes solver construction. See the
+[mixed-cone benchmark notes](algorithms/pexp-higher-correction.md#mixed-soc-and-exponential-cones-2026-11-12)
+for what moved the numbers.
 
 ## Documentation
 

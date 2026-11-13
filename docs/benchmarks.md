@@ -1,18 +1,20 @@
 # Benchmark methodology
 
-The README reports 32 instances measured on 2026-11-11. Each row
-shows the median of interleaved runs and highlights the fastest solver.
-The mixed SOC/PEXP comparison reports two medians from 21 interleaved
-measurements each. The refreshed mixed-cone timings and binary hashes
-are in `out/f191/three-builds.json` on the benchmark machine.
+The README reports 32 instances measured on 2026-11-12. Each cell is the
+median of **15** independent aggregations of `bench/bench_all.py`
+(`tools/bench_repeat.py --runs 15`), and the aggregator verifies that every
+objective is identical across the 15. The mixed SOC/PEXP table is a separate
+harness: `bench/pexp_bench.c` defines and times the instance, and
+`bench/pexp_bench.py` interleaves 21 runs per cell against Clarabel and
+asserts the three known optima.
 
-| Family | Measurements per solver and instance | Accuracy checks |
+| Family | Independent aggregations | Accuracy checks |
 |---|---:|---|
-| LP and QP | 18 | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
-| MILP | 10 | Optimal status and objective agreement, with Primal feasibility and integrality within `1e-8` |
-| SOCP | 62 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
-| SDP | 9 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
-| Mixed SOC/PEXP | 42 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
+| LP and QP | 15 | Objective agreement, primal feasibility, stationarity and relative gap within `1e-8` |
+| MILP | 15 | Optimal status and objective agreement, with Primal feasibility and integrality within `1e-8` |
+| SOCP | 15 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
+| SDP | 15 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
+| Mixed SOC/PEXP | 21 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
 
 Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
 for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
@@ -48,7 +50,8 @@ Close medians can change order across runs.
 
 For SOCP, the family parameter n describes n free x coordinates and n/2 cone
 epigraph variables, so the model has 3n/2 scalar variables and one explicit
-equality. The README corrects the old harness dimension label accordingly.
+equality; `bench/bench_all.py` reports that count (the old harness printed n,
+which is why the earlier tables read `40 x 1` instead of `60 x 1`).
 For SDP, the d×d size describes the PSD matrix, not d scalar variables.
 
 ## Accuracy limits
@@ -87,8 +90,9 @@ machine otherwise idle.
 
 ```sh
 make bench
-python3 tools/bench_repeat.py --runs 5 --out out/benchmark-median.md
+python3 tools/bench_repeat.py --runs 15 --out out/benchmark-median.md
 python3 tools/bench_repeat.py --check-rows-only
+python3 bench/pexp_bench.py --runs 21          # the mixed SOC/PEXP table
 ```
 
 Use a Python environment containing NumPy, SciPy, Clarabel, SCS and PySCIPOpt.
@@ -96,13 +100,14 @@ The harness and deterministic instances live under `bench/`; the aggregator
 lives in `tools/bench_repeat.py`. On the development machine these dependencies
 were supplied by the existing `env-bench` environment.
 
-The 2026-11-11 snapshot used an isolated build. It was refreshed the same day
-on a build of the tree that carries the presolve and dual-ray corrections; the
-comparison scripts, raw timings, accuracy checks and binary hashes are retained
-under `out/readme-20261111r/` on the benchmark machine (the earlier measurement
-is in `out/readme-20261111/`). The refresh ran on a machine with other
-processes (load average 10 to 15 on 18 cores), with the solvers interleaved so
-that every instance saw the same conditions. Two MILP rows are within noise of
+The 2026-11-12 snapshot was taken on an otherwise idle machine after the four
+optimization-level builds of the test suite had finished, on the tree that
+carries the cone-member absorption, the sparse-routing change and the
+secant-first choice on mixed models. The earlier snapshots and their raw
+timings remain under `out/readme-20261111r/` and `out/readme-20261111/` on the
+benchmark machine; their absolute numbers are not comparable with this one,
+because the machine was running other work (load average 10 to 15 on 18
+cores). Two MILP rows are within noise of
 HiGHS: on `milp_40x20` the first full run gave 53.2 ms for Primal and 48.4 ms for
 HiGHS, and a later repeat of the MILP family (the one in the table) 52.3 ms and
 53.2 ms; on `milp_60x30` the two runs gave 108.1 and 104.9 ms against 97.5 and
