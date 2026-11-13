@@ -8,8 +8,8 @@
 # side a -> r* = a/sqrt(3). Port of examples/c/min_enclosing_ball.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Smallest enclosing ball of the k points in P (k x 2); returns (ok, radius, center).
 # Variables: px, py, r, then a per-point difference (dx_i, dy_i).

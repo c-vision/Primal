@@ -12,8 +12,8 @@
 # Port of examples/c/f_sparc.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const SIGMA = 10.0
 const PMAX = 36.0

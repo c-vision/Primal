@@ -6,7 +6,7 @@
 #
 # Usage:
 #   julia tools/gen_bindings.jl                 # reads ../primal.h (live C repo)
-#   PRIMAL_C_SRC=/path/to/Primal julia tools/gen_bindings.jl
+#   PRIMAL_C_SRC=/path/to/PrimalSolver julia tools/gen_bindings.jl
 
 using Printf
 
@@ -236,7 +236,7 @@ function main()
     push!(lines, "    build = joinpath(_PKG_DIR, \"deps\", \"build.jl\")")
     push!(lines, "    sources = get(ENV, \"PRIMAL_C_SRC\", dirname(_PKG_DIR))")
     push!(lines, "    if isfile(build) && isfile(joinpath(sources, \"primal.h\"))")
-    push!(lines, "        @info \"Primal: compiling the C library (first use)\"")
+    push!(lines, "        @info \"PrimalSolver: compiling the C library (first use)\"")
     push!(lines, "        run(`\$(Base.julia_cmd()) --startup-file=no \$build`)")
     push!(lines, "        dep = joinpath(_PKG_DIR, \"deps\", PRIMAL_LIBNAME)")
     push!(lines, "        isfile(dep) && return dep")

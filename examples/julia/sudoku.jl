@@ -6,8 +6,8 @@
 # respects every given. Port of examples/c/sudoku.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const M = 2
 const N = M * M                                     # 4

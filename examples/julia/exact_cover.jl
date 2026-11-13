@@ -10,8 +10,8 @@
 # Port of examples/c/exact_cover.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Returns (1, bricks) if solved to optimality, (0, 0) if infeasible, (-1, 0) on another failure.
 function cover(R, C, h, w)

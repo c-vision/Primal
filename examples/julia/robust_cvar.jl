@@ -10,8 +10,8 @@
 # -0.10, the nominal -0.15: robustness costs 0.05. Port of examples/c/robust_cvar.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # robust: subtract the box radius from each scenario return
 function solve_cvar(robust)

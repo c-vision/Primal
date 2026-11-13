@@ -10,8 +10,8 @@
 # Port of examples/c/primal_svm.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Solve one SVM; returns (ok, obj, w, b).
 function svm(nd, nim, X, y, c)

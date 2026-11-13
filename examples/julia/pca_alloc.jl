@@ -9,8 +9,8 @@
 # Port of examples/c/pca_alloc.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     mu = [0.2069, 0.0587, 0.1052, 0.0243]

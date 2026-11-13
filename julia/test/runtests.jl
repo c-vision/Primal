@@ -1,4 +1,4 @@
-# runtests.jl — Primal.jl test suite: `Pkg.test("Primal")`, or
+# runtests.jl — PrimalSolver.jl test suite: `Pkg.test("PrimalSolver")`, or
 #
 #     julia --project=julia/test julia/test/runtests.jl
 

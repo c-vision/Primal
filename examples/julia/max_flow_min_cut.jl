@@ -9,8 +9,8 @@
 # enumerated independently. Port of examples/c/max_flow_min_cut.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NARC = 5
 const ARCF = [0, 0, 1, 2, 1]                        # arc table: from, to, capacity

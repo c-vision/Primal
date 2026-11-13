@@ -12,8 +12,8 @@
 # 3.0% / 32.0%, total cost 49.16 cents/kg. Port of examples/c/oa_feed.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(4, 3)

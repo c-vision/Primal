@@ -8,8 +8,8 @@
 # give y = 1 + 0.5 (1.5 - 1) = 0.75. Port of examples/c/sos2.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)

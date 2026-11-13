@@ -10,8 +10,8 @@
 # Port of examples/c/boyd_corr_sdp.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # index of the correlation variable for pair (i,j), i<j
 const RIDX = [-1 0 1 2; -1 -1 3 4; -1 -1 -1 5; -1 -1 -1 -1]

@@ -12,8 +12,8 @@
 
 using Printf
 using Libdl
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 4
 const Q = [2.0 -2 0 0; -2 2 -2 0; 0 -2 2 -2; 0 0 -2 2]
@@ -71,7 +71,7 @@ function main()
         f < best && ((best, bx) = (f, x))
     end
     ev, evec = zeros(N + 1), zeros((N + 1) * (N + 1))
-    ccall(Libdl.dlsym(Primal._lib(), :dmat_eig_jacobi), Cvoid,
+    ccall(Libdl.dlsym(PrimalSolver._lib(), :dmat_eig_jacobi), Cvoid,
           (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), N + 1, Z, ev, evec)
     mineig = minimum(ev)
     okall = ok && sdp <= best + 1e-6 && mineig > -1e-7

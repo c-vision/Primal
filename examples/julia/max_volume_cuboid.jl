@@ -13,8 +13,8 @@
 # Port of examples/c/max_volume_cuboid.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # each face is a0*x0 + a1*x1 <= b
 const SQ = [-1.0 0 0; 0 -1 0; 1 0 1; 0 1 1]

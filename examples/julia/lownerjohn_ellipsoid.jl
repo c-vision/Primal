@@ -10,8 +10,8 @@
 # d = (1/2, 1/2), t = 1/2. Port of examples/c/lownerjohn_ellipsoid.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     T, D0, D1, X00, X01, X11, Z00, Z11, UU, AA, BB, CC, EE, NV = 0:13

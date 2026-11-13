@@ -9,8 +9,8 @@
 # Port of examples/c/filter_design.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NF = 3                                        # polynomial degree n
 const M_PI = 3.14159265358979323846

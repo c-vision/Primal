@@ -8,8 +8,8 @@
 # Port of examples/c/boyd_lp_unique.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     A = [-1.0 -6 1 3; -1 -2 7 1; 0 3 -10 -1; -6 -11 -2 12; 1 6 -1 -3]

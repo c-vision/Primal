@@ -12,8 +12,8 @@
 # Port of examples/c/lyapunov_roa.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NROW = 28
 const TS = [(i, j) for i in 0:9 for j in i:9]       # upper-triangle pairs of QS (55)

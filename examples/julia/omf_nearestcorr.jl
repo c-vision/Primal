@@ -11,8 +11,8 @@
 # Port of examples/c/omf_nearestcorr.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 4
 const A = [1.0 0.8 0.5 0.2; 0.8 1.0 0.9 0.1; 0.5 0.9 1.0 0.7; 0.2 0.1 0.7 1.0]

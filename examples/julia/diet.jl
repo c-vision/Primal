@@ -9,8 +9,8 @@
 # x = (1, 2, 1), cost 5; y = (1/3, 1/3, 2), value 5. Port of examples/c/diet.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NF = 3
 const NN = 3

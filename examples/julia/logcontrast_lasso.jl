@@ -13,8 +13,8 @@
 # Port of examples/c/logcontrast_lasso.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NF = 3                                        # features
 const NS = 16                                       # samples

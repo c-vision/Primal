@@ -10,8 +10,8 @@
 # MIP must improve on its warm start. Port of examples/c/lpt.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const M = 2
 const NT = 5

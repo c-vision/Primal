@@ -11,8 +11,8 @@
 # edges. Port of examples/c/surface_cycles.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 4                                         # sides of the cylinder
 const NV = 2N                                       # 8 vertices

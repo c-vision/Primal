@@ -10,8 +10,8 @@
 # Port of examples/c/nearestcorrelation.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 3
 const A = [2.0 -1.0 0.0; -1.0 2.0 -1.0; 0.0 -1.0 2.0]

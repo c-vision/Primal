@@ -10,8 +10,8 @@
 # Port of examples/c/acc1_max.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     X0, X1, X2, Z1, Z2, GAMMA = 0, 1, 2, 3, 4, 5

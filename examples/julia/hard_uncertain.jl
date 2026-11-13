@@ -10,8 +10,8 @@
 # Port of examples/c/hard_uncertain.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const L = 1
 const NP = 2

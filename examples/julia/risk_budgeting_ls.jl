@@ -11,8 +11,8 @@
 # obj = 0.5 + 0.34657359. Port of examples/c/risk_budgeting_ls.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Solve for N assets with S = G G' (G row-major), budgets b, aversion a;
 # returns (ok, objective, |x|).

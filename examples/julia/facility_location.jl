@@ -9,8 +9,8 @@
 # on a line, k = 2: neighbours pair up, t = 0.5. Port of examples/c/facility_location.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NP = 4                                        # points
 const NK = 2                                        # balls

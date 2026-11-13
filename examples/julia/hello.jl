@@ -3,8 +3,8 @@
 # min x, x in [2, 4]  ->  x = 2, obj = 2. Port of examples/c/hello.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)

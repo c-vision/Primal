@@ -10,8 +10,8 @@
 # Port of examples/c/bounded_real_lmi.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     B, C, D = 1.0, 1.0, 0.0                         # SISO, A = -1, |CB|/|A| = 1

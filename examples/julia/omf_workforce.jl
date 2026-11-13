@@ -11,8 +11,8 @@
 # Port of examples/c/omf_workforce.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const D = 7
 const DEMAND = [14.0, 13, 15, 16, 19, 18, 11]

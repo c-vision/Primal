@@ -11,8 +11,8 @@
 # Port of examples/c/boyd_detector.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     P0 = [0.70, 0.20, 0.05, 0.05]                   # hyp 1 column

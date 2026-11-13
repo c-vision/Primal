@@ -33,7 +33,7 @@ function _primaldl()
     build = joinpath(_PKG_DIR, "deps", "build.jl")
     sources = get(ENV, "PRIMAL_C_SRC", dirname(_PKG_DIR))
     if isfile(build) && isfile(joinpath(sources, "primal.h"))
-        @info "Primal: compiling the C library (first use)"
+        @info "PrimalSolver: compiling the C library (first use)"
         run(`$(Base.julia_cmd()) --startup-file=no $build`)
         dep = joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME)
         isfile(dep) && return dep

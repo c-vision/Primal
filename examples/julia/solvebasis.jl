@@ -12,9 +12,9 @@
 # Optimum x* = (0, 0, 15, 0), pobj = 75. Port of examples/c/solvebasis.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B = PrimalSolver.Bindings
 
 const SK_BAS, SK_LOW, SK_UPR = 1, 3, 4             # PRIMALstakeye, as primal.h
 

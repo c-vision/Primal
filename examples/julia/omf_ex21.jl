@@ -11,8 +11,8 @@
 # The book's simplex ends at x = (50, 50), Z = 350. Port of examples/c/omf_ex21.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(3, 2)

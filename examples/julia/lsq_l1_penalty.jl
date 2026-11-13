@@ -10,8 +10,8 @@
 # Port of examples/c/lsq_l1_penalty.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Conic model; returns (objective or -1, w).
 function l1_solve(N, M, X, b, gam, w0)

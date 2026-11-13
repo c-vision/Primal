@@ -1,4 +1,4 @@
-# MOI_wrapper.jl — MathOptInterface conformance tests for Primal.Optimizer.
+# MOI_wrapper.jl — MathOptInterface conformance tests for PrimalSolver.Optimizer.
 #
 #     julia --project=julia/test julia/test/MOI_wrapper.jl
 #
@@ -10,10 +10,10 @@ module TestPrimalMOI
 
 using Test
 import MathOptInterface as MOI
-import Primal
+import PrimalSolver
 
 function optimizer()
-    inner = MOI.OptimizerWithAttributes(Primal.Optimizer, MOI.Silent() => true)
+    inner = MOI.OptimizerWithAttributes(PrimalSolver.Optimizer, MOI.Silent() => true)
     return MOI.instantiate(inner; with_bridge_type = Float64, with_cache_type = Float64)
 end
 
@@ -48,7 +48,7 @@ const LOOSE = Dict{String,Float64}(
     "test_conic_DualExponentialCone_VectorOfVariables" => 2e-5,
     "test_conic_DualPowerCone_VectorAffineFunction" => 2e-5,
     "test_conic_DualPowerCone_VectorOfVariables" => 2e-5,
-    # Primal values are off by 5.9e-6 on u ~ -1.6487 (3.6e-6 relative, measured
+    # PrimalSolver values are off by 5.9e-6 on u ~ -1.6487 (3.6e-6 relative, measured
     # 2026-11-11) — within the 1e-5 effective tolerance of the near-optimal
     # factor (tol 1e-8 x 1000).
     "test_conic_Exponential_VectorAffineFunction" => 1e-5,

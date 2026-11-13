@@ -11,8 +11,8 @@
 # Port of examples/c/knapsack.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const st = Ref{UInt32}(24681357)
 # Deterministic pseudo-random draw in [0,1] from the fixed seed.

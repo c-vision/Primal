@@ -11,8 +11,8 @@
 # check is the value plus face membership. Port of examples/c/transaction_cost.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     x0 = [-20.0, -50.0, -10.0]

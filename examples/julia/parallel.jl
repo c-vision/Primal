@@ -9,8 +9,8 @@
 # Port of examples/c/parallel.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     A, Bt, C = Model(0, 0), Model(0, 0), Model(0, 0)

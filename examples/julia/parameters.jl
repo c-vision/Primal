@@ -7,9 +7,9 @@
 # Port of examples/c/parameters.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B = PrimalSolver.Bindings
 
 const IPAR_LOG = 4
 const IPAR_SIMPLEX_MAX_ITERATIONS = 10

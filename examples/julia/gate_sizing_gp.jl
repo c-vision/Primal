@@ -11,8 +11,8 @@
 # D* = 3.19761770. Port of examples/c/gate_sizing_gp.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NV = 6                                        # s1 s2 T1 T2 V2 D
 const S1, S2, T1, T2, V2, D = 0:5

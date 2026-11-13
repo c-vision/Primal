@@ -8,8 +8,8 @@
 # Port of examples/c/portfolio_2.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Solve the Markowitz QP for one gamma; returns (ok, x, risk, return).
 function solve_gamma(gamma)

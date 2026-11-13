@@ -11,8 +11,8 @@
 # sigma^2 = (1, 1), P = 1: t* = 10/21. Port of examples/c/sinr_balancing.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 2
 const G = [1.0 0.1; 0.1 1.0]

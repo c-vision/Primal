@@ -9,8 +9,8 @@
 # Known optimum: obj = 1/sqrt(2) ~ 0.7071. Port of examples/c/cqo1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)

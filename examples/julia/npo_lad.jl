@@ -9,8 +9,8 @@
 # LP form: x free, z >= 0, z >= +/-(Ax - y). Port of examples/c/npo_lad.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     y = [0.324886, -4.428305, -12.854561, -20.393083, -32.854574,

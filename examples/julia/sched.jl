@@ -11,8 +11,8 @@
 # Port of examples/c/sched.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N, M = 30, 6
 const T = [97.328509, 93.040884, 68.870958, 57.771417, 54.733747, 28.056097,

@@ -9,8 +9,8 @@
 # |(0,1) - c| = sqrt(8)/5. Port of examples/c/qcqp_sdo_relaxation.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # The SDO relaxation; returns (rc, value).
 function sdo_relax(c)

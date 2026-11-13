@@ -11,8 +11,8 @@
 # Port of examples/c/steering_robustness.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # complex numbers as (re, im) tuples, multiplied in the C sample's order
 cmul(a, b) = (a[1] * b[1] - a[2] * b[2], a[1] * b[2] + a[2] * b[1])

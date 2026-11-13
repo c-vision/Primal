@@ -14,8 +14,8 @@
 # Port of examples/c/lsq_pos.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const st = Ref{UInt32}(13103397)
 # Deterministic pseudo-random draw in [0,1] from the fixed seed.

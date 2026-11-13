@@ -14,8 +14,8 @@
 # Port of examples/c/poly_date.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Enumerate the degree-k monomial values of (d, m, y).
 function gen_monomials(d, m, y, k)

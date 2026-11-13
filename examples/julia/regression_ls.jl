@@ -16,8 +16,8 @@
 
 using Printf
 using Libdl
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const st = Ref{UInt32}(13103397)
 # Deterministic pseudo-random draw in [0,1] from the fixed seed.
@@ -28,7 +28,7 @@ end
 
 # Solve M x = rhs (d x d, row-major) in place with the library's dense LU.
 function dmat_solve_lu!(M::Vector{Float64}, rhs::Vector{Float64}, d::Int)
-    lib = Primal._lib()
+    lib = PrimalSolver._lib()
     p = ccall(Libdl.dlsym(lib, :dmat_new), Ptr{Cvoid}, (Cint, Cint), d, d)
     rows = unsafe_load(Ptr{Ptr{Ptr{Cdouble}}}(p + 2 * sizeof(Cint)))   # DMat {int m, n; double **v}
     for i in 1:d

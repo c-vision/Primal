@@ -9,8 +9,8 @@
 # Port of examples/c/pwl_convex.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NP = 3
 const XD = [0.0, 1.0, 2.0]

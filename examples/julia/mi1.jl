@@ -6,8 +6,8 @@
 # Expected solution: x1 = 5, x2 = 0, obj = 5.0000. Port of examples/c/mi1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)

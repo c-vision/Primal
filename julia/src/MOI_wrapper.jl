@@ -1,7 +1,7 @@
-# MOI_wrapper.jl — MathOptInterface wrapper, so Primal works from JuMP:
+# MOI_wrapper.jl — MathOptInterface wrapper, so PrimalSolver works from JuMP:
 #
-#     using JuMP, Primal
-#     model = Model(Primal.Optimizer)
+#     using JuMP, PrimalSolver
+#     model = Model(PrimalSolver.Optimizer)
 #
 # The wrapper is a copy_to optimizer: JuMP keeps the model in its cache and
 # hands it over complete at optimize!. Scalar affine constraints become rows
@@ -26,7 +26,7 @@ const _CONE_SETS = Union{MOI.Zeros,MOI.Nonnegatives,MOI.Nonpositives,
 # ---- C entry points used here ------------------------------------------------
 _fn(name) = Libdl.dlsym(_lib(), name)
 function _ok(rc, what)
-    Int(rc) == 0 || error("Primal: $what failed (rc=$(Int(rc)))")
+    Int(rc) == 0 || error("PrimalSolver: $what failed (rc=$(Int(rc)))")
     return nothing
 end
 
@@ -48,9 +48,9 @@ struct _ConInfo
 end
 
 """
-    Primal.Optimizer()
+    PrimalSolver.Optimizer()
 
-MathOptInterface optimizer for PrimalSolver: `Model(Primal.Optimizer)` in
+MathOptInterface optimizer for PrimalSolver: `Model(PrimalSolver.Optimizer)` in
 JuMP. Supports linear and convex quadratic objectives, linear constraints,
 integer and binary variables, and second-order, rotated, exponential and
 power cones (and their duals); other convex constraints reach it through
@@ -124,7 +124,7 @@ function _numcon(t::Ptr{Cvoid})
 end
 
 # ---- basic MOI interface ------------------------------------------------------
-MOI.get(::Optimizer, ::MOI.SolverName) = "Primal"
+MOI.get(::Optimizer, ::MOI.SolverName) = "PrimalSolver"
 
 function MOI.get(::Optimizer, ::MOI.SolverVersion)
     v = version()
@@ -419,9 +419,9 @@ function MOI.optimize!(model::Optimizer)
         elseif value isa Real
             ccall(_fn("PRIMAL_putnadouparam"), Cint, (Ptr{Cvoid}, Cstring, Cdouble), t, name, value)
         else
-            error("Primal: parameter $name must be an integer or a real number")
+            error("PrimalSolver: parameter $name must be an integer or a real number")
         end
-        rc == 0 || error("Primal: cannot set parameter $name = $value (rc=$rc): expected a ",
+        rc == 0 || error("PrimalSolver: cannot set parameter $name = $value (rc=$rc): expected a ",
                          "PRIMAL_IPAR_* name with an integer or a PRIMAL_DPAR_* name with a ",
                          "real value, within its range")
     end

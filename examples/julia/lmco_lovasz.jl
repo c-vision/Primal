@@ -10,8 +10,8 @@
 # <E_ij, X> = (lambda I - L(x))_ij. Port of examples/c/lmco_lovasz.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # index of the arc variable for pair (i,j), i<j; -1 if non-adjacent
 const ARC = [-1 1 -1 -1 5; -1 -1 2 -1 -1; -1 -1 -1 3 -1; -1 -1 -1 -1 4; -1 -1 -1 -1 -1]

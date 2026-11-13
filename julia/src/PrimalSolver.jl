@@ -1,4 +1,4 @@
-module Primal
+module PrimalSolver
 
 using Libdl
 
@@ -103,7 +103,7 @@ struct Result
 end
 
 """
-    Primal.version() -> VersionNumber
+    PrimalSolver.version() -> VersionNumber
 
 Version of the loaded C library (PRIMAL_getversion).
 """
@@ -118,26 +118,26 @@ end
 # ---- High-level Model (convenience wrapper, like the Python Model) ---------
 include("Model.jl")
 
-# Export all public names so `using .Primal` brings them into scope.
+# Export all public names so `using .PrimalSolver` brings them into scope.
 _export_names = String[]
-for _n in names(Primal, all=true)
+for _n in names(PrimalSolver, all=true)
     _s = String(_n)
     if !startswith(_s, "_") && !startswith(_s, "PRIMAL_") && !contains(_s, "#") &&
-       _s ∉ ("Primal", "eval", "include", "Bindings", "Libdl", "Result", "Model")
+       _s ∉ ("PrimalSolver", "eval", "include", "Bindings", "Libdl", "Result", "Model")
         push!(_export_names, _s)
     end
 end
 # Always export the main types.  Model is NOT exported: JuMP exports its own,
-# and `using JuMP, Primal` must leave `Model(Primal.Optimizer)` unambiguous --
-# the low-level wrapper is used qualified, as Primal.Model.
+# and `using JuMP, PrimalSolver` must leave `Model(PrimalSolver.Optimizer)` unambiguous --
+# the low-level wrapper is used qualified, as PrimalSolver.Model.
 push!(_export_names, "Result", "BK", "SENSE", "CT", "VAR_TYPE", "SOL", "SOLSTA", "RC", "INF")
 if !isempty(_export_names)
     @eval export $(Symbol.(_export_names)...)
 end
 
-# ---- MathOptInterface wrapper: Model(Primal.Optimizer) in JuMP ---------------
+# ---- MathOptInterface wrapper: Model(PrimalSolver.Optimizer) in JuMP ---------------
 # Included after the export block on purpose: Optimizer is used qualified,
-# as Primal.Optimizer, like every other MOI solver.
+# as PrimalSolver.Optimizer, like every other MOI solver.
 include("MOI_wrapper.jl")
 
-end  # module Primal
+end  # module PrimalSolver

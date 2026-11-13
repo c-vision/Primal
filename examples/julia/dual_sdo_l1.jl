@@ -3,13 +3,13 @@
 #
 #   min <C, X>  s.t.  <A_i, X> = b_i,  X PSD    is    max b'y  s.t.  C - sum_i y_i A_i PSD.
 #
-# Primal: min X00 s.t. X11 = 1 (2x2) -> X* = diag(0, 1), pobj = 0. Dual:
+# PrimalSolver: min X00 s.t. X11 = 1 (2x2) -> X* = diag(0, 1), pobj = 0. Dual:
 # max y s.t. diag(0, -y) PSD -> y* = 0. Strong duality 0 = 0, each problem
 # solved separately. Port of examples/c/dual_sdo_l1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Solve the primal SDP min X00 s.t. X11 = 1; returns (value, X).
 function primal_sdp()

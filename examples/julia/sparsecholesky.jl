@@ -6,8 +6,8 @@
 # Cholesky cross-checks it. Port of examples/c/sparsecholesky.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const D = 3
 const A = [2.0 -1 0; -1 2 -1; 0 -1 2]               # SPD tridiagonal (1-D Laplacian)

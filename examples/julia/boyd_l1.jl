@@ -9,8 +9,8 @@
 # Port of examples/c/boyd_l1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     A = [-2 7 1; -5 -1 3; -7 3 -5; -1 4 -4; 1 5 5; 2 -5 -1]

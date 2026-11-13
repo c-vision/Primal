@@ -10,8 +10,8 @@
 # counts the off-diagonal of M twice. Port of examples/c/lmi_lyapunov.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)                                 # A = [0 -2; 1 -3]

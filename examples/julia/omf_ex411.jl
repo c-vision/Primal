@@ -12,8 +12,8 @@
 # direct dollar -> yen -> dollar one). Port of examples/c/omf_ex411.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NV = 13
 const DE, DP, DY, ED, EP, EY, PD, PE, PY, YD, YE, YP, D_ = 0:12

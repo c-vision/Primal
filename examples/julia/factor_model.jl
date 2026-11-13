@@ -8,8 +8,8 @@
 # Port of examples/c/factor_model.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     F = [1.0, 1.0, 0.0]

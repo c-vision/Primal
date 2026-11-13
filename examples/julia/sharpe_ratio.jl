@@ -11,8 +11,8 @@
 # ||mu|| = sqrt(10) at w = (3/4, 1/4). Port of examples/c/sharpe_ratio.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     mu = [3.0, 1.0]

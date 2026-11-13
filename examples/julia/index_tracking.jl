@@ -10,8 +10,8 @@
 # Port of examples/c/index_tracking.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     b0, b1, winit = [0.6, 0.4], [0.3, 0.7], [0.5, 0.5]

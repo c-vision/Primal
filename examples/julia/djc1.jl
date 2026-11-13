@@ -9,8 +9,8 @@
 # Port of examples/c/djc1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const DOM_RPLUS = 2
 const DOM_RMINUS = 3

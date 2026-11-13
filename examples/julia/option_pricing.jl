@@ -11,8 +11,8 @@
 # Port of examples/c/option_pricing.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const STOCK = [0.5, 1.0, 1.5]
 

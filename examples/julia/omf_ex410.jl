@@ -11,8 +11,8 @@
 # Port of examples/c/omf_ex410.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # scenario rows P1 = 10B + 20S + 1500C, P2 = 10B - 500C, P3 = 10B - 8S - 1000C
 function scenario_rows(m)

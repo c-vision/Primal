@@ -10,8 +10,8 @@
 # Port of examples/c/multi_period.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     mu = [0.5, 0.1]

@@ -11,8 +11,8 @@
 # example. Port of examples/c/welzl.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Circle through 0, 1, 2 or 3 boundary points: (cx, cy, r).
 function circ_of(m, R)

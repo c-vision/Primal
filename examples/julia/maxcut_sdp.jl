@@ -11,8 +11,8 @@
 # Port of examples/c/maxcut_sdp.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     p = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 4

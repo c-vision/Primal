@@ -10,8 +10,8 @@
 # Sharpe drops. Port of examples/c/sharpe_ratio_sectors.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NA = 4
 

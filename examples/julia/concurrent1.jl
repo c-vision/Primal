@@ -7,8 +7,8 @@
 # Port of examples/c/concurrent1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const IPAR_OPTIMIZER = 0
 const OPTIMIZER_FREE, OPTIMIZER_INTPNT, OPTIMIZER_DUAL_SIMPLEX, OPTIMIZER_PRIMAL_SIMPLEX = 2, 4, 1, 8

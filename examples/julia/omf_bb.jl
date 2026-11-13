@@ -10,8 +10,8 @@
 # Port of examples/c/omf_bb.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Solve one branch-and-bound MILP case and check the book optimum.
 function solve_case(name, c1, c2, want_obj, wx1, wx2)

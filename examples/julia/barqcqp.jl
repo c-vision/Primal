@@ -12,9 +12,9 @@
 # Port of examples/c/barqcqp.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B_ = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B_ = PrimalSolver.Bindings
 
 # E00 and the 2x2 identity, shared by the three cases
 put_syms(m) = (sparsesymmat(m, 2, [(0, 0, 1.0)]), sparsesymmat(m, 2, [(0, 0, 1.0), (1, 1, 1.0)]))

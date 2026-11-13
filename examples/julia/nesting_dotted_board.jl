@@ -12,8 +12,8 @@
 # Port of examples/c/nesting_dotted_board.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NG = 3                                        # dots per axis (indices 0..2)
 const NDOT = NG * NG

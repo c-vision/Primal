@@ -11,8 +11,8 @@
 # objective -3 log(4/3) = -0.8630462174. Port of examples/c/mle_density.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const ND = 3
 

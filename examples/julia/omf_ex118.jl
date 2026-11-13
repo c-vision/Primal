@@ -10,8 +10,8 @@
 # Port of examples/c/omf_ex118.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # GMI cut for the row sum_j a_j x_j = b multiplied by k: returns (cut_a, cut_rhs).
 function gmi_cut(a, b, k)

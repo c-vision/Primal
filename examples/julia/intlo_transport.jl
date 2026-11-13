@@ -10,8 +10,8 @@
 # Port of examples/c/intlo_transport.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # One transportation LP: min c11 x11 + c12 x12 + c21 x21 + c22 x22.
 function solve_lp(a0, a1, b0, b1)

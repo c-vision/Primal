@@ -7,8 +7,8 @@
 # uses the MOSEK convention 1/2 x'Qx with Q = 2I. Port of examples/c/qcqo1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)

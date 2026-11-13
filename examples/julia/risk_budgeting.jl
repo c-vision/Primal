@@ -10,8 +10,8 @@
 # Port of examples/c/risk_budgeting.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     b = [0.8, 0.2]

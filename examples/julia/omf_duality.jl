@@ -8,8 +8,8 @@
 # (1/3, 1/3). Port of examples/c/omf_duality.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(2, 2)

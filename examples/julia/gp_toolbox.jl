@@ -9,8 +9,8 @@
 # and minimizes t. Port of examples/c/gp_toolbox.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NV = 3
 clog(x) = ccall(:log, Cdouble, (Cdouble,), x)      # the C library's log/exp

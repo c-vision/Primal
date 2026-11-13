@@ -11,8 +11,8 @@
 # from the published t. Port of examples/c/truss_design.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const DIM = 3                                       # [K f; f' 1]
 const L = 1.4142135623730951                        # sqrt(2)

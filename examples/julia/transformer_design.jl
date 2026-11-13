@@ -9,8 +9,8 @@
 # Port of examples/c/transformer_design.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const VC, VT, VBW, VHW, VNP, VNS, VNLS, VB, VJ, VPC, VPCU, VVRR, VVRX, VIM, VHB, NVX = 0:15
 const NGP = NVX

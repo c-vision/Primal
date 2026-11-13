@@ -11,8 +11,8 @@
 # Port of examples/c/omf_bl.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const PI_0 = [0.1073, 0.0737, 0.0627]
 const SIG = [0.02778 0.00387 0.00021; 0.00387 0.01112 -0.00020; 0.00021 -0.00020 0.00115]

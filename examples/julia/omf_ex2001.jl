@@ -11,8 +11,8 @@
 # Port of examples/c/omf_ex2001.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # 2x2 covariance block and its Cholesky factor (Sigma2 = L L')
 const S11, S12, S22 = 0.1764, 0.09702, 0.1089

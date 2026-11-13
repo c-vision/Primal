@@ -11,8 +11,8 @@
 # x* = (0.5, 0.5, 0), t* = 0.662. Port of examples/c/omf_ex207.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     L11, L21, L22 = 0.42, 0.231, 0.235678147

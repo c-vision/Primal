@@ -7,9 +7,9 @@
 # progress notification. Port of examples/c/callback.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B = PrimalSolver.Bindings
 
 const n_calls = Ref(0)
 const last_info = Ref("")

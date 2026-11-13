@@ -10,8 +10,8 @@
 # Port of examples/c/lp_mincut.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NE = 4                                        # arcs
 const NN = 4                                        # nodes

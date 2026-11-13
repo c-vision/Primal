@@ -10,8 +10,8 @@
 # Port of examples/c/omf_financing.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(6, 14)                                # 0..4 = x1..x5, 5..7 = y1..y3, 8..12 = z1..z5, 13 = v

@@ -12,8 +12,8 @@
 # constant-speed profile (the QP must not be worse). Port of examples/c/eco_driving_qp.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 10
 

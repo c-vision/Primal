@@ -11,8 +11,8 @@
 # golden section. Port of examples/c/evar_portfolio.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NA = 2                                        # assets
 const NS = 4                                        # scenarios

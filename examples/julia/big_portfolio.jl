@@ -14,8 +14,8 @@
 # Port of examples/c/big_portfolio.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const N = 18
 const RHO = 0.85

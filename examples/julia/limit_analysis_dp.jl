@@ -11,8 +11,8 @@
 # Port of examples/c/limit_analysis_dp.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const PI = 3.14159265358979323846
 csin(x) = ccall(:sin, Cdouble, (Cdouble,), x)      # the C library's sin/cos

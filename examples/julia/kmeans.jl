@@ -12,8 +12,8 @@
 # notebook leaves them free). Port of examples/c/kmeans.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NPTS = 4
 const NK = 2

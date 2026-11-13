@@ -9,8 +9,8 @@
 # example). Port of examples/c/min_circle.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # Solve the minimum enclosing circle SOCP; returns (ok, r).
 function socp_circle(P)

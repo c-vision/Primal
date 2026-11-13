@@ -10,9 +10,9 @@
 # Port of examples/c/lo2.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B = PrimalSolver.Bindings
 
 function main()
     c = [3.0, 1.0, 5.0, 1.0]

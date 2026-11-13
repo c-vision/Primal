@@ -11,8 +11,8 @@
 # objective. Port of examples/c/secure_ee_sdma.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NT = 2
 const HU = [1.0, 0.5]                               # legitimate-user channel

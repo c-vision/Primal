@@ -10,8 +10,8 @@
 # optimal value is 1 (the barycenter is not unique). Port of examples/c/wasserstein.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NB = 3                                        # support points
 const NK = 2                                        # distributions

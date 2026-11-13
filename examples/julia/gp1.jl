@@ -9,8 +9,8 @@
 # feasible point is x = (0.5, 0.5), objective 1. Port of examples/c/gp1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const IPAR_INTPNT_MAX_ITERATIONS = 11
 clog(x) = ccall(:log, Cdouble, (Cdouble,), x)      # the C library's log/exp

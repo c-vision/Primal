@@ -13,8 +13,8 @@
 
 using Printf
 using Libdl
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const D = 3
 const N = D * D                                     # 9
@@ -37,7 +37,7 @@ end
 # eigenvalues of a real symmetric N x N matrix with the library's Jacobi routine
 function eigs(A)
     ev, evec = zeros(N), zeros(N * N)
-    ccall(Libdl.dlsym(Primal._lib(), :dmat_eig_jacobi), Cvoid,
+    ccall(Libdl.dlsym(PrimalSolver._lib(), :dmat_eig_jacobi), Cvoid,
           (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), N, A, ev, evec)
     return ev
 end

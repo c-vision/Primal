@@ -7,8 +7,8 @@
 # Optimum: x = (0, 0, 5/6), obj = 5/6. Port of examples/c/sos1.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(0, 0)

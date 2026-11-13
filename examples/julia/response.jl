@@ -7,9 +7,9 @@
 # messages and that the result is correct. Port of examples/c/response.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B = PrimalSolver.Bindings
 
 const STREAM_LOG = 0
 const msg_count = Ref(0)

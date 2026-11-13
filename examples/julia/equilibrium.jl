@@ -11,8 +11,8 @@
 # (0, -sqrt(l^2 - 1)) = (0, -sqrt(3)). Port of examples/c/equilibrium.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const LSTR = 2.0
 

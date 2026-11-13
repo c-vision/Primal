@@ -9,9 +9,9 @@
 # x0 stays 0) and c0 = 0.4 (out of range, x0 > 0). Port of examples/c/sensitivity.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
-const B = Primal.Bindings
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
+const B = PrimalSolver.Bindings
 
 # Build the LP with a given c0 (the c1 coefficient is 1).
 function build(m, c0)

@@ -10,8 +10,8 @@
 # Port of examples/c/dist_robust.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const M = 2
 const NS = 3

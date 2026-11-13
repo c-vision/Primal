@@ -10,8 +10,8 @@
 
 using Printf
 using Libdl
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 # theta(Gbar) for a graph given by its symmetric adjacency; returns (ok, theta, X).
 function theta_sdp(adj)
@@ -47,7 +47,7 @@ end
 # min eigenvalue of the n x n solution matrix (PSD check)
 function min_eig(n, X)
     ev, evec = zeros(n), zeros(n * n)
-    ccall(Libdl.dlsym(Primal._lib(), :dmat_eig_jacobi), Cvoid,
+    ccall(Libdl.dlsym(PrimalSolver._lib(), :dmat_eig_jacobi), Cvoid,
           (Cint, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), n, X, ev, evec)
     return minimum(ev)
 end

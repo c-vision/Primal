@@ -9,8 +9,8 @@
 # Port of examples/c/omf_qp_grg.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 function main()
     m = Model(1, 2)

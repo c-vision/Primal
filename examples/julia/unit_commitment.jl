@@ -11,8 +11,8 @@
 # Port of examples/c/unit_commitment.c.
 
 using Printf
-using Primal
-using Primal: Model   # not exported: JuMP exports its own Model
+using PrimalSolver
+using PrimalSolver: Model   # not exported: JuMP exports its own Model
 
 const NG = 2
 const NT = 2

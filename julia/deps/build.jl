@@ -10,7 +10,7 @@
 #
 # Usage:
 #   julia deps/build.jl
-#   PRIMAL_C_SRC=/path/to/Primal julia deps/build.jl
+#   PRIMAL_C_SRC=/path/to/PrimalSolver julia deps/build.jl
 
 const PRIMAL_C_SRC = get(ENV, "PRIMAL_C_SRC", nothing)
 const HERE = @__DIR__
@@ -20,7 +20,7 @@ const PKG_ROOT = dirname(HERE)                       # .../PrimalSolver/julia
 #   HERE       = .../PrimalSolver/julia/deps
 #   PKG_ROOT   = .../PrimalSolver/julia
 #   REPO_ROOT  = .../PrimalSolver   (= dirname(PKG_ROOT))
-# (It used to live one level deeper, in julia/Primal/; the examples
+# (It used to live one level deeper, in julia/PrimalSolver/; the examples
 # reorganisation moved it and this path was left pointing above the repo.)
 const REPO_ROOT = dirname(PKG_ROOT)
 const SRC_DIR = something(PRIMAL_C_SRC, REPO_ROOT)
@@ -30,7 +30,7 @@ const SRC_DIR = something(PRIMAL_C_SRC, REPO_ROOT)
 # nothing to compile. The build step must succeed anyway — Pkg runs it for every
 # installed package that has deps/build.jl.
 if !isfile(joinpath(SRC_DIR, "primal.h"))
-    println("[Primal.jl] no C sources under $SRC_DIR; using PrimalSolver_jll")
+    println("[PrimalSolver.jl] no C sources under $SRC_DIR; using PrimalSolver_jll")
     exit(0)
 end
 
@@ -77,7 +77,7 @@ else
     cmd = [cc_cmd..., base_flags..., "-shared", "-o", out, srcs..., "-lm"]
 end
 
-println("[Primal.jl] cc -> $out ($(length(srcs)) sources from $SRC_DIR)")
+println("[PrimalSolver.jl] cc -> $out ($(length(srcs)) sources from $SRC_DIR)")
 run(Cmd(cmd))
 
-println("[Primal.jl] shared library written to $out")
+println("[PrimalSolver.jl] shared library written to $out")
