@@ -287,3 +287,26 @@ order of the products are unchanged, so the results are bit-identical.
 Interleaved medians (three series of 31 pairs, plus the README harness):
 **4–5% at 80×12** and **5–6% at 40×8**; 20×4 ranges from −0.5% to −5.3%.
 The targeted guards pass 945/0.
+
+## Cone members absorbed into their block
+
+The conversion in `primal_sdptask.c` used to give every cone member a new
+coordinate tied to its variable by a linking row, and to keep the variable as a
+scalar column (two columns when it is free). A continuous variable that sits in
+exactly one position of one cone, and is free or carries only a lower bound the
+cone already implies, is now the cone coordinate itself: no linking row, no
+scalar column. Its coefficients in the data rows act on the block and its cost
+goes to the block. For the first two members of a rotated quadratic cone,
+`u = (z_0 + z_1)/sqrt2` and `v = (z_0 - z_1)/sqrt2`; when only one of them
+qualifies, a single row `(z_0 ± z_1)/sqrt2 = other member` remains. Exponential
+and power cone members were absorbed first, quadratic cone members followed.
+`GMB_NO_EXP_ABSORB` and `GMB_NO_SOC_ABSORB` restore the linking rows.
+
+On the README regression model at 80×12 the quadratic step takes the sparse KKT
+system from 454 unknowns and 5550 nonzeros to 415 and 4144, and the iteration
+count from 18 to 12 (16 → 10 at 20×4, 16 → 11 at 40×8). Interleaved medians of
+`bench/pexp_bench.py --runs 21`, three series, 2026-11-13: **0.71 → 0.45 ms**
+at 20×4, **1.65 → 0.92 ms** at 40×8 and **4.48 → 2.21 ms** at 80×12, objectives
+within `1e-8` of the known optima. The pure exponential and pure SOC families of
+`bench/pexp_matrix.c` are unchanged. Test T310 solves every combination of
+absorbed and kept members both ways and requires the same point.

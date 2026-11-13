@@ -21744,8 +21744,75 @@ static void test_t309(void) {
     pend(&p);
 }
 
+/* T310: QUAD/RQUAD members absorbed into their cone block (F219).  A free
+ * single-use member of a quadratic cone is the cone coordinate itself, with no
+ * linking row and no scalar column; the first two members of a rotated cone are
+ * u = (z_0 + z_1)/sqrt2 and v = (z_0 - z_1)/sqrt2.  Every way a member can be
+ * absorbed or kept is solved twice, with and without the absorption, and must
+ * give the same point: the model is the same, only the KKT system is smaller.
+ * A PEXP cone sends the model to the engine that does this.
+ *   vars 0..2 x, 3 t or u, 4 v, 5..7 the exponential cone, 8 a fixed member. */
+static PRIMALrescodee t310_solve(int kase, double *obj, double *x) {
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    PRIMAL_appendvars(t, 9); PRIMAL_appendcons(t, 4);
+    for (int j = 0; j < 9; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
+    PRIMAL_putvarbound(t, 6, PRIMAL_BK_FX, 1, 1);
+    PRIMAL_putvarbound(t, 8, PRIMAL_BK_FX, 0.3, 0.3);
+    PRIMAL_putaij(t, 0, 0, 1); PRIMAL_putaij(t, 0, 1, 1); PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2, 2);
+    PRIMAL_putaij(t, 1, 1, 1); PRIMAL_putaij(t, 1, 2, -1); PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 0.5, 0.5);
+    PRIMAL_putaij(t, 2, 7, 1); PRIMAL_putaij(t, 2, 0, -1); PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 0, 0);
+    PRIMAL_putaij(t, 3, 3, 1); PRIMAL_putaij(t, 3, 4, 1);
+    PRIMAL_putconbound(t, 3, PRIMAL_BK_LO, kase == 5 ? 4.0 : -50.0, INFINITY);
+    PRIMAL_putcj(t, 5, 1); PRIMAL_putcj(t, 3, 1);
+    PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, (int[]){ 5, 6, 7 });
+    if (kase == 0) {            /* QUAD, head with the bound the cone implies */
+        PRIMAL_putvarbound(t, 3, PRIMAL_BK_LO, 0, INFINITY); PRIMAL_putvarbound(t, 4, PRIMAL_BK_FX, 0, 0);
+        PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0, 4, (int[]){ 3, 0, 1, 2 });
+    } else {                    /* RQUAD: 1 both free, 2 and 3 u ranged, 4 v shared, 5 a row on u+v, 6 v fixed */
+        PRIMAL_putcj(t, 4, kase == 5 ? 0.5 : 2);
+        if (kase == 2) { PRIMAL_putvarbound(t, 4, PRIMAL_BK_LO, 0, INFINITY); PRIMAL_putvarbound(t, 3, PRIMAL_BK_RA, 0, 10); }
+        if (kase == 3) PRIMAL_putvarbound(t, 3, PRIMAL_BK_RA, 0.1, 10);
+        if (kase == 4) PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0, 2, (int[]){ 4, 8 });
+        if (kase == 6) PRIMAL_putvarbound(t, 4, PRIMAL_BK_FX, 1, 1);
+        PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, 5, (int[]){ 3, 4, 0, 1, 2 });
+    }
+    PRIMALrescodee rc = PRIMAL_optimize(t);
+    *obj = NAN;
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, obj);
+    PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
+    pend(&p);
+    return rc;
+}
+static void test_t310(void) {
+    cur_name = "T310 quadratic cone members absorbed into the block";
+    for (int k = 0; k <= 6; k++) {
+        double o1, o2, x1[9], x2[9], dx = 0.0;
+        unsetenv("GMB_NO_SOC_ABSORB");
+        PRIMALrescodee r1 = t310_solve(k, &o1, x1);
+        setenv("GMB_NO_SOC_ABSORB", "1", 1);
+        PRIMALrescodee r2 = t310_solve(k, &o2, x2);
+        unsetenv("GMB_NO_SOC_ABSORB");
+        for (int j = 0; j < 9; j++) if (fabs(x1[j] - x2[j]) > dx) dx = fabs(x1[j] - x2[j]);
+        double nx = x1[0] * x1[0] + x1[1] * x1[1] + x1[2] * x1[2];
+        double slack = k == 0 ? x1[3] - sqrt(nx) : 2 * x1[3] * x1[4] - nx;
+        check_rc(r1, PRIMAL_RES_OK, "T310 solves with the members absorbed");
+        check_rc(r2, PRIMAL_RES_OK, "T310 solves with the linking rows");
+        check(fabs(o1 - o2) <= 1e-7 * (1 + fabs(o2)), "T310 same objective either way");
+        check(dx <= 1e-5, "T310 same point either way");
+        check(slack >= -1e-7 && slack <= 1e-6, "T310 the quadratic cone is active at the published point");
+        check(fabs(x1[0] + x1[1] - 2) <= 1e-7 && fabs(x1[1] - x1[2] - 0.5) <= 1e-7, "T310 rows hold on the recovered members");
+    }
+    {   double o, x[9];
+        t310_solve(0, &o, x);
+        /* min ||x|| + exp(x_0) on x_0 + x_1 = 2, x_1 - x_2 = 0.5: measured 3.44903890 on both paths */
+        check(fabs(o - 3.4490389) <= 1e-6, "T310 QUAD case optimum");
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t310();
     test_t309();
     test_t308();
     test_t307();
