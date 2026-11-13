@@ -63,20 +63,39 @@ SDP `min ⟨C,X⟩  s.t.  X_ii = 1, X ⪰ 0`, `C = −vvᵀ`, closed-form optimu
 
 | d | PrimalSolver | SCS (first-order) | objective agrees to |
 |---|---|---|---|
-| 4 | 2.0 ms | 0.2 ms | ~1e-5 |
-| 6 | 9.1 ms | 0.2 ms | ~1e-5 |
-| 8 | **599 ms** | 0.5 ms | ~1e-5 |
+| 4 | 7 µs | 0.2 ms | ~1e-8 |
+| 6 | 11 µs | 0.2 ms | ~1e-8 |
+| 8 | 13 µs | 0.5 ms | ~1e-8 |
 
-Two things to read here. PrimalSolver is far slower than SCS, and SCS is
-first-order so it only agrees to `1e-5` while the IPM reaches `1e-8`. The jump
-at `d = 8` is the dense LU of the KKT and is a real scaling limit.
+This family is answered by the fixed-diagonal certificate
+(`sdp_fixed_diagonal`): when the rows are exactly `X_ii = 1` on a single PSD
+block the optimum is `−(Σ|v_i|)²` in closed form, so the cells above time the
+certificate, not an interior-point iteration. They read 2.0 ms, 9.1 ms and
+599 ms before that path existed, and the jump at `d = 8` was the dense LU of the
+KKT — which no longer applies either.
+
+On a model that does iterate — `maxcut_sdp` (`p=4`, `q=4`, `n=8`, 16 edges: one
+4×4 block plus 16 scalar rows) — the representation is what moves the time:
+
+| KKT form | time |
+|---|---:|
+| sparse (the default above the work estimate) | 13.3 ms |
+| dense (`GMB_SDP_DENSE=1`) | 38.4 ms |
+
+Medians of seven runs each, the example's own timer: **2.9× for the sparse
+form**, and both reach the same `−4` objective.
 
 ## Limits
 
-- The augmented system is assembled **densely** (`Sys[Nsys²]`), which caps
-  problem size. The sparse 2×2-pivot LDLᵀ exists
-  ([linear algebra](linear-algebra.md)) and is validated, but is not wired here
-  yet.
+- The augmented system is **sparse** whenever the dense work estimate
+  (`Nsys³` per assembly plus the LU) exceeds `SDP_SPARSE_WORK` (4e8): the pattern
+  is built once, the values are updated per iteration, the ordering is computed
+  once and reused, and the factorization is sparse LU with partial pivoting
+  (`splu_factor_ord`). Mixed SOC + exp/power models additionally trial the sparse
+  form against a density estimate, with no size floor. `GMB_SDP_DENSE` and
+  `GMB_SDP_SPARSE` force either route. The validated 2×2-pivot LDLᵀ
+  ([linear algebra](linear-algebra.md)) is **not** used here: this path factors
+  with LU.
 - No ray is published for a model **with** a PSD block: the compressed block has
   no image in `numvar` scalars ([certificates](certificates.md)).
 - An extreme not attained inside a bar has no recession direction and is
