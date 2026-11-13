@@ -772,17 +772,41 @@ static int sdp_sp_build(SdpSpKkt *P, int n) {
         P->Ap[j] = nnz;
         for (int q = cnt[j]; q < cnt[j + 1]; q++) {
             int t = ord[q], r = P->tr[t];
+            /* A negative index marks a link used only for ordering. */
+            if (r < 0) r = ~r;
             if (mark[r] < P->Ap[j]) { mark[r] = nnz; P->Ai[nnz] = r; nnz++; }
             P->map[t] = mark[r];
         }
     }
     P->Ap[n] = nnz;
+    int has_zero_links = 0;
+    for (int t = 0; t < nt && !has_zero_links; t++) has_zero_links = P->tr[t] < 0;
+    if (has_zero_links) {
+        /* For more connected patterns, order the full graph before
+         * dropping zero data links from the numeric factorization. */
+        if (nnz > 8.0 * n) P->qperm = sym_amd_order(n, P->Ap, P->Ai);
+        for (int p = 0; p < nnz; p++) ord[p] = -1;
+        for (int t = 0; t < nt; t++) if (P->tr[t] >= 0) ord[P->map[t]] = 0;
+        int count = 0;
+        for (int j = 0; j < n; j++) {
+            int start = P->Ap[j];
+            P->Ap[j] = count;
+            for (int p = start; p < P->Ap[j+1]; p++) if (ord[p] >= 0) {
+                ord[p] = count;
+                P->Ai[count++] = P->Ai[p];
+            }
+        }
+        P->Ap[n] = count;
+        nnz = count;
+        for (int t = 0; t < nt; t++) P->map[t] = ord[P->map[t]];
+    }
+    if (!P->qperm) P->qperm = sym_amd_order(n, P->Ap, P->Ai);
     free(cnt); free(ord); free(mark);
     for (int p = 0; p < nnz; p++) P->Ax[p] = 0.0;
-    for (int t = 0; t < nt; t++) P->Ax[P->map[t]] += P->tv[t];
+    for (int t = 0; t < nt; t++)
+        if (P->map[t] >= 0) P->Ax[P->map[t]] += P->tv[t];
     free(P->tr); free(P->tc); free(P->tv);
     P->tr = P->tc = NULL; P->tv = NULL; P->cap = 0;
-    P->qperm = sym_amd_order(n, P->Ap, P->Ai);   /* NULL: natural order, still valid */
     P->n = n; P->nnz = nnz; P->built = 1;
     return 0;
 }
@@ -2264,7 +2288,7 @@ redo_dir:
                     int sp_nt = 0, sp_bad = 0;
 #define SPE(R, C, V) do { if (rhs_only) break; double v_ = (V);              \
                           if (!P->built) { if (sdp_sp_push(P, (R), (C), v_)) sp_bad = 1; } \
-                          else if (sp_nt < P->ntrip) P->Ax[P->map[sp_nt]] += v_;         \
+                          else if (sp_nt < P->ntrip) { if (P->map[sp_nt] >= 0) P->Ax[P->map[sp_nt]] += v_; }         \
                           else sp_bad = 1;                                                \
                           sp_nt++; } while (0)
                     double *Srhs = (double *)calloc((size_t)Nsys, sizeof(double));
@@ -2387,15 +2411,15 @@ redo_dir:
                             for (int b = 0; b < 3; b++) SPE(bi + a, bi + b, Tin[a * 3 + b]);
                             for (int q = S->ep[i]; q < S->ep[i + 1]; q++) {
                                 double coefficient = S->ev[q][a];
-                                if (!omit_zeros || coefficient != 0.0)
-                                    SPE(bi + a, S->ei[q], -coefficient * inv);
+                                SPE(omit_zeros && coefficient == 0.0 ? ~(bi + a) : bi + a,
+                                    S->ei[q], -coefficient * inv);
                             }
                             Srhs[bi + a] = rt[a] + rde[a];
                         }
                         for (int q = S->ep[i]; q < S->ep[i + 1]; q++) { int k = S->ei[q];
                             const double *ak = S->ev[q];
                             for (int a = 0; a < 3; a++)
-                                if (!omit_zeros || ak[a] != 0.0) SPE(k, bi + a, ak[a]); }
+                                SPE(omit_zeros && ak[a] == 0.0 ? ~k : k, bi + a, ak[a]); }
                     }
 #undef SPE
                     if (!rhs_only && !sp_bad && P->built && sp_nt != P->ntrip) sp_bad = 1;
