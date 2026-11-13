@@ -343,6 +343,24 @@ relativo massimo rispetto a Clarabel è 2.6e-8.
 EXP80 termina nell'IPM sparso senza tagli. SOC10 termina sul percorso sparso
 in 33 iterazioni. L'obiettivo di 2× rispetto a Clarabel resta aperto.
 
+### Arresto del punto interno su EXP puro
+
+Il motore EXP verifica le equazioni, il gap e l'appartenenza ai due coni
+prima di proseguire con il polish. Su EXP80 la verifica passa all'iterazione
+16, con gap relativo di 3,86e-9 a fronte della tolleranza di 1e-8.
+
+Mediane di 11 prove alternate sullo stesso modello (`d=8`, `rho=0.50`,
+`rep=1`). Tempi in ms, baseline `ccb9810`.
+
+| Blocchi EXP | PRIMAL prima | PRIMAL dopo | Clarabel | Rapporto |
+|---:|---:|---:|---:|---:|
+| 10 | 2.176 | 1.703 | 0.306 | 5.57× |
+| 20 | 1.634 | 0.705 | 0.348 | 2.03× |
+| 40 | 3.911 | 1.426 | 0.519 | 2.75× |
+| 80 | 8.886 | 1.991 | 0.981 | 2.03× |
+| 100 | 9.006 | 2.431 | 1.273 | 1.91× |
+| 160 | 18.660 | 5.345 | 2.193 | 2.44× |
+
 ## 3. Come estendere
 
 ```sh

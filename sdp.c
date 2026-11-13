@@ -2090,12 +2090,12 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
           use_rescue = (it > 0 && feasc > 1.05 * prev_feas);
           prev_feas = feasc; }
         ipmqual Q = ipm_quality(&C, &R);
-        /* For a repaired pure PSD step or a corrected mixed-cone solve,
+        /* For a repaired pure PSD step or a corrected exponential solve,
          * stop once the original equations and both cones pass. Half the
          * gap tolerance leaves room for different gap normalizations. */
         int stop_with_margin = repaired_psd_step && n == 0;
 #ifdef SDP_IPM_CORRECTED
-        stop_with_margin |= nb == 0 && nsoc > 0 && nep > 0;
+        stop_with_margin |= nb == 0 && nep > 0;
 #endif
         if (stop_with_margin &&
             pfeas <= rtol_pri && dfeas <= rtol_dual &&
