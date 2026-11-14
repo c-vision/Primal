@@ -2374,7 +2374,15 @@ redo_dir:
                         }
                         for (int q = S->sp[i]; q < S->sp[i + 1]; q++) { int k = S->si[q];
                             const double *ak = S->sv[q];
-                            for (int a = 0; a < kk; a++) SPE(k, bi + a, ak[a]); }
+                            for (int a = 0; a < kk; a++) {
+                                int row = k;
+#ifdef SDP_IPM_CORRECTED
+                                /* Constant zero links retain their symbolic
+                                 * edges but need no numerical LU entry. */
+                                if (sparse_trial && *sparse_trial && ak[a] == 0.0) row = ~k;
+#endif
+                                SPE(row, bi + a, ak[a]);
+                            } }
                     }
                     /* The sparse trial can drop zero-valued data links.
                      * Their values are fixed for the lifetime of the pattern.
