@@ -326,3 +326,19 @@ Minimum of 41 runs against the previous engine, 2026-11-13: **−8% at 20×4**,
 **−9% at 40×8**, **−7% at 80×12**, with the same iteration counts (10/11/12).
 Over 126 generated exponential and mixed instances the total iteration count
 is 1996 before and 1997 after; the mixed ones are unchanged one by one.
+
+## Degree order for the sparse KKT pattern
+
+The column order of the sparse KKT factorization came from an explicit-fill
+minimum-degree pass, 7% of the solve at 80×12. The pattern is now ordered by
+ascending structural degree (a counting sort, `O(nnz)`). On the conic patterns
+measured — exponential blocks of three coordinates, one dense quadratic block,
+a few dense rows — the fill of `L + U` is the same or within 0.4%. The order
+has no fill model, so the first factorization checks it: when `nnz(L + U)`
+exceeds `2 nnz + 4 n` the minimum-degree order is computed and kept if its
+factor is smaller. `GMB_KKT_AMD` asks for the minimum-degree order directly.
+
+Minimum of 41 runs, 2026-11-14: **−6% at 20×4**, **−7% at 40×8**, **−11% at
+80×12**, −18% on a mixed model with 160 blocks; pure exponential models gain
+2–9%. Over 126 generated instances the total iteration count goes from 1997
+to 1996. All 171 C examples keep their verdict.

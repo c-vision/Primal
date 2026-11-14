@@ -714,7 +714,8 @@ typedef struct {
     int *Ap, *Ai, *map;         /* CSC of the merged pattern; triplet -> position */
     double *Ax;
     double *scale;              /* row scales, column scales and invariant RHS terms */
-    int *qperm;                 /* fill-reducing column order (sym_amd_order) */
+    int *qperm;                 /* fill-reducing column order */
+    int cheap;                  /* qperm is the degree order and its fill is not checked yet */
 } SdpSpKkt;
 
 /* Free one KKT pattern and everything it owns. */
@@ -742,6 +743,35 @@ static int sdp_sp_push(SdpSpKkt *P, int r, int c, double v) {
     P->tr[P->ntrip] = r; P->tc[P->ntrip] = c; P->tv[P->ntrip] = v;
     P->ntrip++;
     return 0;
+}
+
+/* Column order by ascending structural degree, ties by index: O(nnz).
+ * On the conic KKT patterns (cone blocks of 3 coordinates, a few dense rows)
+ * it gives the fill of the minimum-degree order within 1% at a fraction of
+ * its cost (attempts.md F223).  It is a heuristic with no fill model, so the
+ * first factorization checks it: see sdp_lu_factor_struct. */
+static int *sdp_degree_order(int n, const int *Ap, const int *Ai) {
+    int *cnt = (int *)calloc((size_t)n + 1, sizeof(int));
+    int *perm = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof(int));
+    int *start = (int *)calloc((size_t)2 * n + 2, sizeof(int));
+    if (!cnt || !perm || !start) { free(cnt); free(perm); free(start); return NULL; }
+    for (int j = 0; j < n; j++) { cnt[j] += Ap[j + 1] - Ap[j];
+        for (int p = Ap[j]; p < Ap[j + 1]; p++) if (Ai[p] != j) cnt[Ai[p]]++; }
+    for (int j = 0; j < n; j++) start[(cnt[j] < 2 * n ? cnt[j] : 2 * n) + 1]++;
+    for (int d = 0; d <= 2 * n; d++) start[d + 1] += start[d];
+    for (int j = 0; j < n; j++) perm[start[cnt[j] < 2 * n ? cnt[j] : 2 * n]++] = j;
+    free(cnt); free(start);
+    return perm;
+}
+/* The column order of a new pattern: the degree order, to be checked by the
+ * first factorization, or the minimum-degree order when the check cannot run
+ * (GMB_NO_LU_REFACTOR factors without it) or GMB_KKT_AMD asks for it. */
+static void sdp_sp_order(SdpSpKkt *P, int n) {
+    if (!getenv("GMB_KKT_AMD") && !getenv("GMB_NO_LU_REFACTOR")) {
+        P->qperm = sdp_degree_order(n, P->Ap, P->Ai);
+        if (P->qperm) { P->cheap = 1; return; }
+    }
+    P->qperm = sym_amd_order(n, P->Ap, P->Ai);
 }
 
 /* Turn the recorded triplets into the merged CSC pattern (a repeated position
@@ -784,7 +814,7 @@ static int sdp_sp_build(SdpSpKkt *P, int n) {
     if (has_zero_links) {
         /* For more connected patterns, order the full graph before
          * dropping zero data links from the numeric factorization. */
-        if (nnz > 8.0 * n) P->qperm = sym_amd_order(n, P->Ap, P->Ai);
+        if (nnz > 8.0 * n) sdp_sp_order(P, n);
         for (int p = 0; p < nnz; p++) ord[p] = -1;
         for (int t = 0; t < nt; t++) if (P->tr[t] >= 0) ord[P->map[t]] = 0;
         int count = 0;
@@ -800,7 +830,7 @@ static int sdp_sp_build(SdpSpKkt *P, int n) {
         nnz = count;
         for (int t = 0; t < nt; t++) P->map[t] = ord[P->map[t]];
     }
-    if (!P->qperm) P->qperm = sym_amd_order(n, P->Ap, P->Ai);
+    if (!P->qperm) sdp_sp_order(P, n);
     free(cnt); free(ord); free(mark);
     for (int p = 0; p < nnz; p++) P->Ax[p] = 0.0;
     for (int t = 0; t < nt; t++)
@@ -833,8 +863,22 @@ static double sdp_sp_resid(const SdpSpKkt *P, const double *x, const double *g,
 /* Full factorization that leaves a factor whose STRUCTURE can be refactored later: exactly-zero entries
  * (zero multipliers, zero fill, common at the first iterations when the arrow matrices of a SOC block
  * are the identity) are kept in L and U, see splu_factor_keep. */
-static SpluFact *sdp_lu_factor_struct(const SdpSpKkt *P, int n) {
-    return splu_factor_keep(n, P->Ap, P->Ai, P->Ax, P->qperm);
+static SpluFact *sdp_lu_factor_struct(SdpSpKkt *P, int n) {
+    SpluFact *f = splu_factor_keep(n, P->Ap, P->Ai, P->Ax, P->qperm);
+    if (f && P->cheap) {
+        /* First factorization under the degree order.  Fill beyond twice the
+         * matrix means the heuristic missed: take the minimum-degree order
+         * instead if its factor is smaller.  Checked once per pattern. */
+        long lu = (long)f->Lp[n] + f->Up[n];
+        P->cheap = 0;
+        if (lu > 2L * P->nnz + 4L * n) {
+            int *q = sym_amd_order(n, P->Ap, P->Ai);
+            SpluFact *g = q ? splu_factor_keep(n, P->Ap, P->Ai, P->Ax, q) : NULL;
+            if (g && (long)g->Lp[n] + g->Up[n] < lu) { free(P->qperm); P->qperm = q; splu_free(f); f = g; }
+            else { free(q); if (g) splu_free(g); }
+        }
+    }
+    return f;
 }
 
 /* Componentwise backward error max_i |g_i - (K x)_i| / (|g_i| + sum_j |K_ij x_j|) of a sparse pattern
