@@ -2286,12 +2286,16 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
          * stop once the original equations and both cones pass. Half the
          * gap tolerance leaves room for different gap normalizations. */
         int stop_with_margin = repaired_psd_step && n == 0;
+        double gap_margin = 0.5;
 #ifdef SDP_IPM_CORRECTED
         stop_with_margin |= nb == 0 && nep > 0;
+        /* Pure exponential models without an orthant can reach feasibility
+         * well before the objective settles, as in the entropy oracle T298. */
+        if (nb == 0 && nsoc == 0 && n == 0 && nep > 0) gap_margin = 0.1;
 #endif
         if (stop_with_margin &&
             pfeas <= rtol_pri && dfeas <= rtol_dual &&
-            Q.gap <= 0.5 * rtol_gap) {
+            Q.gap <= gap_margin * rtol_gap) {
             double primal_slack, dual_slack;
             ipm_cone_slacks(&C, &primal_slack, &dual_slack);
             if (primal_slack >= 0.0 && dual_slack >= 0.0) {
