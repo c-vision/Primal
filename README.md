@@ -238,9 +238,9 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) | ratio |
 |---|---:|---:|---:|
-| 20×4 | 0.29 | **0.26** | 1.1× |
-| 40×8 | **0.56** | 0.61 | 0.91× |
-| 80×12 | **1.31** | 2.56 | 0.51× |
+| 20×4 | 0.325 | **0.304** | 1.07× |
+| 40×8 | **0.638** | 0.671 | 0.95× |
+| 80×12 | **1.555** | 3.038 | 0.51× |
 
 Measured on 2026-11-14 with `bench/pexp_bench.py --runs 21`, repeated three
 times: each cell is the median of the three medians, from interleaved runs of
@@ -255,7 +255,7 @@ for what moved the numbers.
 
 ### SOC, exponential, and mixed cone matrix
 
-Measured on **2026-11-14** (SOC rows: 2026-11-13) with the same generated instances in both solvers
+Measured on **2026-11-14** with the same generated instances in both solvers
 (`d=8`, link density `0.50`, one replica). Mixed instances have one rotated
 SOC in addition to the listed exponential blocks. Times are medians of 11
 alternating runs, with debug tracing disabled. Primal timings cover
@@ -265,18 +265,18 @@ construction. Primal's public residuals and relative gap were below
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | 0.672 | **0.364** | 1.85× |
-| SOC | 20 | 1.038 | **0.774** | 1.34× |
-| SOC | 40 | 1.337 | **1.210** | 1.11× |
-| SOC | 80 | 3.955 | **2.555** | 1.55× |
-| EXP | 10 | 0.51 | **0.15** | 3.4× |
-| EXP | 20 | 0.48 | **0.25** | 1.9× |
-| EXP | 40 | 0.81 | **0.33** | 2.5× |
-| EXP | 80 | 1.36 | **0.60** | 2.3× |
-| Mixed | 10 | 0.24 | **0.11** | 2.1× |
-| Mixed | 20 | 0.39 | **0.18** | 2.2× |
-| Mixed | 40 | 0.57 | **0.35** | 1.6× |
-| Mixed | 80 | 1.15 | **0.83** | 1.4× |
+| SOC | 10 | 0.723 | **0.410** | 1.76× |
+| SOC | 20 | 1.168 | **0.862** | 1.36× |
+| SOC | 40 | 1.459 | **1.458** | 1.00× |
+| SOC | 80 | 4.290 | **2.704** | 1.59× |
+| EXP | 10 | 0.615 | **0.216** | 2.85× |
+| EXP | 20 | 0.555 | **0.304** | 1.82× |
+| EXP | 40 | 0.919 | **0.463** | 1.99× |
+| EXP | 80 | 1.464 | **0.793** | 1.85× |
+| Mixed | 10 | 0.264 | **0.200** | 1.32× |
+| Mixed | 20 | 0.468 | **0.281** | 1.67× |
+| Mixed | 40 | 0.636 | **0.534** | 1.19× |
+| Mixed | 80 | 1.126 | **1.111** | 1.01× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
 checks objective agreement. See [the detailed results](BENCHMARKS.md) for

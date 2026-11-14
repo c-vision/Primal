@@ -968,7 +968,6 @@ static int sdp_sp_build(SdpSpKkt *P, int n) {
         nnz = count;
         for (int t = 0; t < nt; t++) P->map[t] = ord[P->map[t]];
     }
-    if (!P->qperm) sdp_sp_order(P, n);
     free(cnt); free(ord); free(mark);
     for (int p = 0; p < nnz; p++) P->Ax[p] = 0.0;
     for (int t = 0; t < nt; t++)
@@ -976,7 +975,11 @@ static int sdp_sp_build(SdpSpKkt *P, int n) {
     free(P->tr); free(P->tc); free(P->tv);
     P->tr = P->tc = NULL; P->tv = NULL; P->cap = 0;
     P->n = n; P->nnz = nnz; P->built = 1;
-    return sdp_sp_reduce(P);
+    if (sdp_sp_reduce(P)) return 1;
+    /* The reduced system has its own order. Order the full numerical
+     * pattern only when it will be factored. */
+    if (!P->red && !P->qperm) sdp_sp_order(P, n);
+    return 0;
 }
 
 /* Refinement residual r = g - K x of a sparse pattern, with nsum_prod's
