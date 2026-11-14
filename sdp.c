@@ -716,11 +716,15 @@ typedef struct {
     double *scale;              /* row scales, column scales and invariant RHS terms */
     int *qperm;                 /* fill-reducing column order */
     int cheap;                  /* qperm is the degree order and its fill is not checked yet */
+    struct SdpSpRed *red;       /* the pattern without its singleton pairs, or NULL */
 } SdpSpKkt;
+struct SdpSpRed;
+static void sdp_sp_red_free(struct SdpSpRed *R);
 
 /* Free one KKT pattern and everything it owns. */
 static void sdp_sp_free(SdpSpKkt *P) {
     free(P->tr); free(P->tc); free(P->tv);
+    sdp_sp_red_free(P->red);
     free(P->Ap); free(P->Ai); free(P->map); free(P->Ax); free(P->scale); free(P->qperm);
     memset(P, 0, sizeof *P);
 }
@@ -772,6 +776,140 @@ static void sdp_sp_order(SdpSpKkt *P, int n) {
         if (P->qperm) { P->cheap = 1; return; }
     }
     P->qperm = sym_amd_order(n, P->Ap, P->Ai);
+}
+
+/* ---- singleton pairs of a KKT pattern (attempts.md F228) ----
+ * A cone member fixed by its bound leaves two trivial lines in the system: a
+ * row r whose only entry is K[r,c] (the coordinate c equals a constant) and the
+ * column r of its multiplier, whose only entry K[c,r] sits in the row of that
+ * coordinate.  Such a pair is solved outside the factorization, exactly:
+ *   u_c = g_r / K[r,c],     column c moves to the right-hand side,
+ *   u_r = (g_c - sum_j K[c,j] u_j) / K[c,r]   once the rest is known.
+ * The reduced pattern (rows and columns of the pairs removed) is a pattern of
+ * its own, K below; the full one keeps receiving the assembled values. */
+struct SdpSpRed {
+    int ne, nr;                /* pairs; order of the reduced system */
+    int *er, *ec;              /* row r and coordinate c of every pair (full indices) */
+    int *krc, *kcr;            /* positions of K[r,c] and K[c,r] in the full pattern */
+    int *full_of;              /* reduced index -> full index, ascending */
+    int *rpos;                 /* full position -> reduced position, or -1 */
+    int *bp, *bpos, *bcol;     /* row c of pair q: full position and reduced column of its kept entries */
+    double *uc, *gc, *xf;      /* u_c and the adjusted g_c of the last right-hand side; full scratch */
+    SdpSpKkt K;
+};
+static void sdp_sp_red_free(struct SdpSpRed *R) {
+    if (!R) return;
+    free(R->er); free(R->ec); free(R->krc); free(R->kcr); free(R->full_of); free(R->rpos);
+    free(R->bp); free(R->bpos); free(R->bcol); free(R->uc); free(R->gc); free(R->xf);
+    R->K.red = NULL;
+    sdp_sp_free(&R->K);
+    free(R);
+}
+/* Find the pairs of a freshly built pattern and build the reduced one.
+ * 0 ok (P->red stays NULL when there is no pair), 1 out of memory. */
+static int sdp_sp_reduce(SdpSpKkt *P) {
+    int n = P->n, nnz = P->nnz, ne = 0;
+    if (getenv("GMB_NO_KKT_PIN") || n < 3) return 0;
+    int *rcnt = (int *)calloc((size_t)n, sizeof(int)), *rpos1 = (int *)malloc((size_t)n * sizeof(int));
+    int *role = (int *)calloc((size_t)n, sizeof(int)), *pair = (int *)malloc((size_t)n * sizeof(int));
+    if (!rcnt || !rpos1 || !role || !pair) { free(rcnt); free(rpos1); free(role); free(pair); return 1; }
+    for (int j = 0; j < n; j++) for (int p = P->Ap[j]; p < P->Ap[j + 1]; p++) { rcnt[P->Ai[p]]++; rpos1[P->Ai[p]] = p; }
+    /* column of a position: needed only for the single entry of a singleton row */
+    int *colof = (int *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(int));
+    if (!colof) { free(rcnt); free(rpos1); free(role); free(pair); return 1; }
+    for (int j = 0; j < n; j++) for (int p = P->Ap[j]; p < P->Ap[j + 1]; p++) colof[p] = j;
+    for (int r = 0; r < n; r++) {            /* role 1 = row/multiplier r, 2 = coordinate c */
+        if (rcnt[r] != 1 || P->Ap[r + 1] - P->Ap[r] != 1 || role[r]) continue;
+        int prc = rpos1[r], c = colof[prc], pcr = P->Ap[r];
+        if (c == r || P->Ai[pcr] != c || role[c]) continue;
+        if (rcnt[c] == 1 && P->Ap[c + 1] - P->Ap[c] == 1) continue;   /* a 2x2 island: leave it to the LU */
+        if (!(fabs(P->Ax[prc]) > 0.0) || !(fabs(P->Ax[pcr]) > 0.0)) continue;
+        role[r] = 1; role[c] = 2; pair[r] = pair[c] = ne++;
+    }
+    if (ne == 0 || n - 2 * ne < 1) { free(rcnt); free(rpos1); free(role); free(pair); free(colof); return 0; }
+    struct SdpSpRed *R = (struct SdpSpRed *)calloc(1, sizeof *R);
+    int nr = n - 2 * ne, bad = !R;
+    int *keep = (int *)malloc((size_t)n * sizeof(int));
+    if (!bad) {
+        R->ne = ne; R->nr = nr;
+        R->er = (int *)malloc((size_t)ne * sizeof(int)); R->ec = (int *)malloc((size_t)ne * sizeof(int));
+        R->krc = (int *)malloc((size_t)ne * sizeof(int)); R->kcr = (int *)malloc((size_t)ne * sizeof(int));
+        R->full_of = (int *)malloc((size_t)nr * sizeof(int));
+        R->rpos = (int *)malloc((size_t)(nnz > 0 ? nnz : 1) * sizeof(int));
+        R->bp = (int *)calloc((size_t)ne + 2, sizeof(int));
+        R->uc = (double *)malloc((size_t)ne * sizeof(double)); R->gc = (double *)malloc((size_t)ne * sizeof(double));
+        R->xf = (double *)malloc((size_t)n * sizeof(double));
+        R->K.Ap = (int *)malloc(((size_t)nr + 1) * sizeof(int));
+        bad = !keep || !R->er || !R->ec || !R->krc || !R->kcr || !R->full_of || !R->rpos || !R->bp ||
+              !R->uc || !R->gc || !R->xf || !R->K.Ap;
+    }
+    if (!bad) {
+        int k = 0, cnt = 0, nb = 0;
+        for (int i = 0; i < n; i++) { keep[i] = role[i] ? -1 : k; if (!role[i]) R->full_of[k++] = i; }
+        for (int r = 0; r < n; r++) if (role[r] == 1) { int q = pair[r];
+            R->er[q] = r; R->krc[q] = rpos1[r]; R->ec[q] = colof[rpos1[r]]; R->kcr[q] = P->Ap[r]; }
+        for (int j = 0; j < n; j++) for (int p = P->Ap[j]; p < P->Ap[j + 1]; p++) { int i = P->Ai[p];
+            R->rpos[p] = -1;
+            if (keep[j] >= 0 && keep[i] >= 0) cnt++;
+            else if (keep[j] >= 0 && role[i] == 2) { R->bp[pair[i] + 2]++; nb++; } }
+        R->K.Ai = (int *)malloc((size_t)(cnt > 0 ? cnt : 1) * sizeof(int));
+        R->K.Ax = (double *)malloc((size_t)(cnt > 0 ? cnt : 1) * sizeof(double));
+        R->bpos = (int *)malloc((size_t)(nb > 0 ? nb : 1) * sizeof(int));
+        R->bcol = (int *)malloc((size_t)(nb > 0 ? nb : 1) * sizeof(int));
+        bad = !R->K.Ai || !R->K.Ax || !R->bpos || !R->bcol;
+        if (!bad) {
+            for (int q = 0; q < ne; q++) R->bp[q + 2] += R->bp[q + 1];   /* bp[q+1] = fill cursor of pair q */
+            cnt = 0;
+            for (int j = 0; j < n; j++) {
+                if (keep[j] >= 0) R->K.Ap[keep[j]] = cnt;
+                for (int p = P->Ap[j]; p < P->Ap[j + 1]; p++) { int i = P->Ai[p];
+                    if (keep[j] < 0) continue;
+                    if (keep[i] >= 0) { R->rpos[p] = cnt; R->K.Ai[cnt] = keep[i]; R->K.Ax[cnt] = P->Ax[p]; cnt++; }
+                    else if (role[i] == 2) { int e = R->bp[pair[i] + 1]++; R->bpos[e] = p; R->bcol[e] = keep[j]; } }
+            }
+            R->K.Ap[nr] = cnt;
+            R->K.n = nr; R->K.nnz = cnt; R->K.built = 1;
+            sdp_sp_order(&R->K, nr);
+            bad = !R->K.qperm;
+        }
+    }
+    free(rcnt); free(rpos1); free(role); free(pair); free(colof); free(keep);
+    if (bad) { sdp_sp_red_free(R); return 1; }
+    P->red = R;
+    return 0;
+}
+/* Right-hand side of the reduced system, in place in g (the full one on entry),
+ * and with `gather` the reduced matrix values from the full pattern.
+ * 0 ok, 1 when a pair lost its pivot. */
+static int sdp_sp_red_rhs(SdpSpKkt *P, double *g, int gather) {
+    struct SdpSpRed *R = P->red;
+    if (gather) for (int p = 0; p < P->nnz; p++) if (R->rpos[p] >= 0) R->K.Ax[R->rpos[p]] = P->Ax[p];
+    for (int q = 0; q < R->ne; q++) {
+        double d = P->Ax[R->krc[q]], e = P->Ax[R->kcr[q]];
+        if (!(fabs(d) > 0.0) || !isfinite(d) || !(fabs(e) > 0.0) || !isfinite(e)) return 1;
+        R->uc[q] = g[R->er[q]] / d;
+    }
+    for (int q = 0; q < R->ne; q++) { int c = R->ec[q]; double u = R->uc[q];
+        for (int p = P->Ap[c]; p < P->Ap[c + 1]; p++) if (P->Ai[p] != R->er[q]) g[P->Ai[p]] -= P->Ax[p] * u; }
+    for (int q = 0; q < R->ne; q++) R->gc[q] = g[R->ec[q]];
+    for (int j = 0; j < R->nr; j++) g[j] = g[R->full_of[j]];
+    return 0;
+}
+/* The full solution from the reduced one: x holds the reduced solution in the
+ * column-scaled unknowns (x[j] * cc[j] is the unknown) and leaves with the full,
+ * unscaled one; cc is set to 1 over the full order. */
+static void sdp_sp_red_expand(SdpSpKkt *P, double *x, double *cc) {
+    struct SdpSpRed *R = P->red;
+    for (int j = 0; j < R->nr; j++) x[j] *= cc[j];
+    for (int q = 0; q < R->ne; q++) {
+        double t = R->gc[q];
+        for (int e = R->bp[q]; e < R->bp[q + 1]; e++) t -= P->Ax[R->bpos[e]] * x[R->bcol[e]];
+        R->xf[R->er[q]] = t / P->Ax[R->kcr[q]];
+        R->xf[R->ec[q]] = R->uc[q];
+    }
+    for (int j = 0; j < R->nr; j++) R->xf[R->full_of[j]] = x[j];
+    memcpy(x, R->xf, (size_t)P->n * sizeof(double));
+    for (int i = 0; i < P->n; i++) cc[i] = 1.0;
 }
 
 /* Turn the recorded triplets into the merged CSC pattern (a repeated position
@@ -838,7 +976,7 @@ static int sdp_sp_build(SdpSpKkt *P, int n) {
     free(P->tr); free(P->tc); free(P->tv);
     P->tr = P->tc = NULL; P->tv = NULL; P->cap = 0;
     P->n = n; P->nnz = nnz; P->built = 1;
-    return 0;
+    return sdp_sp_reduce(P);
 }
 
 /* Refinement residual r = g - K x of a sparse pattern, with nsum_prod's
@@ -1914,6 +2052,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
 #endif
             )
 {
+    const int gmb_dbg = getenv("GMB_DBG") != NULL;   /* read once per call: the trace tests sit in the iteration */
     if (fb_ok) *fb_ok = 0;
     /* Opt-in homogeneous self-dual embedding, PSD+scalar only (see hsd_psd's
      * comment above): default off (unset), so this changes nothing unless
@@ -2049,7 +2188,12 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
         }
         for (int i = 0; i < nep; i++)
             entries += 9.0 + 6.0 * (S->ep[i + 1] - S->ep[i]);
-        if (augmented_entries + entries <= 0.1 * (order + n) * (order + n)) {
+        /* Small systems take the sparse form up to a density of 0.3: measured on
+         * 3 to 15 exponential blocks, with and without a quadratic cone, it is
+         * never slower than the dense one and up to twice as fast at 10 blocks
+         * (attempts.md F228).  Above order 128 the bound stays at 0.1. */
+        double dens = order + n <= 128.0 ? 0.3 : 0.1;
+        if (augmented_entries + entries <= dens * (order + n) * (order + n)) {
             /* The secant KKT keeps the orthant variables explicitly. A
              * dense hypothetical Schur block cannot veto that sparse form. */
             double schur_entries = secant ? 0.0 :
@@ -2180,7 +2324,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
          * stops the path before the point the fallback wants. */
         if (it > 0 && !(merit < 0.9995 * merit_prev) && !(viol < 0.9995 * viol_prev)) {
             if (++frozen >= 6) {
-                if (getenv("GMB_DBG")) fprintf(stderr,
+                if (gmb_dbg) fprintf(stderr,
                     "  [frozen] merit stalled at it=%d merit=%.3g\n", it, merit);
                 /* Rescue before giving up: a freeze on a degenerate face is a
                  * centring failure (d=19 sticks at mu=0.32 with the fixed floor
@@ -2192,7 +2336,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
                     rescue_used++;
                     rescue_iters = 15;
                     frozen = 0;
-                    if (getenv("GMB_DBG")) fprintf(stderr,
+                    if (gmb_dbg) fprintf(stderr,
                         "  [rescue] centring raise #%d at it=%d\n", rescue_used, it);
                     goto rescue_continue;
                 }
@@ -2217,7 +2361,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
          * run when the relative violation has not improved by 1% over a window
          * of CWIN iterations, offering the point to the gate like the freeze. */
         if (sdp_progress_stalled(viol, &crawl_reference, &crawl_elapsed, CWIN) && viol <= near_rel) {
-            if (getenv("GMB_DBG")) fprintf(stderr,
+            if (gmb_dbg) fprintf(stderr,
                 "  [crawl] no 1%% gain over %d iters at it=%d viol=%.3g\n", CWIN, it, viol);
             if (!have_best && !fb_saved) {
                 fb_saved = 1;
@@ -2226,7 +2370,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
             goto refine;
         }
         merit_prev = merit; viol_prev = viol;
-        if (getenv("GMB_DBG")) fprintf(stderr,
+        if (gmb_dbg) fprintf(stderr,
             "it=%d pfeas=%.3g dfeas=%.3g mu=%.3g | rel_pri=%.3g rel_dual=%.3g rel_gap=%.3g\n",
             it, pfeas, dfeas, mu, Q.pri, Q.dual, Q.gap);
         if (pfeas < tol && dfeas < tol && mu < tol) {
@@ -2434,7 +2578,7 @@ redo_dir:
                      * A retry rebuilds the original pattern. */
                     int omit_zeros = 0;
 #ifdef SDP_IPM_CORRECTED
-                    omit_zeros = augx && sparse_trial && *sparse_trial;
+                    omit_zeros = (augx || n == 0) && sparse_trial && *sparse_trial;
 #endif
                     /* exp/power blocks: scaled cone equation (see the dense loop) */
                     for (int i = 0; i < nep; i++) {
@@ -2450,7 +2594,7 @@ redo_dir:
                                                   sigma * mu, Th, Tin, rt, &sc);
 #endif
                         if (brow < 0) {
-                            if (getenv("GMB_DBG")) fprintf(stderr,
+                            if (gmb_dbg) fprintf(stderr,
                                 "  exp block %d scaling failed (sparse KKT) sigma=%.3g mu=%.3g\n", i, sigma, mu);
                             free(Srhs); free(gblk); free(rr); free(cc); status = 1; goto refine;
                         }
@@ -2487,96 +2631,102 @@ redo_dir:
                     free(gblk);
                     if (sp_bad) {   /* out of memory, or a pattern that moved (a bug) */
                         free(Srhs); free(rr); free(cc); status = 2; goto done; }
+                    /* singleton pairs leave the system here and come back before the unpack */
+                    SdpSpKkt *Pk = P; int Nk = Nsys;
+                    if (P->red) {
+                        if (sdp_sp_red_rhs(P, Srhs, !rhs_only)) { free(Srhs); free(rr); free(cc); status = 3; goto refine; }
+                        Pk = &P->red->K; Nk = Pk->n;
+                    }
                     /* the dense route's Jacobi equilibration, entry by entry */
-                    for (int i = 0; i < Nsys; i++) { rr[i] = 1.0; cc[i] = 1.0; }
+                    for (int i = 0; i < Nk; i++) { rr[i] = 1.0; cc[i] = 1.0; }
                     if (rhs_only) {
-                        for (int i = 0; i < Nsys; i++) Srhs[i] *= P->scale[i];
-                        memcpy(cc, P->scale + Nsys, (size_t)Nsys * sizeof(double));
+                        for (int i = 0; i < Nk; i++) Srhs[i] *= P->scale[i];
+                        memcpy(cc, P->scale + Nk, (size_t)Nk * sizeof(double));
                     } else if (nep > 0 || nb > 0) {
-                        for (int i = 0; i < Nsys; i++) rr[i] = 0.0;
-                        for (int p = 0; p < P->nnz; p++) { double a = fabs(P->Ax[p]);
-                            if (a > rr[P->Ai[p]]) rr[P->Ai[p]] = a; }
-                        for (int i = 0; i < Nsys; i++) { rr[i] = rr[i] > 0.0 ? 1.0 / rr[i] : 1.0; Srhs[i] *= rr[i]; }
-                        for (int p = 0; p < P->nnz; p++) P->Ax[p] *= rr[P->Ai[p]];
-                        for (int jc = 0; jc < Nsys; jc++) {
+                        for (int i = 0; i < Nk; i++) rr[i] = 0.0;
+                        for (int p = 0; p < Pk->nnz; p++) { double a = fabs(Pk->Ax[p]);
+                            if (a > rr[Pk->Ai[p]]) rr[Pk->Ai[p]] = a; }
+                        for (int i = 0; i < Nk; i++) { rr[i] = rr[i] > 0.0 ? 1.0 / rr[i] : 1.0; Srhs[i] *= rr[i]; }
+                        for (int p = 0; p < Pk->nnz; p++) Pk->Ax[p] *= rr[Pk->Ai[p]];
+                        for (int jc = 0; jc < Nk; jc++) {
                             double mx = 0.0;
-                            for (int p = P->Ap[jc]; p < P->Ap[jc + 1]; p++) { double a = fabs(P->Ax[p]); if (a > mx) mx = a; }
+                            for (int p = Pk->Ap[jc]; p < Pk->Ap[jc + 1]; p++) { double a = fabs(Pk->Ax[p]); if (a > mx) mx = a; }
                             cc[jc] = mx > 0.0 ? 1.0 / mx : 1.0;
-                            for (int p = P->Ap[jc]; p < P->Ap[jc + 1]; p++) P->Ax[p] *= cc[jc];
+                            for (int p = Pk->Ap[jc]; p < Pk->Ap[jc + 1]; p++) Pk->Ax[p] *= cc[jc];
                         }
                     }
 #ifdef SDP_IPM_CORRECTED
                     if (pass == 0 && P->scale) {
-                        memcpy(P->scale, rr, (size_t)Nsys * sizeof(double));
-                        memcpy(P->scale + Nsys, cc, (size_t)Nsys * sizeof(double));
+                        memcpy(P->scale, rr, (size_t)Nk * sizeof(double));
+                        memcpy(P->scale + Nk, cc, (size_t)Nk * sizeof(double));
                     }
 #endif
                     free(rr);
                     /* refinement: the dense route's rule (POLISH ONLY, a round
                      * kept only while it shrinks the residual) */
                     int refine_on = (nep > 0 && have_best) || (nb > 0 && nep == 0);
-                    double *refi = refine_on ? (double *)malloc(5 * (size_t)Nsys * sizeof(double)) : NULL;
+                    double *refi = refine_on ? (double *)malloc(5 * (size_t)Nk * sizeof(double)) : NULL;
                     if (refine_on && !refi) { free(cc); free(Srhs); status = 2; goto done; }
-                    double *gsc = refi, *rcor = refi ? refi + Nsys : NULL,
-                           *dcor = refi ? refi + 2 * Nsys : NULL, *ks = refi ? refi + 3 * Nsys : NULL,
-                           *kc = refi ? refi + 4 * Nsys : NULL;
-                    if (refine_on) memcpy(gsc, Srhs, (size_t)Nsys * sizeof(double));
+                    double *gsc = refi, *rcor = refi ? refi + Nk : NULL,
+                           *dcor = refi ? refi + 2 * Nk : NULL, *ks = refi ? refi + 3 * Nk : NULL,
+                           *kc = refi ? refi + 4 * Nk : NULL;
+                    if (refine_on) memcpy(gsc, Srhs, (size_t)Nk * sizeof(double));
                     int reuse = pass == 1 && sp_pc && sp_pcaug == augx &&
-                        (rhs_only || memcmp(P->Ax, sp_pcx, (size_t)P->nnz * sizeof(double)) == 0);
+                        (rhs_only || memcmp(Pk->Ax, sp_pcx, (size_t)Pk->nnz * sizeof(double)) == 0);
                     SpluFact *f = NULL; int refac = 0;
                     if (reuse) f = sp_pc;
                     else if (!lu_ref_off && pass == 0 && sp_old && sp_old_aug == augx) {
-                        double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
-                        if (cpx && splu_refactor(sp_old, P->Ap, P->Ai, P->Ax) == 0) {
+                        double *cpx = (double *)malloc((size_t)(Pk->nnz > 0 ? Pk->nnz : 1) * sizeof(double));
+                        if (cpx && splu_refactor(sp_old, Pk->Ap, Pk->Ai, Pk->Ax) == 0) {
                             f = sp_pc = sp_old; sp_old = NULL; sp_pcx = cpx; sp_pcaug = augx; sp_pc_refactored = refac = 1;
                         } else { free(cpx); splu_free(sp_old); sp_old = NULL; lu_nrefused++; }
                     }
-                    if (!f) f = lu_ref_off ? splu_factor_ord(Nsys, P->Ap, P->Ai, P->Ax, P->qperm) : sdp_lu_factor_struct(P, Nsys);
+                    if (!f) f = lu_ref_off ? splu_factor_ord(Nk, Pk->Ap, Pk->Ai, Pk->Ax, Pk->qperm) : sdp_lu_factor_struct(Pk, Nk);
                     if (!f) { free(cc); free(refi); free(Srhs); status = 3; goto refine; }
                     int verify_lu = refac || (reuse && sp_pc_refactored);
                     double lu_berr = HUGE_VAL;
-                    double *lu_rhs = verify_lu ? (double *)malloc(3 * (size_t)Nsys * sizeof(double)) : NULL;
+                    double *lu_rhs = verify_lu ? (double *)malloc(3 * (size_t)Nk * sizeof(double)) : NULL;
                     if (verify_lu && !lu_rhs) { free(cc); free(refi); free(Srhs); status = 2; goto done; }
-                    if (verify_lu) memcpy(lu_rhs, Srhs, (size_t)Nsys * sizeof(double));
-                    if (refac) { memcpy(sp_pcx, P->Ax, (size_t)P->nnz * sizeof(double)); lu_nrefac++; }
+                    if (verify_lu) memcpy(lu_rhs, Srhs, (size_t)Nk * sizeof(double));
+                    if (refac) { memcpy(sp_pcx, Pk->Ax, (size_t)Pk->nnz * sizeof(double)); lu_nrefac++; }
                     if (pass == 0 && !refac) {
-                        double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
+                        double *cpx = (double *)malloc((size_t)(Pk->nnz > 0 ? Pk->nnz : 1) * sizeof(double));
                         if (cpx) {
                             splu_free(sp_pc); free(sp_pcx);
-                            memcpy(cpx, P->Ax, (size_t)P->nnz * sizeof(double));
+                            memcpy(cpx, Pk->Ax, (size_t)Pk->nnz * sizeof(double));
                             sp_pc = f; sp_pcx = cpx; sp_pcaug = augx; sp_pc_refactored = 0;
                         }
                     }
-                    if (getenv("GMB_DBG")) fprintf(stderr,
-                        "  [kkt] pass=%d n=%d reuse=%d sparse nnz=%d\n", pass, Nsys, reuse, P->nnz);
+                    if (gmb_dbg) fprintf(stderr,
+                        "  [kkt] pass=%d n=%d reuse=%d sparse nnz=%d\n", pass, Nk, reuse, Pk->nnz);
                     int solve_failed = splu_solve(f, Srhs) != 0;
                     if (solve_failed && !verify_lu) {
                         if (f != sp_pc) splu_free(f);
                         free(cc); free(refi); free(Srhs); status = 3; goto refine;
                     }
                     if (verify_lu) {
-                        double *lr = lu_rhs + Nsys, *ld = lu_rhs + 2 * (size_t)Nsys;
-                        double e = solve_failed ? HUGE_VAL : sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
+                        double *lr = lu_rhs + Nk, *ld = lu_rhs + 2 * (size_t)Nk;
+                        double e = solve_failed ? HUGE_VAL : sdp_sp_berr(Pk, Srhs, lu_rhs, lr, ld);
                         for (int it2 = 0; it2 < 2 && isfinite(e) && e > SDP_LU_BERR; it2++) {
-                            memcpy(ld, lr, (size_t)Nsys * sizeof(double));
+                            memcpy(ld, lr, (size_t)Nk * sizeof(double));
                             if (splu_solve(f, ld) != 0) break;
-                            for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] += ld[b2];
-                            double e2 = sdp_sp_berr(P, Srhs, lu_rhs, lr, ld);
+                            for (int b2 = 0; b2 < Nk; b2++) Srhs[b2] += ld[b2];
+                            double e2 = sdp_sp_berr(Pk, Srhs, lu_rhs, lr, ld);
                             if (!(e2 < e)) { e = HUGE_VAL; break; }
                             e = e2;
                         }
-                        if (getenv("GMB_DBG")) fprintf(stderr, "  [lu] refactor berr=%.2e %s\n", e, e <= SDP_LU_BERR ? "accepted" : "REFUSED, full factor");
+                        if (gmb_dbg) fprintf(stderr, "  [lu] refactor berr=%.2e %s\n", e, e <= SDP_LU_BERR ? "accepted" : "REFUSED, full factor");
                         lu_berr = e;
                         if (!(e <= SDP_LU_BERR)) {
                             lu_nrefused++;
                             lu_nrefac--;
                             splu_free(sp_pc); sp_pc = NULL; free(sp_pcx); sp_pcx = NULL; sp_pcaug = -1;
                             sp_pc_refactored = 0;
-                            f = sdp_lu_factor_struct(P, Nsys);
+                            f = sdp_lu_factor_struct(Pk, Nk);
                             if (!f) { free(lu_rhs); free(cc); free(refi); free(Srhs); status = 3; goto refine; }
-                            double *cpx = (double *)malloc((size_t)(P->nnz > 0 ? P->nnz : 1) * sizeof(double));
-                            if (cpx) { memcpy(cpx, P->Ax, (size_t)P->nnz * sizeof(double)); sp_pc = f; sp_pcx = cpx; sp_pcaug = augx; }
-                            memcpy(Srhs, lu_rhs, (size_t)Nsys * sizeof(double));
+                            double *cpx = (double *)malloc((size_t)(Pk->nnz > 0 ? Pk->nnz : 1) * sizeof(double));
+                            if (cpx) { memcpy(cpx, Pk->Ax, (size_t)Pk->nnz * sizeof(double)); sp_pc = f; sp_pcx = cpx; sp_pcaug = augx; }
+                            memcpy(Srhs, lu_rhs, (size_t)Nk * sizeof(double));
                             if (splu_solve(f, Srhs) != 0) {
                                 if (f != sp_pc) splu_free(f);
                                 free(lu_rhs); free(cc); free(refi); free(Srhs); status = 3; goto refine; }
@@ -2590,14 +2740,15 @@ redo_dir:
                      * is already at that level (attempts.md F222). */
                     if (lu_berr <= SDP_LU_BERR && !lu_refine_all) refine_on = 0;
                     for (int rif = 0; rif < 3 && refine_on; rif++) {
-                        double rn = sdp_sp_resid(P, Srhs, gsc, rcor, ks, kc);
-                        memcpy(dcor, rcor, (size_t)Nsys * sizeof(double));
+                        double rn = sdp_sp_resid(Pk, Srhs, gsc, rcor, ks, kc);
+                        memcpy(dcor, rcor, (size_t)Nk * sizeof(double));
                         if (splu_solve(f, dcor) != 0) break;
-                        for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] += dcor[b2];
-                        double rn2 = sdp_sp_resid(P, Srhs, gsc, rcor, ks, kc);
-                        if (!(rn2 < rn)) { for (int b2 = 0; b2 < Nsys; b2++) Srhs[b2] -= dcor[b2]; break; }
+                        for (int b2 = 0; b2 < Nk; b2++) Srhs[b2] += dcor[b2];
+                        double rn2 = sdp_sp_resid(Pk, Srhs, gsc, rcor, ks, kc);
+                        if (!(rn2 < rn)) { for (int b2 = 0; b2 < Nk; b2++) Srhs[b2] -= dcor[b2]; break; }
                     }
                     if (f != sp_pc) splu_free(f);
+                    if (P->red) sdp_sp_red_expand(P, Srhs, cc);
                     for (int k = 0; k < m; k++) dy[k] = Srhs[k] * cc[k];
                     for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; for (int a = 0; a < kk; a++) Dzsoc[soff[i] + a] = Srhs[m + soff[i] + a] * cc[m + soff[i] + a]; }
                     for (int a = 0; a < Ke; a++) Dez[a] = Srhs[m + K + a] * cc[m + K + a];
@@ -2697,7 +2848,7 @@ redo_dir:
                                               sigma * mu, Th, Tin, rt, &sc);
 #endif
                     if (brow < 0) {
-                        if (getenv("GMB_DBG")) fprintf(stderr,
+                        if (gmb_dbg) fprintf(stderr,
                             "  exp block %d scaling failed: z=(%g,%g,%g) s=(%g,%g,%g) sInK*=%d sigma=%.3g mu=%.3g\n",
                             i, ez[3*i], ez[3*i+1], ez[3*i+2], es[3*i], es[3*i+1], es[3*i+2],
                             expcone_dual_in(ekind[i], ealpha[i], es + 3 * i), sigma, mu);
@@ -2707,7 +2858,7 @@ redo_dir:
 #ifdef SDP_IPM_CORRECTED
                     if (pass == 1) for (int a = 0; a < 3; a++) rt[a] -= ecorr[3*i+a] * inv;
 #endif
-                    if (getenv("GMB_DBG")) {
+                    if (gmb_dbg) {
                         double em[EXPCONE_EV_N];
                         expcone_nt_metrics(ekind[i], ealpha[i], ez + 3 * i, es + 3 * i, em);
                         fprintf(stderr,
@@ -2786,7 +2937,7 @@ redo_dir:
                 LuFact *f = reuse ? pc_factor : dmat_lu_factor(Sys, Nsys);
                 if (!f) { free(cc); free(refi); free(Sys); free(Srhs); status = 3; goto refine; }
                 if (pass == 0) { pc_factor = f; pc_matrix = Sys; pc_size = Nsys; }
-                if (getenv("GMB_DBG")) fprintf(stderr,
+                if (gmb_dbg) fprintf(stderr,
                     "  [kkt] pass=%d n=%d reuse=%d work=%.3g\n", pass, Nsys, reuse, dwork);
                 /* Compensated triangular sweeps for the PSD/SOC-only path
                  * (nep == 0): the exp/power rows (socp.c, sdp.c's own Thin
@@ -2901,7 +3052,7 @@ redo_dir:
                     if (fabs(t) > lr) lr = fabs(t);
                     if (fabs(rp[k]) > rpm) rpm = fabs(rp[k]); }
                 if (!(lr <= 10.0 * rpm + 1e-10 * (1.0 + C.bn))) {
-                    if (getenv("GMB_DBG")) fprintf(stderr,
+                    if (gmb_dbg) fprintf(stderr,
                         "  [augx] it=%d pass=%d |rp+Ad|=%.3g |rp|=%.3g: R_+ block augmented\n",
                         it, pass, lr, rpm);
                     aug_guard = 1;
@@ -2971,7 +3122,7 @@ redo_dir:
                                budget,
                                dy, dx, ds, Dx, Ds);
                     if (rr) repaired_psd_step = 1;
-                    if (getenv("GMB_DBG")) fprintf(stderr, "  [rescue] it=%d ret=%d primal_step=%.3g budget=%.3g\n", it, rr, step_error, budget);
+                    if (gmb_dbg) fprintf(stderr, "  [rescue] it=%d ret=%d primal_step=%.3g budget=%.3g\n", it, rr, step_error, budget);
                     }
                 }
                 double ap = 1.0, ad = 1.0;
@@ -2989,7 +3140,7 @@ redo_dir:
                  * cross term of (z + ap dz)(s + ad ds) no longer cancels,
                  * and on gp1 one such step (ap=0.16, ad=0.71) lifted mu 38x. */
                 if (secant) { if (ad < ap) ap = ad; else ad = ap; }
-                if (getenv("GMB_DBG")) fprintf(stderr,"  [corr] sigma=%.3g ap=%.4f ad=%.4f\n",sigma,ap,ad);
+                if (gmb_dbg) fprintf(stderr,"  [corr] sigma=%.3g ap=%.4f ad=%.4f\n",sigma,ap,ad);
                 /* Fraction of the maximal boundary step the CORRECTOR may take.
                  * Far from the optimum (mu large) it sits on its 0.90 floor --
                  * take 90% of what the cone ratio test allows, stay well inside.
@@ -3052,7 +3203,7 @@ redo_dir:
                     ap *= 0.5; ad *= 0.5;
                     if ((nep > 0 || nb > 0) && ap < 1e-12) { stalled = 1; break; } }
                 if (stalled) {
-                    if (getenv("GMB_DBG")) fprintf(stderr,
+                    if (gmb_dbg) fprintf(stderr,
                         "  [ls] no descent step at it=%d ap=%.3g merit=%.3g ref=%.3g\n",
                         it, ap, merit0, ref);
                     /* A line search that cannot take any step is the same dead end
@@ -3140,7 +3291,7 @@ refine:
      * tangent-cut outer approximation is the better answer: report "not solved"
      * and let the caller route there.  expcone_route_probe prints which route
      * answered. */
-    if (nep > 0 || status == 0 || fb_saved || getenv("GMB_DBG")) {
+    if (nep > 0 || status == 0 || fb_saved || gmb_dbg) {
         ipmqual Q = { 0.0, 0.0, 0.0 }; int good = 0, good_near = 0, have = 0;
         double kpri = HUGE_VAL, kdual = HUGE_VAL;
         if (status == 0) {
@@ -3178,7 +3329,7 @@ refine:
          * route the factor is the verdict: a point outside even the effective
          * tolerance is reported "not solved" instead of published unjudged. */
         if (status == 0 && !good && (nep > 0 || !good_near)) status = 1;
-        if (getenv("GMB_DBG") && have) fprintf(stderr,
+        if (gmb_dbg && have) fprintf(stderr,
             "  [route] status=%d rel_pri=%.3g rel_dual=%.3g rel_gap=%.3g"
             " (tol %g/%g/%g near %g) blocks=%d\n",
             status, Q.pri, Q.dual, Q.gap, rtol_pri, rtol_dual, rtol_gap,
@@ -3186,7 +3337,7 @@ refine:
         /* No restored point means no measurement: printing the initialisers
          * would claim a triple of zeros on a solve that never got one (seen on
          * risk_parity, which stops short of the polish). */
-        if (getenv("GMB_DBG") && !have) fprintf(stderr,
+        if (gmb_dbg && !have) fprintf(stderr,
             "  [route] status=%d triple not measured (no point restored)"
             " (tol %g/%g/%g near %g) blocks=%d\n",
             status, rtol_pri, rtol_dual, rtol_gap, near_rel, nep);
@@ -3196,7 +3347,7 @@ refine:
          * value is a published violation.  Printed also when the gate then
          * hands the model to the tangent cuts -- that is the point the native
          * route would have published. */
-        if (getenv("GMB_DBG") && have) fprintf(stderr,
+        if (gmb_dbg && have) fprintf(stderr,
             "  [cones] pri_slack=%.3g dual_slack=%.3g\n", kpri, kdual);
     }
     for (int i = 0; i < n; i++) x[i] = xs[i];
@@ -3205,7 +3356,7 @@ done:
     dmat_lu_free(pc_factor);
     free(pc_matrix);
     splu_free(sp_pc); free(sp_pcx); splu_free(sp_old);
-    if (getenv("GMB_DBG") && (lu_nrefac + lu_nrefused)) fprintf(stderr, "  [lu] refactorizations accepted=%ld refused=%ld\n", lu_nrefac, lu_nrefused);
+    if (gmb_dbg && (lu_nrefac + lu_nrefused)) fprintf(stderr, "  [lu] refactorizations accepted=%ld refused=%ld\n", lu_nrefac, lu_nrefused);
     sdp_sp_free(&spk[0]); sdp_sp_free(&spk[1]);
     /* A point is in the outputs (accepted-and-demoted, or frozen) but the
      * native verdict is "not solved": the caller may publish it as a

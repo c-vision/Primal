@@ -342,3 +342,32 @@ Minimum of 41 runs, 2026-11-14: **−6% at 20×4**, **−7% at 40×8**, **−11%
 80×12**, −18% on a mixed model with 160 blocks; pure exponential models gain
 2–9%. Over 126 generated instances the total iteration count goes from 1997
 to 1996. All 171 C examples keep their verdict.
+
+## Singleton pairs solved outside the factorization
+
+A cone member fixed by its bound — the `1` in every `(v, 1, u)` exponential
+cone of the regression model — leaves two trivial lines in the sparse KKT
+system: a row whose only entry is `K[r,c]` (coordinate `c` equals a constant)
+and the column of its multiplier, whose only entry `K[c,r]` sits in the row of
+that coordinate. Such a pair is solved exactly, outside the LU:
+
+$$u_c=\frac{g_r}{K_{rc}},\qquad u_r=\frac{g_c-\sum_j K_{cj}u_j}{K_{cr}},$$
+
+with column `c` moved to the right-hand side first. The detection is
+structural and generic (`sdp_sp_reduce`), not tied to a cone type. For the rows
+to be single, the zero-valued data links are now left out of the pattern also
+when the model has no scalar columns. `GMB_NO_KKT_PIN` keeps the full system.
+
+At 80×12 the factored system goes from 415 to 255 unknowns and from 3972 to
+2772 nonzeros. The same measurements showed that the dense route was up to
+twice as slow as the sparse one on models with 3 to 15 blocks, so systems of
+order at most 128 now take the sparse form up to a structural density of 0.3
+(0.1 above). The engine also reads `GMB_DBG` once per call instead of at every
+trace point.
+
+Minimum of 41 runs against the previous engine, 2026-11-14: **−10% at 20×4**,
+**−12% at 40×8**, **−8.5% at 80×12**; a mixed model with 10 blocks goes from
+0.43 to 0.24 ms and a pure exponential one from 0.87 to 0.43 ms. Over 144
+generated instances the total iteration count is 2523 before and 2525 after.
+Test T311 solves one model with the reduction, without it and on the dense
+route, and requires the same point.

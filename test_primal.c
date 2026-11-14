@@ -21810,8 +21810,74 @@ static void test_t310(void) {
     }
 }
 
+/* T311: singleton pairs taken out of the sparse KKT system (F228).  A cone
+ * member fixed by its bound leaves a row with one entry and a multiplier column
+ * with one entry; the pair is solved outside the factorization.  The same
+ * regression model (one PEXP per observation with its middle member fixed to 1,
+ * one RQUAD penalty) is solved with the reduction, without it and on the dense
+ * route, and the three points must agree. */
+static PRIMALrescodee t311_solve(int nobs, int d, double *obj, double *x) {
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    int X0 = 0, V0 = d, U0 = d + nobs, ONE = d + 2 * nobs, W = ONE + 1, NV = W + 1;
+    unsigned int st = 20261114u;
+    PRIMAL_appendvars(t, NV); PRIMAL_appendcons(t, nobs);
+    for (int j = 0; j < NV; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, -INFINITY, INFINITY);
+    for (int i = 0; i < nobs; i++) PRIMAL_putvarbound(t, V0 + i, PRIMAL_BK_LO, 0.0, INFINITY);
+    PRIMAL_putvarbound(t, ONE, PRIMAL_BK_FX, 1.0, 1.0);
+    for (int i = 0; i < nobs; i++) {
+        for (int j = 0; j < d; j++) { st = st * 1103515245u + 12345u;
+            PRIMAL_putaij(t, i, X0 + j, 2.0 * (double)((st >> 16) & 0x7fff) / 32767.0 - 1.0); }
+        st = st * 1103515245u + 12345u;
+        PRIMAL_putaij(t, i, U0 + i, -1.0);
+        double bi = (double)((st >> 16) & 0x7fff) / 32767.0 - 0.5;
+        PRIMAL_putconbound(t, i, PRIMAL_BK_FX, -bi, -bi);
+        PRIMAL_putcj(t, V0 + i, 1.0);
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, (int[]){ V0 + i, ONE, U0 + i });
+    }
+    PRIMAL_putcj(t, W, 0.1);
+    {   int mem[16]; mem[0] = W; mem[1] = ONE;
+        for (int j = 0; j < d; j++) mem[2 + j] = X0 + j;
+        PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, d + 2, mem); }
+    PRIMALrescodee rc = PRIMAL_optimize(t);
+    *obj = NAN;
+    PRIMAL_getprimalobj(t, PRIMAL_SOL_ITR, obj);
+    PRIMAL_getxx(t, PRIMAL_SOL_ITR, x);
+    pend(&p);
+    return rc;
+}
+static void test_t311(void) {
+    cur_name = "T311 singleton pairs solved outside the sparse KKT factorization";
+    static const int sizes[3][2] = { { 6, 2 }, { 12, 3 }, { 30, 5 } };
+    for (int s = 0; s < 3; s++) {
+        int nobs = sizes[s][0], d = sizes[s][1], nv = d + 2 * nobs + 2;
+        double o[3], x[3][80];
+        unsetenv("GMB_NO_KKT_PIN"); unsetenv("GMB_SDP_DENSE");
+        PRIMALrescodee r0 = t311_solve(nobs, d, &o[0], x[0]);
+        setenv("GMB_NO_KKT_PIN", "1", 1);
+        PRIMALrescodee r1 = t311_solve(nobs, d, &o[1], x[1]);
+        unsetenv("GMB_NO_KKT_PIN"); setenv("GMB_SDP_DENSE", "1", 1);
+        PRIMALrescodee r2 = t311_solve(nobs, d, &o[2], x[2]);
+        unsetenv("GMB_SDP_DENSE");
+        double d1 = 0.0, d2 = 0.0, cone = 0.0;
+        for (int j = 0; j < nv; j++) { double a = fabs(x[0][j] - x[1][j]), b = fabs(x[0][j] - x[2][j]);
+            if (a > d1) d1 = a; if (b > d2) d2 = b; }
+        for (int i = 0; i < nobs; i++) { double g = x[0][d + i] - exp(x[0][d + nobs + i]); if (fabs(g) > cone) cone = fabs(g); }
+        check_rc(r0, PRIMAL_RES_OK, "T311 solves with the pairs reduced");
+        check_rc(r1, PRIMAL_RES_OK, "T311 solves with the full sparse system");
+        check_rc(r2, PRIMAL_RES_OK, "T311 solves on the dense route");
+        check(fabs(o[0] - o[1]) <= 1e-7 * (1 + fabs(o[1])) && fabs(o[0] - o[2]) <= 1e-7 * (1 + fabs(o[2])),
+              "T311 same objective on the three routes");
+        /* objectives agree to 1e-10; the points to the square root of the gap (measured 5e-6 and 4e-5) */
+        check(d1 <= 2e-4 && d2 <= 2e-4, "T311 same point on the three routes");
+        check(fabs(x[0][d + 2 * nobs] - 1.0) <= 1e-12, "T311 the fixed member is published at its bound");
+        check(cone <= 1e-6, "T311 every exponential cone is active at the optimum");
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t311();
     test_t310();
     test_t309();
     test_t308();
