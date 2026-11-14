@@ -238,9 +238,9 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) | ratio |
 |---|---:|---:|---:|
-| 20×4 | 0.45 | **0.35** | 1.3× |
-| 40×8 | 0.92 | **0.72** | 1.3× |
-| 80×12 | **2.21** | 3.37 | 0.66× |
+| 20×4 | 0.39 | **0.31** | 1.3× |
+| 40×8 | 0.75 | **0.68** | 1.1× |
+| 80×12 | **1.81** | 3.07 | 0.59× |
 
 Measured on 2026-11-13 with `bench/pexp_bench.py --runs 21`, repeated three
 times: each cell is the median of the three medians, from interleaved runs of

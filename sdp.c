@@ -156,14 +156,14 @@ static double exp_step_probe(double cap) {
 /* Bound the step keeping z + t*dz interior. A tested probe at or
  * above cap suffices because the caller takes the minimum with cap. */
 static double expcone_maxstep(int kind, double alpha, const double *z, const double *dz, double cap) {
-    double lo = 0.0, hi = 1.0, fv, x[3];
+    double lo = 0.0, hi = 1.0, x[3];
     double probe = exp_step_probe(cap);
     for (int a = 0; a < 3; a++) x[a] = z[a] + probe * dz[a];
-    if (expcone_barrier(kind, alpha, x, &fv) == 0) return probe;
+    if (expcone_barrier(kind, alpha, x, NULL) == 0) return probe;
     for (int it = 0; it < 50; it++) {
         double mid = 0.5 * (lo + hi);
         for (int a = 0; a < 3; a++) x[a] = z[a] + mid * dz[a];
-        if (expcone_barrier(kind, alpha, x, &fv) == 0) lo = mid; else hi = mid;
+        if (expcone_barrier(kind, alpha, x, NULL) == 0) lo = mid; else hi = mid;
     }
     return lo;
 }
@@ -1986,6 +1986,7 @@ static int sdp_ipm_run(int secant, int m, int n, const SdpSpData *S, const doubl
     SdpSpKkt spk[2]; memset(spk, 0, sizeof spk);
     SpluFact *sp_pc = NULL; double *sp_pcx = NULL; int sp_pcaug = -1, sp_pc_refactored = 0;
     int lu_ref_off = getenv("GMB_NO_LU_REFACTOR") != NULL; long lu_nrefac = 0, lu_nrefused = 0;
+    int lu_refine_all = getenv("GMB_LU_REFINE_ALL") != NULL;   /* polish rounds even after a verified refactor */
     SpluFact *sp_old = NULL; int sp_old_aug = -1;   /* the previous iteration's factor, kept to be refactored */
     double sp_work = getenv("GMB_SDP_DENSE") ? HUGE_VAL : (getenv("GMB_SDP_SPARSE") ? 0.0 : SDP_SPARSE_WORK);
 #ifdef SDP_IPM_CORRECTED
@@ -2489,6 +2490,7 @@ redo_dir:
                     if (!f) f = lu_ref_off ? splu_factor_ord(Nsys, P->Ap, P->Ai, P->Ax, P->qperm) : sdp_lu_factor_struct(P, Nsys);
                     if (!f) { free(cc); free(refi); free(Srhs); status = 3; goto refine; }
                     int verify_lu = refac || (reuse && sp_pc_refactored);
+                    double lu_berr = HUGE_VAL;
                     double *lu_rhs = verify_lu ? (double *)malloc(3 * (size_t)Nsys * sizeof(double)) : NULL;
                     if (verify_lu && !lu_rhs) { free(cc); free(refi); free(Srhs); status = 2; goto done; }
                     if (verify_lu) memcpy(lu_rhs, Srhs, (size_t)Nsys * sizeof(double));
@@ -2520,6 +2522,7 @@ redo_dir:
                             e = e2;
                         }
                         if (getenv("GMB_DBG")) fprintf(stderr, "  [lu] refactor berr=%.2e %s\n", e, e <= SDP_LU_BERR ? "accepted" : "REFUSED, full factor");
+                        lu_berr = e;
                         if (!(e <= SDP_LU_BERR)) {
                             lu_nrefused++;
                             lu_nrefac--;
@@ -2536,6 +2539,12 @@ redo_dir:
                         }
                     }
                     free(lu_rhs); lu_rhs = NULL;
+                    /* A refactored LU has just been verified: its backward error is
+                     * at most SDP_LU_BERR, after refinement steps of its own when the
+                     * first solve missed it.  The polish rounds below would repeat
+                     * that work (two residuals and a solve each) on a solution that
+                     * is already at that level (attempts.md F222). */
+                    if (lu_berr <= SDP_LU_BERR && !lu_refine_all) refine_on = 0;
                     for (int rif = 0; rif < 3 && refine_on; rif++) {
                         double rn = sdp_sp_resid(P, Srhs, gsc, rcor, ks, kc);
                         memcpy(dcor, rcor, (size_t)Nsys * sizeof(double));

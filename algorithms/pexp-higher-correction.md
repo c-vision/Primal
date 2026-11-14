@@ -310,3 +310,19 @@ at 20×4, **1.65 → 0.92 ms** at 40×8 and **4.48 → 2.21 ms** at 80×12, obje
 within `1e-8` of the known optima. The pure exponential and pure SOC families of
 `bench/pexp_matrix.c` are unchanged. Test T310 solves every combination of
 absorbed and kept members both ways and requires the same point.
+
+## No polish rounds after a verified refactorization
+
+A refactored LU is verified on every right-hand side: its backward error must
+be at most `1e-12`, and it takes refinement steps of its own when the first
+solve misses that bound. The polish rounds of the sparse KKT solve then ran on
+top, each costing two residuals and one solve, on a solution already at that
+level. They are now skipped when the verification has just passed; a full
+factorization, which is not verified, still gets them. `GMB_LU_REFINE_ALL`
+restores the rounds. The step probes of the exponential cones also stopped
+asking for the barrier value they never read (three logarithms per probe).
+
+Minimum of 41 runs against the previous engine, 2026-11-13: **−8% at 20×4**,
+**−9% at 40×8**, **−7% at 80×12**, with the same iteration counts (10/11/12).
+Over 126 generated exponential and mixed instances the total iteration count
+is 1996 before and 1997 after; the mixed ones are unchanged one by one.
