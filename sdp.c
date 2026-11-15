@@ -3146,7 +3146,15 @@ redo_dir:
                  * and solves d=11/12; small blocks (d=2, where T100 D/E and the
                  * accuracy cases live) keep 0.1.  A measured heuristic, like the
                  * rescale gate above, not a conditioning test. */
-                { double sf = (maxd >= 22) ? 0.0 : ((maxd >= 8) ? 0.3 : 0.1); if (!(sigma > sf)) sigma = sf; }
+                double sigma_floor = maxd >= 22 ? 0.0 : (maxd >= 8 ? 0.3 : 0.1);
+#ifdef SDP_IPM_CORRECTED
+                /* A smaller late centering floor helps the pure exponential
+                 * secant path when its orthant block is small. */
+                if (secant && nb == 0 && nsoc == 0 && nep > 0 &&
+                    n > 0 && n <= m / 2 && Q.pri < 1e-6 && Q.dual < 1e-6)
+                    sigma_floor = 0.07;
+#endif
+                if (!(sigma > sigma_floor)) sigma = sigma_floor;
                 /* Rescue burst after a freeze: centring is what the iterate was
                  * missing, so push sigma up for a few iterations. */
                 if (rescue_iters > 0) { if (sigma < 0.7) sigma = 0.7; rescue_iters--; }
