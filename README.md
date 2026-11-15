@@ -242,9 +242,9 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) | ratio |
 |---|---:|---:|---:|
-| 20×4 | 0.248 | **0.212** | 1.17× |
-| 40×8 | 0.479 | **0.469** | 1.02× |
-| 80×12 | **1.136** | 2.216 | 0.51× |
+| 20×4 | 0.258 | **0.229** | 1.13× |
+| 40×8 | **0.493** | 0.506 | 0.97× |
+| 80×12 | **1.232** | 2.426 | 0.51× |
 
 Measured on 2026-11-15 with `bench/pexp_bench.py --runs 21`, repeated three
 times: each cell is the median of the three medians, from interleaved runs of
@@ -269,18 +269,18 @@ construction. Primal's public residuals and relative gap were below
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | 0.579 | **0.322** | 1.80× |
-| SOC | 20 | 0.853 | **0.644** | 1.32× |
-| SOC | 40 | 1.138 | **1.093** | 1.04× |
-| SOC | 80 | 3.383 | **2.189** | 1.55× |
-| EXP | 10 | 0.422 | **0.173** | 2.43× |
-| EXP | 20 | 0.436 | **0.231** | 1.89× |
-| EXP | 40 | 0.663 | **0.361** | 1.84× |
-| EXP | 80 | 1.001 | **0.604** | 1.66× |
-| Mixed | 10 | 0.209 | **0.150** | 1.39× |
-| Mixed | 20 | 0.340 | **0.190** | 1.79× |
-| Mixed | 40 | 0.485 | **0.359** | 1.35× |
-| Mixed | 80 | 0.848 | **0.834** | 1.02× |
+| SOC | 10 | 0.569 | **0.306** | 1.86× |
+| SOC | 20 | 0.932 | **0.683** | 1.36× |
+| SOC | 40 | 1.224 | **1.206** | 1.02× |
+| SOC | 80 | 3.628 | **2.333** | 1.56× |
+| EXP | 10 | 0.441 | **0.203** | 2.17× |
+| EXP | 20 | 0.407 | **0.236** | 1.72× |
+| EXP | 40 | 0.663 | **0.360** | 1.84× |
+| EXP | 80 | 1.028 | **0.617** | 1.67× |
+| Mixed | 10 | 0.218 | **0.161** | 1.35× |
+| Mixed | 20 | 0.360 | **0.221** | 1.63× |
+| Mixed | 40 | 0.505 | **0.369** | 1.37× |
+| Mixed | 80 | 0.920 | **0.916** | 1.00× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
 checks objective agreement. See [the detailed results](BENCHMARKS.md) for

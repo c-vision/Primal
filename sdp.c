@@ -3187,7 +3187,22 @@ redo_dir:
                     const double *wx = symX + (size_t)j*dmax2; mmul(d, wx, Dx + j * dmax2, t2); mmul(d, t2, wx, t3); ap = psd_step_limit(d, t3, ap, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL);
                     const double *ws = symS + (size_t)j*dmax2; mmul(d, ws, Ds + j * dmax2, t2); mmul(d, t2, ws, t3); ad = psd_step_limit(d, t3, ad, n == 0 && nsoc == 0 && nep == 0 ? t2 : NULL); }
                 for (int i = 0; i < nsoc; i++) { int kk = socdims[i]; double a = soc_step(Zsoc[i], Dzsoc + soff[i], kk); if (a < ap) ap = a; a = soc_step(Ssoc[i], Dssoc + soff[i], kk); if (a < ad) ad = a; }
-                for (int i = 0; i < nep; i++) { double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3 * i, Dez + 3 * i, ap); if (a < ap) ap = a; a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3 * i, Des + 3 * i, ad); if (a < ad) ad = a; }
+                /* Secant mode ultimately takes the minimum of both steps.
+                 * Use that bound for each cone probe to avoid bisecting
+                 * when the other side already limits the step. */
+#ifdef SDP_IPM_CORRECTED
+                const int common_exp_step = secant;
+#else
+                const int common_exp_step = 0;
+#endif
+                for (int i = 0; i < nep; i++) {
+                    double primal_cap = common_exp_step ? fmin(ap, ad) : ap;
+                    double a = expcone_maxstep(ekind[i], ealpha[i], ez + 3*i, Dez + 3*i, primal_cap);
+                    if (a < ap) ap = a;
+                    double dual_cap = common_exp_step ? fmin(ap, ad) : ad;
+                    a = expcone_dual_maxstep(ekind[i], ealpha[i], es + 3*i, Des + 3*i, dual_cap);
+                    if (a < ad) ad = a;
+                }
                 if (ap > 1) ap = 1;
                 if (ad > 1) ad = 1;
                 /* SECANT mode: one step length for both sides.  The secant
