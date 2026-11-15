@@ -153,12 +153,42 @@ static double exp_step_probe(double cap) {
 #endif
 }
 
+#ifdef SDP_IPM_CORRECTED
+/* Specialize the hot step tests with the arithmetic of expcone_barrier
+ * and expcone_dual_in, including dual normalization near the boundary. */
+static inline int step_pexp_in(const double *x) {
+    if (!(x[1] > 0.0) || !(x[0] > 0.0)) return 0;
+    double margin = x[1] * log(x[0] / x[1]) - x[2];
+    return margin > 0.0 && isfinite(margin);
+}
+
+static inline int step_pexp_dual_in(const double *s) {
+    double norm = fabs(s[0]) + fabs(s[1]) + fabs(s[2]);
+    if (!(norm > 0.0) || !isfinite(norm)) return 0;
+    double t = s[0] / norm, u = s[1] / norm, v = s[2] / norm;
+    if (!isfinite(t) || !isfinite(u) || !isfinite(v) ||
+        !(t > 0.0) || !(v < 0.0)) return 0;
+    return u - v + v * log(-v / t) > 0.0;
+}
+#endif
+
 /* Bound the step keeping z + t*dz interior. A tested probe at or
  * above cap suffices because the caller takes the minimum with cap. */
 static double expcone_maxstep(int kind, double alpha, const double *z, const double *dz, double cap) {
     double lo = 0.0, hi = 1.0, x[3];
     double probe = exp_step_probe(cap);
     for (int a = 0; a < 3; a++) x[a] = z[a] + probe * dz[a];
+#ifdef SDP_IPM_CORRECTED
+    if (kind == EXPCONE_PEXP) {
+        if (step_pexp_in(x)) return probe;
+        for (int it = 0; it < 50; it++) {
+            double mid = 0.5 * (lo + hi);
+            for (int a = 0; a < 3; a++) x[a] = z[a] + mid * dz[a];
+            if (step_pexp_in(x)) lo = mid; else hi = mid;
+        }
+        return lo;
+    }
+#endif
     if (expcone_barrier(kind, alpha, x, NULL) == 0) return probe;
     for (int it = 0; it < 50; it++) {
         double mid = 0.5 * (lo + hi);
@@ -173,6 +203,17 @@ static double expcone_dual_maxstep(int kind, double alpha, const double *s, cons
     double lo = 0.0, hi = 1.0, x[3];
     double probe = exp_step_probe(cap);
     for (int a = 0; a < 3; a++) x[a] = s[a] + probe * ds[a];
+#ifdef SDP_IPM_CORRECTED
+    if (kind == EXPCONE_PEXP) {
+        if (step_pexp_dual_in(x)) return probe;
+        for (int it = 0; it < 50; it++) {
+            double mid = 0.5 * (lo + hi);
+            for (int a = 0; a < 3; a++) x[a] = s[a] + mid * ds[a];
+            if (step_pexp_dual_in(x)) lo = mid; else hi = mid;
+        }
+        return lo;
+    }
+#endif
     if (expcone_dual_in(kind, alpha, x)) return probe;
     for (int it = 0; it < 50; it++) {
         double mid = 0.5 * (lo + hi);
