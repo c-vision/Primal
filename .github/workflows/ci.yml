@@ -86,8 +86,11 @@ jobs:
             mingw-w64-i686-gcc
       - name: Build the CLI
         run: |
+          # MSYS2 ships `gcc` under both names but `ar` only unprefixed: the
+          # first published tag failed with
+          # `x86_64-w64-mingw32-ar: No such file or directory` (2026-11-15).
           export PATH="/mingw64/bin:/mingw32/bin:$PATH"
-          make OUT=out/win CC=${{ matrix.prefix }}-gcc AR=${{ matrix.prefix }}-ar \
+          make OUT=out/win CC=${{ matrix.prefix }}-gcc \
                LDLIBS="-lm -pthread -static" out/win/primal
       - name: Name the asset
         run: |
