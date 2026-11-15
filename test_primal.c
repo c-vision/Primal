@@ -8026,7 +8026,14 @@ static void test_t122(void) {
         P p; pbegin(&p);
         int ma = -1, mi = -1, rev = -1;
         check_rc(PRIMAL_getversion(&ma, &mi, &rev), PRIMAL_RES_OK, "A getversion");
-        check(ma == 0 && mi == 1 && rev == 4, "A the version of this solver");
+        /* The version is one number in one place (`primal.h`): the getter
+         * reports it and the check accepts it.  Asserting the literal would
+         * pin the number, not the invariant — and the two sides used to
+         * disagree (0.1.4 here, 0.1.0 in checkversion). */
+        check(ma == PRIMAL_VERSION_MAJOR && mi == PRIMAL_VERSION_MINOR &&
+              rev == PRIMAL_VERSION_REVISION, "A the version of this solver");
+        check_rc(PRIMAL_checkversion(p.env, ma, mi, rev), PRIMAL_RES_OK,
+                 "A getversion's triple is what checkversion accepts");
         check_rc(PRIMAL_getversion(NULL, &mi, &rev), PRIMAL_RES_ERR_NULL, "A null");
         check(PRIMAL_isinfinity(INFINITY) == 1, "A +inf");
         check(PRIMAL_isinfinity(-INFINITY) == 1, "A -inf");
@@ -8617,8 +8624,19 @@ static void test_t130(void) {
     {
         cur_name = "T130 A version/build/codedesc";
         P p; pbegin(&p);
-        check_rc(PRIMAL_checkversion(p.env, 0, 1, 0), PRIMAL_RES_OK, "A correct version");
+        check_rc(PRIMAL_checkversion(p.env, PRIMAL_VERSION_MAJOR, PRIMAL_VERSION_MINOR,
+                                     PRIMAL_VERSION_REVISION),
+                 PRIMAL_RES_OK, "A correct version");
         check_rc(PRIMAL_checkversion(p.env, 2, 0, 0), PRIMAL_RES_ERR_ARG, "A wrong version");
+        /* A triple one revision off must be refused: this is what makes the
+         * check a check rather than a tautology. */
+        check_rc(PRIMAL_checkversion(p.env, PRIMAL_VERSION_MAJOR, PRIMAL_VERSION_MINOR,
+                                     PRIMAL_VERSION_REVISION + 1),
+                 PRIMAL_RES_ERR_ARG, "A next revision refused");
+        int gma = -1, gmi = -1, grev = -1;
+        PRIMAL_getversion(&gma, &gmi, &grev);
+        check(gma == PRIMAL_VERSION_MAJOR && gmi == PRIMAL_VERSION_MINOR &&
+              grev == PRIMAL_VERSION_REVISION, "A getversion agrees with checkversion");
         char bs[64], bd[64];
         check_rc(PRIMAL_getbuildinfo(bs, bd), PRIMAL_RES_OK, "A getbuildinfo");
         check(strcmp(bs, "PrimalSolver") == 0, "A buildstate");

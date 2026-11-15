@@ -865,8 +865,9 @@ PRIMALrescodee PRIMAL_getmaxnamelen(PRIMALtask_t t, int *maxlen) {
  * @return PRIMAL_RES_OK on success,
  *         PRIMAL_RES_ERR_NULL if any output pointer is NULL.
  *
- * @note Returns THIS solver's version (0, 1, 0), not the reference's version.
- *       The reference's version numbers are not interchangeable.
+ * @note Returns THIS solver's version, read from PRIMAL_VERSION_MAJOR/MINOR/
+ *       REVISION in `primal.h` -- the same three numbers PRIMAL_checkversion
+ *       accepts.  The reference's version numbers are not interchangeable.
  *
  * @example
  * int maj, min, rev;
@@ -875,7 +876,9 @@ PRIMALrescodee PRIMAL_getmaxnamelen(PRIMALtask_t t, int *maxlen) {
  */
 PRIMALrescodee PRIMAL_getversion(int *major, int *minor, int *revision) {
     if (!major || !minor || !revision) return PRIMAL_RES_ERR_NULL;
-    *major = 0; *minor = 1; *revision = 4;
+    *major = PRIMAL_VERSION_MAJOR;
+    *minor = PRIMAL_VERSION_MINOR;
+    *revision = PRIMAL_VERSION_REVISION;
     return PRIMAL_RES_OK;
 }
 

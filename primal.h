@@ -412,6 +412,17 @@ PRIMALrescodee PRIMAL_checkmemtask(PRIMALtask_t task, const char *file, int line
  * getversion reports THIS solver's version; isinfinity uses our
  * infinity (IEEE, `INF == INFINITY`); getresponseclass maps a code into the
  * reference class (OK 0, WRN 1, TRM 2, ERR 3, UNK 4). */
+
+/* The version of this solver, in ONE place: PRIMAL_getversion reports these
+ * three numbers and PRIMAL_checkversion accepts exactly them.  They used to be
+ * written twice (0.1.4 in the getter, 0.1.0 in the check) and the suite pinned
+ * both sides, so `primal --version` disagreed with the library it printed from
+ * (T122/T130, 2026-11-15).  Bump them in the commit that tags a release, so the
+ * tag name and these numbers are the same version. */
+#define PRIMAL_VERSION_MAJOR 0
+#define PRIMAL_VERSION_MINOR 1
+#define PRIMAL_VERSION_REVISION 7
+
 PRIMALrescodee PRIMAL_getversion(int *major, int *minor, int *revision);
 /* True when value is this solver's infinity (IEEE INF). */
 int PRIMAL_isinfinity(PRIMALrealt value);

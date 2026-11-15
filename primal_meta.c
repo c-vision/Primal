@@ -21,10 +21,9 @@
 #include "primal_priv.h"
 
 /* ---- version/build/error utilities (reference checkversion/getbuildinfo/
- * getcodedesc/getlasterror/get,putatruncatetol) ---- */
-#define PRIMAL_VER_MAJOR 0
-#define PRIMAL_VER_MINOR 1
-#define PRIMAL_VER_REVISION 0
+ * getcodedesc/getlasterror/get,putatruncatetol) ----
+ * The version itself lives in `primal.h` (PRIMAL_VERSION_*): one place, so
+ * getversion and checkversion cannot disagree. */
 
 /**
  * Checks if the given version matches this solver's version.
@@ -34,15 +33,17 @@
  * @param minor    [in] Minor version to check.
  * @param revision [in] Revision to check.
  *
- * @return PRIMAL_RES_OK if version matches (0.1.0),
+ * @return PRIMAL_RES_OK if version matches PRIMAL_VERSION_* in `primal.h`,
  *         PRIMAL_RES_ERR_ARG if version doesn't match.
  *
- * @note Only accepts THIS solver's exact version (0.1.0).
+ * @note Only accepts THIS solver's exact version, the one PRIMAL_getversion
+ *       reports.
  */
 PRIMALrescodee PRIMAL_checkversion(PRIMALenv_t env, int major, int minor, int revision) {
     (void)env;
     /* Accepts a request for THIS solver's version; anything else is a mismatch. */
-    if (major == PRIMAL_VER_MAJOR && minor == PRIMAL_VER_MINOR && revision == PRIMAL_VER_REVISION)
+    if (major == PRIMAL_VERSION_MAJOR && minor == PRIMAL_VERSION_MINOR &&
+        revision == PRIMAL_VERSION_REVISION)
         return PRIMAL_RES_OK;
     return PRIMAL_RES_ERR_ARG;
 }
