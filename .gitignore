@@ -31,8 +31,11 @@ __pycache__/
 # ralph-loop state (local, never published)
 /.opencode/ralph-loop.local.md
 
-# GitHub config (workflows/sponsors kept locally, never published)
-/.github/
+# GitHub config: the workflows ARE published (the Julia registration review
+# requires tested CI, and a workflow that only exists on one machine is not CI);
+# the sponsorship file stays local.
+/.github/FUNDING.yml
 /julia/deps/libprimal.*
+/julia/LocalPreferences.toml
 /julia/Manifest.toml
 /julia/test/Manifest.toml

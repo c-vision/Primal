@@ -40,6 +40,20 @@ all: $(OUT)/example_lp $(OUT)/run_tests $(OUT)/primal
 
 lib: $(LIB_A)
 
+# Shared library for the language bindings: the Julia package loads it through
+# `PrimalSolver_jll` (a development checkout overrides that path with the
+# JLLWrappers preference `libprimal_path`, see julia/README.md) and the Python
+# wheel links it for ctypes.  Separate from the archive on purpose: these
+# sources are compiled a second time with -fPIC, so the executables above never
+# pay for position-independent code.
+SHLIBEXT = $(if $(filter Darwin,$(shell uname -s)),dylib,$(if $(findstring MINGW,$(shell uname -s)),dll,so))
+SHLIB    = $(OUT)/libprimal.$(SHLIBEXT)
+
+shared: $(SHLIB)
+
+$(SHLIB): $(LIBSRCS) $(HEADERS) | $(OUT)
+	$(CC) $(CFLAGS) -fPIC -shared -o $@ $(LIBSRCS) $(LDLIBS) -pthread
+
 $(OUT):
 	mkdir -p $(OUT)
 
@@ -136,7 +150,7 @@ sanitize-fuzz: $(OUT)/san/fuzz
 clean:
 	rm -rf $(OUT)
 
-.PHONY: all lib test example clean sanitize sanitize-samples fuzz sanitize-fuzz
+.PHONY: all lib shared test example clean sanitize sanitize-samples fuzz sanitize-fuzz
 
 # ---- samples ----
 # mosek_comparison/: ports of public MOSEK examples (matching optimal values)

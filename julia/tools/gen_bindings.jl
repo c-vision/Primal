@@ -4,21 +4,18 @@
 # Parses every PRIMAL_* prototype and emits a 1:1 ccall binding for the whole
 # public surface, exactly like python/tools/gen_bindings.py does for ctypes.
 #
-# Usage:
-#   julia tools/gen_bindings.jl                 # reads ../primal.h (live C repo)
-#   PRIMAL_C_SRC=/path/to/PrimalSolver julia tools/gen_bindings.jl
+# Usage (from the repository checkout that carries primal.h):
+#   julia julia/tools/gen_bindings.jl
 
 using Printf
 
-const PRIMAL_C_SRC = get(ENV, "PRIMAL_C_SRC", nothing)
 const HERE = @__DIR__
 const ROOT = dirname(dirname(HERE))          # .../PrimalSolver/julia/tools -> .../PrimalSolver
-# PRIMAL_C_SRC names the C source directory, as in deps/build.jl and the usage above.
-const HEADER = joinpath(something(PRIMAL_C_SRC, ROOT), "primal.h")
+const HEADER = joinpath(ROOT, "primal.h")
 const PKG_ROOT = dirname(HERE)               # .../PrimalSolver/julia
 const OUT = joinpath(PKG_ROOT, "src", "bindings.jl")
 
-isfile(HEADER) || error("primal.h not found at $HEADER (set PRIMAL_C_SRC)")
+isfile(HEADER) || error("primal.h not found at $HEADER: run this from a checkout of the C repository")
 
 # ---- C type -> Julia ccall type ---------------------------------------------
 const CTYPE_MAP = Dict{String,String}(
@@ -215,33 +212,14 @@ function main()
     push!(lines, "# Opaque handles (PRIMALenv_t / PRIMALtask_t) are Ptr{Cvoid}.")
     push!(lines, "###############################################################################")
     push!(lines, "")
-    push!(lines, "const PRIMAL_LIBNAME = Sys.iswindows() ? \"libprimal.dll\" :")
-    push!(lines, "                 Sys.isapple()   ? \"libprimal.dylib\" : \"libprimal.so\"")
-    push!(lines, "")
-    push!(lines, "const _PKG_DIR = dirname(dirname(@__FILE__))       # .../PrimalSolver/julia")
-    push!(lines, "")
     push!(lines, "function _primaldl()")
-    push!(lines, "    # 1. Explicit override (development, or a system-wide install).")
-    push!(lines, "    haskey(ENV, \"PRIMAL_LIB\") && return ENV[\"PRIMAL_LIB\"]")
-    push!(lines, "    # 2. A library built from this checkout: deps/, then the C repo's out/.")
-    push!(lines, "    for c in (joinpath(_PKG_DIR, \"deps\", PRIMAL_LIBNAME),")
-    push!(lines, "              joinpath(dirname(_PKG_DIR), \"out\", PRIMAL_LIBNAME))")
-    push!(lines, "        isfile(c) && return c")
-    push!(lines, "    end")
-    push!(lines, "    # 3. Installed from the registry: the PrimalSolver_jll artifact is the")
-    push!(lines, "    #    prebuilt library, so no C compiler is needed.")
-    push!(lines, "    isfile(PrimalSolver_jll.libprimal) && return PrimalSolver_jll.libprimal")
-    push!(lines, "    # 4. Development checkout without a build: compile once, in its own")
-    push!(lines, "    #    process (Pkg.add runs deps/build.jl, Pkg.develop does not).")
-    push!(lines, "    build = joinpath(_PKG_DIR, \"deps\", \"build.jl\")")
-    push!(lines, "    sources = get(ENV, \"PRIMAL_C_SRC\", dirname(_PKG_DIR))")
-    push!(lines, "    if isfile(build) && isfile(joinpath(sources, \"primal.h\"))")
-    push!(lines, "        @info \"PrimalSolver: compiling the C library (first use)\"")
-    push!(lines, "        run(`\$(Base.julia_cmd()) --startup-file=no \$build`)")
-    push!(lines, "        dep = joinpath(_PKG_DIR, \"deps\", PRIMAL_LIBNAME)")
-    push!(lines, "        isfile(dep) && return dep")
-    push!(lines, "    end")
-    push!(lines, "    error(\"libprimal shared library not found: install PrimalSolver_jll, run deps/build.jl, or set PRIMAL_LIB\")")
+    push!(lines, "    # The library comes from the registered artifact: `PrimalSolver_jll`")
+    push!(lines, "    # ships the prebuilt shared library, so nothing here compiles C and")
+    push!(lines, "    # nothing here looks for a source checkout.  A development checkout")
+    push!(lines, "    # overrides the path with the JLLWrappers preference")
+    push!(lines, "    # `PrimalSolver_jll.libprimal_path` (julia/README.md): the JLL reads it")
+    push!(lines, "    # while it loads, so the override needs no code on this side.")
+    push!(lines, "    return PrimalSolver_jll.libprimal")
     push!(lines, "end")
     push!(lines, "")
     push!(lines, "const _LIB = Ref{Any}(nothing)")

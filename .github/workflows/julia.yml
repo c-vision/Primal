@@ -1,0 +1,62 @@
+name: julia
+
+# Test suite for the Julia package in `julia/` (JuMP / MathOptInterface front
+# end over libprimal).  The C library is not built here: the package loads the
+# prebuilt `PrimalSolver_jll` artifact, exactly as a user installing it from the
+# General registry does.  The C code is covered by `.github/workflows/ci.yml`.
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'julia/**'
+      - 'examples/julia/**'
+      - 'primal.h'
+      - '.github/workflows/julia.yml'
+  pull_request:
+    paths:
+      - 'julia/**'
+      - 'examples/julia/**'
+      - 'primal.h'
+      - '.github/workflows/julia.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (Julia ${{ matrix.version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [ '1.10', '1' ]
+        os: [ ubuntu-latest ]
+        include:
+          # One macOS run: the artifact is per platform and the binding loads a
+          # dylib instead of a .so, which is a different code path in Libdl.
+          - version: '1'
+            os: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v2
+      - name: Instantiate
+        run: julia --project=julia -e 'using Pkg; Pkg.instantiate()'
+      # `Pkg.test()` runs julia/test/runtests.jl: the MathOptInterface and JuMP
+      # suites, then the 171 programs of examples/julia (the only cover of the
+      # low-level API in src/Model.jl).  PRIMALSOLVER_COVERAGE makes each of
+      # those programs write .cov files too; without it only the in-process
+      # suites would be instrumented.
+      - name: Test
+        run: julia --project=julia -e 'using Pkg; Pkg.test(; coverage=true)'
+        env:
+          PRIMALSOLVER_COVERAGE: '1'
+      - name: Process coverage
+        uses: julia-actions/julia-processcoverage@v1
+        with:
+          directories: julia/src
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false

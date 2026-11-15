@@ -12,33 +12,14 @@ import PrimalSolver_jll
 # Opaque handles (PRIMALenv_t / PRIMALtask_t) are Ptr{Cvoid}.
 ###############################################################################
 
-const PRIMAL_LIBNAME = Sys.iswindows() ? "libprimal.dll" :
-                 Sys.isapple()   ? "libprimal.dylib" : "libprimal.so"
-
-const _PKG_DIR = dirname(dirname(@__FILE__))       # .../PrimalSolver/julia
-
 function _primaldl()
-    # 1. Explicit override (development, or a system-wide install).
-    haskey(ENV, "PRIMAL_LIB") && return ENV["PRIMAL_LIB"]
-    # 2. A library built from this checkout: deps/, then the C repo's out/.
-    for c in (joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME),
-              joinpath(dirname(_PKG_DIR), "out", PRIMAL_LIBNAME))
-        isfile(c) && return c
-    end
-    # 3. Installed from the registry: the PrimalSolver_jll artifact is the
-    #    prebuilt library, so no C compiler is needed.
-    isfile(PrimalSolver_jll.libprimal) && return PrimalSolver_jll.libprimal
-    # 4. Development checkout without a build: compile once, in its own
-    #    process (Pkg.add runs deps/build.jl, Pkg.develop does not).
-    build = joinpath(_PKG_DIR, "deps", "build.jl")
-    sources = get(ENV, "PRIMAL_C_SRC", dirname(_PKG_DIR))
-    if isfile(build) && isfile(joinpath(sources, "primal.h"))
-        @info "PrimalSolver: compiling the C library (first use)"
-        run(`$(Base.julia_cmd()) --startup-file=no $build`)
-        dep = joinpath(_PKG_DIR, "deps", PRIMAL_LIBNAME)
-        isfile(dep) && return dep
-    end
-    error("libprimal shared library not found: install PrimalSolver_jll, run deps/build.jl, or set PRIMAL_LIB")
+    # The library comes from the registered artifact: `PrimalSolver_jll`
+    # ships the prebuilt shared library, so nothing here compiles C and
+    # nothing here looks for a source checkout.  A development checkout
+    # overrides the path with the JLLWrappers preference
+    # `PrimalSolver_jll.libprimal_path` (julia/README.md): the JLL reads it
+    # while it loads, so the override needs no code on this side.
+    return PrimalSolver_jll.libprimal
 end
 
 const _LIB = Ref{Any}(nothing)

@@ -9,6 +9,8 @@ point and a status you can check rather than trust.
 
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤-ea4aaa)](https://github.com/sponsors/c-vision)
 [![PyPI](https://img.shields.io/pypi/v/primalsolver)](https://pypi.org/project/primalsolver/)
+[![build](https://github.com/c-vision/Primal/actions/workflows/ci.yml/badge.svg)](https://github.com/c-vision/Primal/actions/workflows/ci.yml)
+[![julia](https://github.com/c-vision/Primal/actions/workflows/julia.yml/badge.svg)](https://github.com/c-vision/Primal/actions/workflows/julia.yml)
 
 ## What it solves
 
@@ -117,12 +119,13 @@ Wheels for macOS and Linux are on PyPI. Examples are in
 ## Julia
 
 The package **`PrimalSolver`** lives in [`julia/`](julia/) and is also a
-[JuMP](https://jump.dev) solver. To install it next to JuMP (Julia 1.10 or
-later and a C compiler; the first `using PrimalSolver` compiles the C library):
+[JuMP](https://jump.dev) solver. Install it next to JuMP with Julia 1.10 or
+later — no C compiler and no checkout, the prebuilt library comes from
+`PrimalSolver_jll`:
 
-```sh
-git clone https://github.com/c-vision/Primal.git
-julia -e 'using Pkg; Pkg.develop(path="Primal/julia"); Pkg.add("JuMP")'
+```julia
+using Pkg
+Pkg.add(["JuMP", "PrimalSolver"])
 ```
 
 ```julia
@@ -142,7 +145,8 @@ and integer variables, and the second-order, rotated second-order, exponential
 and power cones; JuMP's bridges reformulate the rest. Solver parameters are set
 with `set_attribute(model, "PRIMAL_IPAR_INTPNT_MAX_ITERATIONS", 500)` (any
 `PRIMAL_IPAR_*` / `PRIMAL_DPAR_*` of `primal.h`). Examples are in
-[`examples/julia/`](examples/julia/).
+[`examples/julia/`](examples/julia/). To work on the package against a local C
+build, see [`julia/README.md`](julia/README.md).
 
 ## Build
 
@@ -238,9 +242,9 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) | ratio |
 |---|---:|---:|---:|
-| 20×4 | 0.325 | **0.304** | 1.07× |
-| 40×8 | **0.638** | 0.671 | 0.95× |
-| 80×12 | **1.555** | 3.038 | 0.51× |
+| 20×4 | 0.279 | **0.262** | 1.06× |
+| 40×8 | **0.542** | 0.627 | 0.86× |
+| 80×12 | **1.275** | 2.700 | 0.47× |
 
 Measured on 2026-11-14 with `bench/pexp_bench.py --runs 21`, repeated three
 times: each cell is the median of the three medians, from interleaved runs of
@@ -265,18 +269,18 @@ construction. Primal's public residuals and relative gap were below
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | 0.723 | **0.410** | 1.76× |
-| SOC | 20 | 1.168 | **0.862** | 1.36× |
-| SOC | 40 | 1.459 | **1.458** | 1.00× |
-| SOC | 80 | 4.290 | **2.704** | 1.59× |
-| EXP | 10 | 0.615 | **0.216** | 2.85× |
-| EXP | 20 | 0.555 | **0.304** | 1.82× |
-| EXP | 40 | 0.919 | **0.463** | 1.99× |
-| EXP | 80 | 1.464 | **0.793** | 1.85× |
-| Mixed | 10 | 0.264 | **0.200** | 1.32× |
-| Mixed | 20 | 0.468 | **0.281** | 1.67× |
-| Mixed | 40 | 0.636 | **0.534** | 1.19× |
-| Mixed | 80 | 1.126 | **1.111** | 1.01× |
+| SOC | 10 | 0.612 | **0.345** | 1.77× |
+| SOC | 20 | 0.924 | **0.703** | 1.31× |
+| SOC | 40 | 1.243 | **1.203** | 1.03× |
+| SOC | 80 | 3.582 | **2.755** | 1.30× |
+| EXP | 10 | 0.468 | **0.190** | 2.46× |
+| EXP | 20 | 0.471 | **0.248** | 1.90× |
+| EXP | 40 | 0.739 | **0.408** | 1.81× |
+| EXP | 80 | 1.156 | **0.691** | 1.67× |
+| Mixed | 10 | 0.255 | **0.166** | 1.54× |
+| Mixed | 20 | 0.371 | **0.228** | 1.62× |
+| Mixed | 40 | 0.614 | **0.429** | 1.43× |
+| Mixed | 80 | **0.921** | 0.943 | 0.98× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
 checks objective agreement. See [the detailed results](BENCHMARKS.md) for
