@@ -28,12 +28,10 @@ jobs:
       fail-fast: false
       matrix:
         version: [ '1.10', '1' ]
+        # Linux only, measured 2026-11-15: every `macos-*` job of this
+        # repository is cancelled by GitHub before a runner is assigned (see the
+        # note in ci.yml), so a macOS entry would only turn the run red.
         os: [ ubuntu-latest ]
-        include:
-          # One macOS run: the artifact is per platform and the binding loads a
-          # dylib instead of a .so, which is a different code path in Libdl.
-          - version: '1'
-            os: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
