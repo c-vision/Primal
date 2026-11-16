@@ -798,12 +798,8 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
                 t->suc[k] = t->y[k] > 0.0 ? t->y[k] : 0.0;
             }
             for (int i = 0; i < nvar; i++) {
-                int member = 0;
-                for (int k = 0; k < t->numcones && !member; k++)
-                    for (int a = 0; a < t->cone_nmem[k]; a++)
-                        if (t->cone_mem[k][a] == i) { member = 1; break; }
                 double z = 0.0;
-                if (!member) {
+                if (memCnt[i] == 0) {
                     z = -t->c[i];
                     const Col *col = &t->cols[i];
                     for (int k = 0; k < col->nz; k++) z -= col->val[k] * t->y[col->sub[k]];

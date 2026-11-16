@@ -3153,6 +3153,11 @@ redo_dir:
                 if (secant && nb == 0 && nsoc == 0 && nep > 0 &&
                     n > 0 && n <= m / 2 && Q.pri < 1e-6 && Q.dual < 1e-6)
                     sigma_floor = 0.07;
+                /* With no orthant and tightly satisfied equations, the
+                 * mixed cone path can focus on reducing complementarity. */
+                if (secant && nb == 0 && nsoc > 0 && nep > 0 && n == 0 &&
+                    Q.pri <= 0.1 * rtol_pri && Q.dual <= 0.1 * rtol_dual)
+                    sigma_floor = 0.0125;
 #endif
                 if (!(sigma > sigma_floor)) sigma = sigma_floor;
                 /* Rescue burst after a freeze: centring is what the iterate was

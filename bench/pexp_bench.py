@@ -31,6 +31,7 @@ the machine drifts between runs.
 from __future__ import annotations
 
 import argparse
+from itertools import cycle, islice, permutations
 import math
 import statistics
 import subprocess
@@ -180,12 +181,15 @@ def main() -> int:
     for n, d in sizes:
         ref = None if args.no_clarabel else make_reference(n, d)
         tp, to, tc = [], [], []
-        for _ in range(args.runs):
-            tp.append(run_primal(primal, n, d)[0])
-            if other is not None:
-                to.append(run_primal(other, n, d)[0])
-            if ref is not None:
-                tc.append(run_clarabel(ref, n, d)[0])
+        runners = [(tp, lambda: run_primal(primal, n, d))]
+        if other is not None:
+            runners.append((to, lambda: run_primal(other, n, d)))
+        if ref is not None:
+            runners.append((tc, lambda: run_clarabel(ref, n, d)))
+        orders = cycle(permutations(runners))
+        for order in islice(orders, args.runs):
+            for times, run in order:
+                times.append(run()[0])
         mp = median(tp) * 1e3
         row = f"| {n}×{d} | {mp:.3f} |"
         if other is not None:
