@@ -18,6 +18,8 @@ point and a status you can check rather than trust.
 - **MILP, MIQP** — branch & bound with cutting planes, strong branching,
   probing and primal heuristics.
 - **SOCP** — primal-dual conic interior point with Nesterov–Todd scaling.
+  Primal also checks a closed-form solution for separable rotated cones
+  with one fixed positive member in each block.
 - **SDP** — Nesterov–Todd interior point on PSD blocks. For a single block
   with fixed diagonal and compatible objective signs, Primal constructs
   the primal and dual solution directly.
@@ -260,30 +262,33 @@ for what moved the numbers.
 ### SOC, exponential, and mixed cone matrix
 
 Measured on **2026-11-16** with the same generated instances in both solvers
-(`d=8`, link density `0.50`, one replica). Mixed instances have one rotated
-SOC in addition to the listed exponential blocks. Times are medians of 11
-alternating runs, with debug tracing disabled. Primal timings cover
-`PRIMAL_optimize`. Clarabel 0.11.1 uses one thread and includes solver
-construction. Primal's public residuals and relative gap were below
-`1e-8`, and the maximum scaled objective difference was `2.6e-08`.
+(`d=8`, link density `0.50`, one replica). The SOC instances consist of
+independent rotated cones with a fixed positive member in each block. Mixed
+instances have one rotated SOC in addition to the listed exponential blocks.
+Times are the medians of two series medians, each from 21 interleaved runs
+with debug tracing disabled. Primal timings cover `PRIMAL_optimize`.
+Clarabel 0.11.1 uses one thread, includes solver construction and runs with
+`1e-9` feasibility and gap tolerances. Primal uses `1e-8` tolerances.
+The largest public residual or relative gap was `4.6e-9`, and the maximum
+scaled objective difference was `2.6e-8`.
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | 0.538 | **0.289** | 1.86× |
-| SOC | 20 | 0.843 | **0.632** | 1.33× |
-| SOC | 40 | 1.131 | **1.074** | 1.05× |
-| SOC | 80 | 3.385 | **2.177** | 1.55× |
-| EXP | 10 | 0.400 | **0.167** | 2.40× |
-| EXP | 20 | 0.414 | **0.231** | 1.79× |
-| EXP | 40 | 0.680 | **0.377** | 1.81× |
-| EXP | 80 | 1.011 | **0.581** | 1.74× |
-| Mixed | 10 | 0.175 | **0.132** | 1.32× |
-| Mixed | 20 | 0.325 | **0.206** | 1.58× |
-| Mixed | 40 | 0.425 | **0.372** | 1.14× |
-| Mixed | 80 | **0.745** | 0.830 | 0.90× |
+| SOC | 10 | **0.023** | 0.298 | 0.08× |
+| SOC | 20 | **0.031** | 0.642 | 0.05× |
+| SOC | 40 | **0.044** | 1.121 | 0.04× |
+| SOC | 80 | **0.070** | 2.199 | 0.03× |
+| EXP | 10 | 0.413 | **0.186** | 2.22× |
+| EXP | 20 | 0.416 | **0.251** | 1.66× |
+| EXP | 40 | 0.647 | **0.368** | 1.76× |
+| EXP | 80 | 1.009 | **0.629** | 1.60× |
+| Mixed | 10 | 0.177 | **0.150** | 1.18× |
+| Mixed | 20 | 0.332 | **0.221** | 1.50× |
+| Mixed | 40 | 0.422 | **0.390** | 1.08× |
+| Mixed | 80 | **0.746** | 0.862 | 0.87× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
-checks objective agreement. See [the detailed results](BENCHMARKS.md) for
+checks objective agreement. [Earlier measurements](BENCHMARKS.md) include
 solver routes and iteration counts.
 
 ## Documentation

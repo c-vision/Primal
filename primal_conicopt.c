@@ -60,6 +60,78 @@ static int conic_dense_run(int n,int p,ConicMatrix *E,const double *d,const doub
     int rc=ed&&gd?socp_solve(n,p,ed,d,c,nc,cones,gd,h,tg,tf,maxit,x,y,lm):2;
     free(ed);free(gd);return rc;
 }
+/* A rotated cone with one fixed positive member is a quadratic epigraph.
+ * In SOC coordinates its slack is (a*w+h, sign*(a*w-h), v).
+ * For scaled objective p*a*w + d'v, v=-2*h*d/p at the minimum. */
+static int conic_fixed_epigraphs(int n, int nc, const SocpCone *cones,
+    const ConicMatrix *G, const double *h, const double *c, double tg,
+    double tf, double *x, double *lm) {
+    int o = 0;
+    double pobj = 0.0, dobj = 0.0;
+    for (int j = 0; j < n; j++) x[j] = NAN;
+    for (int k = 0; k < nc; o += cones[k++].nmem) {
+        int dim = cones[k].nmem;
+        if (cones[k].type == 0) continue;
+        const ConicRow *row = G->row + o;
+        if (dim < 2 || row[0].nz != 1 || row[1].nz != 1 ||
+            row[0].entry[0].col != row[1].entry[0].col) return 0;
+        int axis = row[0].entry[0].col;
+        double a = row[0].entry[0].value, a1 = row[1].entry[0].value, b = h[o];
+        double sign = a1 > 0.0 ? 1.0 : -1.0;
+        if (!isnan(x[axis]) || !(a > 0.0) || fabs(a1) != a ||
+            !(b > 0.0) || h[o+1] != -sign*b) return 0;
+        double p = c[axis] / a;
+        if (!(p > 0.0) || !isfinite(p)) return 0;
+        x[axis] = 0.0; /* Claim the coordinate before scanning the tail. */
+        double dn = 0.0, vn = 0.0;
+        for (int j = 2; j < dim; j++) {
+            if (row[j].nz != 1 || h[o+j] != 0.0) return 0;
+            int col = row[j].entry[0].col;
+            double g = row[j].entry[0].value;
+            if (!isnan(x[col]) || g == 0.0) return 0;
+            double d = c[col] / g;
+            double v = -2.0*b*(d/p);
+            x[col] = v / g;
+            lm[o+j] = d;
+            if (!isfinite(x[col]) || !(fabs(c[col]-g*d) <= tf)) return 0;
+            dn += d*d;
+            double slack = g*x[col];
+            vn += slack*slack;
+        }
+        double w = (vn / b) * 0.25;
+        x[axis] = w / a;
+        double q = dn/p;
+        lm[o] = 0.5*p + 0.5*q;
+        lm[o+1] = sign*(0.5*p - 0.5*q);
+        if (!isfinite(x[axis]) || !isfinite(lm[o]) ||
+            !(fabs(c[axis] - (a*lm[o] + a1*lm[o+1])) <= tf)) return 0;
+        double head = a*x[axis] + b, side = a1*x[axis] + h[o+1];
+        double primal_norm = sqrt(side*side + vn);
+        double dual_norm = sqrt(lm[o+1]*lm[o+1] + dn);
+        if (!isfinite(head) || !isfinite(primal_norm) || !isfinite(dual_norm) ||
+            !(head >= primal_norm - tf) || !(lm[o] >= dual_norm - tf)) return 0;
+    }
+    o = 0;
+    for (int k = 0; k < nc; o += cones[k++].nmem) {
+        if (cones[k].type != 0) continue;
+        for (int j = 0; j < cones[k].nmem; j++) {
+            const ConicRow *r = G->row + o + j;
+            double slack = h[o+j];
+            for (int q = 0; q < r->nz; q++)
+                slack += r->entry[q].value * x[r->entry[q].col];
+            if (!(slack >= 0.0) || !isfinite(slack)) return 0;
+            lm[o+j] = 0.0;
+        }
+    }
+    for (int j = 0; j < n; j++) {
+        if (!isfinite(x[j])) return 0;
+        pobj += c[j]*x[j];
+    }
+    for (int j = 0; j < o; j++) dobj -= h[j]*lm[j];
+    return isfinite(pobj) && isfinite(dobj) &&
+           fabs(pobj-dobj)/(1.0+fabs(pobj)) <= tg;
+}
+
 static int conic_solve_fixed(PRIMALtask_t t,
     int n,int p,ConicMatrix *E,const double *d,const double *c,
     int nc,const SocpCone *cones,ConicMatrix *G,const double *h,
@@ -119,7 +191,13 @@ static int conic_solve_fixed(PRIMALtask_t t,
     /* A translation can increase a relative residual's denominator. Tighten
      * the reduced tolerances so success implies the original criteria. */
     double fr=fmin(1.0,fmin((1+do_)/(1+drn),(1+ho)/(1+hrn)));
-    rc=conic_sparse_run(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,tg/(1+fabs(offset)),tf*fr,maxit,xr,yr,lr,1);
+    if (pr == 0 && maxit > 1 && conic_fixed_epigraphs(nr,ncr,cc,Gr,hr,cr,
+                                                     tg/(1+fabs(offset)),tf*fr,xr,lr)) {
+        if (getenv("GMB_DBG")) fprintf(stderr, "  [route] fixed rotated SOC epigraphs\n");
+        rc = 0;
+    } else {
+        rc=conic_sparse_run(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,tg/(1+fabs(offset)),tf*fr,maxit,xr,yr,lr,1);
+    }
     if(rc==0) {
         for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)x[j]=t->blx[j];
         for(int j=0;j<nr;j++)x[cols[j]]=xr[j];

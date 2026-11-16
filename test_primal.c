@@ -21893,8 +21893,57 @@ static void test_t311(void) {
     }
 }
 
+/* T312: separable rotated epigraphs with either axis fixed.
+ * An active upper bound on a free axis requires the general solver. */
+static void test_t312(void) {
+    enum { blocks = 6, dim = 6, n = blocks * dim };
+    cur_name = "T312 fixed rotated SOC epigraphs";
+    for (int bounded = 0; bounded < 2; bounded++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, n);
+        for (int k = 0; k < blocks; k++) {
+            int mem[dim];
+            for (int a = 0; a < dim; a++) {
+                mem[a] = k * dim + a;
+                PRIMAL_putvarbound(t, mem[a], PRIMAL_BK_FR, 0, 0);
+            }
+            int fixed = mem[k % 2], axis = mem[1 - k % 2];
+            PRIMAL_putvarbound(t, fixed, PRIMAL_BK_FX, 2, 2);
+            if (bounded && k == 0)
+                PRIMAL_putvarbound(t, axis, PRIMAL_BK_RA, 0, 1);
+            else PRIMAL_putvarbound(t, axis, PRIMAL_BK_LO, 0, 0);
+            PRIMAL_putcj(t, fixed, 0.25);
+            PRIMAL_putcj(t, axis, 2);
+            PRIMAL_putcj(t, mem[2], 3);
+            PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, dim, mem);
+        }
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T312 optimize");
+        double po = INFINITY, du = -INFINITY;
+        double pr = INFINITY, pv = INFINITY, pc = INFINITY;
+        double dr = INFINITY, dv = INFINITY, dc = INFINITY, x[n] = {0};
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                       &du, &dr, &dv, NULL, &dc),
+                 PRIMAL_RES_OK, "T312 solution quality");
+        double objective = -4.0 * blocks + (bounded ? 0.5 : 0.0);
+        check(fabs(po - objective) <= 1e-8 * (1 + fabs(objective)), "T312 known objective");
+        check(fabs(po - du) <= 1e-8 * (1 + fabs(po)), "T312 objective gap");
+        check(fmax(pr, fmax(pv, pc)) <= 1e-8, "T312 primal feasibility");
+        check(fmax(dr, fmax(dv, dc)) <= 1e-8, "T312 dual feasibility");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T312 published point");
+        for (int k = 0; k < blocks; k++) {
+            double axis = bounded && k == 0 ? 1.0 : 2.25;
+            check(fabs(x[k*dim + 1 - k%2] - axis) <= 1e-4, "T312 free axis value");
+            check(fabs(x[k*dim+2] - (bounded && k == 0 ? -2.0 : -3.0)) <= 1e-4,
+                  "T312 transverse value");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t312();
     test_t311();
     test_t310();
     test_t309();
