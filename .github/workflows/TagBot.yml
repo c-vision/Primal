@@ -1,0 +1,22 @@
+name: TagBot
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+jobs:
+  TagBot:
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    # ubuntu-slim doesn't support containers, and thus won't work
+    runs-on: ubuntu-latest
+    steps:
+      - uses: JuliaRegistries/TagBot@87cc4cc2b4639f6c743f5772f376a32914060732 # v1.25.15
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # The Julia package lives in julia/: TagBot prefixes the tag with the
+          # package name, so v0.1.7 (the C release tag) is not touched.
+          subdir: julia
+          # For commits that modify workflow files (as d50191b does), the tag
+          # needs an SSH deploy key and the release still requires manual
+          # creation; see the TagBot README.
+          # ssh: ${{ secrets.DOCUMENTER_KEY }}
