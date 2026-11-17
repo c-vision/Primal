@@ -305,6 +305,26 @@ residui della baseline. Il caso misto a 20 blocchi resta il divario
 maggiore nella matrice, con 0.339 ms contro 0.224 ms.
 [Derivazione e criteri di accettazione](algorithms/exponential_cone.md#reduced-newton-method-for-fixed-scale-epigraphs)
 
+### Newton ridotto con penalità RQUAD, 2026-11-18
+
+Baseline `a0706e5`, stesso protocollo di due serie da 21 prove. I quattro
+casi misti della matrice passano da un KKT di ordine 41–251 a un sistema
+Newton di ordine 8. I tempi si riferiscono a questi epigrafi con un solo
+RQUAD e con le sue coordinate trasversali libere.
+
+| Blocchi misti | Primal prima (ms) | Primal dopo (ms) | Clarabel (ms) | Passi Newton |
+|---:|---:|---:|---:|---:|
+| 10 | 0.183 | **0.016** | 0.148 | 4 |
+| 20 | 0.330 | **0.018** | 0.209 | 5 |
+| 40 | 0.418 | **0.022** | 0.366 | 4 |
+| 80 | 0.732 | **0.031** | 0.835 | 4 |
+
+Sui misti della matrice il massimo fra residui pubblici e gap relativo è
+`5.6e-16`. Lo scarto obiettivo scalato da Clarabel è al massimo
+`1.7e-10`. I tre casi di [regressione con penalità quadratica](README.md#mixed-soc-and-exponential-cones)
+sono inclusi nella verifica a `1e-8` con gli obiettivi noti del generatore.
+[Derivazione del duale RQUAD](algorithms/exponential_cone.md#adding-a-rotated-quadratic-penalty)
+
 ### Baseline della matrice, 2026-11-13
 
 Generatore `bench/pexp_matrix.c`, runner `bench/pexp_matrix.py` (costruisce il

@@ -43,7 +43,7 @@ BIN = ROOT / "out" / "bench" / "pexp_matrix"
 KKT = re.compile(r"\[kkt\] pass=0 n=(\d+) reuse=0(.*)")
 ITER = re.compile(r"^\s*(?:socp(?:_sp)? )?it=(\d+)")
 ROUTE = re.compile(r"\[route\] status=(\d)")
-REDUCED_EXP = re.compile(r"\[route\] reduced EXP Newton it=(\d+) n=(\d+)")
+REDUCED_EXP = re.compile(r"\[route\] reduced EXP(?:/RQUAD)? Newton it=(\d+) n=(\d+)")
 RETRY = re.compile(r"\[retry\]")
 
 
@@ -226,7 +226,7 @@ def cell(fam, n, d, rho, rep, runs):
 
 def table(title, cases, runs, ref=False):
     print(f"\n### {title}\n")
-    head = "| case | blocks | rows | KKT n | nnz | route | it | ms | ms/it |"
+    head = "| case | blocks | rows | system order | nnz | route | it | ms | ms/it |"
     if ref:
         head += " clarabel ms | ratio |"
     head += " rel_gap | retry |"

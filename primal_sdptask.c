@@ -198,15 +198,21 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
 enum { EXP_REDUCED_DIM = 16, EXP_REDUCED_STEPS = 24 };
 
 typedef struct {
-    int head, row;
+    int head, scale_var, arg, row;
     double scale, link, bias, weight;
     double a[EXP_REDUCED_DIM];
     double argument, epigraph, dual, activity;
 } ExpReducedTerm;
 
+static double exp_reduced_norm2(const double *x, int d) {
+    double norm2 = 0.0;
+    for (int j = 0; j < d; j++) norm2 += x[j] * x[j];
+    return norm2;
+}
+
 static double exp_reduced_eval(ExpReducedTerm *term, int n, const double *x, int d,
-                               int save) {
-    double obj = 0.0;
+                               double quadratic, int save) {
+    double obj = quadratic > 0.0 ? (0.5 * quadratic) * exp_reduced_norm2(x, d) : 0.0;
     for (int i = 0; i < n; i++) {
         ExpReducedTerm *p = &term[i];
         double argument = p->bias;
@@ -223,27 +229,39 @@ static double exp_reduced_eval(ExpReducedTerm *term, int n, const double *x, int
 
 /* For t >= u*exp(v/u) with u fixed and v affine in free x, minimizing
  * positive costs on t gives a smooth sum of exponentials in x alone.
+ * One rotated epigraph with a fixed positive head adds a quadratic in x.
  * Reconstruct both solutions and accept only a measured conic point. */
 static int exp_reduced_solve(PRIMALtask_t t, int sense) {
-    int n = t->numcones, nv = t->numvar;
-    int d = 0, ok = 0;
+    int n = t->numcon, nv = t->numvar;
+    int d = 0, ok = 0, rq = -1, qhead = -1, qfixed = -1;
+    double qscale = 0.0, qweight = 0.0, quadratic = 0.0;
+    double qdual[EXP_REDUCED_DIM + 2];
     int limit = iter_cap(t->max_iter_intpnt);
     double fixed_cost = t->cfix;
-    if (n != t->numcon || n == 0 || 2 * (size_t)n >= (size_t)nv ||
+    if (t->numcones < n || t->numcones - n > 1 || n == 0 ||
+        2 * (size_t)n >= (size_t)nv ||
         t->numbarvar || t->has_warm || t->cbfn || t->progcb ||
         t->optimizer_max_time >= 0.0 || limit <= 1 ||
         t->lower_obj_cut > -0.5 * DBL_MAX || t->upper_obj_cut < 0.5 * DBL_MAX ||
         getenv("GMB_NO_EXP_REDUCED") || getenv("GMB_NO_EXP_ABSORB") ||
         getenv("GMB_EXP_DA") || getenv("GMB_NO_EXP_HIGHER")) return 0;
-    for (int i = 0; i < n; i++) if (t->cone_type[i] != PRIMAL_CT_PEXP) return 0;
+    for (int k = 0; k < t->numcones; k++) {
+        if (t->cone_type[k] == PRIMAL_CT_PEXP) continue;
+        if (rq >= 0 || t->numcones == n || t->cone_type[k] != PRIMAL_CT_RQUAD) return 0;
+        rq = k;
+    }
+    if (t->numcones != n + (rq >= 0)) return 0;
+    if (rq >= 0 && (getenv("GMB_NO_SOC_ABSORB") || getenv("GMB_NO_KKT_PIN") ||
+                    getenv("GMB_SDP_DENSE"))) return 0;
     ExpReducedTerm *term = (ExpReducedTerm *)calloc((size_t)n, sizeof(*term));
     int *member = (int *)calloc((size_t)nv, sizeof(*member));
     int *by_row = (int *)calloc((size_t)n, sizeof(*by_row));
     int free_var[EXP_REDUCED_DIM];
     if (!term || !member || !by_row) goto done;
-    enum { HEAD = 1, FIXED_SCALE, ARGUMENT };
-    for (int i = 0; i < n; i++) {
-        const int *m = t->cone_mem[i];
+    enum { HEAD = 1, FIXED_SCALE, ARGUMENT, QUAD_TAIL };
+    for (int k = 0, i = 0; k < t->numcones; k++) {
+        if (k == rq) continue;
+        const int *m = t->cone_mem[k];
         int head = m[0], scale = m[1], arg = m[2];
         const Col *col = &t->cols[arg];
         if (head == arg || head == scale || arg == scale || member[head] || member[arg] ||
@@ -263,17 +281,45 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
         member[arg] = ARGUMENT;
         by_row[row] = i + 1;
         term[i].head = head;
+        term[i].scale_var = scale;
+        term[i].arg = arg;
         term[i].row = row;
         term[i].link = col->val[0];
         term[i].scale = t->blx[scale];
         term[i].weight = sense * t->c[head];
         term[i].bias = t->blc[row] / col->val[0];
+        i++;
+    }
+    if (rq >= 0) {
+        const int *mem = t->cone_mem[rq];
+        int dim = t->cone_nmem[rq];
+        if (dim <= 2 || dim > EXP_REDUCED_DIM + 2) goto done;
+        int fixed = t->bkx[mem[0]] == PRIMAL_BK_FX ? 0 : 1;
+        qfixed = mem[fixed];
+        qhead = mem[1 - fixed];
+        qscale = t->blx[qfixed];
+        qweight = sense * t->c[qhead];
+        if (member[qhead] || (member[qfixed] && member[qfixed] != FIXED_SCALE) ||
+            t->bkx[qfixed] != PRIMAL_BK_FX || !(qscale > 0.0) || !isfinite(qscale) ||
+            t->cols[qfixed].nz || t->cols[qhead].nz ||
+            (t->bkx[qhead] != PRIMAL_BK_FR &&
+             !(t->bkx[qhead] == PRIMAL_BK_LO && t->blx[qhead] <= 0.0)) ||
+            !(qweight > 0.0) || !isfinite(qweight)) goto done;
+        quadratic = qweight / qscale;
+        if (!(quadratic > 0.0) || !isfinite(quadratic)) goto done;
+        member[qhead] = HEAD;
+        member[qfixed] = FIXED_SCALE;
+        for (int j = 2; j < dim; j++) {
+            if (member[mem[j]]) goto done;
+            member[mem[j]] = QUAD_TAIL;
+        }
     }
     for (int j = 0; j < nv; j++) {
         if (t->vartype[j] != PRIMAL_VAR_TYPE_CONT) goto done;
         if (member[j] == FIXED_SCALE) fixed_cost += t->c[j] * t->blx[j];
-        if (member[j]) continue;
-        if (d == EXP_REDUCED_DIM || t->bkx[j] != PRIMAL_BK_FR || t->c[j] != 0.0)
+        if (member[j] && member[j] != QUAD_TAIL) continue;
+        if (d == EXP_REDUCED_DIM || t->bkx[j] != PRIMAL_BK_FR || t->c[j] != 0.0 ||
+            (rq >= 0 && member[j] != QUAD_TAIL))
             goto done;
         const Col *col = &t->cols[j];
         for (int k = 0; k < col->nz; k++) {
@@ -290,7 +336,7 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
     DMat hessian = { d, d, rows };
     int steps = limit < EXP_REDUCED_STEPS ? limit : EXP_REDUCED_STEPS;
     for (int it = 0; it < steps; it++) {
-        double obj = exp_reduced_eval(term, n, x, d, 1);
+        double obj = exp_reduced_eval(term, n, x, d, quadratic, 1);
         if (!isfinite(obj)) goto done;
         double primal = sense * fixed_cost + obj;
         double dual_obj = 0.0;
@@ -327,15 +373,44 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
                 g += entry;
                 scale = fmax(scale, fabs(entry));
             }
+            if (rq >= 0) {
+                qdual[j+2] = g;
+                double penalty_grad = quadratic * x[j];
+                g += penalty_grad;
+                scale = fmax(scale, fabs(penalty_grad));
+            }
             if (!isfinite(g)) goto done;
             /* A tiny column must still cancel: changing the units of a free
              * variable does not bring a nonstationary point to the optimum. */
             if (fabs(g) > t->tol_co_dfeas * fmin(1.0, scale)) stationary = 0;
             step[j] = -g;
         }
+        if (rq >= 0) {
+            /* RQUAD is self-dual. Its tail is A'y, so the smallest dual
+             * fixed-head coordinate is ||A'y||^2/(2*qweight).
+             * Subtracting qscale times that coordinate gives the quadratic's
+             * exact conjugate contribution. The tail order can be permuted
+             * for the norm and cone checks. */
+            qdual[0] = qweight;
+            qdual[1] = (0.5 * exp_reduced_norm2(qdual + 2, d) / qweight) *
+                       (1.0 + 16.0 * DBL_EPSILON);
+            dual_obj -= qscale * qdual[1];
+        }
         double dual = sense * fixed_cost + dual_obj;
         if (stationary && isfinite(dual) &&
             fabs(obj - dual_obj) <= gap_bound && fabs(primal - dual) <= gap_bound) {
+            double qepigraph = 0.0;
+            if (rq >= 0) {
+                double qpoint[EXP_REDUCED_DIM + 2];
+                qepigraph = 0.5 * exp_reduced_norm2(x, d) / qscale;
+                qpoint[0] = qepigraph;
+                qpoint[1] = qscale;
+                memcpy(qpoint + 2, x, (size_t)d * sizeof(*x));
+                double pslack = cone_signed_slack(PRIMAL_CT_RQUAD, 0.0, qpoint, d+2);
+                double dslack = cone_dual_signed_slack(PRIMAL_CT_RQUAD, 0.0, qdual, d+2);
+                if (!isfinite(pslack) || !(pslack >= -t->tol_co_pfeas) ||
+                    !isfinite(dslack) || !(dslack >= -t->tol_co_dfeas)) goto done;
+            }
             /* Evaluate all rows in original column order before publishing. */
             for (int i = 0; i < n; i++) term[i].activity = 0.0;
             for (int j = 0, k = 0; j < nv; j++) {
@@ -343,7 +418,7 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
                 if (member[j] == ARGUMENT) {
                     ExpReducedTerm *p = &term[by_row[col->sub[0]] - 1];
                     p->activity += p->link * p->argument;
-                } else if (!member[j]) {
+                } else if (!member[j] || member[j] == QUAD_TAIL) {
                     double value = x[k++];
                     for (int q = 0; q < col->nz; q++)
                         term[by_row[col->sub[q]] - 1].activity += col->val[q] * value;
@@ -355,25 +430,30 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
             for (int j = 0; j < d; j++) t->x[free_var[j]] = x[j];
             for (int i = 0; i < n; i++) {
                 const ExpReducedTerm *p = &term[i];
-                const int *m = t->cone_mem[i];
                 t->x[p->head] = p->epigraph;
-                t->x[m[1]] = p->scale;
-                t->x[m[2]] = p->argument;
+                t->x[p->scale_var] = p->scale;
+                t->x[p->arg] = p->argument;
                 t->y[p->row] = sense * p->dual;
                 t->slc[p->row] = fmin(0.0, t->y[p->row]);
                 t->suc[p->row] = fmax(0.0, t->y[p->row]);
+            }
+            if (rq >= 0) {
+                t->x[qhead] = qepigraph;
+                t->x[qfixed] = qscale;
             }
             t->pobj = sense * primal;
             t->dobj = sense * dual;
             t->has_sol = 1;
             t->solsta = PRIMAL_SOL_STA_OPTIMAL;
-            if (getenv("GMB_DBG")) fprintf(stderr, "  [route] reduced EXP Newton it=%d n=%d\n", it, d);
+            if (getenv("GMB_DBG")) fprintf(stderr, "  [route] reduced %s Newton it=%d n=%d\n",
+                                          rq >= 0 ? "EXP/RQUAD" : "EXP", it, d);
             tlog(t, "optimal solution found (reduced exponential epigraphs)\n");
             ok = 1;
             goto done;
         }
         if (zero_dual) goto done;
         memset(storage, 0, sizeof(storage));
+        for (int j = 0; j < d; j++) storage[j][j] = quadratic;
         for (int i = 0; i < n; i++) {
             const ExpReducedTerm *p = &term[i];
             double curvature = (-p->link * p->dual) / (p->scale * p->scale);
@@ -393,7 +473,7 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
         int accepted = 0;
         for (int bt = 0; bt < 16; bt++, alpha *= 0.5) {
             for (int j = 0; j < d; j++) trial[j] = x[j] + alpha * step[j];
-            double v = exp_reduced_eval(term, n, trial, d, 0);
+            double v = exp_reduced_eval(term, n, trial, d, quadratic, 0);
             if (isfinite(v) && v <= obj - 0.01 * alpha * descent) {
                 memcpy(x, trial, (size_t)d * sizeof(*x));
                 accepted = 1;

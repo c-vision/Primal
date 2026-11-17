@@ -21997,8 +21997,54 @@ static void test_t313(void) {
     }
 }
 
+/* T314: min e^(1+x) + x^2/2 has its optimum at x=-1, with value 1.5.
+ * Either rotated head can be fixed. With x>=0, the optimum moves to x=0. */
+static void test_t314(void) {
+    cur_name = "T314 reduced mixed epigraphs";
+    for (int mode = 0; mode < 3; mode++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int bounded = mode == 2;
+        int exp_mem[] = {1, 2, 3};
+        int quad_mem[] = {mode == 1 ? 5 : 4, mode == 1 ? 4 : 5, 0};
+        PRIMAL_appendvars(t, 6);
+        PRIMAL_appendcons(t, 1);
+        for (int j = 0; j < 6; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0, 0);
+        if (bounded) PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0, 0);
+        PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, 1, 1);
+        PRIMAL_putvarbound(t, 5, PRIMAL_BK_FX, 2, 2);
+        PRIMAL_putcj(t, 1, 1);
+        PRIMAL_putcj(t, 4, 2);
+        PRIMAL_putaij(t, 0, 0, 1);
+        PRIMAL_putaij(t, 0, 3, -1);
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, -1, -1);
+        if (mode == 1) PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, 3, quad_mem);
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, exp_mem);
+        if (mode != 1) PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, 3, quad_mem);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T314 optimize");
+        double po = INFINITY, du = -INFINITY, x[6] = {0}, y = 0.0;
+        double pr = INFINITY, pv = INFINITY, pc = INFINITY;
+        double dr = INFINITY, dv = INFINITY, dc = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                       &du, &dr, &dv, NULL, &dc),
+                 PRIMAL_RES_OK, "T314 solution quality");
+        double goal = bounded ? exp(1.0) : 1.5;
+        check(fabs(po - goal) <= 1e-8 * (1 + goal), "T314 known objective");
+        check(fabs(po - du) <= 1e-8 * (1 + fabs(po)), "T314 objective gap");
+        check(fmax(pr, fmax(pv, pc)) <= 1e-8, "T314 primal feasibility");
+        check(fmax(dr, fmax(dv, dc)) <= 1e-8, "T314 dual feasibility");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T314 primal vector");
+        check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, &y), PRIMAL_RES_OK, "T314 dual vector");
+        check(fabs(x[0] - (bounded ? 0 : -1)) <= 1e-6, "T314 minimizing coordinate");
+        check(fabs(x[4] - (bounded ? 0 : 0.25)) <= 1e-6, "T314 quadratic epigraph");
+        check(fabs(y - (bounded ? exp(1.0) : 1.0)) <= 1e-6, "T314 row multiplier");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t314();
     test_t313();
     test_t312();
     test_t311();

@@ -166,7 +166,7 @@ The dispatcher tries `sdp_ipm_csr_corrected` for PEXP models with SOC or
 RQUAD blocks and for pure PEXP models with at least ten blocks, provided
 there are no PSD blocks. A pure PEXP model can retry with the original
 engine if the corrected engine fails to certify its point.
-[Dispatch implementation](../primal_sdptask.c#L940)
+[Dispatch implementation](../primal_sdptask.c#L1020)
 
 ## Reduced Newton method for fixed-scale epigraphs
 
@@ -217,14 +217,38 @@ using the task tolerances. The stationarity check also scales to the
 contributions in each free column, so changing the units of a variable
 cannot make a visibly nonstationary point pass. An unsupported model,
 failed factorization or unsuccessful check passes control to the conic
-interior-point method. [Reduced Newton implementation](../primal_sdptask.c#L227)
+interior-point method. [Reduced Newton implementation](../primal_sdptask.c#L234)
+
+### Adding a rotated quadratic penalty
+
+A single RQUAD block $(w,u_Q,x)$ with a fixed head $u_Q>0$ and positive
+epigraph cost $c_Q$ adds the constraint $2wu_Q\geq\|x\|_2^2$. Eliminating
+$w$ adds $\gamma\|x\|_2^2/2$ to the reduced objective, with
+$\gamma=c_Q/u_Q$. The gradient gains $\gamma x$ and the Hessian gains
+$\gamma I$. The same Newton solve applies when the rotated tail contains
+every free coordinate exactly once.
+
+Let $g=\sum_i r_i y_i$ be the gradient contribution from the exponential
+terms. The rotated cone is self-dual. Its dual certificate has free
+head $c_Q$, tail $g$, and remaining head $\|g\|_2^2/(2c_Q)$. The fixed
+primal head contributes $-\|g\|_2^2/(2\gamma)$ to the dual objective.
+The quadratic part of the gap, including the pairing with $g$, is
+$\|g+\gamma x\|_2^2/(2\gamma)$. PRIMAL verifies both rotated points
+along with the exponential blocks and the original equalities.
+
+For example, $F(x)=e^{1+x}+x^2/2$ has $F'(-1)=1-1=0$ and a positive
+second derivative. Its minimum is $3/2$. With $u_Q=2$ and $c_Q=2$,
+the rotated primal point is $(1/4,2,-1)$ and the dual is $(2,1/4,1)$.
+They are both on the cone boundary and their inner product is zero.
+Test `T314` checks both head positions and the general conic route when
+a bound on $x$ changes the optimum. [Regression test](../test_primal.c#L22002)
 
 ## Routes in PRIMAL
 
 ```text
 PRIMAL_optimize
   -> optimize_sdp_ipm               unless GMB_NO_EXP_IPM
-       try reduced Newton for eligible fixed-scale PEXP epigraphs
+       try reduced Newton for eligible PEXP epigraphs, with an optional RQUAD penalty
        otherwise pass exp/power cones as native blocks to the interior-point method
        first attempt: Hessian-NT row
        if not solved and nb = 0:    retry in SECANT mode (Dahl-Andersen primal-dual secant scaling),
