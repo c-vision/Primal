@@ -21941,8 +21941,65 @@ static void test_t312(void) {
     }
 }
 
+/* T313: translated exponential epigraphs with different fixed scales.
+ * Two slopes give either a finite minimizer or a zero infimum. A bound on
+ * the common variable exercises the general conic solver instead. */
+static void test_t313(void) {
+    cur_name = "T313 reduced exponential epigraphs";
+    for (int mode = 0; mode < 5; mode++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int sign = mode == 1 ? -1 : 1;
+        int infimum = mode == 2, bounded = mode == 3;
+        double a = mode == 4 ? 1e-12 : 1.0;
+        int cone0[] = {1, 2, 3}, cone1[] = {4, 5, 6};
+        PRIMAL_appendvars(t, 7);
+        PRIMAL_appendcons(t, 2);
+        PRIMAL_putobjsense(t, sign < 0 ? PRIMAL_OPTIMIZE_MAXIMIZE : PRIMAL_OPTIMIZE_MINIMIZE);
+        for (int j = 0; j < 7; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0, 0);
+        if (bounded) PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 2, 0);
+        PRIMAL_putvarbound(t, 1, PRIMAL_BK_LO, 0, 0);
+        PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, 2, 2);
+        PRIMAL_putvarbound(t, 5, PRIMAL_BK_FX, 1, 1);
+        PRIMAL_putcj(t, 1, sign);
+        PRIMAL_putcj(t, 2, sign * 0.25);
+        PRIMAL_putcj(t, 4, sign * 2);
+        PRIMAL_putcj(t, 5, sign * 0.125);
+        PRIMAL_putcfix(t, sign * -0.5);
+        PRIMAL_putaij(t, 0, 0, 2 * a);
+        PRIMAL_putaij(t, 0, 3, -1);
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 2, 2);
+        PRIMAL_putaij(t, 1, 0, infimum ? 2 * a : -2 * a);
+        PRIMAL_putaij(t, 1, 6, -2);
+        PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, infimum ? 2 : -2, infimum ? 2 : -2);
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, cone0);
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, cone1);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T313 optimize");
+        double po = INFINITY, du = -INFINITY, x[7] = {0}, y[2] = {0};
+        double pr = INFINITY, pv = INFINITY, pc = INFINITY;
+        double dr = INFINITY, dv = INFINITY, dc = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                       &du, &dr, &dv, NULL, &dc),
+                 PRIMAL_RES_OK, "T313 solution quality");
+        double goal = sign * (0.125 + (infimum ? 0.0 : 4 * cosh(bounded ? 1.0 : 0.0)));
+        check(fabs(po - goal) <= 1e-8 * (1 + fabs(goal)), "T313 known objective");
+        check(fabs(po - du) <= 1e-8 * (1 + fabs(po)), "T313 objective gap");
+        check(fmax(pr, fmax(pv, pc)) <= 1e-8, "T313 primal feasibility");
+        check(fmax(dr, fmax(dv, dc)) <= 1e-8, "T313 dual feasibility");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T313 primal vector");
+        check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "T313 dual vector");
+        if (!infimum)
+            check(fabs(a * x[0] - (bounded ? 2 : 1)) <= 1e-6, "T313 minimizer");
+        if (!bounded)
+            check(fabs(y[0] - (infimum ? 0 : sign)) <= 1e-6 &&
+                  fabs(y[1] - (infimum ? 0 : sign)) <= 1e-6, "T313 row multipliers");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t313();
     test_t312();
     test_t311();
     test_t310();

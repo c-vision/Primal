@@ -195,6 +195,220 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
     iter_cb_end();
     return r;
 }
+enum { EXP_REDUCED_DIM = 16, EXP_REDUCED_STEPS = 24 };
+
+typedef struct {
+    int head, row;
+    double scale, link, bias, weight;
+    double a[EXP_REDUCED_DIM];
+    double argument, epigraph, dual, activity;
+} ExpReducedTerm;
+
+static double exp_reduced_eval(ExpReducedTerm *term, int n, const double *x, int d,
+                               int save) {
+    double obj = 0.0;
+    for (int i = 0; i < n; i++) {
+        ExpReducedTerm *p = &term[i];
+        double argument = p->bias;
+        for (int j = 0; j < d; j++) argument += p->a[j] * x[j];
+        double epigraph = p->scale * exp(argument / p->scale);
+        obj += p->weight * epigraph;
+        if (save) {
+            p->argument = argument;
+            p->epigraph = epigraph;
+        }
+    }
+    return obj;
+}
+
+/* For t >= u*exp(v/u) with u fixed and v affine in free x, minimizing
+ * positive costs on t gives a smooth sum of exponentials in x alone.
+ * Reconstruct both solutions and accept only a measured conic point. */
+static int exp_reduced_solve(PRIMALtask_t t, int sense) {
+    int n = t->numcones, nv = t->numvar;
+    int d = 0, ok = 0;
+    int limit = iter_cap(t->max_iter_intpnt);
+    double fixed_cost = t->cfix;
+    if (n != t->numcon || n == 0 || 2 * (size_t)n >= (size_t)nv ||
+        t->numbarvar || t->has_warm || t->cbfn || t->progcb ||
+        t->optimizer_max_time >= 0.0 || limit <= 1 ||
+        t->lower_obj_cut > -0.5 * DBL_MAX || t->upper_obj_cut < 0.5 * DBL_MAX ||
+        getenv("GMB_NO_EXP_REDUCED") || getenv("GMB_NO_EXP_ABSORB") ||
+        getenv("GMB_EXP_DA") || getenv("GMB_NO_EXP_HIGHER")) return 0;
+    for (int i = 0; i < n; i++) if (t->cone_type[i] != PRIMAL_CT_PEXP) return 0;
+    ExpReducedTerm *term = (ExpReducedTerm *)calloc((size_t)n, sizeof(*term));
+    int *member = (int *)calloc((size_t)nv, sizeof(*member));
+    int *by_row = (int *)calloc((size_t)n, sizeof(*by_row));
+    int free_var[EXP_REDUCED_DIM];
+    if (!term || !member || !by_row) goto done;
+    enum { HEAD = 1, FIXED_SCALE, ARGUMENT };
+    for (int i = 0; i < n; i++) {
+        const int *m = t->cone_mem[i];
+        int head = m[0], scale = m[1], arg = m[2];
+        const Col *col = &t->cols[arg];
+        if (head == arg || head == scale || arg == scale || member[head] || member[arg] ||
+            (member[scale] && member[scale] != FIXED_SCALE) ||
+            t->bkx[scale] != PRIMAL_BK_FX || !(t->blx[scale] > 0.0) ||
+            !isfinite(t->blx[scale]) || t->cols[scale].nz ||
+            (t->bkx[head] != PRIMAL_BK_FR &&
+             !(t->bkx[head] == PRIMAL_BK_LO && t->blx[head] <= 0.0)) ||
+            t->cols[head].nz || t->bkx[arg] != PRIMAL_BK_FR ||
+            t->c[arg] != 0.0 || col->nz != 1 ||
+            !isfinite(col->val[0]) || col->val[0] == 0.0 ||
+            !(sense * t->c[head] > 0.0) || !isfinite(t->c[head])) goto done;
+        int row = col->sub[0];
+        if (by_row[row] || t->bkc[row] != PRIMAL_BK_FX) goto done;
+        member[head] = HEAD;
+        member[scale] = FIXED_SCALE;
+        member[arg] = ARGUMENT;
+        by_row[row] = i + 1;
+        term[i].head = head;
+        term[i].row = row;
+        term[i].link = col->val[0];
+        term[i].scale = t->blx[scale];
+        term[i].weight = sense * t->c[head];
+        term[i].bias = t->blc[row] / col->val[0];
+    }
+    for (int j = 0; j < nv; j++) {
+        if (t->vartype[j] != PRIMAL_VAR_TYPE_CONT) goto done;
+        if (member[j] == FIXED_SCALE) fixed_cost += t->c[j] * t->blx[j];
+        if (member[j]) continue;
+        if (d == EXP_REDUCED_DIM || t->bkx[j] != PRIMAL_BK_FR || t->c[j] != 0.0)
+            goto done;
+        const Col *col = &t->cols[j];
+        for (int k = 0; k < col->nz; k++) {
+            ExpReducedTerm *p = &term[by_row[col->sub[k]] - 1];
+            p->a[d] -= col->val[k] / p->link;
+        }
+        free_var[d++] = j;
+    }
+    if (d == 0 || !isfinite(fixed_cost)) goto done;
+
+    double x[EXP_REDUCED_DIM] = {0}, trial[EXP_REDUCED_DIM];
+    double storage[EXP_REDUCED_DIM][EXP_REDUCED_DIM], *rows[EXP_REDUCED_DIM];
+    for (int j = 0; j < d; j++) rows[j] = storage[j];
+    DMat hessian = { d, d, rows };
+    int steps = limit < EXP_REDUCED_STEPS ? limit : EXP_REDUCED_STEPS;
+    for (int it = 0; it < steps; it++) {
+        double obj = exp_reduced_eval(term, n, x, d, 1);
+        if (!isfinite(obj)) goto done;
+        double primal = sense * fixed_cost + obj;
+        double dual_obj = 0.0;
+        double gap_bound = t->tol_co_gap * (1.0 + fmin(obj, fabs(primal)));
+        if (!isfinite(primal) || !isfinite(gap_bound)) goto done;
+        /* Zero argument multipliers give the dual lower bound fixed_cost
+         * and also cover an infimum reached only along a recession direction. */
+        int zero_dual = obj <= gap_bound;
+        for (int i = 0; i < n; i++) {
+            ExpReducedTerm *p = &term[i];
+            double lambda = p->weight * (p->epigraph / p->scale);
+            p->dual = zero_dual ? 0.0 : -lambda / p->link;
+            lambda = -p->link * p->dual;
+            if (!isfinite(lambda) || (!zero_dual && !(lambda > 0.0)) ||
+                !(p->epigraph > 0.0)) goto done;
+            if (!zero_dual) {
+                double s1 = lambda * (log(lambda / p->weight) - 1.0);
+                /* D = -b*y-u*s1. Round s1 into the dual cone. */
+                if (!isfinite(s1)) goto done;
+                s1 += 4.0 * DBL_EPSILON * (fabs(s1) + lambda);
+                double cone_dual[3] = { p->weight, s1, -lambda };
+                if (!(cone_dual_signed_slack(PRIMAL_CT_PEXP, 0.0, cone_dual, 3)
+                      >= -t->tol_co_dfeas)) goto done;
+                dual_obj -= p->dual * t->blc[p->row] + p->scale * s1;
+            }
+        }
+        double step[EXP_REDUCED_DIM];
+        int stationary = 1;
+        for (int j = 0; j < d; j++) {
+            const Col *col = &t->cols[free_var[j]];
+            double g = 0.0, scale = 0.0;
+            for (int k = 0; k < col->nz; k++) {
+                double entry = col->val[k] * term[by_row[col->sub[k]] - 1].dual;
+                g += entry;
+                scale = fmax(scale, fabs(entry));
+            }
+            if (!isfinite(g)) goto done;
+            /* A tiny column must still cancel: changing the units of a free
+             * variable does not bring a nonstationary point to the optimum. */
+            if (fabs(g) > t->tol_co_dfeas * fmin(1.0, scale)) stationary = 0;
+            step[j] = -g;
+        }
+        double dual = sense * fixed_cost + dual_obj;
+        if (stationary && isfinite(dual) &&
+            fabs(obj - dual_obj) <= gap_bound && fabs(primal - dual) <= gap_bound) {
+            /* Evaluate all rows in original column order before publishing. */
+            for (int i = 0; i < n; i++) term[i].activity = 0.0;
+            for (int j = 0, k = 0; j < nv; j++) {
+                const Col *col = &t->cols[j];
+                if (member[j] == ARGUMENT) {
+                    ExpReducedTerm *p = &term[by_row[col->sub[0]] - 1];
+                    p->activity += p->link * p->argument;
+                } else if (!member[j]) {
+                    double value = x[k++];
+                    for (int q = 0; q < col->nz; q++)
+                        term[by_row[col->sub[q]] - 1].activity += col->val[q] * value;
+                }
+            }
+            for (int i = 0; i < n; i++)
+                if (!(fabs(term[i].activity - t->blc[term[i].row]) <= t->tol_co_pfeas))
+                    goto done;
+            for (int j = 0; j < d; j++) t->x[free_var[j]] = x[j];
+            for (int i = 0; i < n; i++) {
+                const ExpReducedTerm *p = &term[i];
+                const int *m = t->cone_mem[i];
+                t->x[p->head] = p->epigraph;
+                t->x[m[1]] = p->scale;
+                t->x[m[2]] = p->argument;
+                t->y[p->row] = sense * p->dual;
+                t->slc[p->row] = fmin(0.0, t->y[p->row]);
+                t->suc[p->row] = fmax(0.0, t->y[p->row]);
+            }
+            t->pobj = sense * primal;
+            t->dobj = sense * dual;
+            t->has_sol = 1;
+            t->solsta = PRIMAL_SOL_STA_OPTIMAL;
+            if (getenv("GMB_DBG")) fprintf(stderr, "  [route] reduced EXP Newton it=%d n=%d\n", it, d);
+            tlog(t, "optimal solution found (reduced exponential epigraphs)\n");
+            ok = 1;
+            goto done;
+        }
+        if (zero_dual) goto done;
+        memset(storage, 0, sizeof(storage));
+        for (int i = 0; i < n; i++) {
+            const ExpReducedTerm *p = &term[i];
+            double curvature = (-p->link * p->dual) / (p->scale * p->scale);
+            for (int j = 0; j < d; j++) {
+                double a = curvature * p->a[j];
+                for (int k = 0; k <= j; k++) storage[j][k] += a * p->a[k];
+            }
+        }
+        double grad[EXP_REDUCED_DIM];
+        memcpy(grad, step, (size_t)d * sizeof(*grad));
+        if (dmat_cholesky(&hessian, d)) goto done;
+        dmat_chol_solve(&hessian, step, d);
+        double descent = 0.0;
+        for (int j = 0; j < d; j++) descent += grad[j] * step[j];
+        if (!(descent > 0.0) || !isfinite(descent)) goto done;
+        double alpha = descent >= 0.8 * obj ? 4.0 : 1.0;
+        int accepted = 0;
+        for (int bt = 0; bt < 16; bt++, alpha *= 0.5) {
+            for (int j = 0; j < d; j++) trial[j] = x[j] + alpha * step[j];
+            double v = exp_reduced_eval(term, n, trial, d, 0);
+            if (isfinite(v) && v <= obj - 0.01 * alpha * descent) {
+                memcpy(x, trial, (size_t)d * sizeof(*x));
+                accepted = 1;
+                break;
+            }
+        }
+        if (!accepted) goto done;
+    }
+done:
+    free(by_row);
+    free(member);
+    free(term);
+    return ok;
+}
+
 /* Convert the task to conic standard form and solve it with the
  * unified interior-point method. Builds SOC/exp blocks and maps
  * the solution back to the user space. */
@@ -206,6 +420,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
      * is an invariant, not an unsupported shape: the dispatcher sends those
      * models to quad_encode_task, which carries the bar blocks with it (T86). */
     if (t->has_qobj || t->has_qcon > 0) return PRIMAL_RES_ERR_ARG;
+    if (exp_reduced_solve(t, s)) return PRIMAL_RES_OK;
 
     /* ---- conic blocks: one per cone, its components are new variables z_i
      * linked to the member variables by equality rows (the scalar conversion

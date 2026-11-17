@@ -1,8 +1,8 @@
 # The exponential cone
 
-**Verified against** revision `1f2ddee` (`expcone.c`, `expcone.h`,
-`expcone_corrector.c`, `sdp.c`, `primal_sdptask.c`). Numbers below were produced
-by programs linked with the functions they quote.
+The barrier examples and figures were measured at revision `1f2ddee`. The
+reduced Newton section describes the implementation verified by test `T313`
+and the [current cone matrix](../README.md#soc-exponential-and-mixed-cone-matrix).
 
 ## Learning objectives and prerequisites
 
@@ -13,6 +13,8 @@ After this chapter you can:
   *scaling point* $W$ of a dual vector $s$ by a one-dimensional Newton iteration;
 - explain why this cone cannot use the Nesterov–Todd scaling of the symmetric cones,
   what PRIMAL uses instead, and what the higher-order correction adds;
+- eliminate fixed-scale exponential epigraphs and reconstruct a conic dual
+  from the reduced smooth problem;
 - follow a model with an exponential cone through the routes of PRIMAL, including the
   retry in secant mode and the tangent-cut fallback.
 
@@ -160,17 +162,70 @@ Test `T299` checks it against an independent Taylor-jet computation of $f$ at 30
 identity $\eta(z,v)=Hv$ for $\Delta s=Hz$. The scaling data are cached between predictor and corrector
 (`expcone_scale_cached`) and invalidated each outer iteration.
 
-**When it is on.** `sdp_ipm_csr_corrected` is selected only for a model that has a `PEXP` block and a
-SOC/RQUAD block and no PSD block ([`primal_sdptask.c:568`](../primal_sdptask.c#L568)); pure exponential, power-only and PSD
-models use the plain engine, and `GMB_NO_EXP_HIGHER` forces it off. In the same build the sparse KKT is tried for mixed models with order at
-least 128 when both forms of the orthant block stay under 10% density; if that run does not return OPTIMAL, the run is repeated
-with the original routing (`[retry] original KKT routing`).
+The dispatcher tries `sdp_ipm_csr_corrected` for PEXP models with SOC or
+RQUAD blocks and for pure PEXP models with at least ten blocks, provided
+there are no PSD blocks. A pure PEXP model can retry with the original
+engine if the corrected engine fails to certify its point.
+[Dispatch implementation](../primal_sdptask.c#L940)
+
+## Reduced Newton method for fixed-scale epigraphs
+
+Suppose each exponential block has a fixed scale $u_i>0$, an argument
+$v_i=b_i+a_i^\top x$, and an epigraph variable $t_i$ with cost $w_i>0$
+in minimization form. With no other constraints on $x$ or on the
+epigraph variables, the minimum for any fixed $x$ has
+$t_i=u_i\exp(v_i/u_i)$. The objective, its gradient and its Hessian are
+
+$$
+\begin{aligned}
+F(x)&=\sum_i w_i u_i \exp((b_i+a_i^\top x)/u_i),\\
+\lambda_i&=w_i\exp((b_i+a_i^\top x)/u_i),\\
+\nabla F(x)&=\sum_i\lambda_i a_i,\qquad
+\nabla^2 F(x)=\sum_i\frac{\lambda_i}{u_i}a_i a_i^\top.
+\end{aligned}
+$$
+
+PRIMAL starts at $x=0$, solves $H\Delta x=-\nabla F(x)$ by dense Cholesky
+and uses backtracking to accept an objective-decreasing step. For $m$
+epigraphs and $d$ free coordinates, assembling and factoring the Newton
+matrix costs $O(md^2+d^3)$ per iteration, and solving with the factor
+costs $O(d^2)$.
+
+To reconstruct the dual, write the original argument equality as
+$r_i^\top x+\ell_i v_i=\beta_i$. In the public sign convention for
+minimization, its multiplier is $y_i=-\lambda_i/\ell_i$. The cone dual is
+
+$$
+s_i=(w_i,\ \lambda_i(\ln(\lambda_i/w_i)-1),\ -\lambda_i).
+$$
+
+This vector lies on the dual boundary and is complementary to
+$(t_i,u_i,v_i)$. The dual objective contribution is
+$-\beta_i y_i-u_i(s_i)_1$, where $(s_i)_1$ denotes the middle coordinate.
+Stationarity in $x$ is $\sum_i y_i r_i=0$. When the epigraph objective
+approaches zero, $y_i=0$ and $s_i=(w_i,0,0)$ give the dual bound consisting
+of the fixed objective terms.
+
+For example, unit scales and weights with arguments $v_1=x$ and $v_2=-x$
+give $F(x)=e^x+e^{-x}$. At $x=0$, $F'(0)=0$ and $F''(0)=2$. Both
+epigraph variables are 1 and both cone duals are $(1,-1,-1)$. Each block
+contributes 1 to the dual objective, giving a gap of zero.
+
+PRIMAL attempts this route for up to 16 free coordinates and 24 iterations.
+It checks the original row residuals, dual cone membership and objective gap
+using the task tolerances. The stationarity check also scales to the
+contributions in each free column, so changing the units of a variable
+cannot make a visibly nonstationary point pass. An unsupported model,
+failed factorization or unsuccessful check passes control to the conic
+interior-point method. [Reduced Newton implementation](../primal_sdptask.c#L227)
 
 ## Routes in PRIMAL
 
 ```text
 PRIMAL_optimize
-  -> optimize_sdp_ipm               exp/power cones are native blocks of sdp_ipm_run   (unless GMB_NO_EXP_IPM)
+  -> optimize_sdp_ipm               unless GMB_NO_EXP_IPM
+       try reduced Newton for eligible fixed-scale PEXP epigraphs
+       otherwise pass exp/power cones as native blocks to the interior-point method
        first attempt: Hessian-NT row
        if not solved and nb = 0:    retry in SECANT mode (Dahl-Andersen primal-dual secant scaling),
                                     iterate restored if that fails too                   (unless GMB_NO_EXP_RETRY)

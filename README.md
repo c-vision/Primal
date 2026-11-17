@@ -26,7 +26,9 @@ point and a status you can check rather than trust.
 - **Exponential and power cones** — native interior point with closed-form
   barriers. Mixed SOC and primal exponential models, and larger models with
   only primal exponential cones, can use a higher-order corrector and a
-  sparse KKT solve.
+  sparse KKT solve. For exponential epigraphs with fixed positive scales and
+  affine arguments in a small set of free variables, Primal can use Newton's
+  method on the reduced problem and verify the reconstructed conic solution.
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
 - **Modeling** — affine conic constraints (ACC), disjunctive constraints
   (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.
@@ -261,35 +263,36 @@ for what moved the numbers.
 
 ### SOC, exponential, and mixed cone matrix
 
-Measured on **2026-11-16** with the same generated instances in both solvers
+Measured on **2026-11-18** with the same generated instances in both solvers
 (`d=8`, link density `0.50`, one replica). The SOC instances consist of
-independent rotated cones with a fixed positive member in each block. Mixed
-instances have one rotated SOC in addition to the listed exponential blocks.
+independent rotated cones with a fixed positive member in each block. EXP
+instances have fixed positive scales and affine arguments. Mixed instances
+have one rotated SOC in addition to the listed exponential blocks.
 Times are the medians of two series medians, each from 21 interleaved runs
 with debug tracing disabled. Primal timings cover `PRIMAL_optimize`.
 Clarabel 0.11.1 uses one thread, includes solver construction and runs with
 `1e-9` feasibility and gap tolerances. Primal uses `1e-8` tolerances.
-The largest public residual or relative gap was `4.6e-9`, and the maximum
+The largest public residual or relative gap was `2.4e-9`, and the maximum
 scaled objective difference was `2.6e-8`.
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | **0.023** | 0.298 | 0.08× |
-| SOC | 20 | **0.031** | 0.642 | 0.05× |
-| SOC | 40 | **0.044** | 1.121 | 0.04× |
-| SOC | 80 | **0.070** | 2.199 | 0.03× |
-| EXP | 10 | 0.413 | **0.186** | 2.22× |
-| EXP | 20 | 0.416 | **0.251** | 1.66× |
-| EXP | 40 | 0.647 | **0.368** | 1.76× |
-| EXP | 80 | 1.009 | **0.629** | 1.60× |
-| Mixed | 10 | 0.177 | **0.150** | 1.18× |
-| Mixed | 20 | 0.332 | **0.221** | 1.50× |
-| Mixed | 40 | 0.422 | **0.390** | 1.08× |
-| Mixed | 80 | **0.746** | 0.862 | 0.87× |
+| SOC | 10 | **0.025** | 0.315 | 0.08× |
+| SOC | 20 | **0.033** | 0.673 | 0.05× |
+| SOC | 40 | **0.047** | 1.155 | 0.04× |
+| SOC | 80 | **0.073** | 2.291 | 0.03× |
+| EXP | 10 | **0.019** | 0.202 | 0.09× |
+| EXP | 20 | **0.021** | 0.259 | 0.08× |
+| EXP | 40 | **0.026** | 0.393 | 0.06× |
+| EXP | 80 | **0.034** | 0.662 | 0.05× |
+| Mixed | 10 | 0.194 | **0.167** | 1.16× |
+| Mixed | 20 | 0.339 | **0.224** | 1.51× |
+| Mixed | 40 | 0.432 | **0.401** | 1.08× |
+| Mixed | 80 | **0.806** | 0.954 | 0.84× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
-checks objective agreement. [Earlier measurements](BENCHMARKS.md) include
-solver routes and iteration counts.
+checks objective agreement. [Detailed measurements](BENCHMARKS.md#matrice-soc-exp)
+include solver routes and iteration counts.
 
 ## Documentation
 

@@ -275,10 +275,37 @@ divario** (102×→36×) sui LP di taglia media, ma il residuo resta **algoritmi
 routing. Il MILP non ne beneficia (le rilassate restano sul simplesso).
 
 
-## 3-ter. SOC / EXP / misto contro Clarabel — matrice 2026-11-13 {#matrice-soc-exp}
+<a name="matrice-soc-exp"></a>
 
-La tabella seguente è la baseline della matrice. Il confronto aggiornato
-è nel [README](README.md#soc-exponential-and-mixed-cone-matrix).
+## 3-ter. SOC / EXP / misto contro Clarabel
+
+### Newton ridotto per EXP, 2026-11-18
+
+Il confronto completo è nel [README](README.md#soc-exponential-and-mixed-cone-matrix).
+Qui la baseline è `fdf6473`. I tempi sono le mediane di due serie da 21
+prove intercalate sullo stesso problema, in ms e con tracing disabilitato.
+Il generatore è `bench/pexp_matrix.c` e il modello Clarabel è costruito da
+`bench/pexp_matrix.py`. Primal usa `1e-8` e Clarabel 0.11.1 usa `1e-9`
+con un thread. Il tempo di Primal misura `PRIMAL_optimize`; quello di
+Clarabel comprende la costruzione del solver.
+
+| Blocchi EXP | Primal prima | Primal dopo | Clarabel | Passi Newton |
+|---:|---:|---:|---:|---:|
+| 10 | 0.410 | **0.019** | 0.202 | 7 |
+| 20 | 0.410 | **0.021** | 0.259 | 8 |
+| 40 | 0.689 | **0.026** | 0.393 | 4 |
+| 80 | 1.036 | **0.034** | 0.662 | 4 |
+
+Gli EXP della matrice passano da sistemi KKT di ordine 46–256 a un
+sistema Newton di ordine 8. Il massimo fra residui pubblici e gap relativo
+è `2.5e-10` per EXP e `2.4e-9` sull'intera matrice. Lo scarto obiettivo
+scalato massimo da Clarabel per EXP è `9.5e-9`. Il controllo con 17
+coordinate libere usa l'IPM generale e restituisce gli stessi obiettivi e
+residui della baseline. Il caso misto a 20 blocchi resta il divario
+maggiore nella matrice, con 0.339 ms contro 0.224 ms.
+[Derivazione e criteri di accettazione](algorithms/exponential_cone.md#reduced-newton-method-for-fixed-scale-epigraphs)
+
+### Baseline della matrice, 2026-11-13
 
 Generatore `bench/pexp_matrix.c`, runner `bench/pexp_matrix.py` (costruisce il
 riferimento Clarabel **sulla stessa istanza** e asserisce che gli obiettivi

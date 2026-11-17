@@ -43,6 +43,7 @@ BIN = ROOT / "out" / "bench" / "pexp_matrix"
 KKT = re.compile(r"\[kkt\] pass=0 n=(\d+) reuse=0(.*)")
 ITER = re.compile(r"^\s*(?:socp(?:_sp)? )?it=(\d+)")
 ROUTE = re.compile(r"\[route\] status=(\d)")
+REDUCED_EXP = re.compile(r"\[route\] reduced EXP Newton it=(\d+) n=(\d+)")
 RETRY = re.compile(r"\[retry\]")
 
 
@@ -202,6 +203,12 @@ def run(fam: str, n: int, d: int, rho: float, rep: int):
         route = "native" if m.group(1) == "0" else "cuts"
     if "socp it=" in err or "socp_sp it=" in err:
         route = "socp"
+    if "[route] fixed rotated SOC epigraphs" in err:
+        route = "closed form"
+    m = REDUCED_EXP.search(err)
+    if m:
+        route = "reduced Newton"
+        its, order = map(int, m.groups())
     retries = len(RETRY.findall(err))
     return dict(secs=secs, pobj=pobj, pinf=pinf, dinf=dinf, relgap=relgap, order=order,
                 nnz=nnz, sparse=sparse, its=its, route=route, retries=retries)
