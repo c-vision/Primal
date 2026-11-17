@@ -27,7 +27,7 @@ point and a status you can check rather than trust.
   barriers. Mixed SOC and primal exponential models, and larger models with
   only primal exponential cones, can use a higher-order corrector and a
   sparse KKT solve. For exponential epigraphs with fixed positive scales and
-  affine arguments in a small set of free variables, Primal can use Newton's
+  affine arguments in up to 64 free variables, Primal can use Newton's
   method on the reduced problem, including a single rotated quadratic
   penalty, and verify the reconstructed conic solution.
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
@@ -182,21 +182,22 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 ## Benchmarks
 
-Measured on **2026-11-12** on Apple Silicon (arm64), macOS 27.2,
-with Apple clang 21 and C99 `-O2`. Times are in seconds. **Bold**
-marks the lowest median in each row. Each cell is the median of **15**
-independent aggregations of `bench/bench_all.py`
-(`tools/bench_repeat.py --runs 15`); the objective column is identical in all
-5, and every aggregation runs the cross-solver objective check.
+Measured on Apple Silicon (arm64), macOS 27.2, with Apple clang 21 and
+C99 `-O2`. Times are in seconds. **Bold** marks the lowest median in
+each row. The Primal and Clarabel LP cells were refreshed on
+**2026-11-18** using two interleaved series of 21 solves. Both solvers
+used `1e-8` tolerances and the Primal residuals and relative gap were
+within `1e-8`. The other cells use the **2026-11-12** snapshot, the median
+of 15 runs of `bench/bench_all.py` with stable objectives.
 
 <div>
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | **0.000165** | 0.001898 | 0.000194 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | 0.000722 | 0.0020019 | **0.0006818** | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | **0.001578** | 0.0039886 | 0.0026083 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | **0.007673** | 0.0138753 | 0.0136075 | N/A | N/A | 546.481 |
+| lp_50x25 | lp | 50 x 25 | 171 | **0.000138** | 0.001898 | 0.000159 | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | **0.000578** | 0.0020019 | 0.000644 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | **0.001246** | 0.0039886 | 0.002041 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | **0.005424** | 0.0138753 | 0.010998 | N/A | N/A | 546.481 |
 | qp_50x25 | qp | 50 x 25 | 1445 | **0.000414** | N/A | 0.0004446 | N/A | N/A | 12.8014 |
 | qp_100x50 | qp | 100 x 50 | 5631 | **0.001516** | N/A | 0.0024999 | N/A | N/A | 26.4052 |
 | qp_200x100 | qp | 200 x 100 | 22212 | **0.006619** | N/A | 0.0083538 | N/A | N/A | 55.9929 |
@@ -292,6 +293,11 @@ scaled objective difference was `2.6e-8`.
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
 checks objective agreement. [Detailed measurements](BENCHMARKS.md#matrice-soc-exp)
 include solver routes and iteration counts.
+
+With 240 exponential blocks, 48 free coordinates and one rotated SOC,
+Primal takes **0.239 ms** and Clarabel takes **4.883 ms**. The
+[wider cone benchmark](BENCHMARKS.md#wide-cone-benchmarks)
+includes sizes up to 64 free coordinates.
 
 ## Documentation
 

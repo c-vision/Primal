@@ -37,7 +37,9 @@ python3 bench/run_bench.py # solo LP/QP/MILP: PrimalSolver | HiGHS | SCIP
 
 ## 2. Tabella unica — `bench_all.py` (2026-10-03)
 
-macOS arm64, `-O2`, stessa macchina, `make bench && /Users/gaetano/ai/env-bench/bin/python3.14 bench/bench_all.py`.
+macOS arm64, `-O2`, stessa macchina. Comando dalla root dopo la
+[configurazione dell'ambiente](docs/benchmarks.md#reproduce):
+`make bench && out/benchmark-venv/bin/python bench/bench_all.py`.
 Tempo = sola chiamata di solve. `obj` verificato identico fra i solver che hanno girato
 (cross-check su stderr, verde). Clarabel 0.11.1, SCS 3.3.1, HiGHS via SciPy, SCIP via PySCIPOpt.
 LP/QP/MILP istanze MPS generate, SOCP/SDP famiglie a forma chiusa (`d=4..22`).
@@ -325,6 +327,59 @@ Sui misti della matrice il massimo fra residui pubblici e gap relativo è
 sono inclusi nella verifica a `1e-8` con gli obiettivi noti del generatore.
 [Derivazione del duale RQUAD](algorithms/exponential_cone.md#adding-a-rotated-quadratic-penalty)
 
+<a name="wide-cone-benchmarks"></a>
+
+### Newton ridotto con più coordinate libere, 2026-11-18
+
+Confronto contro `39ebd1f` su due serie intercalate da 21 prove per
+cella, densità dei collegamenti 0.25, una replica. Valori in ms, mediana
+delle due mediane. Primal adotta le stesse tolleranze di `1e-8` della
+matrice precedente.
+
+| Famiglia | Blocchi × coordinate libere | Primal prima | Primal dopo | Clarabel |
+|---|---:|---:|---:|---:|
+| EXP | 80 × 24 | 1.588 | **0.060** | 0.919 |
+| EXP | 160 × 32 | 3.638 | **0.119** | 2.211 |
+| EXP | 240 × 48 | 9.142 | **0.237** | 4.373 |
+| Misto | 80 × 24 | 1.947 | **0.056** | 0.935 |
+| Misto | 160 × 32 | 5.486 | **0.117** | 2.169 |
+| Misto | 240 × 48 | 14.304 | **0.239** | 4.883 |
+| Misto | 240 × 64 | 21.301 | **0.334** | 7.264 |
+
+Il test `T315` verifica il passaggio al buffer con dimensione variabile,
+il limite a 64 coordinate, il ripiego sull'IPM a 65 coordinate e la
+soluzione rispetto a un ottimo analitico.
+
+<a name="sparse-bound-lp"></a>
+
+### LP con bound sparsi, 2026-11-18
+
+Confronto contro `39ebd1f` sui modelli LP del generatore principale. Due
+serie intercalate da 21 prove per riga. Per Clarabel 0.11.1 la misura
+esclude la costruzione del solver, usa un thread e tolleranze di
+`1e-8`. Entrambe le build Primal hanno residui e gap entro `1e-8`.
+
+| Istanza | Primal prima (ms) | Primal dopo (ms) | Clarabel (ms) |
+|---|---:|---:|---:|
+| lp_50x25 | 0.149 | **0.138** | 0.159 |
+| lp_100x50 | 0.640 | **0.578** | 0.644 |
+| lp_200x100 | 1.422 | **1.246** | 2.041 |
+| lp_400x200 | 6.268 | **5.424** | 10.998 |
+
+Il Newton dell'IPM usa gli elementi CSC delle colonne condivise per
+eliminare e recuperare le righe dei bound. Quando gli accoppiamenti
+possono essere densi, il solver usa il buffer contiguo. Sul controllo LP
+all'80% di densità il residuo massimo rimane `1.01e-9`. In due serie di
+conferma da 81 coppie il tempo aumenta dell'1.8–2.0%.
+
+### Verifica dei benchmark SOCP storici, 2026-11-18
+
+Entrambi i comandi documentati in `algorithms/` completano le 31 ripetizioni
+e superano i controlli numerici. Il controllo SOCP200 con pesi diversi e
+due uguaglianze supera la soglia storica del 5% contro entrambe le baseline.
+Il confronto diretto sul caso tra `39ebd1f` e la nuova build dà
+0.991 ms e 0.976 ms in 31 coppie alternate.
+
 ### Baseline della matrice, 2026-11-13
 
 Generatore `bench/pexp_matrix.c`, runner `bench/pexp_matrix.py` (costruisce il
@@ -424,12 +479,12 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 ## 3. Come estendere
 
 ```sh
-python3 -m venv /tmp/benchvenv
-/tmp/benchvenv/bin/python -m pip install highspy scs clarabel
+mkdir -p out
+python3 -m venv out/benchmark-venv
+out/benchmark-venv/bin/python -m pip install numpy scipy highspy scs clarabel
 ```
 
-(Homebrew Python è PEP 668 "externally managed": serve un venv o
-`--break-system-packages`.) Con `highspy` installato `run_bench.py` lo usa al
+Con `highspy` installato `run_bench.py` lo usa al
 posto del fallback SciPy; `clarabel`/`scs` alimentano `bench/conic_ref.py`.
 
 - Per **istanze più grandi** (netlib grandi: `bandm`, `beaconfd`, `e226`,

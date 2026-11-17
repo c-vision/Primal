@@ -10,6 +10,7 @@ divergere in silenzio e' peggio di nessuno specchio, quindi qui si verifica.
 Uso:
     python3 tools/check_attempts_sync.py            # exit 1 se divergono
     python3 tools/check_attempts_sync.py --quiet    # solo il codice di uscita
+    python3 tools/check_attempts_sync.py --mirror file.md
 
 Exit codes: 0 allineati, 1 divergenti, 2 file illeggibili.
 """
@@ -20,9 +21,9 @@ import re
 import sys
 from pathlib import Path
 
-MIRROR = Path(
-    "/Users/gaetano/Documents/AiWiki/01-Projects/PrimalSolver/Knowledge"
-    "/PrimalSolver-Log-Completo.md"
+MIRROR = (
+    Path.home() / "Documents/AiWiki/01-Projects/PrimalSolver/Knowledge"
+    / "PrimalSolver-Log-Completo.md"
 )
 ORIGINAL = Path(__file__).resolve().parent.parent / "attempts.md"
 
@@ -56,17 +57,20 @@ def strip_header(text: str) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--mirror", type=Path, default=MIRROR,
+                    help="file specchio del registro (default sotto la home)")
     args = ap.parse_args()
+    mirror = args.mirror.expanduser()
 
     if not ORIGINAL.exists():
         print(f"originale non trovato: {ORIGINAL}", file=sys.stderr)
         return 2
-    if not MIRROR.exists():
-        print(f"specchio non trovato: {MIRROR}", file=sys.stderr)
+    if not mirror.exists():
+        print(f"specchio non trovato: {mirror}", file=sys.stderr)
         return 2
 
     src = ORIGINAL.read_text()
-    mirror_body = strip_header(MIRROR.read_text())
+    mirror_body = strip_header(mirror.read_text())
 
     same_body = src.rstrip() == mirror_body.rstrip()
     a, b = entries(src), entries(mirror_body)
@@ -78,7 +82,7 @@ def main() -> int:
     diverged = not same_body or only_src or only_mirror or grew
     if not args.quiet:
         print(f"originale : {ORIGINAL} ({len(src.splitlines())} righe, {len(a)} voci)")
-        print(f"specchio  : {MIRROR} ({len(mirror_body.splitlines())} righe, {len(b)} voci)")
+        print(f"specchio  : {mirror} ({len(mirror_body.splitlines())} righe, {len(b)} voci)")
         if only_src:
             print(f"  voci solo nell'originale (da specchiare): {', '.join(only_src)}")
         if only_mirror:

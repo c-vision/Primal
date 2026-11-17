@@ -32,19 +32,28 @@ of the Jordan square root used by the implementation. It checks
 inputs (37 checks). The maximum SOC residual in the initial oracle run was
 3.99e-17. A zero-correction negative control fails 18 of those checks.
 
-The reproducible performance harness is:
+From the repository root, create the [benchmark Python environment](../docs/benchmarks.md#reproduce).
+The baseline is `aa6b378`, the parent of the corrector commit `0180c52`.
+Use a clone that contains both revisions.
 
 ```sh
-/Users/gaetano/ai/env-bench/bin/python3.14 tools/socp_compare.py --runs 31 \
-  --out out/socp_compare --baseline-worker /absolute/path/to/preserved/worker
+baseline=out/socp-baseline-aa6b378
+mkdir -p "$baseline"
+git archive aa6b378 | tar -xf - -C "$baseline"
+make -C "$baseline" lib
+gcc -std=c99 -O2 -I"$baseline" bench/socp_compare.c \
+  "$baseline/out/libprimal.a" -lm -o "$baseline/out/socp_compare"
+out/benchmark-venv/bin/python tools/socp_compare.py --runs 31 \
+  --out out/socp_compare-corrector --baseline-worker "$baseline/out/socp_compare"
 ```
 
-Build a baseline worker with this harness before changing solver sources,
-then preserve its statically linked executable in a separate output directory.
-The candidate is rebuilt from current sources. The runner alternates execution
-order, warms up three times, removes inherited GMB flags, and saves raw
-observations, source hashes, quartiles, public solution quality and target
-verdicts in results.json. Run without competing builds or tests.
+The worker links the archived library. The runner builds the candidate from
+the current checkout, alternates execution order, warms up three times,
+removes inherited GMB flags, and saves raw observations, source hashes,
+quartiles, public solution quality and target verdicts in `results.json`.
+Use revision `0180c52` for the original candidate and run without competing
+builds or tests. The runner writes the results before returning a nonzero
+status when a timing threshold is missed.
 
 Primal timings cover PRIMAL_optimize, including internal model conversion;
 Clarabel timings cover construction plus solve, with solve-only also reported.
@@ -58,6 +67,4 @@ construction+solve; SOCP120 at least 20% faster; SOCP40 and each held-out case
 at most 5% slower. These criteria concern the default path. They do not claim
 parity on all SOCP models, especially rotated cones.
 
-Final measurements and suite results are recorded in README.md after the
-confirmation run. Earlier rejected KKT experiments remain in local attempts.md
-and its versioned vault mirror.
+See the [current benchmark results](../README.md#benchmarks).

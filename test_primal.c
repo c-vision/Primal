@@ -22042,8 +22042,66 @@ static void test_t314(void) {
     }
 }
 
+static void t315_capture_route(void *handle, const char *msg) {
+    if (strstr(msg, "reduced exponential epigraphs")) *(int *)handle = 1;
+}
+
+/* T315: the reduced system fits up to 64 free coordinates. The model
+ * exp(a'x + ||a||²) + ||x||²/2 has x=-a, even beyond that limit. */
+static void test_t315(void) {
+    cur_name = "T315 expanded exponential Newton dimension";
+    const int dims[] = {16, 17, 64, 65};
+    for (int s = 0; s < 4; s++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int d = dims[s], used_reduced = 0;
+        enum { EXP_HEAD = 0, EXP_SCALE, EXP_ARG, QUAD_HEAD, QUAD_SCALE, FREE };
+        int exp_mem[] = {EXP_HEAD, EXP_SCALE, EXP_ARG};
+        int quad_mem[67] = {QUAD_HEAD, QUAD_SCALE};
+        double x[70] = {0};
+        PRIMAL_appendvars(t, FREE + d);
+        PRIMAL_appendcons(t, 1);
+        for (int j = 0; j < FREE + d; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0, 0);
+        PRIMAL_putvarbound(t, EXP_SCALE, PRIMAL_BK_FX, 1, 1);
+        PRIMAL_putvarbound(t, QUAD_SCALE, PRIMAL_BK_FX, 2, 2);
+        PRIMAL_putcj(t, EXP_HEAD, 1);
+        PRIMAL_putcj(t, QUAD_HEAD, 2);
+        PRIMAL_putaij(t, 0, EXP_ARG, -1);
+        double bias = (double)d / 64.0;
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, -bias, -bias);
+        for (int j = 0; j < d; j++) {
+            quad_mem[2+j] = FREE + j;
+            PRIMAL_putaij(t, 0, FREE + j, (j % 2) ? -0.125 : 0.125);
+        }
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, exp_mem);
+        PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, d+2, quad_mem);
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used_reduced, t315_capture_route);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T315 optimize");
+        check(used_reduced == (d <= 64), "T315 reduced path and dimension fallback");
+        double po = INFINITY, du = -INFINITY;
+        double pr = INFINITY, pv = INFINITY, pc = INFINITY;
+        double dr = INFINITY, dv = INFINITY, dc = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                       &du, &dr, &dv, NULL, &dc),
+                 PRIMAL_RES_OK, "T315 solution quality");
+        double goal = 1.0 + 0.5 * bias;
+        check(fabs(po - goal) <= 1e-8 * (1 + goal), "T315 known objective");
+        check(fabs(po - du) <= 1e-8 * (1 + fabs(po)), "T315 objective gap");
+        check(fmax(pr, fmax(pv, pc)) <= 1e-8, "T315 primal feasibility");
+        check(fmax(dr, fmax(dv, dc)) <= 1e-8, "T315 dual feasibility");
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "T315 primal vector");
+        double error = 0;
+        for (int j = 0; j < d; j++)
+            error = fmax(error, fabs(x[FREE+j] - ((j % 2) ? 0.125 : -0.125)));
+        check(error <= 1e-6, "T315 minimizing vector");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t315();
     test_t314();
     test_t313();
     test_t312();

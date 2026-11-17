@@ -1,12 +1,16 @@
 # Benchmark methodology
 
-The README reports 32 instances measured on 2026-11-12. Each cell is the
-median of **15** independent aggregations of `bench/bench_all.py`
+The main README table starts from the 2026-11-12 snapshot. Each snapshot
+cell is the median of **15** runs of `bench/bench_all.py`
 (`tools/bench_repeat.py --runs 15`), and the aggregator verifies that every
 objective is identical across the 15. The mixed SOC/PEXP table is a separate
 harness: `bench/pexp_bench.c` defines and times the instance, and
 `bench/pexp_bench.py` interleaves 21 runs per cell against Clarabel and
 asserts the three known optima.
+
+The Primal and Clarabel LP cells were refreshed on 2026-11-18 in two
+interleaved series of 21 solves, with both solvers at `1e-8`. The HiGHS LP
+values come from the original snapshot. See the [LP comparison](../BENCHMARKS.md#sparse-bound-lp).
 
 | Family | Independent aggregations | Accuracy checks |
 |---|---:|---|
@@ -59,9 +63,9 @@ spurious "Clarabel is faster" cell:
   and the first allocator trip are larger than the solve. Both harnesses now run
   one discarded solve per family before the timed loop.
 
-`lp_100x50` remains within 6% between Primal and Clarabel (0.00069 against
-0.00068 measured directly) and its order can change between runs; that is a
-genuine tie, not an artifact.
+In the November 12 snapshot, the two medians on `lp_100x50` were within
+6%. The November 18 comparison gives 0.578 ms for Primal and 0.644 ms
+for Clarabel.
 
 For SOCP, the family parameter n describes n free x coordinates and n/2 cone
 epigraph variables, so the model has 3n/2 scalar variables and one explicit
@@ -100,20 +104,24 @@ gap is approximately `3.13e-9`. Orders 14, 21 and 22 also pass T301 and took
 
 ## Reproduce
 
-To rerun the unified harness, build the benchmark binaries and keep the
-machine otherwise idle.
+Run these commands from the repository root with Python 3 and a C99
+toolchain. The virtual environment lives under the build output directory.
 
 ```sh
+mkdir -p out
+python3 -m venv out/benchmark-venv
+out/benchmark-venv/bin/python -m pip install numpy scipy clarabel
 make bench
-python3 tools/bench_repeat.py --runs 15 --out out/benchmark-median.md
-python3 tools/bench_repeat.py --check-rows-only
-python3 bench/pexp_bench.py --runs 21          # the mixed SOC/PEXP table
+out/benchmark-venv/bin/python tools/bench_repeat.py --runs 15 --out out/benchmark-median.md
+out/benchmark-venv/bin/python tools/bench_repeat.py --check-rows-only
+out/benchmark-venv/bin/python bench/pexp_bench.py --runs 21
 ```
 
-Use a Python environment containing NumPy, SciPy, Clarabel, SCS and PySCIPOpt.
-The harness and deterministic instances live under `bench/`; the aggregator
-lives in `tools/bench_repeat.py`. On the development machine these dependencies
-were supplied by the existing `env-bench` environment.
+For the optional SCS, HiGHS and SCIP interfaces, install the packages your
+platform supports with `out/benchmark-venv/bin/python -m pip install scs highspy pyscipopt`.
+The unified harness reports unavailable references as `N/A`. The harnesses
+and deterministic instances live under `bench/`. Keep the machine otherwise
+idle when measuring timings.
 
 The 2026-11-12 snapshot was taken on an otherwise idle machine after the four
 optimization-level builds of the test suite had finished, on the tree that

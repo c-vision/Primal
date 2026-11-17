@@ -166,7 +166,7 @@ The dispatcher tries `sdp_ipm_csr_corrected` for PEXP models with SOC or
 RQUAD blocks and for pure PEXP models with at least ten blocks, provided
 there are no PSD blocks. A pure PEXP model can retry with the original
 engine if the corrected engine fails to certify its point.
-[Dispatch implementation](../primal_sdptask.c#L1020)
+[Dispatch implementation](../primal_sdptask.c#L1060)
 
 ## Reduced Newton method for fixed-scale epigraphs
 
@@ -211,13 +211,19 @@ give $F(x)=e^x+e^{-x}$. At $x=0$, $F'(0)=0$ and $F''(0)=2$. Both
 epigraph variables are 1 and both cone duals are $(1,-1,-1)$. Each block
 contributes 1 to the dual objective, giving a gap of zero.
 
-PRIMAL attempts this route for up to 16 free coordinates and 24 iterations.
+PRIMAL attempts this route for up to 64 free coordinates and 24 iterations.
+Above 16 coordinates it sizes the coefficient buffer to the problem and
+skips zero coefficients when assembling the lower triangle of the Hessian.
+Near a minimizer, the objective change is computed term by term using
+`expm1` when subtracting the two objective values would lose the
+decrement to rounding. Given a step $\Delta x$, the change in the $i$th
+term is $w_i t_i\,\operatorname{expm1}(a_i^\top\Delta x/u_i)$.
 It checks the original row residuals, dual cone membership and objective gap
 using the task tolerances. The stationarity check also scales to the
 contributions in each free column, so changing the units of a variable
 cannot make a visibly nonstationary point pass. An unsupported model,
 failed factorization or unsuccessful check passes control to the conic
-interior-point method. [Reduced Newton implementation](../primal_sdptask.c#L234)
+interior-point method. [Reduced Newton implementation](../primal_sdptask.c#L255)
 
 ### Adding a rotated quadratic penalty
 

@@ -195,12 +195,12 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
     iter_cb_end();
     return r;
 }
-enum { EXP_REDUCED_DIM = 16, EXP_REDUCED_STEPS = 24 };
+enum { EXP_REDUCED_INLINE = 16, EXP_REDUCED_DIM = 64, EXP_REDUCED_STEPS = 24 };
 
 typedef struct {
     int head, scale_var, arg, row;
     double scale, link, bias, weight;
-    double a[EXP_REDUCED_DIM];
+    double a[EXP_REDUCED_INLINE];
     double argument, epigraph, dual, activity;
 } ExpReducedTerm;
 
@@ -210,13 +210,14 @@ static double exp_reduced_norm2(const double *x, int d) {
     return norm2;
 }
 
-static double exp_reduced_eval(ExpReducedTerm *term, int n, const double *x, int d,
-                               double quadratic, int save) {
+static double exp_reduced_eval(ExpReducedTerm *term, int n, const double *wide,
+                               const double *x, int d, double quadratic, int save) {
     double obj = quadratic > 0.0 ? (0.5 * quadratic) * exp_reduced_norm2(x, d) : 0.0;
     for (int i = 0; i < n; i++) {
         ExpReducedTerm *p = &term[i];
+        const double *a = wide ? wide + (size_t)i * d : p->a;
         double argument = p->bias;
-        for (int j = 0; j < d; j++) argument += p->a[j] * x[j];
+        for (int j = 0; j < d; j++) argument += a[j] * x[j];
         double epigraph = p->scale * exp(argument / p->scale);
         obj += p->weight * epigraph;
         if (save) {
@@ -225,6 +226,26 @@ static double exp_reduced_eval(ExpReducedTerm *term, int n, const double *x, int
         }
     }
     return obj;
+}
+
+/* Near the minimizer, subtracting two objective values can lose the whole
+ * Armijo decrement. Evaluate the change in each term using expm1. */
+static double exp_reduced_change(const ExpReducedTerm *term, int n, const double *wide,
+                                 const double *x, const double *trial, int d,
+                                 double quadratic) {
+    double delta[EXP_REDUCED_DIM], change = 0.0;
+    for (int j = 0; j < d; j++) {
+        delta[j] = trial[j] - x[j];
+        change += quadratic * delta[j] * (x[j] + 0.5 * delta[j]);
+    }
+    for (int i = 0; i < n; i++) {
+        const ExpReducedTerm *p = &term[i];
+        const double *a = wide + (size_t)i * d;
+        double dv = 0.0;
+        for (int j = 0; j < d; j++) dv += a[j] * delta[j];
+        change += (p->weight * p->epigraph) * expm1(dv / p->scale);
+    }
+    return change;
 }
 
 /* For t >= u*exp(v/u) with u fixed and v affine in free x, minimizing
@@ -256,6 +277,7 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
     ExpReducedTerm *term = (ExpReducedTerm *)calloc((size_t)n, sizeof(*term));
     int *member = (int *)calloc((size_t)nv, sizeof(*member));
     int *by_row = (int *)calloc((size_t)n, sizeof(*by_row));
+    double *wide = NULL;
     int free_var[EXP_REDUCED_DIM];
     if (!term || !member || !by_row) goto done;
     enum { HEAD = 1, FIXED_SCALE, ARGUMENT, QUAD_TAIL };
@@ -321,22 +343,29 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
         if (d == EXP_REDUCED_DIM || t->bkx[j] != PRIMAL_BK_FR || t->c[j] != 0.0 ||
             (rq >= 0 && member[j] != QUAD_TAIL))
             goto done;
-        const Col *col = &t->cols[j];
-        for (int k = 0; k < col->nz; k++) {
-            ExpReducedTerm *p = &term[by_row[col->sub[k]] - 1];
-            p->a[d] -= col->val[k] / p->link;
-        }
         free_var[d++] = j;
     }
     if (d == 0 || !isfinite(fixed_cost)) goto done;
+    if (d > EXP_REDUCED_INLINE) {
+        wide = (double *)calloc((size_t)n, (size_t)d * sizeof(*wide));
+        if (!wide) goto done;
+    }
+    for (int j = 0; j < d; j++) {
+        const Col *col = &t->cols[free_var[j]];
+        for (int k = 0; k < col->nz; k++) {
+            int i = by_row[col->sub[k]] - 1;
+            double *a = wide ? wide + (size_t)i * d : term[i].a;
+            a[j] -= col->val[k] / term[i].link;
+        }
+    }
 
     double x[EXP_REDUCED_DIM] = {0}, trial[EXP_REDUCED_DIM];
-    double storage[EXP_REDUCED_DIM][EXP_REDUCED_DIM], *rows[EXP_REDUCED_DIM];
-    for (int j = 0; j < d; j++) rows[j] = storage[j];
+    double storage[EXP_REDUCED_DIM * EXP_REDUCED_DIM], *rows[EXP_REDUCED_DIM];
+    for (int j = 0; j < d; j++) rows[j] = storage + (size_t)j * d;
     DMat hessian = { d, d, rows };
     int steps = limit < EXP_REDUCED_STEPS ? limit : EXP_REDUCED_STEPS;
     for (int it = 0; it < steps; it++) {
-        double obj = exp_reduced_eval(term, n, x, d, quadratic, 1);
+        double obj = exp_reduced_eval(term, n, wide, x, d, quadratic, 1);
         if (!isfinite(obj)) goto done;
         double primal = sense * fixed_cost + obj;
         double dual_obj = 0.0;
@@ -452,14 +481,16 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
             goto done;
         }
         if (zero_dual) goto done;
-        memset(storage, 0, sizeof(storage));
-        for (int j = 0; j < d; j++) storage[j][j] = quadratic;
+        memset(storage, 0, (size_t)d * d * sizeof(*storage));
+        for (int j = 0; j < d; j++) rows[j][j] = quadratic;
         for (int i = 0; i < n; i++) {
             const ExpReducedTerm *p = &term[i];
+            const double *a = wide ? wide + (size_t)i * d : p->a;
             double curvature = (-p->link * p->dual) / (p->scale * p->scale);
             for (int j = 0; j < d; j++) {
-                double a = curvature * p->a[j];
-                for (int k = 0; k <= j; k++) storage[j][k] += a * p->a[k];
+                if (wide && a[j] == 0.0) continue;
+                double entry = curvature * a[j];
+                for (int k = 0; k <= j; k++) rows[j][k] += entry * a[k];
             }
         }
         double grad[EXP_REDUCED_DIM];
@@ -473,8 +504,16 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
         int accepted = 0;
         for (int bt = 0; bt < 16; bt++, alpha *= 0.5) {
             for (int j = 0; j < d; j++) trial[j] = x[j] + alpha * step[j];
-            double v = exp_reduced_eval(term, n, trial, d, quadratic, 0);
-            if (isfinite(v) && v <= obj - 0.01 * alpha * descent) {
+            double decrease = 0.01 * alpha * descent;
+            int sufficient;
+            if (wide && decrease <= 32.0 * DBL_EPSILON * obj) {
+                double change = exp_reduced_change(term, n, wide, x, trial, d, quadratic);
+                sufficient = isfinite(change) && change <= -decrease;
+            } else {
+                double v = exp_reduced_eval(term, n, wide, trial, d, quadratic, 0);
+                sufficient = isfinite(v) && v <= obj - decrease;
+            }
+            if (sufficient) {
                 memcpy(x, trial, (size_t)d * sizeof(*x));
                 accepted = 1;
                 break;
@@ -483,6 +522,7 @@ static int exp_reduced_solve(PRIMALtask_t t, int sense) {
         if (!accepted) goto done;
     }
 done:
+    free(wide);
     free(by_row);
     free(member);
     free(term);

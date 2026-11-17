@@ -60,20 +60,27 @@ less time on rotated SOCP200, at most 3x contemporaneous Clarabel
 construction+solve, and no more than 5% regression on any of the other six
 cases. Quality and status must pass unchanged. The final acceptance profile also
 guards small dense rotated models at sizes 2/10/40 against the same 5%
-regression limit. Failed standalone
-substitution, inverse/scaling formulas and alternative orderings remain in
-the local attempts register and its vault mirror.
+regression limit.
 
-Reproduce with a preserved statically linked baseline worker:
+From the repository root, create the [benchmark Python environment](../docs/benchmarks.md#reproduce).
+Build a statically linked worker for the baseline from its Git revision.
+The clone needs to contain commit `bb1beaf`.
 
 ```sh
-/Users/gaetano/ai/env-bench/bin/python3.14 tools/socp_compare.py --runs 31 \
-  --target rotated --small-fixed --out out/socp_compare \
-  --baseline-worker /absolute/path/to/baseline/build/socp_compare
+baseline=out/socp-baseline-bb1beaf
+mkdir -p "$baseline"
+git archive bb1beaf | tar -xf - -C "$baseline"
+make -C "$baseline" lib
+gcc -std=c99 -O2 -I"$baseline" bench/socp_compare.c \
+  "$baseline/out/libprimal.a" -lm -o "$baseline/out/socp_compare"
+out/benchmark-venv/bin/python tools/socp_compare.py --runs 31 \
+  --target rotated --small-fixed --out out/socp_compare-rotated \
+  --baseline-worker "$baseline/out/socp_compare"
 ```
 
 The runner includes all reduction, allocation, ordering and incidence
 maintenance inside PRIMAL_optimize. It reports Clarabel construction+solve
-and solve-only separately, records raw observations and source/binary
-hashes, and fails if any predeclared acceptance gate fails. Final timings
-and validation are recorded in README.md.
+and solve-only separately and records raw observations and source/binary hashes.
+The candidate is the current checkout. Use revision `9131aeb` for the original
+experiment. If a timing threshold is missed, the runner writes `results.json`
+before returning a nonzero status.

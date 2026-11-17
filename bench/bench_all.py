@@ -34,8 +34,7 @@ has no integer support, so the MILP rows are N/A for it (as for SCS).
 
 Usage:  make bench && python3 bench/bench_all.py
 Needs numpy/scipy plus the optional references clarabel, scs, highspy, pyscipopt
-(N/A when missing). All of them live in one environment on this machine:
-/Users/gaetano/ai/env-bench/bin/python3.14 -- run the script with that interpreter.
+(N/A when missing). See docs/benchmarks.md for virtual environment setup.
 """
 import os
 import subprocess

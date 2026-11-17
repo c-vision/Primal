@@ -625,10 +625,16 @@ static SpChol *factor_K(const int *Aptr, const int *Arow, const double *Aval,
  * eliminated block is diagonal. Form its Schur complement by combining
  * the two positive weights, without subtracting nearly equal products. */
 typedef struct {
+    int row, col, private_col;
+    double a, slack, diagonal, ratio;
+} LpBoundRow;
+
+typedef struct {
     SpChol *factor, *fallback;
     int m, n, reduced, eliminated;
-    int *map, *rows;
-    double *diagonal, *coupling;
+    int *map;
+    LpBoundRow *bound;
+    double *coupling;
     const int *Ap, *Ai;
     const double *Av, *theta;
     double delta;
@@ -637,8 +643,9 @@ typedef struct {
 static void lp_normal_free(LpNormal *F) {
     if (!F) return;
     spchol_free(F->factor); spchol_free(F->fallback);
-    free(F->map); free(F->rows);
-    free(F->diagonal); free(F->coupling);
+    free(F->map);
+    free(F->bound);
+    free(F->coupling);
     free(F);
 }
 
@@ -647,16 +654,13 @@ static LpNormal *lp_normal_reduce(const int *Ap, const int *Ai, const double *Av
                                  const int *rp, const int *ri, const double *rv) {
     LpNormal *F = calloc(1, sizeof(*F));
     int *owner = malloc((size_t)n * sizeof(int));
-    int *private_col = malloc((size_t)m * sizeof(int));
-    double *a = malloc((size_t)m * sizeof(double));
-    double *slack = malloc((size_t)m * sizeof(double));
     double *dense = NULL;
-    if (!F || !owner || !private_col || !a || !slack) goto fail;
+    if (!F || !owner) goto fail;
     F->m = m; F->n = n; F->Ap = Ap; F->Ai = Ai;
     F->Av = Av; F->theta = theta; F->delta = delta;
     F->map = calloc((size_t)m, sizeof(int));
-    F->rows = malloc((size_t)m * sizeof(int));
-    if (!F->map || !F->rows) goto fail;
+    F->bound = malloc((size_t)m * sizeof(*F->bound));
+    if (!F->map || !F->bound) goto fail;
     for (int j = 0; j < n; j++) owner[j] = -1;
     for (int i = m - 1; i >= 0; i--) {
         if (rp[i+1] - rp[i] != 2) continue;
@@ -667,33 +671,42 @@ static LpNormal *lp_normal_reduce(const int *Ap, const int *Ai, const double *Av
         }
         int col = ri[p], priv = ri[q], e = F->eliminated;
         if (owner[col] >= 0 || rv[p] == 0.0 || rv[q] == 0.0) continue;
-        owner[col] = e; private_col[e] = priv;
-        a[e] = rv[p]; slack[e] = rv[q]; F->rows[e] = i;
+        owner[col] = e;
+        F->bound[e] = (LpBoundRow){ i, col, priv, rv[p], rv[q], 0.0, 0.0 };
         F->map[i] = -1; F->eliminated++;
     }
     if (F->eliminated == 0 || F->eliminated < m / 3 || F->eliminated == m) goto fail;
     for (int i = 0; i < m; i++)
         if (F->map[i] != -1) F->map[i] = F->reduced++;
-    int r = F->reduced, count = F->eliminated;
+    int r = F->reduced;
     /* The reduced factor is dense. Leave larger systems on sparse Cholesky. */
     if (r > 256) goto fail;
     dense = calloc((size_t)r * r, sizeof(double));
-    F->diagonal = malloc((size_t)count * sizeof(double));
-    F->coupling = calloc((size_t)count * r, sizeof(double));
-    if (!dense || !F->diagonal || !F->coupling) goto fail;
+    if (!dense) goto fail;
+    /* The full CSC count bounds the number of coupling entries from above.
+     * Keep contiguous dot products when the coupling may be dense. */
+    size_t coupling_size = (size_t)F->eliminated * r;
+    if ((size_t)Ap[n] > coupling_size / 2) {
+        F->coupling = calloc(coupling_size, sizeof(*F->coupling));
+        if (!F->coupling) goto fail;
+    }
     for (int j = 0; j < n; j++) {
         double weight = theta[j];
         int e = owner[j];
         if (e >= 0) {
-            double rest = theta[private_col[e]] * slack[e] * slack[e] + delta;
-            double diagonal = theta[j] * a[e] * a[e] + rest;
+            LpBoundRow *bound = &F->bound[e];
+            double rest = theta[bound->private_col] * bound->slack * bound->slack + delta;
+            double diagonal = theta[j] * bound->a * bound->a + rest;
             if (!(diagonal > 0.0) || !isfinite(diagonal)) goto fail;
-            F->diagonal[e] = diagonal;
-            double ratio = theta[j] * a[e] / diagonal;
+            bound->diagonal = diagonal;
+            bound->ratio = theta[j] * bound->a / diagonal;
             weight = theta[j] * (rest / diagonal);
-            for (int p = Ap[j]; p < Ap[j+1]; p++) {
-                int i = F->map[Ai[p]];
-                if (i >= 0) F->coupling[(size_t)e*r+i] += ratio * Av[p];
+            if (F->coupling) {
+                double *coupling = F->coupling + (size_t)e * r;
+                for (int p = Ap[j]; p < Ap[j+1]; p++) {
+                    int i = F->map[Ai[p]];
+                    if (i >= 0) coupling[i] += bound->ratio * Av[p];
+                }
             }
         }
         if (!(weight > 0.0) || !isfinite(weight)) goto fail;
@@ -712,10 +725,12 @@ static LpNormal *lp_normal_reduce(const int *Ap, const int *Ai, const double *Av
     for (int i = 0; i < r; i++) dense[(size_t)i*r+i] += delta;
     F->factor = spchol_factor_dense(r, dense);
     if (!F->factor) goto fail;
-    free(owner); free(private_col); free(a); free(slack); free(dense);
+    free(owner);
+    free(dense);
     return F;
 fail:
-    free(owner); free(private_col); free(a); free(slack); free(dense);
+    free(owner);
+    free(dense);
     lp_normal_free(F);
     return NULL;
 }
@@ -757,35 +772,56 @@ static int lp_normal_solve(LpNormal *F, double *rhs) {
     if (!F->eliminated) return spchol_solve_ord(F->factor, rhs);
     if (F->fallback) return spchol_solve_ord(F->fallback, rhs);
     int m = F->m, n = F->n, r = F->reduced;
-    double *work = calloc((size_t)n + 3*(size_t)m + r, sizeof(double));
+    double *work = malloc((3*(size_t)m + r) * sizeof(*work));
     if (!work) return lp_normal_full_solve(F, rhs);
     double *solution = work, *reduced = solution + m;
-    double *aty = reduced + r, *residual = aty + n, *scale = residual + m;
+    double *residual = reduced + r, *scale = residual + m;
     for (int i = 0; i < m; i++)
         if (F->map[i] >= 0) reduced[F->map[i]] = rhs[i];
     for (int e = 0; e < F->eliminated; e++) {
-        double value = rhs[F->rows[e]];
-        for (int i = 0; i < r; i++) reduced[i] -= F->coupling[(size_t)e*r+i] * value;
+        const LpBoundRow *bound = &F->bound[e];
+        double value = rhs[bound->row];
+        int j = bound->col;
+        if (F->coupling) {
+            const double *coupling = F->coupling + (size_t)e * r;
+            for (int i = 0; i < r; i++) reduced[i] -= coupling[i] * value;
+        } else {
+            for (int p = F->Ap[j]; p < F->Ap[j+1]; p++) {
+                int i = F->map[F->Ai[p]];
+                if (i >= 0) reduced[i] -= (bound->ratio * F->Av[p]) * value;
+            }
+        }
     }
     int rc = spchol_solve_ord(F->factor, reduced);
     if (rc == 0) {
         for (int i = 0; i < m; i++)
             if (F->map[i] >= 0) solution[i] = reduced[F->map[i]];
         for (int e = 0; e < F->eliminated; e++) {
-            double value = rhs[F->rows[e]] / F->diagonal[e];
-            for (int i = 0; i < r; i++) value -= F->coupling[(size_t)e*r+i] * reduced[i];
-            solution[F->rows[e]] = value;
+            const LpBoundRow *bound = &F->bound[e];
+            double value = rhs[bound->row] / bound->diagonal;
+            int j = bound->col;
+            if (F->coupling) {
+                const double *coupling = F->coupling + (size_t)e * r;
+                for (int i = 0; i < r; i++) value -= coupling[i] * reduced[i];
+            } else {
+                for (int p = F->Ap[j]; p < F->Ap[j+1]; p++) {
+                    int i = F->map[F->Ai[p]];
+                    if (i >= 0) value -= (bound->ratio * F->Av[p]) * reduced[i];
+                }
+            }
+            solution[bound->row] = value;
         }
         for (int i = 0; i < m; i++) {
             residual[i] = F->delta * solution[i] - rhs[i];
             scale[i] = 1.0 + fabs(rhs[i]) + fabs(F->delta * solution[i]);
         }
         for (int j = 0; j < n; j++) {
+            double aty = 0.0;
             for (int p = F->Ap[j]; p < F->Ap[j+1]; p++)
-                aty[j] += F->Av[p] * solution[F->Ai[p]];
+                aty += F->Av[p] * solution[F->Ai[p]];
             for (int p = F->Ap[j]; p < F->Ap[j+1]; p++) {
                 int i = F->Ai[p];
-                double value = F->Av[p] * F->theta[j] * aty[j];
+                double value = F->Av[p] * F->theta[j] * aty;
                 residual[i] += value; scale[i] += fabs(value);
             }
         }

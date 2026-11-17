@@ -21,12 +21,15 @@ The generators exit with a non-zero status if a check fails.
 
 ## Regenerating
 
-The presolve figure needs a library that contains the correction of
-`2c48c87` (it draws a reduced row stored negated). Build the library with `make`, then:
+Run these commands from the repository root. The presolve figure requires
+the correction in `2c48c87` for reduced rows stored with their sign reversed.
 
-```bash
-cc -std=c99 -O2 -I../.. -o /tmp/make_figures make_figures.c ../../out/libprimal.a -lm -lpthread
-/tmp/make_figures <git revision shown in the captions> .
+```sh
+make lib
+mkdir -p out/figures
+cc -std=c99 -O2 -I. -o out/figures/make_figures \
+  algorithms/figures/make_figures.c out/libprimal.a -lm -lpthread
+out/figures/make_figures "$(git rev-parse --short HEAD)" out/figures
 ```
 
 The animated GIFs need two steps, and no Python: the generator writes SVG frames and a list of
@@ -34,9 +37,11 @@ display times, a shell script renders them with `rsvg-convert`, converts each to
 single-image GIF with `sips` (macOS) and joins them with `gifjoin`, which only rewrites the container
 and copies the compressed image data.
 
-```bash
-cc -std=c99 -O2 -I../.. -o /tmp/make_animations make_animations.c ../../out/libprimal.a -lm -lpthread
-cc -std=c99 -O2 -o /tmp/gifjoin gifjoin.c
-mkdir -p /tmp/frames && /tmp/make_animations <revision> /tmp/frames
-./make_gifs.sh /tmp/frames . /tmp/gifjoin
+```sh
+mkdir -p out/figures/frames
+cc -std=c99 -O2 -I. -o out/figures/make_animations \
+  algorithms/figures/make_animations.c out/libprimal.a -lm -lpthread
+cc -std=c99 -O2 -o out/figures/gifjoin algorithms/figures/gifjoin.c
+out/figures/make_animations "$(git rev-parse --short HEAD)" out/figures/frames
+sh algorithms/figures/make_gifs.sh out/figures/frames out/figures out/figures/gifjoin
 ```

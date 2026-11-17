@@ -17,16 +17,13 @@ The reference is the cone form Clarabel wants (Ax + s = b, s in K, with the
 quadratic penalty written as 1+w >= ||(w-1, sqrt(2) x)||), which is the same
 optimization problem as the C model above — not a different one.
 
-Run with the interpreter that has clarabel/scipy/numpy:
+Build with make bench and use a Python environment with clarabel/scipy/numpy:
 
-    /Users/gaetano/ai/env-bench/bin/python3.14 bench/pexp_bench.py
-    /Users/gaetano/ai/env-bench/bin/python3.14 bench/pexp_bench.py --runs 9
-    /Users/gaetano/ai/env-bench/bin/python3.14 bench/pexp_bench.py \\
-        --primal out/bench/pexp_bench --compare out/f202/out/bench/pexp_bench
+    python3 bench/pexp_bench.py
+    python3 bench/pexp_bench.py --runs 9
 
-`--compare` runs a second Primal binary in the same interleaved series: that is
-the only way to compare two builds when the per-cell time is a millisecond and
-the machine drifts between runs.
+`--compare` accepts the path to a second Primal benchmark executable built
+from another revision and runs it in the same interleaved series.
 """
 from __future__ import annotations
 
