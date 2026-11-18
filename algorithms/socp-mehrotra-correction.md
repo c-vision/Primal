@@ -1,5 +1,12 @@
 # SOCP second-order corrector
 
+Read the [SOCP Newton step](conic-socp.md#worked-newton-step) and
+[primal–dual IPM](interior_point.md) first. On a scalar nonnegative coordinate,
+$(s+\Delta s)(\lambda+\Delta\lambda)$ expands into the old product, a
+linear part, and the second-order term $\Delta s\,\Delta\lambda$. For
+$\Delta s=-0.2$ and $\Delta\lambda=-0.3$, that term adds $0.06$. The SOC
+corrector uses the same idea with the Jordan product.
+
 The sparse production NT and augmented-LU engines now include the affine
 predictor product in the Mehrotra corrector. Previously the second solve only
 changed the centering target `sigma*mu`. The dense solver is unchanged.

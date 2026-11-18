@@ -3,7 +3,13 @@
 **Source:** `scaling.c` / `scaling.h`
 
 Scaling is a row/column equilibration step that runs before the solve, and it
-is deliberately the simplest thing that works: exact **powers of two**.
+uses powers of two. If $Ax=b$ and $x=D\hat x$, with positive diagonal
+column scaling $D$, multiply the rows by a positive diagonal $R$. The solver
+then sees $(RAD)\hat x=Rb$, and the objective coefficients become $Dc$.
+For $A=[1024]$ and $b=2048$, choose $R=[1/1024]$ and $D=[1]$. The transformed
+equation is $\hat x=2$, and recovering $x=D\hat x$ gives the original solution
+$x=2$. See [numerical stability](numerical_stability.md) for the complete
+equilibration procedure and a plotted example.
 
 ## Cost: one sweep per pass, not one per row
 
@@ -17,7 +23,7 @@ are `O(nnz + n)`:
 The row pass used to loop over rows on the outside and scan every column inside,
 filtering `sub[k] == i`, which made a single pass `2·O(n·nnz)` and the four passes
 `8·O(n·nnz)`. On the sizes that matter this is the difference between half a
-second and a millisecond:
+second and a millisecond in the measurements made for that change:
 
 | `nvar × ncon` (`nnz`) | before | after |
 |---|---|---|

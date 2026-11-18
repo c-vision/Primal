@@ -6,6 +6,14 @@ Primal-dual interior-point method for semidefinite programs, and the home of
 the **unified conic path**: PSD blocks, SOC/RQUAD blocks and
 exponential/power blocks in *one* augmented KKT system.
 
+The [semidefinite programming chapter](semidefinite_programming.md) introduces
+the PSD cone, gives a worked predictor step and derives the scaling. This page
+focuses on how blocks share a Newton system. For example, a constraint
+$X_{11}+t=2$ couples $X\succeq0$ to the SOC head $t$ even though the two cone
+memberships are independent. Its Newton row is $\Delta X_{11}+\Delta t=-r$,
+where $r=X_{11}+t-2$. Solving the two cone directions separately would have to
+coordinate them to satisfy this shared row.
+
 ## The unified path
 
 The interesting decision in this file is that the cones are not solved by

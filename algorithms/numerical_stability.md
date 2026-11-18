@@ -13,7 +13,7 @@ After this chapter you can:
 - name the regularizations and the places where a reduced solve is checked against the original equations;
 - say which numerical safeguards apply to which route.
 
-Prerequisites: [interior point](interior-point.md) (residuals, the Newton system), [linear algebra](linear_algebra.md) (factorizations, Schur
+Prerequisites: [interior point](interior_point.md) (residuals, the Newton system), [linear algebra](linear_algebra.md) (factorizations, Schur
 complement), [SDP](semidefinite_programming.md) (the augmented KKT matrix).
 
 ## Why scale
@@ -50,7 +50,7 @@ the row sums of squares, one applies the factors. The objective is scaled by $d$
 $y_{\rm orig}=Ry'$.
 
 **Why powers of two.** A factor $2^k$ changes only the exponent of an IEEE 754 double: $a=m\cdot2^e\Rightarrow a\cdot2^k=m\cdot2^{e+k}$ with the
-same significand, so the scaling adds no rounding error (barring overflow or underflow, which the clamp $[2^{-24},2^{24}]$ prevents). An
+same significand while the scaled value remains in the normal floating-point range. The clamp $[2^{-24},2^{24}]$ bounds each scaling factor. An
 arbitrary factor such as $1/\text{rms}$ is harmless in exact arithmetic and a perturbation in floating point. The route is on by default for LP and QP
 (`PRIMAL_IPAR_SCALING`, [`primal.h`](../primal.h#L240)); in `PRIMAL_optimize` it runs after the redundant-row and bound-tightening steps and before the
 standard form is built ([architecture](architecture.md)). It is a relative of the geometric scaling of Curtis and Reid and of Ruiz's equilibration, with
@@ -82,8 +82,8 @@ Each engine measures the three relative quantities on the **scaled** model and c
 
 | engine | primal | dual | gap |
 |---|---|---|---|
-| dense and sparse LP/QP ([`ipm.c:410`](../ipm.c#L410)) | $\dfrac{\|Ax-b\|_\infty}{\max(1,\|b\|_\infty)}$ | $\dfrac{\|c+Qx-A^\top y-z\|_\infty}{\max(1,\|c\|_\infty,\|Q\|_\infty)}$ | $\dfrac{x^\top z}{1+|p|}$ |
-| conic and SDP ([`ipm_quality`](../sdp.c#L568)) | $\dfrac{\|r_p\|_\infty}{1+\|b\|_\infty}$ | $\dfrac{\|r_d\|_\infty}{1+\|c\|_\infty}$ | $\dfrac{|p-d|}{1+|p|+|d|}$ |
+| dense and sparse LP/QP ([`ipm.c:410`](../ipm.c#L410)) | $\dfrac{\lVert Ax-b\rVert_\infty}{\max(1,\lVert b\rVert_\infty)}$ | $\dfrac{\lVert c+Qx-A^\top y-z\rVert_\infty}{\max(1,\lVert c\rVert_\infty,\lVert Q\rVert_\infty)}$ | $\dfrac{x^\top z}{1+\lvert p\rvert}$ |
+| conic and SDP ([`ipm_quality`](../sdp.c#L568)) | $\dfrac{\lVert r_p\rVert_\infty}{1+\lVert b\rVert_\infty}$ | $\dfrac{\lVert r_d\rVert_\infty}{1+\lVert c\rVert_\infty}$ | $\dfrac{\lvert p-d\rvert}{1+\lvert p\rvert+\lvert d\rvert}$ |
 
 with $p$ and $d$ the primal and dual objectives. The conic gap is computed from the two objectives, not from $\mu$, which closes the loop on the identity
 $p-d=\langle x,s\rangle$ instead of assuming it. The LP engine also exits early when an objective cut proves the optimum lies beyond a bound set by the caller (a
@@ -102,7 +102,7 @@ scaling $O(1/(\sigma\mu))$ while an arrow block is $O(1)$, and the coupling colu
 modulus (**Jacobi equilibration**, arbitrary factors, not powers of two), applied when the model has an exponential/power or a PSD block; the SOC-only
 path is validated as it stands. The comment records that on the exp/power cases it buys about two orders on the polish residuals.
 
-**Iterative refinement**, at most three rounds, polish only: the LU is backward stable but its *solution* carries $\operatorname{cond}\cdot\varepsilon$, and deep on the central path
+**Iterative refinement**, at most three rounds, polish only: the LU is backward stable but its *solution* carries $\mathrm{cond}\cdot\varepsilon$, and deep on the central path
 that limits progress. Each round solves $K\,\delta=r-K\hat v$ with the same factorization (compensated substitutions on the PSD/SOC path) and a round is **kept only if it
 reduces the residual**; otherwise it is undone and refinement stops. Far from the path the exactly solved direction is more aggressive than the ratio test can use, so refinement is
 not applied there. (There is no Wilkinson-type stopping rule in the code: the test is the observed decrease.)
@@ -111,9 +111,9 @@ not applied there. (There is no Wilkinson-type stopping rule in the code: the te
 
 - **Dense LP/QP**: the augmented or normal system is factored with a diagonal shift $\delta=10^{-8}$; if the factorization fails $\delta$ is multiplied by 100, up to
   five tries, then the iteration stops with `IPM_SINGULAR` ([`ipm.c:438`](../ipm.c#L438)).
-- **Sparse LP**: the normal equations use $\delta=10^{-6}$ (primal and dual regularizers $\delta(1+\max x)$, $\delta(1+\max z)$), multiplied by 100 on failure up to $10^4$
+- **Sparse LP**: the normal equations start at $\delta=10^{-6}$, with primal and dual regularizers $\delta(1+\bar x)$ and $\delta(1+\bar z)$ based on the arithmetic means of $x$ and $z$. On failure, $\delta$ is multiplied by 100 up to $10^4$
   ([`ipm.c:1027`](../ipm.c#L1027)); the result is checked against the *unreduced* equations to $10^{-9}$ and refactored without the elimination if it fails
-  ([interior point](interior-point.md)).
+  ([interior point](interior_point.md)).
 - **Dense LU**: `dmat_lu_factor` returns `NULL` only for an exactly zero pivot (below $10^{-300}$); near-singularity is the caller's business
   ([linear algebra](linear_algebra.md)). There is no $10^{-14}$ relative pivot floor.
 - **SOCP**: a normal-equations matrix that fails Cholesky is repaired by the failing pivot (`spchol_factor_fail`), with shifts bounded by $10^{-4}\max|H|$ and

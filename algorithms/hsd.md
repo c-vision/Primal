@@ -1,10 +1,17 @@
-# Homogeneous self-dual embedding (F4, prototype)
+# Homogeneous self-dual embedding
 
-The next conic route (plan phase F4) embeds the primal-dual pair directly, so an
-interior-point method needs **no Phase I** and an infeasible or unbounded model
-returns a **certificate** instead of a status. This is the structure Clarabel
-uses; the reference is Chen & Goulart 2023 (paper in the vault, readable with
-`pdftotext`), eq. 8-9 and algorithm 6.2.
+An embedding puts the primal and dual optimality conditions, together with
+possible infeasibility certificates, into one homogeneous system. The variables
+$\tau$ and $\kappa$ distinguish how to interpret a limit point. For example, if
+the embedding gives $x=6$ and $\tau=2$ on the solution branch, the original
+decision variable is $x/\tau=3$.
+
+In PRIMAL, the in-tree implementation is experimental and enabled with
+`GMB_SDP_HSD` for a PSD model without SOC or exponential/power blocks. It can
+fail to produce a usable limit point. Start with the [interior-point chapter](interior_point.md)
+and [certificates](certificates.md). The reference formulation is Goulart and
+Chen, [*Clarabel: An interior-point solver for conic programs with quadratic objectives*](https://arxiv.org/abs/2405.12762),
+equations 8–9 and Algorithm 6.2.
 
 ## The embedding (eq. 8)
 
@@ -19,9 +26,9 @@ kappa = -c'x - h'y - b'z
 (s, z, kappa, tau) in K x K* x R+ x R+
 ```
 
-The system is homogeneous: if `tau > 0` the pair is feasible and
-`(x, y, z, s)/tau` is optimal; if `kappa > 0` the model is primal or dual
-infeasible, which is read off `h'y` and `c'x`/`z`.
+At a complementary solution with `tau > 0`, `(x, y, z, s)/tau` is an optimal
+primal–dual pair. With `kappa > 0`, `tau = 0`; the signs of `h'y + b'z` and `c'x`
+identify which type of ray can be recovered and tested in the original model.
 
 ## The algorithm (6.2)
 

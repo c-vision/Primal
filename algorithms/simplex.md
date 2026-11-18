@@ -255,14 +255,14 @@ The route is decided in `opt_routes` and `std_route_method`
   from the slack basis ([MIP](mixed_integer_optimization.md#the-relaxation-solver-and-the-slack-basis-start)).
 - After any solved LP, `intpnt_identify_basis` (`primal_verdict.c`) assigns a status
   key (basic, at lower, at upper bound) to every variable and row from the published
-  point, with a relative tolerance of ^{-7}1 This is a classification of the
+  point, with a relative tolerance of $10^{-7}$. This is a classification of the
   point, not the final basis of the simplex engine.
 
 ### What `PRIMAL_optimize` does on this LP
 
 `PRIMAL_optimize` ([architecture](architecture.md)) does not solve the standard
 form of the polygon LP above. Before the standard form is built, `bound_tighten`
-tightens the variable bounds from the rows (here to \le2 \le420 20 12 61 79 80 81 702 33 98 100 204 250 395 398 399 400 701, and
+tightens the variable bounds from the rows (here to $x\le2$ and $y\le4$), and
 `stdform_build` turns every finite upper bound on a variable with a finite lower
 bound into an extra row `x_shifted + s = u - l` (`stdform.c`). That adds two rows
 and two columns. Measured at `1f2ddee` on this LP:

@@ -389,7 +389,8 @@ static void fig_ipm(const char *dir) {
     FILE *f = fopen(name, "w"); if (!f) fail("cannot open lp-central-path.svg");
     char desc[1100];
     snprintf(desc, sizeof desc, "Left: the iterates of the interior point method in the (x,y) plane for maximize 3x+2y "
-             "with x+y<=4 and x<=2; they start at (1,1) and approach the vertex (2,2) without touching the boundary. "
+             "with x+y<=4 and x<=2; they start at (1,1) and approach the vertex (2,2). "
+             "The method keeps standard-form variables positive while reducing the equality residuals. "
              "Right: base-10 logarithm of the primal residual, the dual residual and the complementarity mu against the "
              "iteration number, falling from about 1 to below 1e-8 in %d iterations. Measured with ipm_solve_std at revision %s.",
              n - 1, g_rev);

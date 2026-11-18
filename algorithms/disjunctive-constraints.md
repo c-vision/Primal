@@ -2,10 +2,16 @@
 
 **Source:** `primal_afe.c`, `primal_djc.c`
 
-Constraints that are not "a row of `A`": disjunctions (either/or), SOS1/SOS2
-sets, semi-continuous and semi-integer variables, and general affine conic
-constraints. All of them reach the same place: a set of rows in the standard
-form, plus a structure the MIP search can branch on.
+An affine conic constraint tests membership of an affine expression in a
+domain. A disjunction requires at least one full clause of affine constraints
+to hold. For example, $x\le2$ or $x\ge6$ excludes the gap $(2,6)$. Each side
+defines a convex set by itself, but their union is nonconvex.
+
+PRIMAL translates linear ACC domains to rows and supported nonlinear ACC
+domains to equality-linked cone members. Its DJC encoder reformulates
+disjunctions over linear domains using big-$M$ rows and binary selectors.
+See [mixed-integer optimization](mixed_integer_optimization.md) for how those
+selectors affect the relaxation and the search tree.
 
 ## Affine expressions (AFE)
 
@@ -24,7 +30,7 @@ on both the linear and the conic branch.
 
 ## ACC — affine conic constraint
 
-`appendacc` + `putacc` declares that a list of expressions must lie in a
+`PRIMAL_appendacc` declares that a list of expressions must lie in a
 conic domain. The sign convention is the reference one: the constraint reads
 `F x + g − b ∈ domain`, so `b` is what the expression must equal for the zero
 vector to be inside the domain.

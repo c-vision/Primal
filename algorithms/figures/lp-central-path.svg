@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470" role="img" aria-labelledby="title desc">
   <title id="title">Interior point iterates and residuals on a small LP</title>
-  <desc id="desc">Left: the iterates of the interior point method in the (x,y) plane for maximize 3x+2y with x+y&lt;=4 and x&lt;=2; they start at (1,1) and approach the vertex (2,2) without touching the boundary. Right: base-10 logarithm of the primal residual, the dual residual and the complementarity mu against the iteration number, falling from about 1 to below 1e-8 in 5 iterations. Measured with ipm_solve_std at revision 1f2ddee.</desc>
+  <desc id="desc">Left: the iterates of the interior point method in the (x,y) plane for maximize 3x+2y with x+y&lt;=4 and x&lt;=2; they start at (1,1) and approach the vertex (2,2). The method keeps standard-form variables positive while reducing the equality residuals. Right: base-10 logarithm of the primal residual, the dual residual and the complementarity mu against the iteration number, falling from about 1 to below 1e-8 in 5 iterations. Measured with ipm_solve_std at revision 1f2ddee.</desc>
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#17212b"/></marker>
     <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>

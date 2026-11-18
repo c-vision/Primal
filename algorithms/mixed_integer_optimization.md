@@ -57,7 +57,7 @@ BRANCH-AND-BOUND(model)
  3  while pool not empty and nodes < MIP_MAX_NODES:
  4      node <- the open node with the lowest bound    # best-bound; ties: newest
  5      (status, x, z) <- solve relaxation over node.box
- 6      if status = infeasible, or no answer: discard node
+ 6      handle relaxation status as described below
  7      run the primal heuristics scheduled for this node count
  8      if z >= z* - gap: discard node                 # pruned by bound
  9      choose what to branch on:                      # semi, SOS, then integer
@@ -67,6 +67,12 @@ BRANCH-AND-BOUND(model)
 13      else split the box at floor(x_j), floor(x_j)+1; push both children with bound z
 14  publish incumbent, or a status explaining why there is none
 ```
+
+An infeasible relaxation proves that the node has no integer-feasible point.
+In [`primal_mip_opt.c`](../primal_mip_opt.c), a relaxation that gives no answer
+is also skipped, and an unbounded root is passed to an integer-feasibility
+heuristic. Failure to compute a relaxation solution supplies no mathematical
+proof of infeasibility or bound for that node.
 
 The test in line 8 uses
 
@@ -167,7 +173,7 @@ user's model keeps its rows.
 | Cut | When it applies | Default |
 |---|---|---|
 | Chvátal–Gomory | a row whose variables are all integer and nonnegative, with a non-integer coefficient or right-hand side | on |
-| Cover | a knapsack row $a^\top x\le u$ over binaries, $a_j>0$: a cover $C$ gives $\sum_{j\in C}x_j\le |C|-1$ | on |
+| Cover | a knapsack row $a^\top x\le u$ over binaries, $a_j>0$: a cover $C$ gives $\sum_{j\in C}x_j\le \lvert C\rvert-1$ | on |
 | Clique | the same rows: $\{j: a_j>u/2\}$ is a clique | on |
 | Tableau Gomory (`mip_gomory_round`) | all variables integer with integer bounds, integer rows and integer matrix; **one** round, because after a cut the slacks have fractional coefficients | on, when applicable |
 | CMIR, LIPRO | see `T188`, `T190` | **off** unless `GMB_MIP_CMIR`, `GMB_MIP_LIPRO` are set |
@@ -304,6 +310,12 @@ flowchart TD
 order PRIMAL solves them. A solid edge is a child; the label under each node
 gives its relaxation and bound. Read it with the table above: the incumbent
 exists from node 3, which is why the last node is pruned.*
+
+![Five branch-and-bound nodes with the incumbent updated at node three](figures/branch-and-bound.gif)
+
+*Animation: one frame per processed node. The incumbent becomes finite at
+node 3. At node 5 the relaxation bound cannot improve that incumbent within
+the configured gap, so the search ends.*
 
 ## Costs and failure modes
 

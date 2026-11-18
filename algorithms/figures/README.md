@@ -7,6 +7,9 @@ closed form that the program checks against the solver, except the small static 
 |---|---|---|---|
 | `simplex-pivots.svg`, `simplex-walk.gif` | analytic / animation | `make_figures.c`, `make_animations.c` | the tableau run ends at the optimum `PRIMAL_optimize` reports |
 | `lp-central-path.svg`, `lp-central-path-trace.csv`, `ipm-approach.gif` | measured | same | the iterates come from `ipm_solve_std`; the last one equals the API optimum |
+| `central-path.gif` | analytic animation | `make_animations.c` | each barrier minimizer is interior and satisfies stationarity |
+| `exponential-sections.gif` | analytic animation | `make_animations.c` | `expcone_barrier` accepts and rejects samples on the appropriate sides of every section |
+| `branch-and-bound.gif` | worked-example animation | `make_animations.c` | enumeration of the feasible integer points recovers the illustrated objective bound |
 | `qp-contours.svg` | analytic | `make_figures.c` | KKT conditions of the QP, optimum and multiplier against the API |
 | `supporting-hyperplane.svg` | analytic | `make_figures.c` | the optimal vertex and its multipliers |
 | `presolve-reduction.svg` | computed | `make_figures.c` | the reductions of `lp_presolve` and the lifted multipliers |

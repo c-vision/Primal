@@ -174,6 +174,12 @@ a plot is analytic or measured. Save trace data when a convergence figure
 depends on a particular build. Use captions and alt text that are readable
 without color.
 
+Animate changes a student needs to follow, such as a pivot, a Newton path,
+a slice parameter or an incumbent update. Keep a static figure, table or
+formula in the chapter so the reader can pause and inspect the same steps.
+Use regular Markdown files for alternate chapter URLs so that the rendered
+page contains readable material and links to the full chapter.
+
 Check analytic examples by substitution. For Newton derivations, compare a
 small step with a direct solve of the original system and report its residual.
 For cone figures, check boundary points against the stated defining inequality.
@@ -187,6 +193,9 @@ tolerances and code revision. Review figures at the size they render in GitHub.
   the precise route and conditions under which it applies.
 - Worked examples and figures are reproducible and their claims are checked.
 - Source links, Markdown links, anchors and GitHub math rendering are reviewed.
+  On the published page, check inline and display math, set delimiters and
+  tables containing norms or absolute values. Use portable commands such as
+  `\mathrm{diag}`, `\lVert` and `\rVert`.
 - A student can follow the derivation with the stated prerequisites. A
   developer can locate the implementation, its tests and its failure paths.
 - Primary references are verified when each chapter is written. Start with

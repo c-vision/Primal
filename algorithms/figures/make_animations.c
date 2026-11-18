@@ -22,9 +22,9 @@
  *                  line of the objective sweeping up and the ratio test written out
  *   ipm-approach   the iterates of ipm_solve_std on the same LP, with the residuals drawn as they fall
  *
- * Every frame is computed from the same data as the still figures (make_figures.c is included
- * for its LP, its tableau and its interior-point trace) and the final positions are checked
- * against the optimum the public API reports.  For each animation <name> the program writes
+ * The solver traces reuse the still-figure code. Additional sequences show an analytic
+ * central path, sections of the exponential cone and a checked branch-and-bound example.
+ * For each animation <name> the program writes
  * <dir>/<name>-NN.svg and a list <dir>/<name>.frames with one "CS file.svg" line per frame
  * (CS = display time in hundredths of a second); make_gifs.sh turns the lists into GIFs.
  *
@@ -54,6 +54,11 @@ static FILE *frame_open(Seq *s, int cs, int w, int h, const char *title, const c
     fprintf(s->list, "%d %s\n", cs, rel);
     svg_begin(f, w, h, title, desc);
     return f;
+}
+
+static void plot_clip(FILE *f, const Plot *p) {
+    fprintf(f, "<clipPath id=\"plot\"><rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\"/></clipPath>\n",
+            p->px, p->py, p->pw, p->ph);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -210,7 +215,7 @@ static void ipm_frame(Seq *sq, int cs, const Iter *tr, int n, int k, double t, c
     snprintf(desc, sizeof desc, "Interior point on max 3x+2y with x+y<=4, x<=2: iteration %d of %d, current point (%.3f, %.3f). "
              "Measured with ipm_solve_std at revision %s.", k, n - 1, px, py, g_rev);
     FILE *f = frame_open(sq, cs, 900, 470, "Interior point iterates and residuals", desc);
-    text(f, 450, 28, "middle", 20, INK, "Interior point: through the inside, towards the vertex");
+    text(f, 450, 28, "middle", 20, INK, "Interior point: positive slacks and falling residuals");
     Plot p = { 0, 4.4, 0, 4.4, 60, 70, 330, 300 };
     double V[8][2]; int nv = polygon(V, 8);
     fputs("  <path d=\"", f);
@@ -271,20 +276,152 @@ static void anim_ipm(const char *dir) {
     if (tr[n - 1].status != 0) fail("ipm animation: interior point did not converge");
     if (fabs(tr[n - 1].x[0] - ref[0]) > 1e-6 || fabs(tr[n - 1].x[1] - ref[1]) > 1e-6) fail("ipm animation: optimum differs from PRIMAL");
     Seq sq; seq_open(&sq, dir, "ipm-approach");
-    char a[200], b[200];
+    char a[200], b[200], previous[200];
     for (int k = 0; k < n; k++) {
         if (k == 0) {
-            snprintf(a, sizeof a, "Iteration 0: start strictly inside, at (1, 1).");
+            snprintf(a, sizeof a, "Iteration 0: positive coordinates and slacks, with an equality residual.");
             snprintf(b, sizeof b, "At the start: mu = %.2g, primal residual %.2g, dual residual %.2g.", tr[0].mu, tr[0].rp, tr[0].rd);
             ipm_frame(&sq, 150, tr, n, 0, 1.0, a, b);
             continue;
         }
-        snprintf(a, sizeof a, "Iteration %d: one Newton step towards a smaller mu, kept inside by the step length.", k);
+        snprintf(a, sizeof a, "Iteration %d: the step length keeps the standard-form coordinates and dual slacks positive.", k);
         snprintf(b, sizeof b, "After the step: mu = %.2g, primal residual %.2g, dual residual %.2g.", tr[k].mu, tr[k].rp, tr[k].rd);
-        for (int t = 1; t <= 4; t++) ipm_frame(&sq, 8, tr, n, k, t / 4.0, a, b);
+        snprintf(previous, sizeof previous, "Plot through iteration %d. Moving marker illustrates the step to iteration %d.", k - 1, k);
+        for (int t = 1; t < 4; t++) ipm_frame(&sq, 8, tr, n, k, t / 4.0, a, previous);
+        ipm_frame(&sq, 8, tr, n, k, 1.0, a, b);
         ipm_frame(&sq, k == n - 1 ? 400 : 45, tr, n, k, 1.0, a, b);
     }
     fclose(sq.list);
+}
+
+/* Exact minimizers of 1+r-mu*log(r*(1-r)) along x1+x2=1. */
+static double segment_barrier(double mu, double r) {
+    return 1 + r - mu * log(r * (1 - r));
+}
+
+static void anim_central_path(const char *dir) {
+    const double scales[] = {2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.005};
+    Seq seq;
+    seq_open(&seq, dir, "central-path");
+    for (size_t i = 0; i < sizeof scales / sizeof *scales; i++) {
+        double mu = scales[i];
+        double r = 2 * mu / (1 + 2 * mu + sqrt(1 + 4 * mu * mu));
+        if (!(r > 0 && r < 1) || fabs(1 - mu/r + mu/(1-r)) > 1e-12)
+            fail("central path: invalid barrier minimizer");
+        char details[130];
+        snprintf(details, sizeof details, "mu = %.3g, minimizing x2 = %.4f, x1 = %.4f", mu, r, 1-r);
+        FILE *f = frame_open(&seq, i == 7 ? 240 : 95, 720, 432,
+                             "Exact central path on a line segment", details);
+        Plot p = {0, 1, 1, 5.4, 76, 65, 560, 230};
+        text(f, 360, 32, "middle", 21, INK, "A barrier keeps the minimizer away from the endpoints");
+        axes(f, &p, "x2", "value", 1, 1);
+        line(f, PX(&p, 0), PY(&p, 1), PX(&p, 1), PY(&p, 2), GREY, 1.7, "5 4", NULL);
+        plot_clip(f, &p);
+        fputs("  <polyline clip-path=\"url(#plot)\" fill=\"none\" stroke=\"" BLUE "\" stroke-width=\"2.6\" points=\"", f);
+        for (int j = 1; j < 240; j++) {
+            double s = j / 240.0;
+            fprintf(f, "%.1f,%.1f ", PX(&p, s), PY(&p, segment_barrier(mu, s)));
+        }
+        fputs("\"/>\n", f);
+        double x = PX(&p, r);
+        line(f, x, PY(&p, segment_barrier(mu, r)), x, 349, ORANGE, 1.6, "5 4", NULL);
+        fprintf(f, "<circle cx=\"%.1f\" cy=\"%.1f\" r=\"5.5\" fill=\"%s\"/>\n",
+                x, PY(&p, segment_barrier(mu, r)), ORANGE);
+        line(f, p.px, 349, p.px+p.pw, 349, INK, 2, NULL, NULL);
+        fprintf(f, "<circle cx=\"%.1f\" cy=\"349\" r=\"6\" fill=\"%s\"/>\n", x, ORANGE);
+        text(f, 360, 382, "middle", 16, INK, details);
+        text(f, 360, 410, "middle", 14, GREY, "Blue: barrier objective. Dashed diagonal: original objective.");
+        svg_end(f);
+        fclose(f);
+    }
+    fclose(seq.list);
+}
+
+static void anim_exponential_sections(const char *dir) {
+    const double scales[] = {2, 1.6, 1.2, 1, 0.75, 0.5, 0.35, 0.2};
+    Seq seq;
+    seq_open(&seq, dir, "exponential-sections");
+    for (size_t i = 0; i < sizeof scales / sizeof *scales; i++) {
+        double u = scales[i];
+        Plot p = {-2, 2, 0, 6, 70, 65, 580, 245};
+        char label[90];
+        snprintf(label, sizeof label, "Fixed scale u = %.2g. The boundary crosses v = 0 at t = u.", u);
+        FILE *f = frame_open(&seq, i == 7 ? 240 : 95, 720, 412, "Cross-sections of the exponential cone", label);
+        text(f, 360, 32, "middle", 22, INK, "Exponential cone sections at fixed u");
+        plot_clip(f, &p);
+        fprintf(f, "  <path clip-path=\"url(#plot)\" d=\"M %.1f %.1f ", PX(&p,p.x0), PY(&p,p.y1));
+        for (int k = 0; k <= 200; k++) {
+            double v = p.x0 + (p.x1-p.x0)*k/200;
+            double t = u * exp(v/u);
+            double point[3] = {t * 1.001, u, v}, value;
+            if (expcone_barrier(EXPCONE_PEXP, 0, point, &value) != 0)
+                fail("exponential animation: point above the boundary rejected");
+            point[0] = t * 0.999;
+            if (expcone_barrier(EXPCONE_PEXP, 0, point, &value) == 0)
+                fail("exponential animation: point below the boundary accepted");
+            fprintf(f, "L %.1f %.1f ", PX(&p,v), PY(&p,t));
+        }
+        fprintf(f, "L %.1f %.1f Z\" fill=\"%s\"/>\n", PX(&p,p.x1), PY(&p,p.y1), FILL);
+        fputs("<polyline clip-path=\"url(#plot)\" fill=\"none\" stroke=\"" BLUE "\" stroke-width=\"2\" points=\"", f);
+        for (int k = 0; k <= 200; k++) {
+            double v = p.x0 + (p.x1-p.x0)*k/200;
+            fprintf(f, "%.1f,%.1f ", PX(&p,v), PY(&p,u * exp(v/u)));
+        }
+        fputs("\"/>\n", f);
+        line(f, PX(&p,0), PY(&p,0), PX(&p,0), PY(&p,p.y1), GREY, 1.2, "5 4", NULL);
+        axes(f, &p, "v", "t", 1, 1);
+        fprintf(f, "<circle cx=\"%.1f\" cy=\"%.1f\" r=\"5.5\" fill=\"%s\"/>\n", PX(&p,0), PY(&p,u), ORANGE);
+        text(f, 360, 363, "middle", 16, INK, label);
+        text(f, 360, 390, "middle", 15, GREY, "Shading marks feasible values t at or above u exp(v/u).");
+        svg_end(f);
+        fclose(f);
+    }
+    fclose(seq.list);
+}
+
+static void anim_branch_and_bound(const char *dir) {
+    static const int xpos[] = {360, 176, 530, 438, 622};
+    static const int ypos[] = {85, 177, 177, 269, 269};
+    static const int parent[] = {-1, 0, 0, 2, 2};
+    static const char *box[] = {"root", "x2 >= 3", "x2 <= 2", "x1 >= 2", "x1 <= 1"};
+    static const char *bounds[] = {"bound -3.75", "infeasible", "bound -3.5", "bound -3", "bound -3"};
+    static const char *caption[] = {
+        "The root relaxation gives (1.25, 2.5). Branch on the fractional x2.",
+        "The branch x2 >= 3 needs x1 >= 1.75, so it violates the first row.",
+        "Branch on x1. A diving heuristic finds an incumbent with value -3.",
+        "The branch x1 >= 2 attains -3 at the integer point (2, 1).",
+        "The last bound is -3. This branch cannot improve the incumbent."
+    };
+    int best = 0;
+    for (int x = 0; x <= 2; x++)
+        for (int y = 0; y <= 3; y++)
+            if (2*x+y <= 5 && -4*x+4*y <= 5 && -x-y < best) best = -x-y;
+    if (best != -3) fail("branch-and-bound animation: wrong integer optimum");
+    Seq seq;
+    seq_open(&seq, dir, "branch-and-bound");
+    for (int current = 0; current < 5; current++) {
+        FILE *f = frame_open(&seq, current == 4 ? 300 : 175, 720, 420,
+                             "Five nodes in a branch-and-bound search", caption[current]);
+        text(f, 360, 33, "middle", 22, INK, "Branch and bound on a two-variable integer program");
+        for (int i = 1; i <= current; i++) {
+            int p = parent[i];
+            line(f, xpos[p], ypos[p]+24, xpos[i], ypos[i]-24, GREY, 1.5, NULL, "arr");
+        }
+        for (int i = 0; i <= current; i++) {
+            fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"158\" height=\"48\" rx=\"5\" fill=\"%s\" stroke=\"%s\" stroke-width=\"%d\"/>\n",
+                    xpos[i]-79, ypos[i]-24, FILL, i == current ? ORANGE : BLUE, i == current ? 3 : 1);
+            char name[48];
+            snprintf(name, sizeof name, "%d. %s", i+1, box[i]);
+            text(f, xpos[i], ypos[i]-3, "middle", 15, INK, name);
+            text(f, xpos[i], ypos[i]+15, "middle", 13, GREY, bounds[i]);
+        }
+        text(f, 360, 345, "middle", 16, INK, caption[current]);
+        text(f, 360, 381, "middle", 15, GREY,
+             current < 2 ? "No incumbent found yet." : "Incumbent: (2, 1), objective -3.");
+        svg_end(f);
+        fclose(f);
+    }
+    fclose(seq.list);
 }
 
 int main(int argc, char **argv) {
@@ -293,6 +430,9 @@ int main(int argc, char **argv) {
     if (argc > 2) dir = argv[2];
     anim_simplex(dir);
     anim_ipm(dir);
-    printf("make_animations: wrote the frames of simplex-walk and ipm-approach in %s (revision %s)\n", dir, g_rev);
+    anim_central_path(dir);
+    anim_exponential_sections(dir);
+    anim_branch_and_bound(dir);
+    printf("make_animations: wrote frames for five animations in %s (revision %s)\n", dir, g_rev);
     return 0;
 }

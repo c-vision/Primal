@@ -18,7 +18,7 @@ After this chapter you can:
 
 Prerequisites: linear algebra (eigenvalues of symmetric matrices, rank) and
 multivariable calculus (gradient, Hessian). Notation: vectors are columns,
-$\langle x,y\rangle=x^\top y$ and $\langle X,Y\rangle=\operatorname{tr}(X^\top Y)$
+$\langle x,y\rangle=x^\top y$ and $\langle X,Y\rangle=\mathrm{tr}(X^\top Y)$
 for matrices.
 
 ## Norms, quadratic forms and positive semidefinite matrices
@@ -27,7 +27,7 @@ The norms used in this documentation are $\|x\|_2=\sqrt{x^\top x}$,
 $\|x\|_1=\sum_i|x_i|$ and $\|x\|_\infty=\max_i|x_i|$, and the Frobenius norm
 $\|X\|_F=\sqrt{\langle X,X\rangle}$. PRIMAL measures residuals in $\|\cdot\|_\infty$
 and scales them by $\max(1,\|b\|_\infty)$ or $\max(1,\|c\|_\infty)$
-([interior point](interior-point.md)).
+([interior point](interior_point.md)).
 
 A **quadratic form** is $x\mapsto x^\top Qx$ with $Q=Q^\top$. $Q$ is
 *positive semidefinite* ($Q\succeq0$) when $v^\top Qv\ge0$ for every $v$, and
@@ -61,9 +61,9 @@ cone** is $K^*=\{z:\langle z,s\rangle\ge0\ \forall s\in K\}$.
   See the [Lorentz section](conic-socp.md#geometry-and-jordan-algebra).
 - **Positive semidefinite cone** $\mathbb{S}^n_+$ is self-dual under the trace
   inner product. If $Y\succeq0$ and $X\succeq0$, then
-  $\operatorname{tr}(XY)=\operatorname{tr}(X^{1/2}YX^{1/2})\ge0$. If $Y$ has a
+  $\mathrm{tr}(XY)=\mathrm{tr}(X^{1/2}YX^{1/2})\ge0$. If $Y$ has a
   negative direction $v^\top Yv<0$, then $X=vv^\top\succeq0$ gives
-  $\operatorname{tr}(XY)<0$.
+  $\mathrm{tr}(XY)<0$.
 - The exponential and power cones are *not* self-dual; their duals are written out in
   [the exponential cone](exponential_cone.md) and [the power cone](power_cone.md).
 
@@ -142,7 +142,7 @@ into `slc`/`suc` and `slx`/`sux`.
 [`stdform.c`](../stdform.c) builds the equality and orthant form to which the
 equations above apply ([problem formulations](problem_formulations.md)).
 [`ipm.c`](../ipm.c) solves the perturbed complementarity equations $x_iz_i=\mu$
-([interior point](interior-point.md)), and [`primal_verdict.c`](../primal_verdict.c) and
+([interior point](interior_point.md)), and [`primal_verdict.c`](../primal_verdict.c) and
 [`primal_solution.c`](../primal_solution.c) compute the public measurements
 (`PRIMAL_getprimalinfeas`, `PRIMAL_getdualinfeas`, the objectives). A public residual is
 measured on the *original* model, so compare it with an internal residual only after

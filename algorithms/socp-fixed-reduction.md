@@ -1,5 +1,11 @@
 # Fixed-coordinate reduction and sparse LU incidence
 
+This note assumes the [primal SOCP equations](conic-socp.md) are familiar.
+As a scalar example, $x_1+2x_2=7$ with $x_2=3$ reduces to $x_1=1$.
+The coefficient of the fixed coordinate disappears, but its contribution of
+6 must move to the right-hand side. If that coordinate is a cone member, its
+value must also be carried into the cone's affine offset.
+
 The sparse conic route substitutes fixed scalar variables before solving.
 The existing dense/sparse routing is unchanged; dense solves keep their
 original call without a reduced attempt. If

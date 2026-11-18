@@ -7,16 +7,25 @@ the exponential cone and the power cones. These are the cones where a symmetric
 conic method does not apply, and this file is what makes them native rather than
 approximated.
 
+Start with the [exponential cone](exponential_cone.md) and the
+[power cone](power_cone.md) for geometry, derivatives and worked models. This
+note follows the barrier and scaling kernels used by the solver.
+
 ## The cones
 
 | Type | Membership | Note |
 |---|---|---|
-| `PEXP` | `t ≥ u·e^(v/u)`, `u ≥ 0` (`v` is free) | the exponential cone |
-| `DEXP` | `x ∈ DEXP ⇔ −x ∈ PEXP`, i.e. `t ≤ u·e^(v/u)`, `u ≤ 0` | the negative of `PEXP` (not its dual cone) |
+| `PEXP` | `t ≥ u·e^(v/u)` for `u > 0`; `t ≥ 0` and `v ≤ 0` for `u = 0` | the closed exponential cone |
+| `DEXP` | `x ∈ DEXP ⇔ −x ∈ PEXP` | the reflection of `PEXP` through the origin |
 | `PPOW(a)` | `t^a·u^(1−a) ≥ \|v\|` | 0 < a < 1, power cone |
 | `RPOW(a)` | `√2·t^a·u^(1−a) ≥ \|v\|` | rotated power cone |
 
 `RPOW(1/2)` coincides with `RQUAD`, which is why both exist.
+
+For example, at `(t,u,v)=(2,1,0)`, the strict PEXP margin
+`u·log(t/u)−v` is `log(2)>0`. At `(1,1,0)` it is zero. The latter point lies
+on the closed cone, but the barrier takes a logarithm of the margin and is
+defined only in the interior.
 
 ## The barriers
 

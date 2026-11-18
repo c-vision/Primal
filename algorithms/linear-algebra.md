@@ -7,6 +7,13 @@ external library. The teaching chapter is [linear algebra for Newton and basis
 systems](linear_algebra.md); this page is the reference list of the kernels, what they
 assume, and who calls them.
 
+A Newton matrix often serves two right-hand sides. If the matrix is
+$K=\begin{pmatrix}2&1\\1&2\end{pmatrix}$, a Cholesky factor can be built once.
+For $b=(3,3)^\top$ it gives $x=(1,1)^\top$, and for $b=(1,-1)^\top$ it gives
+$x=(1,-1)^\top$. The two calls share the factor but have separate triangular
+solves. A symmetric indefinite KKT matrix requires a factorization that can
+handle that signature, such as a suitable LDL or pivoted LU.
+
 ## Kernels
 
 | Kernel | Algorithm | Fails when | Production callers |

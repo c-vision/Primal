@@ -1,5 +1,12 @@
 # Higher-order PEXP correction
 
+Start with the [exponential-cone barrier](exponential_cone.md) and the
+[predictor–corrector derivation](interior_point.md). The extra term estimates
+the error made when a Newton direction replaces a curved complementarity
+relation by a linear approximation. The orthant example below relates it to
+the familiar scalar cross term before applying it to the three-dimensional
+barrier.
+
 The mixed SOC/PEXP native route uses a higher-order predictor-corrector term.
 It can converge without the second, secant-mode native attempt on models such
 as `logistic_large`. The scalar tolerances, conic acceptance criteria and

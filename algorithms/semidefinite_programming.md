@@ -13,7 +13,7 @@ After this chapter you can:
 - state the PSD cone, its dual, the primal–dual SDP pair and the optimality
   conditions, and check an optimal pair by substitution;
 - derive the Nesterov–Todd (NT) scaling $W$ and the Schur complement
-  $M_{ij}=\operatorname{tr}(A_iWA_jW)$ of the Newton system, and carry one
+  $M_{ij}=\mathrm{tr}(A_iWA_jW)$ of the Newton system, and carry one
   predictor step out by hand;
 - follow one iteration of `sdp_ipm_run`: scaling, Schur system, predictor,
   centring parameter, corrector, step lengths, merit test;
@@ -22,18 +22,18 @@ After this chapter you can:
   recent commits do.
 
 Prerequisites: [foundations](mathematical_foundations.md) (cones, duality),
-[interior point for LP](interior-point.md) (the predictor–corrector loop),
+[interior point for LP](interior_point.md) (the predictor–corrector loop),
 [linear algebra](linear_algebra.md) (Schur complements, LU).
 
 ## The cone and its dual
 
 Let $\mathbb S^n$ be the symmetric $n\times n$ matrices with the trace inner
-product $\langle A,B\rangle=\operatorname{tr}(AB)=\sum_{ij}A_{ij}B_{ij}$ and
+product $\langle A,B\rangle=\mathrm{tr}(AB)=\sum_{ij}A_{ij}B_{ij}$ and
 $\mathbb S^n_+=\{X:v^\top Xv\ge0\ \forall v\}$ the PSD cone. It is self-dual:
 if $Z\succeq0$ and $X=\sum_i\lambda_iq_iq_i^\top\succeq0$ then
-$\operatorname{tr}(ZX)=\sum_i\lambda_i\,q_i^\top Zq_i\ge0$; if $Z$ had an
+$\mathrm{tr}(ZX)=\sum_i\lambda_i\,q_i^\top Zq_i\ge0$; if $Z$ had an
 eigenvector $v$ with $v^\top Zv<0$, then $X=vv^\top$ would give
-$\operatorname{tr}(ZX)<0$.
+$\mathrm{tr}(ZX)<0$.
 
 The $2\times2$ case is a second-order cone. For $X=\begin{pmatrix}a&c\\c&b\end{pmatrix}$,
 $X\succeq0\iff a,b\ge0,\ ab\ge c^2$. With $a=(t+u)/\sqrt2$, $b=(t-u)/\sqrt2$ this is
@@ -116,7 +116,7 @@ $$
 $r_p=\mathcal A(X)-b$, then give the **Schur complement system**
 
 $$
-\boxed{M\,\Delta y=-r_p-\mathcal A(WeW)},\qquad M_{kl}=\operatorname{tr}\bigl(A_k\,W A_l W\bigr).
+\boxed{M\,\Delta y=-r_p-\mathcal A(WeW)},\qquad M_{kl}=\mathrm{tr}\bigl(A_k\,W A_l W\bigr).
 $$
 
 $M$ is symmetric positive definite when the $A_k$ are linearly independent. PRIMAL forms
@@ -221,7 +221,7 @@ $\alpha_p=2$ (the matrix $\begin{pmatrix}1&\alpha/2\\\alpha/2&1\end{pmatrix}$ is
 $\alpha=2$) and $\alpha_d=\tfrac23$ (the eigenvalue $1-1.5\alpha$ of $S+\alpha\Delta S$ hits 0). With the steps
 capped at 1, $\alpha_p=1$, $\alpha_d=\tfrac23$: $X+\Delta X=\begin{pmatrix}1&\frac12\\\frac12&1\end{pmatrix}$
 and $S+\tfrac23\Delta S=\begin{pmatrix}1&-1\\-1&1\end{pmatrix}=S^\star$, so
-$\mu_{\rm aff}=\tfrac12\operatorname{tr}\bigl((X+\Delta X)(S+\tfrac23\Delta S)\bigr)=0.5$,
+$\mu_{\rm aff}=\tfrac12\mathrm{tr}\bigl((X+\Delta X)(S+\tfrac23\Delta S)\bigr)=0.5$,
 $\mu_{\rm aff}/\mu=0.25$ and $\sigma=0.25^3=0.015625$, which the floor raises to $0.1$.
 The predictor already lands the dual at the optimum $S^\star$ — the dual step stops at the
 boundary $\alpha_d=\tfrac23$, which is why the corrector and the fraction-to-boundary factor
@@ -253,7 +253,7 @@ two-colouring problem: [`sdp_fixed_diagonal`](../sdp.c#L2995) propagates signs b
 and gives up (returns 0) if a nonzero entry demands contradictory signs (an odd cycle of
 positive weights, for instance). When it succeeds it builds $X=\hat u\hat u^\top$, sets
 $S=C$ with the diagonal replaced by $S_{ii}=-\sum_{j}C_{ij}\hat u_j/\hat u_i$ (so $S\hat u=0$:
-$\operatorname{diag}(\hat u)S\operatorname{diag}(\hat u)$ is a weighted graph Laplacian, diagonally dominant
+$\mathrm{diag}(\hat u)S\mathrm{diag}(\hat u)$ is a weighted graph Laplacian, diagonally dominant
 with non-positive off-diagonal entries, hence PSD), $y_k=(C_{ii}-S_{ii})/a_k$, and **measures** the
 primal residual, dual residual and gap against the same tolerances as the iterative route.
 Only if all three pass is the answer returned. Conditions

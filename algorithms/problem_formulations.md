@@ -26,10 +26,10 @@ cones, duality).
 | LP | $\min c^\top x+c_f$ s.t. $l_c\le Ax\le u_c$, $l_x\le x\le u_x$ | `putcj`, `putcfix`, `putarow`, `putconbound`, `putvarbound` (keys `LO`, `UP`, `FX`, `FR`, `RA`) |
 | QP | LP with $+\tfrac12x^\top Qx$, $Q\succeq0$ for a minimization ($Q\preceq0$ for a maximization) | `putqobj`: triplets of the lower triangle, the off-diagonal value is the full coefficient of $x_ix_j$ |
 | Convex QCQP | rows $a_i^\top x+\tfrac12x^\top Q_ix\in[l_i,u_i]$; $Q_i\succeq0$ on an upper-bounded row, $Q_i\preceq0$ on a lower-bounded row | `putqconk`; fixed, ranged and free rows with $Q_i\ne0$ are rejected |
-| SOCP | variables in a Lorentz cone $t\ge\|u\|_2$, or in a rotated cone $2x_1x_2\ge\sum_{i\ge3}x_i^2$ with $x_1,x_2\ge0$ | `appendcone` with `PRIMAL_CT_QUAD`, `PRIMAL_CT_RQUAD`; or affine expressions in a domain |
+| SOCP | variables in a Lorentz cone $t\ge\lVert u\rVert_2$, or in a rotated cone $2x_1x_2\ge\sum_{i\ge3}x_i^2$ with $x_1,x_2\ge0$ | `appendcone` with `PRIMAL_CT_QUAD`, `PRIMAL_CT_RQUAD`; or affine expressions in a domain |
 | SDP | $\min c^\top x+\sum_j\langle\bar C_j,X_j\rangle$ s.t. $l\le Ax+\sum_j\langle\bar A_{ij},X_j\rangle\le u$, $X_j\succeq0$ | `appendbarvars`, `putbarcj`, `putbaraij` |
-| EXP | $(x_1,x_2,x_3)$ with $x_1\ge x_2e^{x_3/x_2}$, $x_2\ge0$ | `PRIMAL_CT_PEXP` ([exponential cone](exponential_cone.md)) |
-| POW | $(x_1,x_2,x_3)$ with $x_1^\alpha x_2^{1-\alpha}\ge|x_3|$, $0<\alpha<1$; rotated: $2x_1^{2\alpha}x_2^{2(1-\alpha)}\ge x_3^2$ | `PRIMAL_CT_PPOW`, `PRIMAL_CT_RPOW` ([power cone](power_cone.md)) |
+| EXP | $x_1\ge x_2e^{x_3/x_2}$ for $x_2>0$; at $x_2=0$ closure requires $x_1\ge0$ and $x_3\le0$ | `PRIMAL_CT_PEXP` ([exponential cone](exponential_cone.md)) |
+| POW | $x_1,x_2\ge0$, $x_1^\alpha x_2^{1-\alpha}\ge\lvert x_3\rvert$, $0<\alpha<1$; rotated: $2x_1^{2\alpha}x_2^{2(1-\alpha)}\ge x_3^2$ | `PRIMAL_CT_PPOW`, `PRIMAL_CT_RPOW` ([power cone](power_cone.md)) |
 | MIP | any of the above plus $x_j\in\mathbb{Z}$, binary, $x_j\in\{0\}\cup[l,u]$ (semi-continuous), SOS1/SOS2 sets, disjunctions | `putvartype` (`INT`, `INT_BIN`, `SEMI_CONT`, `SEMI_INT`), `appendsos`, `appenddjcs` ([MIP](mixed_integer_optimization.md)) |
 
 `RPOW` with $\alpha=\tfrac12$ is the rotated Lorentz cone. A model can mix
@@ -181,7 +181,7 @@ test `T22`.
 | quadratic rows, or a quadratic objective with cones | rotated-cone encoding, then the conic route |
 | exponential or power cones | native barrier in `sdp.c`, then tangent cuts ([exponential cone](exponential_cone.md)) |
 | Lorentz and rotated cones | conic route ([SOCP](conic-socp.md)) |
-| LP, QP | the standard form of this chapter ([simplex](simplex.md), [interior point](interior-point.md)) |
+| LP, QP | the standard form of this chapter ([simplex](simplex.md), [interior point](interior_point.md)) |
 
 Free-variable splitting, slack insertion and the `VARUB` rows increase the
 dimension even when a model has few original rows: $n$ grows by one column per

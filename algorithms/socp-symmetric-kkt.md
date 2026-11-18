@@ -1,5 +1,12 @@
 # Experimental symmetric SOCP KKT
 
+The [SOCP chapter](conic-socp.md) introduces the dual equation and the
+scaling. Here the elimination is arranged so that the off-diagonal blocks of
+the Newton matrix are transposes. A scalar illustration is
+$\begin{pmatrix}1&1\\1&-1\end{pmatrix}$, which has eigenvalues
+$\sqrt2$ and $-\sqrt2$. Symmetry alone does not allow Cholesky, hence the
+interest in an LDL factorization for this system.
+
 The sparse SOCP solver has an opt-in backend selected by the **presence** of
 `GMB_SOCP_LDL`. It is disabled by default. It applies to nonnegative cones
 and SOC blocks of at most 32 coordinates, the existing NT scaling limit.

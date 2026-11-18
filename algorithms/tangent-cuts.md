@@ -1,17 +1,36 @@
 # Tangent cuts (outer approximation)
 
-**Source:** `sdp.c`, `expcone.c`
+**Source:** [`primal_conicopt.c`](../primal_conicopt.c),
+[`primal_sdptask.c`](../primal_sdptask.c), [`expcone.c`](../expcone.c)
 
 The fallback route for a model with a nonlinear or PSD block: linearize the
 nonlinear part, solve the resulting LP, cut, repeat.
 
 ## The method
 
-At the current point `x̄`, build a **tangent** of each nonlinear block, add the
-tangent as a linear constraint, re-solve. The sequence of LP optima converges
-from below (for a minimization) to the true optimum, and the accepted point
-gives the matching upper bound. When the two coincide, optimality is proven by
-the sandwich.
+For a differentiable convex function $f$, the first-order inequality is
+
+$$
+f(x)\ge f(a)+\nabla f(a)^\top(x-a).
+$$
+
+An epigraph constraint $t\ge f(x)$ therefore implies the linear inequality
+$t\ge f(a)+\nabla f(a)^\top(x-a)$. Keep tangents from successive trial
+points and solve the resulting LP after each addition. Its optimum is a lower
+bound in minimization whenever the master contains the original feasible set.
+A point feasible for the original model supplies an upper bound. The two
+bounds certify optimality when they agree. A cut limit, a stalled sequence or
+a restricted master can leave the method without such a certificate.
+
+### Worked example
+
+Minimize $t$ with $x=1$ and $t\ge x^2$. At $a=0$ the tangent is $t\ge0$,
+so the first LP returns $(x,t)=(1,0)$. That point violates the original
+constraint by 1. Adding the tangent at $a=1$ gives $t\ge2x-1$. The second
+LP returns $(1,1)$, which is feasible for the original problem. Its value 1
+is both a lower bound and an upper bound. The same supporting-plane argument
+applies to the cone constraints described in the
+[exponential-cone chapter](exponential_cone.md).
 
 The cut is a genuine tangent of the block at the point, in the block's own
 units. A power cone is homogeneous of degree 1, and reading its residual in

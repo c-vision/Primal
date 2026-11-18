@@ -55,7 +55,7 @@ $$
 
 $$
 g=\Bigl(-\tfrac{D_t}{D}-\tfrac{1-\alpha}{t},\ -\tfrac{D_u}{D}-\tfrac{\alpha}{u},\ \tfrac{2v}{D}\Bigr),\qquad
-H=\frac{\nabla D\nabla D^\top}{D^2}-\frac{\nabla^2D}{D}+\operatorname{diag}\!\Bigl(\tfrac{1-\alpha}{t^2},\tfrac{\alpha}{u^2},0\Bigr),
+H=\frac{\nabla D\nabla D^\top}{D^2}-\frac{\nabla^2D}{D}+\mathrm{diag}\!\Bigl(\tfrac{1-\alpha}{t^2},\tfrac{\alpha}{u^2},0\Bigr),
 $$
 
 where $\nabla^2D$ has the entries $D_{tt}=\text{rot}\,2\alpha(2\alpha-1)p/t^2$, $D_{tu}=\text{rot}\,4\alpha(1-\alpha)p/(tu)$,
@@ -78,7 +78,7 @@ with $\gamma=1$ for `PPOW` and $\gamma=\sqrt2$ for `RPOW` ([`expcone_dual_in`](.
 $\|s\|_1$ first). The factor $\sqrt2$ is the scaling of the third coordinate: `RPOW` is `PPOW` in $(t,u,v/\sqrt2)$, and the pairing
 $s_2v=\sqrt2s_2\cdot(v/\sqrt2)$.
 
-**Scaling point.** For $s\in\operatorname{int}\mathcal K^*$ find $W\in\operatorname{int}\mathcal K$ with $-\nabla f(W)=s$.
+**Scaling point.** For $s\in\mathrm{int}\mathcal K^*$ find $W\in\mathrm{int}\mathcal K$ with $-\nabla f(W)=s$.
 Put $\xi=\text{rot}\,p/D>1$ ($D=\text{rot}\,p-v^2$, so $\xi>1$ whenever $v\ne0$). The first two rows give
 $s_0=(2\alpha\xi+1-\alpha)/t$ and $s_1=(2(1-\alpha)\xi+\alpha)/u$, the third $v=-\tfrac12s_2D$. Hence
 
@@ -107,7 +107,7 @@ on the right in both cases.
 The Newton row $\Theta_{\rm in}\Delta z+\Delta s/\text{scale}=r_t$, the scale $\langle z,s\rangle/3$ and the Hessian-NT chain are the same as for the exponential
 cone ([exponential cone](exponential_cone.md#the-newton-row-of-a-cone-block)); `expcone_scaling` serves the three kinds. The differences:
 
-- the chain is used when $s/\text{scale}\in\operatorname{int}\mathcal K^*$ and $W$ exists; otherwise the row is the barrier Hessian $H_z$
+- the chain is used when $s/\text{scale}\in\mathrm{int}\mathcal K^*$ and $W$ exists; otherwise the row is the barrier Hessian $H_z$
   (at a tight optimum $s$ is on the boundary of $\mathcal K^*$ and no $W$ exists). A conditioning gate on the chain was measured and removed: the
   comment in `expcone_scaling` records that at every finite threshold the oracles $\text{PEXP}(u=1,v=1)$, $\text{PEXP}(u=2,v=1)$ and
   $\text{PPOW}(0.3)$ fell back to the tangent cuts, while the chain never answered a case worse than $H_z$ did;
@@ -143,7 +143,7 @@ $1.7\cdot10^{-13}$, $2.7\cdot10^{-12}$, $3.0\cdot10^{-10}$.
 
 - **Per iteration**: the $3\times3$ evaluations of the exponential cone plus the scalar bisection for $W$ (200 evaluations of `pow_gap`); the KKT
   factorization dominates ([SDP](semidefinite_programming.md)).
-- **Boundary optima** are slow, as in the example, because $H_z$ blows up and the dual direction leaves $\operatorname{int}\mathcal K^*$.
+- **Boundary optima** are slow, as in the example, because $H_z$ blows up and the dual direction leaves $\mathrm{int}\mathcal K^*$.
 - **Parameter range.** $\alpha$ must be strictly in $(0,1)$; the barrier, the membership tests and the scaling point reject anything else.
 - **Not solved is not infeasible**: failures go to the secant retry and the cuts, never to an infeasibility claim without a measured
   certificate ([certificates](certificates.md)).

@@ -23,16 +23,27 @@ Prerequisites: [conic duality](mathematical_foundations.md), [SOCP](conic-socp.m
 
 ## The cone and its dual
 
-PRIMAL's cone `PEXP` acts on three members $(t,u,v)$ of the variable vector:
+PRIMAL's cone `PEXP` acts on three coordinates $(t,u,v)$. The inequality
+$t\ge u\cdot e^{v/u}$ says that $t$ lies on or above the exponential curve
+at a fixed positive scale $u$. Here $\mathrm{cl}$ denotes closure
+and $\mathrm{int}$ denotes interior.
 
 $$
-\mathcal K_{\exp}=\operatorname{cl}\{(t,u,v):\ t\ge u\,e^{v/u},\ u>0\},\qquad
-\operatorname{int}\mathcal K_{\exp}=\{u>0,\ t>0,\ \psi:=u\ln(t/u)-v>0\}.
+\mathcal K_{\exp}=\mathrm{cl}\left(\lbrace(t,u,v):\ t\ge u\cdot e^{v/u},\ u>0\rbrace\right).
 $$
 
-Only $u$ and $t$ are restricted in sign; $v$ is free ([`primal.h`](../primal.h#L188): "$x_1\ge x_2e^{x_3/x_2}$,
-$x_2\ge0$"). The closure adds the ray $\{(t,0,v):t\ge0,\ v\le0\}$ where $u=0$. The cone is
-convex because $(u,v)\mapsto u\,e^{v/u}$ is the perspective of $e^{v}$. `DEXP` is *minus* this
+$$
+\mathrm{int}(\mathcal K_{\exp})
+=\lbrace(t,u,v):\ u>0,\ t>0,\ \psi=u\ln(t/u)-v>0\rbrace .
+$$
+
+For $u>0$, $v$ can have either sign and $t$ must be positive. The closure
+adds the face $\lbrace(t,0,v):t\ge0,\ v\le0\rbrace$. As $u$ tends to zero from
+above, $u e^{v/u}$ tends to zero for fixed $v\le0$ and diverges for fixed $v>0$.
+The cone is convex because $(u,v)\mapsto u\,e^{v/u}$ is the perspective of $e^{v}$.
+The header lists these coordinates in the same order. [`primal.h`](../primal.h#L188)
+
+`DEXP` is *minus* this
 cone, $x\in\text{DEXP}\iff-x\in\text{PEXP}$ (`primal_sdptask.c` encodes it with $z_a=-x_{\text{mem}[a]}$);
 it is what the header of `primal.h` calls "dual", but it is a mirror image, not $\mathcal K^*_{\exp}$.
 
@@ -45,6 +56,12 @@ $(t,u,v)=(2,2,0)$ of the example below, which lies on the boundary. Analytic fig
 [`figures/make_figures.c`](figures/make_figures.c) at `1f2ddee`; the generator tests 40 boundary points on
 both sides with `expcone_barrier` and checks the optimum against `PRIMAL_optimize`.*
 
+![Animated sections of the exponential cone as u increases](figures/exponential-sections.gif)
+
+*Animation: hold $u$ fixed in each frame and raise it between frames. The point
+at $v=0$ follows $t=u$. The curve moves up and broadens because both axes are
+scaled by $u$. The shading marks the feasible side $t\ge u e^{v/u}$.*
+
 The cone is not self-dual. Its dual is
 
 $$
@@ -53,7 +70,8 @@ $$
 
 and `expcone_dual_in` ([`expcone.c:238`](../expcone.c#L238)) tests its interior after dividing $s$ by
 $\|s\|_1$, so the test does not depend on the scale of the pair. A pair $(z,s)\in\mathcal K\times\mathcal K^*$
-has $\langle z,s\rangle\ge0$, with equality exactly when both lie on the boundary on complementary faces.
+has $\langle z,s\rangle\ge0$. Equality means the two vectors are orthogonal.
+If both are nonzero, equality forces each to the boundary of its cone.
 
 ## Barrier, gradient and Hessian
 
@@ -67,7 +85,7 @@ implemented in [`pexp_core`](../expcone.c#L36). With $\psi_t=u/t$, $\psi_u=\ln(t
 
 $$
 g=\nabla f=\Bigl(-\tfrac{\psi_t}{\psi}-\tfrac1t,\ -\tfrac{\psi_u}{\psi}-\tfrac1u,\ \tfrac1\psi\Bigr),\qquad
-H=\frac{\nabla\psi\nabla\psi^\top}{\psi^2}-\frac{\nabla^2\psi}{\psi}+\operatorname{diag}\!\Bigl(\tfrac1{t^2},\tfrac1{u^2},0\Bigr),
+H=\frac{\nabla\psi\nabla\psi^\top}{\psi^2}-\frac{\nabla^2\psi}{\psi}+\mathrm{diag}\!\Bigl(\tfrac1{t^2},\tfrac1{u^2},0\Bigr),
 $$
 
 with $\nabla^2\psi$ having the nonzero entries $\psi_{tt}=-u/t^2$, $\psi_{tu}=1/t$, $\psi_{uu}=-1/u$.
@@ -93,7 +111,7 @@ reprove them.
 
 ## Scaling point of a dual vector
 
-For $s\in\operatorname{int}\mathcal K^*$ there is a unique $W\in\operatorname{int}\mathcal K$ with $-\nabla f(W)=s$
+For $s\in\mathrm{int}\mathcal K^*$ there is a unique $W\in\mathrm{int}\mathcal K$ with $-\nabla f(W)=s$
 ([`expcone_dual_point`](../expcone.c#L274)); it replaces the NT point, which does not exist for a
 non-symmetric cone. Solve the three equations of $-g=s$ in order:
 
@@ -217,7 +235,7 @@ skips zero coefficients when assembling the lower triangle of the Hessian.
 Near a minimizer, the objective change is computed term by term using
 `expm1` when subtracting the two objective values would lose the
 decrement to rounding. Given a step $\Delta x$, the change in the $i$th
-term is $w_i t_i\,\operatorname{expm1}(a_i^\top\Delta x/u_i)$.
+term is $w_i t_i\,\mathrm{expm1}(a_i^\top\Delta x/u_i)$.
 It checks the original row residuals, dual cone membership and objective gap
 using the task tolerances. The stationarity check also scales to the
 contributions in each free column, so changing the units of a variable
@@ -281,7 +299,7 @@ and $s_1-s_2+s_2\ln(-s_2/s_0)=-1+1-\ln1=0$, on its boundary. Dual value $2y=2=$ 
 *PRIMAL.* `PRIMAL_optimize` takes the native route and returns $x=(2.00000000,\ 2.00000000,\ 0.00000000)$, objective $2.0000000000$ for
 primal and dual and $y=-1$ (the public sign is the opposite of the $y=1$ above, see [SDP](semidefinite_programming.md)). The
 debug trace shows 44 iterations (it=0..43) where a problem of three variables would take a handful on the interior:
-the optimum is on the boundary, so $\operatorname{cond}(\nabla^2f(z))$ grows to $1.4\cdot10^{10}$ (it=3), the dual step lengths in the first iterations are
+the optimum is on the boundary, so $\mathrm{cond}(\nabla^2f(z))$ grows to $1.4\cdot10^{10}$ (it=3), the dual step lengths in the first iterations are
 0.38–0.92 and $\mu$ is not monotone (it=20..23 rises from $3.8\cdot10^{-7}$ to $1.5\cdot10^{-6}$). The final measures are
 rel_pri $3.0\cdot10^{-13}$, rel_dual 0, rel_gap $2.1\cdot10^{-15}$, and the cone check prints the solution as
 $(2,\ 1.99999999997,\ 3.3\cdot10^{-11})$.
@@ -305,7 +323,7 @@ $s=-g(z)$ satisfies the interior condition of the dual cone.
 $\tfrac{d}{d\lambda}f(\lambda z)|_{\lambda=1}=\langle g,z\rangle=-3$; the formula for $g$ gives the same number (the
 program behind the numbers above evaluated $-3.0000000000$). For the dual condition,
 $s=(0.8901768,\,1.1647348,\,-1.6705304)$ has $s_0>0$, $s_2<0$ and
-$s_1-s_2+s_2\ln(-s_2/s_0)=1.7837058>0$ (this is $-\gamma(0)$), so $s\in\operatorname{int}\mathcal K^*$.
+$s_1-s_2+s_2\ln(-s_2/s_0)=1.7837058>0$ (this is $-\gamma(0)$), so $s\in\mathrm{int}\mathcal K^*$.
 
 ## References
 

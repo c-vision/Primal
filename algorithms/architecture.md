@@ -105,7 +105,7 @@ $(\sqrt2,1,1)$. The route's own triple does not see cone membership, which is wh
 | presolve | `presolve.c` | `lp_presolve`, `presolve_postsolve*` | [presolve](presolve.md) |
 | scaling | `scaling.c` | `scale_equilibrate` | [numerical stability](numerical_stability.md) |
 | simplex | `simplex.c` | tableau, revised, dual | [simplex](simplex.md) |
-| LP/QP interior point | `ipm.c` | `ipm_solve_std`, `ipm_solve_std_csc`, `ipm_solve_qp_csc` | [interior point](interior-point.md), [QP](quadratic_programming.md) |
+| LP/QP interior point | `ipm.c` | `ipm_solve_std`, `ipm_solve_std_csc`, `ipm_solve_qp_csc` | [interior point](interior_point.md), [QP](quadratic_programming.md) |
 | second-order cones | `socp.c`, `primal_conicopt.c` | `socp_solve`, `optimize_conic` | [SOCP](conic-socp.md) |
 | SDP, exp, power | `sdp.c`, `primal_sdptask.c`, `expcone.c` | `sdp_ipm_run`, `optimize_sdp_ipm`, `optimize_sdp` | [SDP](semidefinite_programming.md), [exponential](exponential_cone.md), [power](power_cone.md) |
 | MIP | `primal_mip_opt.c`, `primal_mip.c` | `optimize_mip` and cuts | [MIP](mixed_integer_optimization.md) |

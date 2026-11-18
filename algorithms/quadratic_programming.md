@@ -15,7 +15,7 @@ After this chapter you can:
 - say how a convex quadratic *constraint* is rewritten, and what PRIMAL does
   with a QP whose Hessian is not convex.
 
-Prerequisites: [interior point for LP](interior-point.md) (this chapter changes
+Prerequisites: [interior point for LP](interior_point.md) (this chapter changes
 only the linear algebra of that iteration), eigenvalues of symmetric matrices,
 [problem formulations](problem_formulations.md).
 
@@ -40,7 +40,7 @@ last section shows what PRIMAL does with such a model.
 
 ## The Newton system
 
-The interior-point iteration of [the LP chapter](interior-point.md) is unchanged
+The interior-point iteration of [the LP chapter](interior_point.md) is unchanged
 except for the dual residual, $r_d=Qx+c-A^\top y-z$, and the linear system.
 Linearizing the first KKT equation and eliminating $\Delta z=X^{-1}(q-Z\Delta x)$
 as before gives, with $D=X^{-1}Z$ and $M=Q+D$,
@@ -79,7 +79,7 @@ After standard-form conversion an inequality row contains a **private slack**:
 a column with one entry in $A$ and a diagonal entry in $Q$ (zero in the
 objective, so $M$ carries only $D$ there). Order the variables so that the
 structural ones come first and let $B$ be the structural part of $A$, so that
-$A=[B\;\operatorname{diag}(a)]$ with the private slacks aligned to the rows.
+$A=[B\;\mathrm{diag}(a)]$ with the private slacks aligned to the rows.
 Let $p$ be the structural step, $s$ the private steps, and $m_i$ the diagonal of
 $M$ at private slack $i$. The equations for slack $i$ are
 
@@ -100,7 +100,7 @@ Substituting $\Delta y$ into the structural equation $M_{\rm struct}p-B^\top\Del
 leaves a system in $p$ alone,
 
 $$
-\bigl(M_{\rm struct}+B^\top\operatorname{diag}(w)B\bigr)p
+\bigl(M_{\rm struct}+B^\top\mathrm{diag}(w)B\bigr)p
 =u_{\rm struct}+B^\top\!\left(-w\odot r_p-(a/q)\odot u_{\rm private}\right),
 \qquad w_i=\frac{m_i}{q_i},
 $$
@@ -248,7 +248,7 @@ quadratic row, always uses it ([problem formulations](problem_formulations.md)).
   caller's responsibility on this route; the QCQP encoder is the only place PRIMAL
   checks it.
 - **Iteration cap and stalls** are reported as for the LP
-  ([interior point](interior-point.md)).
+  ([interior point](interior_point.md)).
 
 ## Exercise
 

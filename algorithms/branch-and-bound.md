@@ -2,10 +2,15 @@
 
 **Source:** `primal_mip.c`, `primal_mip_opt.c`
 
-Depth-first branch and bound over conic relaxations, with cuts, bound
-tightening, probing, strong branching and a primal heuristic. Relaxations are
-solved by the same routes as the continuous problems, including the conic and
-SDP paths — a MIP with a PSD block is not a special case.
+The search expands the open node with the best relaxation bound. A relaxation
+can use the continuous LP, QP, conic or SDP routes, depending on the model.
+Cuts, bound tightening and probing can strengthen the relaxation. Strong
+branching chooses a split, and primal heuristics try to find an integer point.
+
+In the [animated worked example](mixed_integer_optimization.md#worked-example),
+the root relaxation gives $x_2=2.5$. The two children impose $x_2\le2$
+and $x_2\ge3$. Together they cover every integer value of $x_2$ and both
+exclude the fractional point. Each child keeps the other model constraints.
 
 ## Node selection and branching
 

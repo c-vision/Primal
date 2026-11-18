@@ -19,7 +19,7 @@ After this chapter you can:
 
 Prerequisites: Gaussian elimination, symmetric positive definite matrices
 ([foundations](mathematical_foundations.md)), and the Newton systems of
-[interior point](interior-point.md).
+[interior point](interior_point.md).
 
 ## Block elimination
 
@@ -50,7 +50,7 @@ number is the square of that of the scaled $A$, and a column of $A$ with many no
 $S$ dense. The augmented system keeps $A$'s structure and its conditioning but needs a
 factorization that tolerates indefiniteness (LU, or LDL with 2×2 pivots).
 
-**Worked example.** $M=\operatorname{diag}(2,3)$, $A=(1,1)$, $f=(2,0)$, $g=2$,
+**Worked example.** $M=\mathrm{diag}(2,3)$, $A=(1,1)$, $f=(2,0)$, $g=2$,
 $\delta=0$. Then $AM^{-1}A^\top=\tfrac12+\tfrac13=\tfrac56$ and
 $g-AM^{-1}f=2-\tfrac12\cdot2=1$, so $y=\tfrac65$ and
 $u=M^{-1}(f+A^\top y)=\bigl(\tfrac{2+6/5}{2},\tfrac{6/5}{3}\bigr)=(\tfrac85,\tfrac25)$.
@@ -143,7 +143,7 @@ residual scaled by the size of its terms:
 - `lp_normal_solve` (bound-row elimination of the LP normal equations) and
   `qp_solve_condensed` (the condensed QP) rebuild the eliminated components and test the
   full system to $10^{-9}$; on failure they refactor the unreduced matrix
-  ([interior point](interior-point.md), [quadratic programming](quadratic_programming.md)).
+  ([interior point](interior_point.md), [quadratic programming](quadratic_programming.md)).
 - `socp.c` selects a sparse direction and may retry the augmented formulation with
   sparse LU when the normal-equations direction is rejected ([SOCP](conic-socp.md)).
 

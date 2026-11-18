@@ -14,7 +14,7 @@ After this chapter you can:
   the NT Cholesky direction and the sparse LU direction, and what recovery it has;
 - name the tests that check each route.
 
-Prerequisites: [interior point for LP](interior-point.md) (the same predictor–corrector),
+Prerequisites: [interior point for LP](interior_point.md) (the same predictor–corrector),
 [dual cones](mathematical_foundations.md), [linear algebra](linear_algebra.md).
 
 ## Geometry and Jordan algebra
