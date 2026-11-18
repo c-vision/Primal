@@ -1,24 +1,24 @@
 # Figures of the teaching guide
 
 Every figure here is produced by a program in this directory, from the solver or from a
-closed form that the program checks against the solver, except the small static `lorentz-section.svg`.
+closed form that the program checks against the solver, except the small static `lorentz_section.svg`.
 
 | File | Kind | Made by | What is checked before it is written |
 |---|---|---|---|
-| `simplex-pivots.svg`, `simplex-walk.gif` | analytic / animation | `make_figures.c`, `make_animations.c` | the tableau run ends at the optimum `PRIMAL_optimize` reports |
-| `lp-central-path.svg`, `lp-central-path-trace.csv`, `ipm-approach.gif` | measured | same | the iterates come from `ipm_solve_std`; the last one equals the API optimum |
-| `central-path.gif` | analytic animation | `make_animations.c` | each barrier minimizer is interior and satisfies stationarity |
-| `exponential-sections.gif` | analytic animation | `make_animations.c` | `expcone_barrier` accepts and rejects samples on the appropriate sides of every section |
-| `branch-and-bound.gif` | worked-example animation | `make_animations.c` | enumeration of the feasible integer points recovers the illustrated objective bound |
-| `qp-contours.svg` | analytic | `make_figures.c` | KKT conditions of the QP, optimum and multiplier against the API |
-| `supporting-hyperplane.svg` | analytic | `make_figures.c` | the optimal vertex and its multipliers |
-| `presolve-reduction.svg` | computed | `make_figures.c` | the reductions of `lp_presolve` and the lifted multipliers |
-| `cholesky-ordering.svg`, `ordering-fill.csv` | measured | `make_figures.c` | the factors of `spchol_factor` and `spchol_factor_ord` solve the same system |
-| `elliptope-slices.svg` | analytic | `make_figures.c` | the minimum on each slice equals the closed form, via `PRIMAL_optimize` |
-| `exp-cone-section.svg`, `power-cone-section.svg` | analytic | `make_figures.c` | membership of points on both sides of every curve with `expcone_barrier`; the optimum against the API |
-| `scaling-equilibration.svg` | computed | `make_figures.c` | every scaled entry equals `r_i d_j a_ij` exactly and every factor is a power of two |
+| `simplex_pivots.svg`, `simplex_walk.gif` | analytic / animation | `make_figures.c`, `make_animations.c` | the tableau run ends at the optimum `PRIMAL_optimize` reports |
+| `lp_central_path.svg`, `lp_central_path_trace.csv`, `ipm_approach.gif` | measured | same | the iterates come from `ipm_solve_std`; the last one equals the API optimum |
+| `central_path.gif` | analytic animation | `make_animations.c` | each barrier minimizer is interior and satisfies stationarity |
+| `exponential_sections.gif` | analytic animation | `make_animations.c` | `expcone_barrier` accepts and rejects samples on the appropriate sides of every section |
+| `branch_and_bound.gif` | worked-example animation | `make_animations.c` | enumeration of the feasible integer points recovers the illustrated objective bound |
+| `qp_contours.svg` | analytic | `make_figures.c` | KKT conditions of the QP, optimum and multiplier against the API |
+| `supporting_hyperplane.svg` | analytic | `make_figures.c` | the optimal vertex and its multipliers |
+| `presolve_reduction.svg` | computed | `make_figures.c` | the reductions of `lp_presolve` and the lifted multipliers |
+| `cholesky_ordering.svg`, `ordering_fill.csv` | measured | `make_figures.c` | the factors of `spchol_factor` and `spchol_factor_ord` solve the same system |
+| `elliptope_slices.svg` | analytic | `make_figures.c` | the minimum on each slice equals the closed form, via `PRIMAL_optimize` |
+| `exp_cone_section.svg`, `power_cone_section.svg` | analytic | `make_figures.c` | membership of points on both sides of every curve with `expcone_barrier`; the optimum against the API |
+| `scaling_equilibration.svg` | computed | `make_figures.c` | every scaled entry equals `r_i d_j a_ij` exactly and every factor is a power of two |
 | `dispatch.svg` | static | `make_figures.c` | none: a diagram read from `opt_routes`, checked by the three traces of the architecture chapter |
-| `lorentz-section.svg` | analytic | by hand (static) | none |
+| `lorentz_section.svg` | analytic | by hand (static) | none |
 
 The generators exit with a non-zero status if a check fails.
 

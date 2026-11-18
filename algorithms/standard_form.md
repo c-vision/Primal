@@ -56,7 +56,7 @@ with their block and its affine links. The unified converter can
 absorb eligible members directly into the block. The SOCP converter
 builds explicit equalities and affine cone slacks. See the
 [solver architecture](architecture.md#the-dispatch) and
-[fixed-coordinate reduction](socp-fixed-reduction.md).
+[fixed-coordinate reduction](socp_fixed_reduction.md).
 
 ## Limits
 

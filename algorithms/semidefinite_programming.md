@@ -29,7 +29,7 @@ Prerequisites: [foundations](mathematical_foundations.md) (cones, duality),
 
 Let $\mathbb S^n$ be the symmetric $n\times n$ matrices with the trace inner
 product $\langle A,B\rangle=\mathrm{tr}(AB)=\sum_{ij}A_{ij}B_{ij}$ and
-$\mathbb S^n_+=\{X:v^\top Xv\ge0\ \forall v\}$ the PSD cone. It is self-dual:
+$\mathbb S^n_+=\lbrace X:v^\top Xv\ge0\ \forall v\rbrace$ the PSD cone. It is self-dual:
 if $Z\succeq0$ and $X=\sum_i\lambda_iq_iq_i^\top\succeq0$ then
 $\mathrm{tr}(ZX)=\sum_i\lambda_i\,q_i^\top Zq_i\ge0$; if $Z$ had an
 eigenvector $v$ with $v^\top Zv<0$, then $X=vv^\top$ would give
@@ -38,7 +38,7 @@ $\mathrm{tr}(ZX)<0$.
 The $2\times2$ case is a second-order cone. For $X=\begin{pmatrix}a&c\\c&b\end{pmatrix}$,
 $X\succeq0\iff a,b\ge0,\ ab\ge c^2$. With $a=(t+u)/\sqrt2$, $b=(t-u)/\sqrt2$ this is
 $t\ge\|(u,\sqrt2\,c)\|_2$: a Lorentz cone in the coordinates $(t,u,\sqrt2c)$
-([second-order cones](conic-socp.md)). The factor $\sqrt2$ on the off-diagonal is the same
+([second-order cones](socp.md)). The factor $\sqrt2$ on the off-diagonal is the same
 one that makes the packed vector of a symmetric matrix isometric to the matrix.
 
 ## The primal–dual pair
@@ -54,7 +54,7 @@ with the dual $\max\ b^\top y$ s.t. $S_j=C_j-\sum_ky_kA_{kj}\succeq0$,
 $s=c-A^\top y\ge0$ ([`sdp.h`](../sdp.h)). Weak duality is a one-line identity,
 
 $$
-\langle C,X\rangle-b^\top y=\Bigl\langle S+\sum_ky_kA_k,\,X\Bigr\rangle-\sum_ky_k\langle A_k,X\rangle=\langle S,X\rangle\ge0,
+\langle C,X\rangle-b^\top y=\langle S+\sum_ky_kA_k,\,X\rangle-\sum_ky_k\langle A_k,X\rangle=\langle S,X\rangle\ge0,
 $$
 
 and if both problems have a strictly feasible point the gap closes and
@@ -75,7 +75,7 @@ the ellipse $a^2+b^2-2c\,ab\le1-c^2$. Take the cost $\langle C,X\rangle=X_{12}+X
 (the max-cut relaxation of a triangle, written as a minimization). Its minimum over the
 slice $c$ is $c-\sqrt2\sqrt{1+c}$, which is smallest at $c=-\tfrac12$.
 
-![Slices of the 3x3 elliptope and the optimal slice](figures/elliptope-slices.svg)
+![Slices of the 3x3 elliptope and the optimal slice](figures/elliptope_slices.svg)
 
 *Figure: the slices $X_{23}=0.5,\ 0,\ -0.5$ of the elliptope in the plane
 $(X_{12},X_{13})$. The line $X_{12}+X_{13}=-1$ is tangent to the slice $X_{23}=-0.5$ at
@@ -98,7 +98,7 @@ object. For $X,S\succ0$ there is exactly one such
 $W$ (the NT point, the geometric mean of $X$ and $S^{-1}$):
 
 $$
-\boxed{W=X^{1/2}\bigl(X^{1/2}SX^{1/2}\bigr)^{-1/2}X^{1/2}},\qquad WSW=X,\quad W^{-1}XW^{-1}=S .
+\boxed{W=X^{1/2}(X^{1/2}SX^{1/2})^{-1/2}X^{1/2}},\qquad WSW=X,\quad W^{-1}XW^{-1}=S .
 $$
 
 (Check: $WSW=X^{1/2}M^{-1/2}\,(X^{1/2}SX^{1/2})\,M^{-1/2}X^{1/2}=X$ with $M=X^{1/2}SX^{1/2}$.)
@@ -109,21 +109,21 @@ $\Delta X+W\,\Delta S\,W=-X+\sigma\mu S^{-1}$, using $WX^{-1}W=S^{-1}$.
 $\Delta S=C-S-\mathcal A^*(y+\Delta y)$. Substituting into the scaled equation,
 
 $$
-\Delta X=W\bigl(\mathcal A^*(\Delta y)+e\bigr)W,\qquad e=\mathcal A^*(y)-C+\sigma\mu X^{-1}
+\Delta X=W(\mathcal A^*(\Delta y)+e)W,\qquad e=\mathcal A^*(y)-C+\sigma\mu X^{-1}
 $$
 
 (the code's `g`/`e` block). The primal rows $\mathcal A(\Delta X)=-r_p$,
 $r_p=\mathcal A(X)-b$, then give the **Schur complement system**
 
 $$
-\boxed{M\,\Delta y=-r_p-\mathcal A(WeW)},\qquad M_{kl}=\mathrm{tr}\bigl(A_k\,W A_l W\bigr).
+\boxed{M\,\Delta y=-r_p-\mathcal A(WeW)},\qquad M_{kl}=\mathrm{tr}(A_k\,W A_l W).
 $$
 
 $M$ is symmetric positive definite when the $A_k$ are linearly independent. PRIMAL forms
 $WA_lW$ once per constraint and block (the array `MTQ`), then each $M_{kl}$ is an
 inner product with $A_k$ ([`sdp.c:2161`](../sdp.c#L2161)). The scalar variables $x\ge0$
 add $A\,\mathrm{diag}(x/s)A^\top$; second-order and exponential/power blocks are *not*
-scaled by $W$: they enter an augmented KKT matrix instead ([SOCP](conic-socp.md),
+scaled by $W$: they enter an augmented KKT matrix instead ([SOCP](socp.md),
 [exponential cone](exponential_cone.md)), whose header comment in
 [`sdp.c`](../sdp.c#L26) explains that the NT point of a Lorentz block diverges at the cone
 boundary.
@@ -168,12 +168,14 @@ so for a single block of order $d$ the starting point $X=S=I$ has $\mu=1$.
 ([`ipm_quality`](../sdp.c#L568)):
 
 $$
-\text{rel\_pri}=\frac{\|r_p\|_\infty}{1+\|b\|_\infty},\quad
-\text{rel\_dual}=\frac{\|r_d\|_\infty}{1+\|c\|_\infty},\quad
-\text{rel\_gap}=\frac{|p-d|}{1+|p|+|d|},
+\rho_p=\frac{\|r_p\|_\infty}{1+\|b\|_\infty},\quad
+\rho_d=\frac{\|r_d\|_\infty}{1+\|c\|_\infty},\quad
+\rho_g=\frac{|p-d|}{1+|p|+|d|},
 $$
 
-with $p=\langle C,X\rangle$, $d=b^\top y$. The defaults are $10^{-8}$ each. A point that
+with $p=\langle C,X\rangle$, $d=b^\top y$. The code stores these measures as
+`rel_pri`, `rel_dual` and `rel_gap`, respectively. The default tolerances are
+$10^{-8}$ each. A point that
 misses them but meets them multiplied by `INTPNT_TOL_NEAR_REL` (default 1000) is saved as a
 near-optimal candidate and returned if the alternative route (the tangent cuts, below) also fails
 ([`sdp.h`](../sdp.h), the `fb_ok` note in `sdp.c`). Neither measure checks that $X,S$ are in the cone; cone membership is
@@ -221,7 +223,7 @@ $\alpha_p=2$ (the matrix $\begin{pmatrix}1&\alpha/2\\\alpha/2&1\end{pmatrix}$ is
 $\alpha=2$) and $\alpha_d=\tfrac23$ (the eigenvalue $1-1.5\alpha$ of $S+\alpha\Delta S$ hits 0). With the steps
 capped at 1, $\alpha_p=1$, $\alpha_d=\tfrac23$: $X+\Delta X=\begin{pmatrix}1&\frac12\\\frac12&1\end{pmatrix}$
 and $S+\tfrac23\Delta S=\begin{pmatrix}1&-1\\-1&1\end{pmatrix}=S^\star$, so
-$\mu_{\rm aff}=\tfrac12\mathrm{tr}\bigl((X+\Delta X)(S+\tfrac23\Delta S)\bigr)=0.5$,
+$\mu_{\rm aff}=\tfrac12\mathrm{tr}((X+\Delta X)(S+\tfrac23\Delta S))=0.5$,
 $\mu_{\rm aff}/\mu=0.25$ and $\sigma=0.25^3=0.015625$, which the floor raises to $0.1$.
 The predictor already lands the dual at the optimum $S^\star$ — the dual step stops at the
 boundary $\alpha_d=\tfrac23$, which is why the corrector and the fraction-to-boundary factor
@@ -248,7 +250,7 @@ $$
 $$
 
 and the bound is attained by $X=\hat u\hat u^\top$, $\hat u_i=s_iu_i$, exactly when the signs
-$s_i\in\{\pm1\}$ satisfy $C_{ij}s_is_j\le0$ on every nonzero off-diagonal entry. That is a
+$s_i\in\lbrace \pm1\rbrace$ satisfy $C_{ij}s_is_j\le0$ on every nonzero off-diagonal entry. That is a
 two-colouring problem: [`sdp_fixed_diagonal`](../sdp.c#L2995) propagates signs by breadth-first search
 and gives up (returns 0) if a nonzero entry demands contradictory signs (an odd cycle of
 positive weights, for instance). When it succeeds it builds $X=\hat u\hat u^\top$, sets
@@ -294,8 +296,10 @@ step then violates the primal rows it linearizes. The recent commits add four sa
 
 1. **Primal-step check** ([`sdp_primal_step_residual`](../sdp.c#L896)). After the corrector the solver
    evaluates $\max_k|r_{p,k}+\langle A_k,\Delta X\rangle+a_k^\top\Delta x|$. If it exceeds
-   $0.1\cdot\text{rtol\_pri}(1+\|b\|_\infty)$ (or, with more than one PSD block, whenever the previous step made the
-   feasibility measure grow by more than 5%) the direction is recomputed.
+   $0.1\varepsilon_p(1+\|b\|_\infty)$, where $\varepsilon_p$ is the primal
+   tolerance (`rtol_pri`), the direction is recomputed. With more than one PSD
+   block the solver also recomputes it if the previous step increased the
+   feasibility measure by more than 5%.
 2. **Augmented rescue** ([`sdp_aug_direction`](../sdp.c#L991)). The unknowns $\Delta x$ and $\mathrm{svec}(\Delta X)$
    are kept in a symmetric-indefinite system $\begin{pmatrix}0&E\\E^\top&-H\end{pmatrix}$,
    $H=W^{-1}\otimes W^{-1}$, which retains $A\,\Delta X=-r_p$ exactly. svec uses $\sqrt2$ on

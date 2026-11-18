@@ -1,6 +1,6 @@
 # Experimental symmetric SOCP KKT
 
-The [SOCP chapter](conic-socp.md) introduces the dual equation and the
+The [SOCP chapter](socp.md) introduces the dual equation and the
 scaling. Here the elimination is arranged so that the off-diagonal blocks of
 the Newton matrix are transposes. A scalar illustration is
 $\begin{pmatrix}1&1\\1&-1\end{pmatrix}$, which has eigenvalues
@@ -14,7 +14,7 @@ Larger SOC blocks retain the existing path. This does not change the SDP
 solver or implement a homogeneous embedding.
 
 The default NT/LU speedup from the second-order corrector is described in
-[socp-mehrotra-correction.md](socp-mehrotra-correction.md). It does not promote
+[socp_mehrotra_correction.md](socp_mehrotra_correction.md). It does not promote
 this experimental backend; QD retains its prior centering-only corrector.
 
 ## Linear equations

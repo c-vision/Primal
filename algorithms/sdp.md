@@ -47,7 +47,7 @@ and complementarity. They do **not** see whether a point is inside the cones.
 So the exp/power iterate is accepted only if its own measured relative triple
 meets the tolerances declared on the task; otherwise the route reports "not
 solved" and the dispatcher falls back to tangent cuts
-([tangent cuts](tangent-cuts.md)). The fallback is a decision, not an
+([tangent cuts](tangent_cuts.md)). The fallback is a decision, not an
 accident.
 
 A related rule: a **cone has no rows to leave unsatisfied**, so the vertex of a
@@ -102,7 +102,7 @@ form**, and both reach the same `−4` objective.
   (`splu_factor_ord`). Mixed SOC + exp/power models additionally trial the sparse
   form against a density estimate, with no size floor. `GMB_SDP_DENSE` and
   `GMB_SDP_SPARSE` force either route. The validated 2×2-pivot LDLᵀ
-  ([linear algebra](linear-algebra.md)) is **not** used here: this path factors
+  ([linear algebra](linear_algebra_kernels.md)) is **not** used here: this path factors
   with LU.
 - No ray is published for a model **with** a PSD block: the compressed block has
   no image in `numvar` scalars ([certificates](certificates.md)).

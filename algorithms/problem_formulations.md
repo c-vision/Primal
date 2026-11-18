@@ -30,7 +30,7 @@ cones, duality).
 | SDP | $\min c^\top x+\sum_j\langle\bar C_j,X_j\rangle$ s.t. $l\le Ax+\sum_j\langle\bar A_{ij},X_j\rangle\le u$, $X_j\succeq0$ | `appendbarvars`, `putbarcj`, `putbaraij` |
 | EXP | $x_1\ge x_2e^{x_3/x_2}$ for $x_2>0$; at $x_2=0$ closure requires $x_1\ge0$ and $x_3\le0$ | `PRIMAL_CT_PEXP` ([exponential cone](exponential_cone.md)) |
 | POW | $x_1,x_2\ge0$, $x_1^\alpha x_2^{1-\alpha}\ge\lvert x_3\rvert$, $0<\alpha<1$; rotated: $2x_1^{2\alpha}x_2^{2(1-\alpha)}\ge x_3^2$ | `PRIMAL_CT_PPOW`, `PRIMAL_CT_RPOW` ([power cone](power_cone.md)) |
-| MIP | any of the above plus $x_j\in\mathbb{Z}$, binary, $x_j\in\{0\}\cup[l,u]$ (semi-continuous), SOS1/SOS2 sets, disjunctions | `putvartype` (`INT`, `INT_BIN`, `SEMI_CONT`, `SEMI_INT`), `appendsos`, `appenddjcs` ([MIP](mixed_integer_optimization.md)) |
+| MIP | any of the above plus $x_j\in\mathbb{Z}$, binary, $x_j\in\lbrace 0\rbrace \cup[l,u]$ (semi-continuous), SOS1/SOS2 sets, disjunctions | `putvartype` (`INT`, `INT_BIN`, `SEMI_CONT`, `SEMI_INT`), `appendsos`, `appenddjcs` ([MIP](mixed_integer_optimization.md)) |
 
 `RPOW` with $\alpha=\tfrac12$ is the rotated Lorentz cone. A model can mix
 classes: a quadratic row next to a cone, or integers on top of an SDP.
@@ -156,10 +156,10 @@ A convex quadratic *row* is rewritten exactly into a rotated cone by
 [`primal_quad.c`](../primal_quad.c). For $Q=R^\top R\succeq0$,
 
 $$
-\tfrac12v^\top Qv+a^\top v\le b\iff\bigl(b-a^\top v,\ 1,\ Rv\bigr)\in\mathcal Q_r ,
+\tfrac12v^\top Qv+a^\top v\le b\iff(b-a^\top v,\ 1,\ Rv)\in\mathcal Q_r ,
 $$
 
-where $\mathcal Q_r=\{(u,w,y):2uw\ge\|y\|^2,\ u,w\ge0\}$ (the left side with $w=1$ reads
+where $\mathcal Q_r=\lbrace (u,w,y):2uw\ge\|y\|^2,\ u,w\ge0\rbrace$ (the left side with $w=1$ reads
 $2(b-a^\top v)\ge\|Rv\|^2=v^\top Qv$). PRIMAL's encoder uses the eigendecomposition
 $Q=V\Lambda V^\top$ for $R$, adds one variable per retained eigenvalue and a variable fixed
 at 1; the details, the convexity test and the refusal of non-convex rows are in
@@ -180,7 +180,7 @@ test `T22`.
 | PSD bar variables | native SDP interior point, then tangent cuts ([SDP](semidefinite_programming.md)) |
 | quadratic rows, or a quadratic objective with cones | rotated-cone encoding, then the conic route |
 | exponential or power cones | native barrier in `sdp.c`, then tangent cuts ([exponential cone](exponential_cone.md)) |
-| Lorentz and rotated cones | conic route ([SOCP](conic-socp.md)) |
+| Lorentz and rotated cones | conic route ([SOCP](socp.md)) |
 | LP, QP | the standard form of this chapter ([simplex](simplex.md), [interior point](interior_point.md)) |
 
 Free-variable splitting, slack insertion and the `VARUB` rows increase the

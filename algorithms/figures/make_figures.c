@@ -18,23 +18,23 @@
 
 /* make_figures.c - writes the figures of algorithms/ that are computed:
  *
- *   simplex-pivots.svg       analytic   feasible polygon, level lines, the pivots of a
+ *   simplex_pivots.svg       analytic   feasible polygon, level lines, the pivots of a
  *                                       textbook Dantzig tableau run (computed here)
- *   lp-central-path.svg      measured   iterates and residuals of the dense LP interior
+ *   lp_central_path.svg      measured   iterates and residuals of the dense LP interior
  *                                       point engine (ipm_solve_std) on the same LP
- *   lp-central-path-trace.csv           the numbers behind lp-central-path.svg
- *   qp-contours.svg          analytic   contours of a convex QP and its active constraint
- *   presolve-reduction.svg   computed   the rows and columns removed by lp_presolve on a 3x3 LP and the
+ *   lp_central_path_trace.csv           the numbers behind lp_central_path.svg
+ *   qp_contours.svg          analytic   contours of a convex QP and its active constraint
+ *   presolve_reduction.svg   computed   the rows and columns removed by lp_presolve on a 3x3 LP and the
  *                                       multipliers lifted back by presolve_postsolve_dir
- *   cholesky-ordering.svg    measured   the pattern of an arrowhead matrix and of its Cholesky factor with
+ *   cholesky_ordering.svg    measured   the pattern of an arrowhead matrix and of its Cholesky factor with
  *                                       the natural order and with AMD (spchol_factor, spchol_factor_ord)
- *   ordering-fill.csv                   the nonzeros of the factors for the arrowhead and for 2-D grids
- *   elliptope-slices.svg     analytic   three slices of the 3x3 unit-diagonal PSD set and the line that touches the best one
- *   exp-cone-section.svg     analytic   sections of t >= u exp(v/u) and the optimum of min t s.t. u + v = 2
- *   power-cone-section.svg   analytic   sections u = 1 of the power cones and the optimum of min t with u = 1, v = 2
- *   scaling-equilibration.svg computed  exponents of a badly scaled 6x6 matrix before and after scale_equilibrate
+ *   ordering_fill.csv                   the nonzeros of the factors for the arrowhead and for 2-D grids
+ *   elliptope_slices.svg     analytic   three slices of the 3x3 unit-diagonal PSD set and the line that touches the best one
+ *   exp_cone_section.svg     analytic   sections of t >= u exp(v/u) and the optimum of min t s.t. u + v = 2
+ *   power_cone_section.svg   analytic   sections u = 1 of the power cones and the optimum of min t with u = 1, v = 2
+ *   scaling_equilibration.svg computed  exponents of a badly scaled 6x6 matrix before and after scale_equilibrate
  *   dispatch.svg             static     the dispatch order of opt_routes (a diagram read from the code, no data)
- *   supporting-hyperplane.svg analytic  the optimal vertex of the same LP, its normal cone and the
+ *   supporting_hyperplane.svg analytic  the optimal vertex of the same LP, its normal cone and the
  *                                       supporting lines that touch the polygon there
  *
  * Every figure is checked before it is written: the pivot run and the interior point
@@ -253,8 +253,8 @@ static void fig_simplex(const char *dir) {
     /* certificate by substitution: multipliers (2, 1) on the two rows give 3x + 2y <= 8 + 2 */
     if (fabs(2 * 4 + 1 * 2 - refobj) > 1e-7) fail("dual bound 2*4 + 1*2 differs from the optimum");
 
-    char name[512]; snprintf(name, sizeof name, "%s/simplex-pivots.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open simplex-pivots.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/simplex_pivots.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open simplex_pivots.svg");
     Plot p = { 0, 5, 0, 5, 70, 60, 470, 330 };
     char desc[900];
     snprintf(desc, sizeof desc, "Feasible polygon with vertices (0,0), (2,0), (2,2) and (0,4) for maximize 3x+2y with "
@@ -374,7 +374,7 @@ static void fig_ipm(const char *dir) {
     if (!(tr[n - 1].mu < tr[0].mu * 1e-6)) fail("complementarity did not fall");
 
     /* the data behind the figure */
-    char cname[512]; snprintf(cname, sizeof cname, "%s/lp-central-path-trace.csv", dir);
+    char cname[512]; snprintf(cname, sizeof cname, "%s/lp_central_path_trace.csv", dir);
     FILE *c = fopen(cname, "w"); if (!c) fail("cannot open the csv");
     fprintf(c, "# make_figures.c at revision %s; dense LP engine ipm_solve_std, Mehrotra predictor-corrector\n", g_rev);
     fputs("# LP: min -3x-2y s.t. x+y+s1=4, x+s2=2, x,y,s1,s2>=0; start x=z=1, y=0; tolerances 1e-8\n", c);
@@ -385,8 +385,8 @@ static void fig_ipm(const char *dir) {
                 tr[k].rp, tr[k].rd, tr[k].mu, tr[k].gap);
     fclose(c);
 
-    char name[512]; snprintf(name, sizeof name, "%s/lp-central-path.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open lp-central-path.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/lp_central_path.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open lp_central_path.svg");
     char desc[1100];
     snprintf(desc, sizeof desc, "Left: the iterates of the interior point method in the (x,y) plane for maximize 3x+2y "
              "with x+y<=4 and x<=2; they start at (1,1) and approach the vertex (2,2). "
@@ -488,8 +488,8 @@ static void fig_qp(const char *dir) {
     if (fabs(lam - 1.0) > 1e-5) fail("qp multiplier is not 1");
     if (fabs(x[0] + x[1] - 2.0) > 1e-6) fail("qp row is not active");
 
-    char name[512]; snprintf(name, sizeof name, "%s/qp-contours.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open qp-contours.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/qp_contours.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open qp_contours.svg");
     Plot p = { -1, 4, -1, 4, 70, 60, 440, 340 };
     char desc[900];
     snprintf(desc, sizeof desc, "Circular contours of (x1^2+x2^2)/2 centred at the origin, the feasible region above the line "
@@ -554,8 +554,8 @@ static void fig_hyperplane(const char *dir) {
     double V[8][2]; int nv = polygon(V, 8);
     for (int i = 0; i < nv; i++) if (g[0] * V[i][0] + g[1] * V[i][1] > 10.0 + 1e-12) fail("a vertex lies beyond the supporting line");
 
-    char name[512]; snprintf(name, sizeof name, "%s/supporting-hyperplane.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open supporting-hyperplane.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/supporting_hyperplane.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open supporting_hyperplane.svg");
     Plot p = { -0.5, 5, -0.5, 5, 70, 60, 470, 330 };
     char desc[900];
     snprintf(desc, sizeof desc, "The polygon with vertices (0,0), (2,0), (2,2) and (0,4). At the optimal vertex (2,2) the two active "
@@ -625,8 +625,8 @@ static void fig_presolve(const char *dir) {
     if (fabs(bty - 2.0) > 1e-12) fail("b'y is not invariant under the reduction");
     for (int j = 0; j < 3; j++) if (aty[j] > 1e-12) fail("A'y has a positive entry");
 
-    char name[512]; snprintf(name, sizeof name, "%s/presolve-reduction.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open presolve-reduction.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/presolve_reduction.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open presolve_reduction.svg");
     char desc[1000];
     snprintf(desc, sizeof desc, "Three panels showing the 3 by 3 constraint matrix of x=2, x+y=5, y+z=1 with x,y,z nonnegative. "
              "Singleton row 1 fixes x=2 and is removed with column x; singleton row 2 then fixes y=3 and is removed with column y; "
@@ -732,8 +732,8 @@ static void fig_ordering(const char *dir) {
     for (int j = 0; j < n; j++) for (int p = L1->Lp[j]; p < L1->Lp[j + 1]; p++) mD[L1->Li[p] * n + j] = mC[L1->Li[p] * n + j] ? 1 : 2;
 
     /* the fill of 2-D grids, measured, goes to a csv next to the figure */
-    char cname[512]; snprintf(cname, sizeof cname, "%s/ordering-fill.csv", dir);
-    FILE *c = fopen(cname, "w"); if (!c) fail("cannot open ordering-fill.csv");
+    char cname[512]; snprintf(cname, sizeof cname, "%s/ordering_fill.csv", dir);
+    FILE *c = fopen(cname, "w"); if (!c) fail("cannot open ordering_fill.csv");
     fprintf(c, "# make_figures.c at revision %s; spchol_factor (natural order) and spchol_factor_ord (AMD)\n", g_rev);
     fputs("# arrowhead: 10 x 10, hub first.  grid: g x g five-point Laplacian plus 0.1 I, natural row-by-row order\n", c);
     fputs("case,n,nnz_K_lower,nnz_L_natural,nnz_L_amd\n", c);
@@ -759,8 +759,8 @@ static void fig_ordering(const char *dir) {
     }
     fclose(c);
 
-    char name[512]; snprintf(name, sizeof name, "%s/cholesky-ordering.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open cholesky-ordering.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/cholesky_ordering.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open cholesky_ordering.svg");
     char desc[1000];
     snprintf(desc, sizeof desc, "Sparsity patterns of a 10 by 10 arrowhead matrix and of its Cholesky factor. In the natural order, with the hub first, "
              "the factor fills the whole lower triangle: %d nonzeros against %d in the matrix. After the AMD ordering, which places the hub "
@@ -820,8 +820,8 @@ static void fig_elliptope(const char *dir) {
     }
     if (fabs(best[2] + 1.5) > 1e-12) fail("elliptope: optimum is not -3/2");
 
-    char name[512]; snprintf(name, sizeof name, "%s/elliptope-slices.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open elliptope-slices.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/elliptope_slices.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open elliptope_slices.svg");
     Plot p = { -1.3, 1.3, -1.3, 1.3, 90, 60, 400, 400 };
     char desc[900];
     snprintf(desc, sizeof desc, "Three slices of the set of 3x3 correlation matrices with unit diagonal, in the plane of the entries X12 "
@@ -893,8 +893,8 @@ static void fig_expcone(const char *dir) {
     if (fabs(x[0] - 2.0) > 1e-6 || fabs(x[1] - 2.0) > 1e-6 || fabs(x[2]) > 1e-6 || fabs(obj - 2.0) > 1e-8)
         fail("expcone: the optimum is not (2, 2, 0) with value 2");
 
-    char name[512]; snprintf(name, sizeof name, "%s/exp-cone-section.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open exp-cone-section.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/exp_cone_section.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open exp_cone_section.svg");
     Plot p = { -3, 2.5, 0, 6, 80, 60, 480, 340 };
     char desc[900];
     snprintf(desc, sizeof desc, "Two sections of the exponential cone t >= u exp(v/u) in the (v, t) plane: the curve t = exp(v) for u = 1 "
@@ -974,8 +974,8 @@ static void fig_powercone(const char *dir) {
     double topt = pow(2.0, 1.0 / 0.3);
     if (fabs(x[0] - topt) > 1e-6) fail("powercone: the optimum is not 2^(1/0.3)");
 
-    char name[512]; snprintf(name, sizeof name, "%s/power-cone-section.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open power-cone-section.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/power_cone_section.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open power_cone_section.svg");
     Plot p = { -3, 3, 0, 11, 80, 60, 440, 340 };
     char desc[900];
     snprintf(desc, sizeof desc, "Sections at u = 1 of power cones: the curves t = |v|^(1/a) for a = 0.3, 0.5 and 0.7 and the rotated cone "
@@ -1059,8 +1059,8 @@ static void fig_scaling(const char *dir) {
     double spread0 = amax0 / amin0, spread1 = amax1 / amin1;
     if (!(spread1 < 1e-3 * spread0)) fail("scaling: the spread did not shrink");
 
-    char name[512]; snprintf(name, sizeof name, "%s/scaling-equilibration.svg", dir);
-    FILE *f = fopen(name, "w"); if (!f) fail("cannot open scaling-equilibration.svg");
+    char name[512]; snprintf(name, sizeof name, "%s/scaling_equilibration.svg", dir);
+    FILE *f = fopen(name, "w"); if (!f) fail("cannot open scaling_equilibration.svg");
     char desc[900];
     snprintf(desc, sizeof desc, "Binary exponents of the entries of a 6x6 matrix before and after scale_equilibrate. Before, the exponents run from %d to %d "
              "(ratio of largest to smallest entry %.1e); after four passes of power-of-two row and column scaling they lie between %d and %d (ratio %.1f). "
@@ -1137,6 +1137,6 @@ int main(int argc, char **argv) {
     fig_powercone(dir);
     fig_scaling(dir);
     fig_architecture(dir);
-    printf("make_figures: wrote simplex-pivots.svg, lp-central-path.svg, lp-central-path-trace.csv, qp-contours.svg, supporting-hyperplane.svg, presolve-reduction.svg, cholesky-ordering.svg, ordering-fill.csv, elliptope-slices.svg, exp-cone-section.svg, power-cone-section.svg, scaling-equilibration.svg, dispatch.svg in %s (revision %s)\n", dir, g_rev);
+    printf("make_figures: wrote simplex_pivots.svg, lp_central_path.svg, lp_central_path_trace.csv, qp_contours.svg, supporting_hyperplane.svg, presolve_reduction.svg, cholesky_ordering.svg, ordering_fill.csv, elliptope_slices.svg, exp_cone_section.svg, power_cone_section.svg, scaling_equilibration.svg, dispatch.svg in %s (revision %s)\n", dir, g_rev);
     return 0;
 }

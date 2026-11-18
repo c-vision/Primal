@@ -149,7 +149,7 @@ their reports match the plain ones exactly.
   parameter meaning and the accepted range are in `primal.h` and at runtime via
   `getcodedesc`.
 - **Concurrency is documented for one solve only.** `PRIMAL_IPAR_NUM_THREADS`
-  parallelizes *inside* a solve ([branch and bound](../algorithms/branch-and-bound.md)).
+  parallelizes *inside* a solve ([branch and bound](../algorithms/branch_and_bound.md)).
   Driving a single task from two threads at once is not supported and carries
   no lock; separate tasks and separate environments are independent.
 - **About half the declared parameters do not change the solve yet** — accepted,

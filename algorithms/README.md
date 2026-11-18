@@ -14,18 +14,18 @@ state the prerequisites before deriving each method.
 
 | Phase | Topics | Core Chapters |
 |---|---|---|
-| **Phase 1: Foundations & Modeling** | Convexity, Duality, Standard Forms, Presolve | [Mathematical Foundations](mathematical_foundations.md) · [Problem Formulations](problem_formulations.md) · [Presolve](presolve.md) · [Standard Form](standard-form.md) · [QCQP Encoding](qcqp-encoding.md) |
+| **Phase 1: Foundations & Modeling** | Convexity, Duality, Standard Forms, Presolve | [Mathematical Foundations](mathematical_foundations.md) · [Problem Formulations](problem_formulations.md) · [Presolve](presolve.md) · [Standard Form](standard_form.md) · [QCQP Encoding](qcqp_encoding.md) |
 | **Phase 2: Linear & Quadratic** | Simplex, Factorizations, Predictor-Corrector, QP | [Simplex Method](simplex.md) · [Linear Algebra](linear_algebra.md) · [Interior Point](interior_point.md) · [Quadratic Programming](quadratic_programming.md) |
-| **Phase 3: Conic Optimization** | Lorentz, PSD, Exponential, and Power Cones | [Second-Order Cones (SOCP)](conic-socp.md) · [Semidefinite Programming (SDP)](semidefinite_programming.md) · [Exponential Cone](exponential_cone.md) · [Power Cones](power_cone.md) · [Tangent Cuts](tangent-cuts.md) |
-| **Phase 4: Discrete & Systems** | Branch & Bound, Infeasibility Rays, Stability, Pipeline | [Mixed-Integer Optimization](mixed_integer_optimization.md) · [Disjunctive Constraints](disjunctive-constraints.md) · [Certificates & Rays](certificates.md) · [Numerical Stability](numerical_stability.md) · [Solver Architecture](architecture.md) |
+| **Phase 3: Conic Optimization** | Lorentz, PSD, Exponential, and Power Cones | [Second-Order Cones (SOCP)](socp.md) · [Semidefinite Programming (SDP)](semidefinite_programming.md) · [Exponential Cone](exponential_cone.md) · [Power Cones](power_cone.md) · [Tangent Cuts](tangent_cuts.md) |
+| **Phase 4: Discrete & Systems** | Branch & Bound, Infeasibility Rays, Stability, Pipeline | [Mixed-Integer Optimization](mixed_integer_optimization.md) · [Disjunctive Constraints](disjunctive_constraints.md) · [Certificates & Rays](certificates.md) · [Numerical Stability](numerical_stability.md) · [Solver Architecture](architecture.md) |
 
 ## Implementation and experimental notes
 
 Detailed engineering and specialized backend notes:
-- **SOCP:** [SOCP fixed-coordinate reduction](socp-fixed-reduction.md), [SOCP second-order corrector](socp-mehrotra-correction.md), and [symmetric SOCP KKT backend](socp-symmetric-kkt.md) (experimental).
-- **Exponential & Power:** [Higher-order PEXP correction](pexp-higher-correction.md) and [barrier kernels for exp/power cones](exp-power-cones.md).
+- **SOCP:** [SOCP fixed-coordinate reduction](socp_fixed_reduction.md), [SOCP second-order corrector](socp_mehrotra_correction.md), and [symmetric SOCP KKT backend](socp_symmetric_kkt.md) (experimental).
+- **Exponential & Power:** [Higher-order PEXP correction](pexp_higher_correction.md) and [barrier kernels for exp/power cones](exp_power_cones.md).
 - **Semidefinite & Conic:** [Unified conic KKT notes](sdp.md).
-- **Numerical kernels:** [Factorization inventory](linear-algebra.md), [sparse scaling](scaling.md) and [branch-and-bound implementation](branch-and-bound.md).
+- **Numerical kernels:** [Factorization inventory](linear_algebra_kernels.md), [sparse scaling](scaling.md) and [branch-and-bound implementation](branch_and_bound.md).
 - **Embedding:** [Homogeneous self-dual embedding (HSD)](hsd.md) (experimental).
 - **API & Benchmarking:** [Public C API](../docs/api.md) and [benchmark methodology](../docs/benchmarks.md).
 

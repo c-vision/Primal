@@ -18,7 +18,7 @@ After this chapter you can:
 - follow a model with an exponential cone through the routes of PRIMAL, including the
   retry in secant mode and the tangent-cut fallback.
 
-Prerequisites: [conic duality](mathematical_foundations.md), [SOCP](conic-socp.md) and
+Prerequisites: [conic duality](mathematical_foundations.md), [SOCP](socp.md) and
 [SDP](semidefinite_programming.md) (the same predictor–corrector and the same KKT engine).
 
 ## The cone and its dual
@@ -47,7 +47,7 @@ The header lists these coordinates in the same order. [`primal.h`](../primal.h#L
 cone, $x\in\text{DEXP}\iff-x\in\text{PEXP}$ (`primal_sdptask.c` encodes it with $z_a=-x_{\text{mem}[a]}$);
 it is what the header of `primal.h` calls "dual", but it is a mirror image, not $\mathcal K^*_{\exp}$.
 
-![Sections of the exponential cone at u = 1 and u = 2](figures/exp-cone-section.svg)
+![Sections of the exponential cone at u = 1 and u = 2](figures/exp_cone_section.svg)
 
 *Figure: the sections of $\mathcal K_{\exp}$ at heights $u=1$ (shaded above the curve $t=e^v$) and
 $u=2$ (curve $t=2e^{v/2}$) in the $(v,t)$ plane. Each section is the epigraph of a convex curve, and the section at
@@ -56,7 +56,7 @@ $(t,u,v)=(2,2,0)$ of the example below, which lies on the boundary. Analytic fig
 [`figures/make_figures.c`](figures/make_figures.c) at `1f2ddee`; the generator tests 40 boundary points on
 both sides with `expcone_barrier` and checks the optimum against `PRIMAL_optimize`.*
 
-![Animated sections of the exponential cone as u increases](figures/exponential-sections.gif)
+![Animated sections of the exponential cone as u increases](figures/exponential_sections.gif)
 
 *Animation: hold $u$ fixed in each frame and raise it between frames. The point
 at $v=0$ follows $t=u$. The curve moves up and broadens because both axes are
@@ -65,7 +65,7 @@ scaled by $u$. The shading marks the feasible side $t\ge u e^{v/u}$.*
 The cone is not self-dual. Its dual is
 
 $$
-\mathcal K_{\exp}^*=\{s:\ s_0>0,\ s_2<0,\ s_1-s_2+s_2\ln(-s_2/s_0)\ge0\}\ \cup\ \{(s_0,s_1,0):s_0,s_1\ge0\},
+\mathcal K_{\exp}^*=\lbrace s:\ s_0>0,\ s_2<0,\ s_1-s_2+s_2\ln(-s_2/s_0)\ge0\rbrace \ \cup\ \lbrace (s_0,s_1,0):s_0,s_1\ge0\rbrace ,
 $$
 
 and `expcone_dual_in` ([`expcone.c:238`](../expcone.c#L238)) tests its interior after dividing $s$ by
@@ -84,8 +84,8 @@ $$
 implemented in [`pexp_core`](../expcone.c#L36). With $\psi_t=u/t$, $\psi_u=\ln(t/u)-1$, $\psi_v=-1$:
 
 $$
-g=\nabla f=\Bigl(-\tfrac{\psi_t}{\psi}-\tfrac1t,\ -\tfrac{\psi_u}{\psi}-\tfrac1u,\ \tfrac1\psi\Bigr),\qquad
-H=\frac{\nabla\psi\nabla\psi^\top}{\psi^2}-\frac{\nabla^2\psi}{\psi}+\mathrm{diag}\!\Bigl(\tfrac1{t^2},\tfrac1{u^2},0\Bigr),
+g=\nabla f=(-\tfrac{\psi_t}{\psi}-\tfrac1t,\ -\tfrac{\psi_u}{\psi}-\tfrac1u,\ \tfrac1\psi),\qquad
+H=\frac{\nabla\psi\nabla\psi^\top}{\psi^2}-\frac{\nabla^2\psi}{\psi}+\mathrm{diag}\!(\tfrac1{t^2},\tfrac1{u^2},0),
 $$
 
 with $\nabla^2\psi$ having the nonzero entries $\psi_{tt}=-u/t^2$, $\psi_{tu}=1/t$, $\psi_{uu}=-1/u$.
@@ -280,7 +280,7 @@ PRIMAL_optimize
   -> optimize_conic                 tangent-cut outer approximation, the fallback
 ```
 
-The tangent-cut route replaces the cone by supporting hyperplanes ([tangent cuts](tangent-cuts.md)); a near-optimal
+The tangent-cut route replaces the cone by supporting hyperplanes ([tangent cuts](tangent_cuts.md)); a near-optimal
 point saved by the native route is published only if the cuts do not answer.
 
 ## Worked example, solved

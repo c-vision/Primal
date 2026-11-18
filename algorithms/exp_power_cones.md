@@ -121,7 +121,7 @@ optimum on the boundary of the cone, not strictly complementary) every bound
 answers natively; the retry is needed on `u ≥ −100` at `-O2` and on `u ≥ −5`
 and `u ≥ −100` at `-O0`. Only when both attempts fail do the cuts answer,
 correctly and by a decision made on measured quality
-([tangent cuts](tangent-cuts.md)).
+([tangent cuts](tangent_cuts.md)).
 
 The path can also be forced off with `GMB_NO_EXP_IPM=1`, which selects the
 cuts. Note that for the native path the variable must be *unset*, not set to

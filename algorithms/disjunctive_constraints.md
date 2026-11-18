@@ -56,7 +56,7 @@ dimensions. `b` has the same sign convention as an ACC: `F x + g − b`.
 
 ### Row-wise big-M formulation
 
-Let $z_d\in\{0,1\}$ select clause $d$. For each inequality
+Let $z_d\in\lbrace 0,1\rbrace$ select clause $d$. For each inequality
 $a^Tx\le\beta$ of that clause, PRIMAL emits
 
 $$
@@ -104,14 +104,14 @@ of those rows through `primal_djc_sync`.
 `sos1` is a set of columns of which at most one may be non-zero; `sos2` at
 most two. Both are handled as a special form of the same structure: the
 selector variables and the rows that link them, with SOS1 branching available
-to the MIP search ([branch and bound](branch-and-bound.md)).
+to the MIP search ([branch and bound](branch_and_bound.md)).
 
 ## Semi-continuous / semi-integer
 
 `{0} ∪ [l,u]` — the variable may be off, or inside `[l,u]`. Encoded with the
 same selector mechanism. The consequences for the search and for
 `PRIMAL_getprimalinfeas` are in
-[branch and bound](branch-and-bound.md), and they are not optional details: the
+[branch and bound](branch_and_bound.md), and they are not optional details: the
 root box has to be relaxed for the lower bound to remain valid.
 
 ## Limits

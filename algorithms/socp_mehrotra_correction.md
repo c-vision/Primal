@@ -1,6 +1,6 @@
 # SOCP second-order corrector
 
-Read the [SOCP Newton step](conic-socp.md#worked-newton-step) and
+Read the [SOCP Newton step](socp.md#worked-newton-step) and
 [primal–dual IPM](interior_point.md) first. On a scalar nonnegative coordinate,
 $(s+\Delta s)(\lambda+\Delta\lambda)$ expands into the old product, a
 linear part, and the second-order term $\Delta s\,\Delta\lambda$. For

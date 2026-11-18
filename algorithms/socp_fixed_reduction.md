@@ -1,6 +1,6 @@
 # Fixed-coordinate reduction and sparse LU incidence
 
-This note assumes the [primal SOCP equations](conic-socp.md) are familiar.
+This note assumes the [primal SOCP equations](socp.md) are familiar.
 As a scalar example, $x_1+2x_2=7$ with $x_2=3$ reduces to $x_1=1$.
 The coefficient of the fixed coordinate disappears, but its contribution of
 6 must move to the right-hand side. If that coordinate is a cone member, its

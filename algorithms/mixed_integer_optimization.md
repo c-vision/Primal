@@ -31,12 +31,12 @@ l_x \le x \le u_x,\quad x \in \mathcal{K},\quad
 x_j \in \mathbb{Z}\ \ \forall j \in \mathcal{I},
 $$
 
-where $\mathcal{I}\subseteq\{1,\dots,n\}$ indexes the integer variables and
+where $\mathcal{I}\subseteq\lbrace 1,\dots,n\rbrace$ indexes the integer variables and
 $\mathcal{K}$ is the product of the nonnegative orthant, second-order,
 exponential/power cones and positive semidefinite bars (see
 [problem formulations](problem_formulations.md)). Semi-continuous
-($x\in\{0\}\cup[l,u]$) and semi-integer variables, SOS1/SOS2 sets and
-[disjunctive constraints](disjunctive-constraints.md) are handled by the same
+($x\in\lbrace 0\rbrace \cup[l,u]$) and semi-integer variables, SOS1/SOS2 sets and
+[disjunctive constraints](disjunctive_constraints.md) are handled by the same
 search.
 
 **Relaxation and bound.** Dropping the integrality restrictions gives the
@@ -77,10 +77,12 @@ proof of infeasibility or bound for that node.
 The test in line 8 uses
 
 $$
-\text{gap} = \max\bigl(\texttt{MIP\_TOL\_ABS\_GAP},\ \texttt{MIP\_TOL\_REL\_GAP}\,(1+|z^*|)\bigr),
+\text{gap} = \max(\varepsilon_{\mathrm{abs}},\ \varepsilon_{\mathrm{rel}}(1+|z^*|)),
 $$
 
-with defaults $0$ and $10^{-4}$. A node is therefore pruned when its bound is
+where `MIP_TOL_ABS_GAP` sets $\varepsilon_{\mathrm{abs}}$ (default $0$) and
+`MIP_TOL_REL_GAP` sets $\varepsilon_{\mathrm{rel}}$ (default $10^{-4}$).
+A node is therefore pruned when its bound is
 within one relative part in $10^4$ of the incumbent, not only when it is
 strictly worse.
 
@@ -174,7 +176,7 @@ user's model keeps its rows.
 |---|---|---|
 | Chvátal–Gomory | a row whose variables are all integer and nonnegative, with a non-integer coefficient or right-hand side | on |
 | Cover | a knapsack row $a^\top x\le u$ over binaries, $a_j>0$: a cover $C$ gives $\sum_{j\in C}x_j\le \lvert C\rvert-1$ | on |
-| Clique | the same rows: $\{j: a_j>u/2\}$ is a clique | on |
+| Clique | the same rows: $\lbrace j: a_j>u/2\rbrace$ is a clique | on |
 | Tableau Gomory (`mip_gomory_round`) | all variables integer with integer bounds, integer rows and integer matrix; **one** round, because after a cut the slacks have fractional coefficients | on, when applicable |
 | CMIR, LIPRO | see `T188`, `T190` | **off** unless `GMB_MIP_CMIR`, `GMB_MIP_LIPRO` are set |
 | Pairwise-probing conflict | pairs of binaries that cannot both be 1 | **off** unless `GMB_MIP_CONFLICT` is set (`T251`) |
@@ -311,7 +313,7 @@ order PRIMAL solves them. A solid edge is a child; the label under each node
 gives its relaxation and bound. Read it with the table above: the incumbent
 exists from node 3, which is why the last node is pruned.*
 
-![Five branch-and-bound nodes with the incumbent updated at node three](figures/branch-and-bound.gif)
+![Five branch-and-bound nodes with the incumbent updated at node three](figures/branch_and_bound.gif)
 
 *Animation: one frame per processed node. The incumbent becomes finite at
 node 3. At node 5 the relaxation bound cannot improve that incumbent within

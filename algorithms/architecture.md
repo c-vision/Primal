@@ -35,7 +35,7 @@ bounds are not inverted (`PRIMAL_RES_ERR_ARG` otherwise), then:
 3. **Quadratic rows, or a QP objective with cones**: `optimize_quad` rewrites the convex quadratics as rotated cones and solves the conic shadow task
    ([QP](quadratic_programming.md#convex-qcqp-rewriting-into-rotated-cones)).
 4. **Cones**: with an exponential or power cone and no `GMB_NO_EXP_IPM`, `optimize_sdp_ipm` is tried first (native barrier blocks of `sdp.c`:
-   [exponential](exponential_cone.md), [power](power_cone.md)); whatever is left goes to `optimize_conic` ([SOCP](conic-socp.md), with the
+   [exponential](exponential_cone.md), [power](power_cone.md)); whatever is left goes to `optimize_conic` ([SOCP](socp.md), with the
    tangent cuts as fallback; since `01b4673` a model with at least 16 three-dimensional SOC blocks and few equalities starts on the sparse solver). A near-optimal point saved by the native route is delivered only if the cuts give no answer. Row presolve of the conic
    rows (`conic_presolve_apply`) runs around that call when presolve level is at least 1.
 5. **Otherwise** the LP/QP standard-form leg.
@@ -106,7 +106,7 @@ $(\sqrt2,1,1)$. The route's own triple does not see cone membership, which is wh
 | scaling | `scaling.c` | `scale_equilibrate` | [numerical stability](numerical_stability.md) |
 | simplex | `simplex.c` | tableau, revised, dual | [simplex](simplex.md) |
 | LP/QP interior point | `ipm.c` | `ipm_solve_std`, `ipm_solve_std_csc`, `ipm_solve_qp_csc` | [interior point](interior_point.md), [QP](quadratic_programming.md) |
-| second-order cones | `socp.c`, `primal_conicopt.c` | `socp_solve`, `optimize_conic` | [SOCP](conic-socp.md) |
+| second-order cones | `socp.c`, `primal_conicopt.c` | `socp_solve`, `optimize_conic` | [SOCP](socp.md) |
 | SDP, exp, power | `sdp.c`, `primal_sdptask.c`, `expcone.c` | `sdp_ipm_run`, `optimize_sdp_ipm`, `optimize_sdp` | [SDP](semidefinite_programming.md), [exponential](exponential_cone.md), [power](power_cone.md) |
 | MIP | `primal_mip_opt.c`, `primal_mip.c` | `optimize_mip` and cuts | [MIP](mixed_integer_optimization.md) |
 | linear algebra | `linalg.c` | LU, Cholesky, AMD, Jacobi | [linear algebra](linear_algebra.md) |

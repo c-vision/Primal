@@ -50,15 +50,15 @@ when it exists).
 ## Cones and dual cones
 
 A *cone* contains every nonnegative multiple of each of its points. The **dual
-cone** is $K^*=\{z:\langle z,s\rangle\ge0\ \forall s\in K\}$.
+cone** is $K^*=\lbrace z:\langle z,s\rangle\ge0\ \forall s\in K\rbrace$.
 
 - **Orthant.** $\mathbb{R}^n_+$ is self-dual: $z^\top s\ge0$ for all $s\ge0$
   forces each $z_i\ge0$ (take $s=e_i$).
-- **Lorentz cone** $\{(a,u):a\ge\|u\|_2\}$ is self-dual. If $(a,u)$ and $(b,v)$ are
+- **Lorentz cone** $\lbrace (a,u):a\ge\|u\|_2\rbrace$ is self-dual. If $(a,u)$ and $(b,v)$ are
   in the cone, Cauchy–Schwarz gives $ab+u^\top v\ge ab-\|u\|\|v\|\ge0$. If
   $(a,u)$ is outside the cone, $a<\|u\|$, and $(\|u\|,-u)$ is in the cone with
   $\langle(a,u),(\|u\|,-u)\rangle=a\|u\|-\|u\|^2<0$ (for $u=0$ the vector $(1,0)$ does the same, since then $a<0$).
-  See the [Lorentz section](conic-socp.md#geometry-and-jordan-algebra).
+  See the [Lorentz section](socp.md#geometry-and-jordan-algebra).
 - **Positive semidefinite cone** $\mathbb{S}^n_+$ is self-dual under the trace
   inner product. If $Y\succeq0$ and $X\succeq0$, then
   $\mathrm{tr}(XY)=\mathrm{tr}(X^{1/2}YX^{1/2})\ge0$. If $Y$ has a
@@ -72,7 +72,7 @@ is a vector $g\ne0$ with $g^\top x\le g^\top x_0$ for every $x\in C$; the line
 $g^\top x=g^\top x_0$ *supports* $C$. For a polyhedron at a vertex, the admissible
 $g$ form the cone spanned by the normals of the active constraints.
 
-![Supporting lines at the optimal vertex](figures/supporting-hyperplane.svg)
+![Supporting lines at the optimal vertex](figures/supporting_hyperplane.svg)
 
 *Figure: the polygon of the [simplex chapter](simplex.md) and its optimal vertex
 $(2,2)$, where the rows $x+y\le4$ and $x\le2$ are active, with normals

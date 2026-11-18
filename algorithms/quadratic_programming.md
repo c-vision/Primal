@@ -100,7 +100,7 @@ Substituting $\Delta y$ into the structural equation $M_{\rm struct}p-B^\top\Del
 leaves a system in $p$ alone,
 
 $$
-\bigl(M_{\rm struct}+B^\top\mathrm{diag}(w)B\bigr)p
+(M_{\rm struct}+B^\top\mathrm{diag}(w)B)p
 =u_{\rm struct}+B^\top\!\left(-w\odot r_p-(a/q)\odot u_{\rm private}\right),
 \qquad w_i=\frac{m_i}{q_i},
 $$
@@ -129,7 +129,7 @@ $u=(u_{\rm struct},u_{\rm private})=(4,2)$ and, for hand calculation, $\delta=0$
 Then $q_1=a_1^2=1$ and $w_1=m_1/q_1=3$, and the reduced equation is
 
 $$
-(2+3\cdot1)\,p=4+1\cdot\bigl(-3\cdot1-\tfrac11\cdot2\bigr)=-1\ \Rightarrow\ p=-\tfrac15 .
+(2+3\cdot1)\,p=4+1\cdot(-3\cdot1-\tfrac11\cdot2)=-1\ \Rightarrow\ p=-\tfrac15 .
 $$
 
 Then $s=1\cdot(-1+\tfrac15)=-\tfrac45$ and $\Delta y=3(-1+\tfrac15)-1\cdot2=-\tfrac{22}{5}$.
@@ -156,7 +156,7 @@ $y=-1$ for a row active at its lower bound; sign conventions are in the
 [API guide](../docs/api.md)). Its route is the dense interior point,
 $n=2\le150$.
 
-![Contours of a convex QP and its active constraint](figures/qp-contours.svg)
+![Contours of a convex QP and its active constraint](figures/qp_contours.svg)
 
 *Figure: circular level sets of $f=\tfrac12(x_1^2+x_2^2)$ (dashed; the solid one
 is $f=1$), the feasible region (shaded: above the line $x_1+x_2=2$ and left of
@@ -216,11 +216,12 @@ $u\ge\tfrac12\sum z_r^2$. An objective $\min\tfrac12x^\top Qx$ becomes $\min u$;
 row $\tfrac12x^\top Qx+\dots\le b$ becomes $u+\dots\le b$. The sign needed is: positive
 semidefinite for a minimized objective and for a $\le$ row, negative semidefinite for a
 maximized objective and for a $\ge$ row. A violation larger than
-$\mathtt{PRIMAL\_DPAR\_SEMIDEFINITE\_TOL\_APPROX}\cdot\max(1,\max_r|\lambda_r|)$ (default
-$10^{-10}$) refuses the whole model with an argument error and no point
-(`T87`); eigenvalues with magnitude below $10^{-10}$ are dropped as numerical rank
-deficiency. The encoded task is solved by the conic route
-([SOCP](conic-socp.md)). Cost: one dense $n\times n$ eigendecomposition per
+$\varepsilon_{\mathrm{psd}}\max(1,\max_r|\lambda_r|)$ causes the encoder to
+return an argument error without a solution. The parameter
+`PRIMAL_DPAR_SEMIDEFINITE_TOL_APPROX` sets $\varepsilon_{\mathrm{psd}}$ with default $10^{-10}$.
+The rank cutoff drops eigenvalues with magnitude below $10^{-10}$. Test `T87`
+checks rejection and near-flat cases. The encoded task is solved by the conic route
+([SOCP](socp.md)). Cost: one dense $n\times n$ eigendecomposition per
 quadratic entity, $O(n^3)$ per Jacobi sweep.
 
 A pure QP is *not* sent through this encoder by default: a comment in `primal_optimize.c` records the dense route as 40 to 180 times

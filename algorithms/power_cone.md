@@ -15,7 +15,7 @@ After this chapter you can:
 - say what PRIMAL shares with the exponential cone (the Newton row, the routes) and what differs.
 
 Prerequisites: [the exponential cone](exponential_cone.md) (the Newton row, scaling point, routes),
-[second-order cones](conic-socp.md).
+[second-order cones](socp.md).
 
 ## Definition
 
@@ -31,7 +31,7 @@ The interior is $D:=\text{rot}\cdot t^{2\alpha}u^{2(1-\alpha)}-v^2>0$, $t,u>0$ w
 for `PPOW` and $2$ for `RPOW`. For $\alpha=\tfrac12$, `RPOW` reads $2tu\ge v^2$: the rotated second-order cone
 (`RQUAD`). The generator of the figure below tests this equivalence on 50 points with `expcone_barrier`.
 
-![Sections u = 1 of the power cones](figures/power-cone-section.svg)
+![Sections u = 1 of the power cones](figures/power_cone_section.svg)
 
 *Figure: the sections at $u=1$ of `PPOW` for $\alpha=0.3,0.5,0.7$ and of `RPOW` for $\alpha=\tfrac12$ (curves
 $t=|v|^{1/\alpha}$ and $t=v^2/2$); each cone is the region above its curve and the shaded one is $\alpha=0.3$. The black point
@@ -54,8 +54,8 @@ D_t=\text{rot}\,\frac{2\alpha p}{t},\quad D_u=\text{rot}\,\frac{2(1-\alpha)p}{u}
 $$
 
 $$
-g=\Bigl(-\tfrac{D_t}{D}-\tfrac{1-\alpha}{t},\ -\tfrac{D_u}{D}-\tfrac{\alpha}{u},\ \tfrac{2v}{D}\Bigr),\qquad
-H=\frac{\nabla D\nabla D^\top}{D^2}-\frac{\nabla^2D}{D}+\mathrm{diag}\!\Bigl(\tfrac{1-\alpha}{t^2},\tfrac{\alpha}{u^2},0\Bigr),
+g=(-\tfrac{D_t}{D}-\tfrac{1-\alpha}{t},\ -\tfrac{D_u}{D}-\tfrac{\alpha}{u},\ \tfrac{2v}{D}),\qquad
+H=\frac{\nabla D\nabla D^\top}{D^2}-\frac{\nabla^2D}{D}+\mathrm{diag}\!(\tfrac{1-\alpha}{t^2},\tfrac{\alpha}{u^2},0),
 $$
 
 where $\nabla^2D$ has the entries $D_{tt}=\text{rot}\,2\alpha(2\alpha-1)p/t^2$, $D_{tu}=\text{rot}\,4\alpha(1-\alpha)p/(tu)$,
@@ -71,7 +71,7 @@ The identity $\langle g,z\rangle=-\nu$ holds for both, as for every logarithmica
 The dual of `PPOW` is again a power cone, in the scaled coordinates $s_0/\alpha$, $s_1/(1-\alpha)$:
 
 $$
-\mathcal K_\alpha^*=\Bigl\{s:\ \bigl(\tfrac{s_0}{\alpha}\bigr)^{\alpha}\bigl(\tfrac{s_1}{1-\alpha}\bigr)^{1-\alpha}\ge\gamma|s_2|,\ s_0,s_1\ge0\Bigr\},
+\mathcal K_\alpha^*=\lbrace s:\ (\tfrac{s_0}{\alpha})^{\alpha}(\tfrac{s_1}{1-\alpha})^{1-\alpha}\ge\gamma|s_2|,\ s_0,s_1\ge0\rbrace ,
 $$
 
 with $\gamma=1$ for `PPOW` and $\gamma=\sqrt2$ for `RPOW` ([`expcone_dual_in`](../expcone.c#L238), which divides $s$ by
@@ -114,7 +114,7 @@ cone ([exponential cone](exponential_cone.md#the-newton-row-of-a-cone-block)); `
 - the secant (Dahl–Andersen) scaling of the retry mode is built from the same barriers for `PEXP`, `PPOW` and `RPOW` alike;
 - the higher-order correction of [`expcone_corrector.c`](../expcone_corrector.c) exists for `PEXP` only, and a model with power cones only
   uses the plain engine ([`primal_sdptask.c:568`](../primal_sdptask.c#L568));
-- the routes are those of the exponential cone: native `sdp_ipm_run`, secant retry, then [tangent cuts](tangent-cuts.md).
+- the routes are those of the exponential cone: native `sdp_ipm_run`, secant retry, then [tangent cuts](tangent_cuts.md).
 
 ## Worked example, solved
 
@@ -129,7 +129,7 @@ The cone requires $t^{0.3}\ge2$, so $t^\star=2^{1/0.3}=2^{10/3}=10.0793684$ with
 $\mathcal K^*$ and complementary to $z$. On the boundary the dual vector is the inward normal of $\varphi=t^\alpha u^{1-\alpha}-v$ at $z$,
 scaled to $s_0=1$: $s=(1,\ \tfrac{1-\alpha}{\alpha}t^\star,\ -\tfrac1\alpha t^{\star\,1-\alpha})$. With $t^{\star\,-\alpha}=\tfrac12$ this is
 $s=(1,\ \tfrac73t^\star,\ -\tfrac53t^\star)=(1,\,23.51853,\,-16.79895)$, so $y=(-\tfrac73t^\star,\ \tfrac53t^\star)$.
-Membership: $(1/0.3)^{0.3}\bigl(s_1/0.7\bigr)^{0.7}=1.4349\cdot11.70=16.799=|s_2|$ (on the boundary, as complementarity requires).
+Membership: $(1/0.3)^{0.3}(s_1/0.7)^{0.7}=1.4349\cdot11.70=16.799=|s_2|$ (on the boundary, as complementarity requires).
 Complementarity: $\langle z,s\rangle=t^\star+\tfrac73t^\star-2\cdot\tfrac53t^\star=0$. The dual value is
 $b^\top y=1\cdot(-\tfrac73t^\star)+2\cdot\tfrac53t^\star=t^\star$, equal to the primal value.
 
@@ -158,7 +158,7 @@ the rotated second-order cone $2tu\ge v^2$ has the barrier $-\ln(2tu-v^2)$ with 
 $2+\tfrac12+\tfrac12=3$ by the formula above. The function $-\ln(2tu-v^2)$ is homogeneous of degree 2 and is the standard barrier of the rotated Lorentz cone
 (a Lorentz cone after the rotation $(t,u)\mapsto((t+u)/\sqrt2,(t-u)/\sqrt2)$), with parameter 2. A larger parameter means more iterations in theory, and the
 symmetric cone keeps its direction usable at the boundary through the arrow-matrix KKT, where the NT scaling point diverges; see
-[SOCP](conic-socp.md).
+[SOCP](socp.md).
 
 ## References
 

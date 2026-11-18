@@ -26,18 +26,18 @@ existing notes until the replacement covers the same verified material.
 | 2 | [`linear_algebra.md`](linear_algebra.md) | Follow `linalg.c` and its callers for dense and sparse LU, Cholesky, ordering, fill and LDLᵀ. Compare block elimination with an augmented solve and draw matrix sparsity before and after ordering. Label experimental backends at the call sites. | Completed — verified at `1f2ddee` |
 | 2 | [`interior_point.md`](interior_point.md) | Derive the LP primal–dual Newton equations, affine predictor and corrector. In `ipm.c`, trace the dense augmented and sparse normal-equation paths, including private bound-row elimination and direction checks. Plot measured residuals and complementarity for a small reproducible problem. | Completed — verified at `1f2ddee` |
 | 2 | [`quadratic_programming.md`](quadratic_programming.md) | Explain convexity of the Hessian and derive the QP Newton system, regularization and condensed private-slack system from `ipm.c` and `primal_std.c`. Trace small and large eligible QPs, dense fallback, and how `primal_quad.c` encodes convex QCQP. Plot objective contours and active constraints. | Completed — verified at `1f2ddee` |
-| 3 | [`socp.md`](conic-socp.md) | Expand [the SOCP chapter](conic-socp.md) with a Lorentz cone section, a worked Newton step, and source-verified pseudocode. Cover Jordan operations, spectral NT scaling, dense LU, sparse NT/Cholesky, sparse augmented LU fallback, fixed-coordinate lifting and predictor–corrector differences. | Completed — verified at `1f2ddee` |
+| 3 | [`socp.md`](socp.md) | Expand [the SOCP chapter](socp.md) with a Lorentz cone section, a worked Newton step, and source-verified pseudocode. Cover Jordan operations, spectral NT scaling, dense LU, sparse NT/Cholesky, sparse augmented LU fallback, fixed-coordinate lifting and predictor–corrector differences. | Completed — verified at `1f2ddee` |
 | 3 | [`semidefinite_programming.md`](semidefinite_programming.md) | Derive trace inner products, PSD complementarity, NT scaling and Schur directions. Trace dispatch and recovery in `primal_sdptask.c`, `sdp.c` and `sdp_corrected.c`. Show a 2×2 PSD section and an example with primal and dual matrices. Audit spectral shortcuts and mixed-cone routing. | Completed — verified at `1f2ddee` |
-| 3 | [`exponential_cone.md`](exponential_cone.md) | Split the EXP material from [the shared note](exp-power-cones.md). Derive the epigraph perspective, closure, barrier, gradient and Hessian. Match PRIMAL's coordinate order and dual conventions. Explain the native scaling, PEXP corrector, routing and tangent-cut fallback from `expcone.c`, `expcone_corrector.c`, `sdp.c` and `primal_conicopt.c`. | Completed — verified at `1f2ddee` |
+| 3 | [`exponential_cone.md`](exponential_cone.md) | Split the EXP material from [the shared note](exp_power_cones.md). Derive the epigraph perspective, closure, barrier, gradient and Hessian. Match PRIMAL's coordinate order and dual conventions. Explain the native scaling, PEXP corrector, routing and tangent-cut fallback from `expcone.c`, `expcone_corrector.c`, `sdp.c` and `primal_conicopt.c`. | Completed — verified at `1f2ddee` |
 | 3 | [`power_cone.md`](power_cone.md) | Derive weighted geometric-mean geometry and the barrier in the code's coordinate order. Distinguish primal and dual parameterizations. Work a fractional-power epigraph and plot slices for several exponents. Audit `expcone.c` and the shared native/fallback routes. | Completed — verified at `1f2ddee` |
-| 4 | [`mixed_integer_optimization.md`](mixed_integer_optimization.md) | Trace node relaxations, branching, bounds, pruning and incumbent acceptance in `primal_mip.c` and `primal_mip_opt.c`. Draw a branch-and-bound tree. Explain probing, cuts and heuristics with their implemented scope. Link the [ACC/DJC case study](disjunctive-constraints.md) and distinguish integrality from feasibility tolerances. | Completed — verified at `1f2ddee` |
+| 4 | [`mixed_integer_optimization.md`](mixed_integer_optimization.md) | Trace node relaxations, branching, bounds, pruning and incumbent acceptance in `primal_mip.c` and `primal_mip_opt.c`. Draw a branch-and-bound tree. Explain probing, cuts and heuristics with their implemented scope. Link the [ACC/DJC case study](disjunctive_constraints.md) and distinguish integrality from feasibility tolerances. | Completed — verified at `1f2ddee` |
 | 4 | [`certificates.md`](certificates.md) | Derive Farkas alternatives and recession conditions. Verify signs and normalization from `simplex.c`, `primal_std.c` and `primal_verdict.c`. Work infeasible and unbounded examples by substitution, then trace their mapped rays through the public getters. | Completed — verified at `1f2ddee` |
 | 4 | [`numerical_stability.md`](numerical_stability.md) | Derive scaling and residual normalization from the relevant routines in `scaling.c`, `ipm.c`, `socp.c` and `sdp.c`. Compare residuals in scaled and original units. Explain pivot tests, refinement, stopping criteria and near-optimal acceptance with route-specific conditions. | Completed — verified at `1f2ddee` |
 | 4 | [`architecture.md`](architecture.md) | Follow `PRIMAL_optimize` from model dispatch to postsolve, certificate validation and public getters. Diagram routing and fallbacks. Trace one LP, one QP and one mixed-cone model through actual functions. | Completed — verified at `1f2ddee` |
 
-Technical notes on [tangent cuts](tangent-cuts.md), [QCQP encoding](qcqp-encoding.md)
-and [disjunctive constraints](disjunctive-constraints.md) can remain companion
-readings. Keep [HSD](hsd.md) and [symmetric SOCP KKT](socp-symmetric-kkt.md)
+Technical notes on [tangent cuts](tangent_cuts.md), [QCQP encoding](qcqp_encoding.md)
+and [disjunctive constraints](disjunctive_constraints.md) can remain companion
+readings. Keep [HSD](hsd.md) and [symmetric SOCP KKT](socp_symmetric_kkt.md)
 explicitly marked as experimental.
 
 ## Solver changes the chapters must cover
@@ -94,10 +94,10 @@ Gaps per chapter:
 | `mathematical_foundations.md` | No figure (the supporting hyperplane in the deliverable). |
 | `problem_formulations.md` | No round trip of the modeling example back from canonical form. |
 | `presolve.md` | No reverse postsolve or ray-lifting example. |
-| `simplex.md` | Figure `figures/simplex-pivots.svg` does not exist. Slack-basis start for MIP relaxations (`b452e46`) not covered. |
+| `simplex.md` | Figure `figures/simplex_pivots.svg` does not exist. Slack-basis start for MIP relaxations (`b452e46`) not covered. |
 | `linear_algebra.md` | No worked example; no sparsity figure before and after ordering. `sdp_aug_solve` / `sdp_aug_singletons` (`1bf265c`) not covered. |
-| `interior_point.md` | Figure `figures/lp-central-path.svg` does not exist and the plan asks for a measured trace, not an illustration. Sparse-route threshold (`a09509a`) not covered. |
-| `quadratic_programming.md` | Figure `figures/qp-contours.svg` does not exist. `small_qp_condensable` and `qp_kkt_reduce` (`6aecdf2`, `31f8431`) not covered. |
+| `interior_point.md` | Figure `figures/lp_central_path.svg` does not exist and the plan asks for a measured trace, not an illustration. Sparse-route threshold (`a09509a`) not covered. |
+| `quadratic_programming.md` | Figure `figures/qp_contours.svg` does not exist. `small_qp_condensable` and `qp_kkt_reduce` (`6aecdf2`, `31f8431`) not covered. |
 | `socp.md` | No pseudocode; no `T<n>` cases. Small sparse routing (`01b4673`) not covered. |
 | `semidefinite_programming.md` | No source links. None of `adb7f74`, `314d4f0`, `1bf265c`, `bd53531` covered; `sdp_corrected.c` (named in the deliverable) not mentioned. |
 | `exponential_cone.md` | No source links. `expcone_pexp_correction` and the sparse-KKT budget (`56ea21f`) not covered. |
@@ -177,8 +177,8 @@ without color.
 Animate changes a student needs to follow, such as a pivot, a Newton path,
 a slice parameter or an incumbent update. Keep a static figure, table or
 formula in the chapter so the reader can pause and inspect the same steps.
-Use regular Markdown files for alternate chapter URLs so that the rendered
-page contains readable material and links to the full chapter.
+Separate words in filenames with underscores. Give each chapter one
+path and update all links when moving a file.
 
 Check analytic examples by substitution. For Newton derivations, compare a
 small step with a direct solve of the original system and report its residual.

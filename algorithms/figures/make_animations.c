@@ -18,9 +18,9 @@
 
 /* make_animations.c - writes the SVG frames of the animated figures of algorithms/.
  *
- *   simplex-walk   the tableau pivots of the LP of simplex.md, vertex by vertex, with the level
+ *   simplex_walk   the tableau pivots of the LP of simplex.md, vertex by vertex, with the level
  *                  line of the objective sweeping up and the ratio test written out
- *   ipm-approach   the iterates of ipm_solve_std on the same LP, with the residuals drawn as they fall
+ *   ipm_approach   the iterates of ipm_solve_std on the same LP, with the residuals drawn as they fall
  *
  * The solver traces reuse the still-figure code. Additional sequences show an analytic
  * central path, sections of the exponential cone and a checked branch-and-bound example.
@@ -171,7 +171,7 @@ static void anim_simplex(const char *dir) {
     if (fabs(S[ns - 1].z - refobj) > 1e-7) fail("simplex animation: objective differs from PRIMAL");
     if (fabs(S[ns - 1].rcnow[2] - g_ref_y[0] * -1.0) > 1e-9 && fabs(S[ns - 1].rcnow[2] - fabs(g_ref_y[0])) > 1e-9)
         fail("simplex animation: final reduced cost of slack 1 is not the row multiplier");
-    Seq sq; seq_open(&sq, dir, "simplex-walk");
+    Seq sq; seq_open(&sq, dir, "simplex_walk");
     Plot p = { 0, 5, 0, 5, 70, 60, 470, 330 };
     char a[200], b[200], c[200];
     snprintf(a, sizeof a, "Start at the vertex (0, 0): the slack variables are basic, z = 0.");
@@ -275,7 +275,7 @@ static void anim_ipm(const char *dir) {
     Iter tr[MAXTRACE]; int n = ipm_trace(tr, MAXTRACE);
     if (tr[n - 1].status != 0) fail("ipm animation: interior point did not converge");
     if (fabs(tr[n - 1].x[0] - ref[0]) > 1e-6 || fabs(tr[n - 1].x[1] - ref[1]) > 1e-6) fail("ipm animation: optimum differs from PRIMAL");
-    Seq sq; seq_open(&sq, dir, "ipm-approach");
+    Seq sq; seq_open(&sq, dir, "ipm_approach");
     char a[200], b[200], previous[200];
     for (int k = 0; k < n; k++) {
         if (k == 0) {
@@ -302,7 +302,7 @@ static double segment_barrier(double mu, double r) {
 static void anim_central_path(const char *dir) {
     const double scales[] = {2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.005};
     Seq seq;
-    seq_open(&seq, dir, "central-path");
+    seq_open(&seq, dir, "central_path");
     for (size_t i = 0; i < sizeof scales / sizeof *scales; i++) {
         double mu = scales[i];
         double r = 2 * mu / (1 + 2 * mu + sqrt(1 + 4 * mu * mu));
@@ -340,7 +340,7 @@ static void anim_central_path(const char *dir) {
 static void anim_exponential_sections(const char *dir) {
     const double scales[] = {2, 1.6, 1.2, 1, 0.75, 0.5, 0.35, 0.2};
     Seq seq;
-    seq_open(&seq, dir, "exponential-sections");
+    seq_open(&seq, dir, "exponential_sections");
     for (size_t i = 0; i < sizeof scales / sizeof *scales; i++) {
         double u = scales[i];
         Plot p = {-2, 2, 0, 6, 70, 65, 580, 245};
@@ -398,7 +398,7 @@ static void anim_branch_and_bound(const char *dir) {
             if (2*x+y <= 5 && -4*x+4*y <= 5 && -x-y < best) best = -x-y;
     if (best != -3) fail("branch-and-bound animation: wrong integer optimum");
     Seq seq;
-    seq_open(&seq, dir, "branch-and-bound");
+    seq_open(&seq, dir, "branch_and_bound");
     for (int current = 0; current < 5; current++) {
         FILE *f = frame_open(&seq, current == 4 ? 300 : 175, 720, 420,
                              "Five nodes in a branch-and-bound search", caption[current]);

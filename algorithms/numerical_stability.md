@@ -68,7 +68,7 @@ with ratio of the largest to the smallest entry $9.77$ instead of $10^7$. The pr
 (bitwise equal doubles). Solving $\min x_1+x_2$ s.t. $10^4x_1+x_2=10001$, $x_1+10^{-3}x_2=1.001$ with `PRIMAL_optimize` gives $x=(1,1)$, objective 2 and
 multipliers $(0.111,-1111)$ with scaling on and off, identical to nine digits: the exact solution of $A^\top y=c$ is $y=(-\tfrac19,1111)$ (public sign opposite).
 
-![Exponents of a badly scaled matrix before and after scale_equilibrate](figures/scaling-equilibration.svg)
+![Exponents of a badly scaled matrix before and after scale_equilibrate](figures/scaling_equilibration.svg)
 
 *Figure: the binary exponent of every entry of a $6\times6$ matrix before and after `scale_equilibrate`. The matrix has the structure
 $a_{ij}\approx2^{e_i+f_j}$ with random significands, so a diagonal scaling removes the spread: the exponents of the entries go from $-20$ to $18$
@@ -117,7 +117,7 @@ not applied there. (There is no Wilkinson-type stopping rule in the code: the te
 - **Dense LU**: `dmat_lu_factor` returns `NULL` only for an exactly zero pivot (below $10^{-300}$); near-singularity is the caller's business
   ([linear algebra](linear_algebra.md)). There is no $10^{-14}$ relative pivot floor.
 - **SOCP**: a normal-equations matrix that fails Cholesky is repaired by the failing pivot (`spchol_factor_fail`), with shifts bounded by $10^{-4}\max|H|$ and
-  per-iteration fallback to the sparse LU ([SOCP](conic-socp.md)).
+  per-iteration fallback to the sparse LU ([SOCP](socp.md)).
 - **SDP**: the primal-step check and the augmented rescue of [SDP](semidefinite_programming.md#recovery-near-a-singular-face).
 
 A regularization changes the equations, so the residuals that decide acceptance are always measured on the *intended* system, not the shifted one.

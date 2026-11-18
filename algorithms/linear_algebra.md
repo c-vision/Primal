@@ -2,7 +2,7 @@
 
 **Verified against** revision `1f2ddee` (`linalg.c`, `linalg.h` and the call
 sites named below). The reference list of every kernel is
-[the kernel inventory](linear-algebra.md).
+[the kernel inventory](linear_algebra_kernels.md).
 
 ## Learning objectives and prerequisites
 
@@ -53,7 +53,7 @@ factorization that tolerates indefiniteness (LU, or LDL with 2×2 pivots).
 **Worked example.** $M=\mathrm{diag}(2,3)$, $A=(1,1)$, $f=(2,0)$, $g=2$,
 $\delta=0$. Then $AM^{-1}A^\top=\tfrac12+\tfrac13=\tfrac56$ and
 $g-AM^{-1}f=2-\tfrac12\cdot2=1$, so $y=\tfrac65$ and
-$u=M^{-1}(f+A^\top y)=\bigl(\tfrac{2+6/5}{2},\tfrac{6/5}{3}\bigr)=(\tfrac85,\tfrac25)$.
+$u=M^{-1}(f+A^\top y)=(\tfrac{2+6/5}{2},\tfrac{6/5}{3})=(\tfrac85,\tfrac25)$.
 **Check by substitution:** $Mu-A^\top y=(\tfrac{16}5-\tfrac65,\ \tfrac65-\tfrac65)=(2,0)=f$ and
 $Au=\tfrac85+\tfrac25=2=g$.
 
@@ -66,7 +66,7 @@ $Au=\tfrac85+\tfrac25=2=g$.
 | symmetric positive definite, dense | Cholesky | `dmat_cholesky`, `dmat_chol_solve` | the small PEXP corrector (`expcone_corrector.c`) |
 | symmetric positive definite, sparse | left-looking sparse Cholesky, optional AMD ordering | `spchol_factor`, `spchol_factor_ord`, `spchol_factor_perm`, `spchol_factor_dense`, `spchol_factor_fail` | sparse LP and QP normal equations and the condensed QP (`ipm.c`), SOCP normal equations (`socp.c`), `PRIMAL_computesparsecholesky` (`primal_misc.c`) |
 | general, sparse | sparse LU, row pivoting, column ordering; numerical refactorization of a kept structure | `splu_factor`, `splu_factor_ord`, `splu_factor_keep`, `splu_refactor` | the augmented SOCP fallback (`socp.c`) and the sparse KKT of `sdp.c` |
-| quasi-definite, sparse | LDL with regularization | `spqd_analyze`, `spqd_factor`, `spqd_solve` | **experimental** symmetric SOCP KKT, only with `GMB_SOCP_LDL` ([symmetric SOCP KKT](socp-symmetric-kkt.md)) |
+| quasi-definite, sparse | LDL with regularization | `spqd_analyze`, `spqd_factor`, `spqd_solve` | **experimental** symmetric SOCP KKT, only with `GMB_SOCP_LDL` ([symmetric SOCP KKT](socp_symmetric_kkt.md)) |
 | symmetric indefinite | LDL with static 2×2 pivots; dense Bunch–Kaufman | `spldl_factor`; `dmat_ldl_bk` | **no production call site** at this revision; exercised by `test_primal.c` |
 | symmetric, dense | Jacobi eigenvalues | `dmat_eig_jacobi`, `dmat_eig_jacobi_twosided` | QCQP encoding, PSD step checks, SDP, the 3×3 metrics of the exp/power cones; the two-sided form only for the experimental HSD path |
 
@@ -106,7 +106,7 @@ the factor: `spchol_solve_ord` applies it, and the natural-order solves
 (`spchol_solve`, `spchol_solve_all`) **refuse** an ordered factor, because reading an
 ordered factor in natural order would silently answer the permuted system.
 
-![Cholesky fill with the natural order and with AMD](figures/cholesky-ordering.svg)
+![Cholesky fill with the natural order and with AMD](figures/cholesky_ordering.svg)
 
 *Figure: the pattern of a 10×10 arrowhead matrix (a star graph: one hub, nine leaves)
 and of its Cholesky factor. With the hub first the factor is a full lower triangle, 55
@@ -117,7 +117,7 @@ solve is below $10^{-12}$). Measured with `spchol_factor` and `spchol_factor_ord
 [`figures/make_figures.c`](figures/make_figures.c) at `1f2ddee`.*
 
 The same two calls on the five-point Laplacian of a $g\times g$ grid (plus $0.1I$, natural
-row-by-row order) give, from [`figures/ordering-fill.csv`](figures/ordering-fill.csv):
+row-by-row order) give, from [`figures/ordering_fill.csv`](figures/ordering_fill.csv):
 
 | grid | $n$ | nonzeros of $K$ (lower) | $L$, natural order | $L$, AMD |
 |---|---:|---:|---:|---:|
@@ -145,7 +145,7 @@ residual scaled by the size of its terms:
   full system to $10^{-9}$; on failure they refactor the unreduced matrix
   ([interior point](interior_point.md), [quadratic programming](quadratic_programming.md)).
 - `socp.c` selects a sparse direction and may retry the augmented formulation with
-  sparse LU when the normal-equations direction is rejected ([SOCP](conic-socp.md)).
+  sparse LU when the normal-equations direction is rejected ([SOCP](socp.md)).
 
 ## Costs, conditioning and failure modes
 

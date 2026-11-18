@@ -176,7 +176,7 @@ on the reduced row, and $A^\top y=(y_1+y_2,\ y_2+y_3,\ y_3)=(0,0,-1)\le0$. So $y
 Farkas vector of the original system. `presolve_postsolve_dir` returns exactly
 $(-1,1,-1)$ from $y_{\rm red}=-1$.
 
-![Presolve removes singleton rows and lifts a Farkas vector back](figures/presolve-reduction.svg)
+![Presolve removes singleton rows and lifts a Farkas vector back](figures/presolve_reduction.svg)
 
 *Figure: the constraint matrix of example 2 in three states. A shaded cell is a
 nonzero of an active row and column, a grey cell is removed. The first singleton row

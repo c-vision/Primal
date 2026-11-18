@@ -1,7 +1,7 @@
 # QCQP encoding
 
 Read the [convex QP chapter](quadratic_programming.md) for the Hessian
-test and [the cone chapter](conic-socp.md) for rotated cone geometry.
+test and [the cone chapter](socp.md) for rotated cone geometry.
 Here the goal is to replace a convex quadratic inequality by an
 equivalent cone constraint. [Encoder source](../primal_quad.c)
 
@@ -62,7 +62,7 @@ uses one unified conic model. [Unified SDP solver](semidefinite_programming.md)
 - Convexity only. There is no global branch-and-bound for non-convex quadratic
   programs; a non-convex domain is an error, not a slower answer.
 - The dense symmetric block per quadratic row is `numvar × numvar`
-  ([standard form](standard-form.md)).
+  ([standard form](standard_form.md)).
 - Only convex `Q` is representable on a `<=` row; equality and ranged quadratic
   rows are not encoded.
 

@@ -74,7 +74,7 @@ SIMPLEX(A, b, c)                         # min c'x, Ax = b, x >= 0, b >= 0
 ```
 
 Phase I adds one artificial variable $a_i\ge0$ per row, so that
-$Ax+a=b$ has the obvious feasible basis $\{a_i\}$, and minimizes $\sum a_i$.
+$Ax+a=b$ has the obvious feasible basis $\lbrace a_i\rbrace$, and minimizes $\sum a_i$.
 If the minimum is positive the original system is infeasible; the phase-I
 multipliers are a Farkas vector. A zero minimum gives a feasible basis;
 artificials still in the basis at value zero are pivoted out, and a row where
@@ -84,7 +84,7 @@ that is impossible is redundant.
 
 Maximize $3x+2y$ subject to $x+y\le4$, $x\le2$, $x,y\ge0$. Adding slacks
 $s_1,s_2$ and minimizing $-3x-2y$ gives the standard form
-$x+y+s_1=4$, $x+s_2=2$, with the slack basis $\{s_1,s_2\}$ feasible at
+$x+y+s_1=4$, $x+s_2=2$, with the slack basis $\lbrace s_1,s_2\rbrace$ feasible at
 $(x,y)=(0,0)$. The tableau holds $[\,B^{-1}A\mid B^{-1}b\,]$ with the reduced
 costs below it; the last entry of the cost row is $-z$.
 
@@ -117,7 +117,7 @@ $3x+2y$ is 10. The multipliers are $y=-\bar c_{\text{slack}}=(-2,-1)$ in the
 minimization form, that is $(2,1)$ for the original maximization. By
 substitution, $2(x+y)+1\cdot x=3x+2y\le2\cdot4+1\cdot2=10$, which matches.
 
-![Feasible polygon and two simplex pivots](figures/simplex-pivots.svg)
+![Feasible polygon and two simplex pivots](figures/simplex_pivots.svg)
 
 *Figure: the feasible polygon (shaded) with its four vertices, two level sets
 of $3x+2y$ (dashed) and the two pivots (numbered arrows) from $(0,0)$ to
@@ -126,7 +126,7 @@ with a better objective; the vertex $(0,4)$ is never visited. Analytic figure,
 produced by [`figures/make_figures.c`](figures/make_figures.c) at `1f2ddee`,
 which also checks that PRIMAL reports the optimum $(2,2)$ with objective 10.*
 
-![Animation: the simplex walks from (0,0) to (2,0) to (2,2)](figures/simplex-walk.gif)
+![Animation: the simplex walks from (0,0) to (2,0) to (2,2)](figures/simplex_walk.gif)
 
 *Animation: the same two pivots, step by step. The orange point moves along an
 edge until the leaving variable reaches zero; the dashed line is the level set
@@ -153,7 +153,7 @@ $\bar c=(-2,0)$ and the objective is $z_1=4$.
 2. $x_2$ enters. Only row 1 has a positive entry (ratio $2/2$): $a_1$ leaves.
    Now $x=(2,1)$ and $z_1=0$.
 
-Phase I ends with a feasible basis $\{x_1,x_2\}$. In phase II the reduced costs
+Phase I ends with a feasible basis $\lbrace x_1,x_2\rbrace$. In phase II the reduced costs
 are $\bar c=(1,2)-(1,2)=0$, so the basis is already optimal: $z=4$ and
 $y=(3/2,-1/2)$. Check: $y_1+y_2=1=c_1$ and $y_1-y_2=2=c_2$.
 
@@ -198,8 +198,8 @@ to structural ones. The infeasibility test is $z_1>10^{-7}\max(1,\|b\|_\infty)$,
 and the Farkas vector is $y_r=1-\bar c_{n+r}$. On unboundedness the direction
 $\rho$ has $\rho_j=1$ for the entering column and $\rho_{B_i}=-v_i$.
 
-**Anti-cycling** (`run_phase`, `leave_row`). The pivot threshold is
-$\mathrm{PIV\_EPS}=10^{-9}$. At tied minimum ratios (within $10^{-12}$) the
+**Anti-cycling** (`run_phase`, `leave_row`). The pivot threshold `PIV_EPS` is
+$10^{-9}$. At tied minimum ratios (within $10^{-12}$) the
 **larger pivot wins**, because a tiny pivot multiplies the tableau by a large
 factor (a netlib `blend` case went from phase-I cost $6.2\cdot10^4$ to
 $5.8\cdot10^{13}$). Progress is counted by the change of the objective: if
@@ -269,8 +269,8 @@ and two columns. Measured at `1f2ddee` on this LP:
 
 | Setting | Standard form | Path | Pivots |
 |---|---|---|---|
-| default | $m=4,\ n=6$ | crash basis $\{x,y,s_2,s_1\}$ has $x_B=(2,4,0,-2)$: infeasible, so the tableau runs | 6, phase I included |
-| `GMB_NO_BOUND_TIGHTEN` | $m=2,\ n=4$ | crash basis $\{x,y\}$ has $x_B=(2,2)\ge0$ and is already optimal | 0 |
+| default | $m=4,\ n=6$ | crash basis $\lbrace x,y,s_2,s_1\rbrace$ has $x_B=(2,4,0,-2)$: infeasible, so the tableau runs | 6, phase I included |
+| `GMB_NO_BOUND_TIGHTEN` | $m=2,\ n=4$ | crash basis $\lbrace x,y\rbrace$ has $x_B=(2,2)\ge0$ and is already optimal | 0 |
 
 The count comes from `PRIMAL_CALLBACK_PRIMAL_SIMPLEX` events (code 93), one per
 loop test plus one at the end of the solve, and from a trace line per pivot

@@ -21,7 +21,7 @@ so this is the unique minimizer. At $\mu=1$, $r_\mu\approx0.382$. At
 $\mu=0.1$, $r_\mu\approx0.090$. The points remain on the feasible
 segment and approach the cheaper endpoint.
 
-![Analytic central path. As the barrier parameter decreases, the minimizer moves from the middle of the feasible segment toward x2 = 0.](figures/central-path.gif)
+![Analytic central path. As the barrier parameter decreases, the minimizer moves from the middle of the feasible segment toward x2 = 0.](figures/central_path.gif)
 
 *The orange marker is the exact minimizer for each barrier parameter.
 The upper curve shows $F_\mu$ and the lower segment shows its minimizer
@@ -180,9 +180,9 @@ with $x+y\le4$, $x\le2$, in standard form ($m=2$, $n=4$), solved by the dense
 engine `ipm_solve_std` with its default start $x=z=\mathbf1$, $y=0$ and
 tolerances $10^{-8}$. Each point is the iterate after $k$ iterations, obtained by
 capping the engine at $k$ (it is deterministic). The numbers are saved in
-[`figures/lp-central-path-trace.csv`](figures/lp-central-path-trace.csv).
+[`figures/lp_central_path_trace.csv`](figures/lp_central_path_trace.csv).
 
-![Interior point iterates and residuals on a small LP](figures/lp-central-path.svg)
+![Interior point iterates and residuals on a small LP](figures/lp_central_path.svg)
 
 *Figure: left, the iterates in the $(x,y)$ plane approach the optimal
 vertex $(2,2)$. The method keeps the standard-form coordinates positive.
@@ -193,7 +193,7 @@ six orders of magnitude, more and more as the method approaches the solution. Me
 [`figures/make_figures.c`](figures/make_figures.c), which also checks that the
 final point equals the optimum PRIMAL reports.*
 
-![Animation: the interior point iterates approaching the vertex (2,2)](figures/ipm-approach.gif)
+![Animation: the interior point iterates approaching the vertex (2,2)](figures/ipm_approach.gif)
 
 *Animation: the iterations of the table below, one Newton step at a time.
 Watch the residual curves and the nonnegative slacks. For example,

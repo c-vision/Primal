@@ -73,7 +73,7 @@ The conic presolve is also *dual-safe*: a row implied by the variable bounds is
 dropped before `optimize_conic` and restored after, because the dual of an
 implied row is zero and the KKT of the user's model therefore still holds. That
 is not true of bound tightening, which is why bound tightening runs on the MIP
-path only ([branch and bound](branch-and-bound.md)).
+path only ([branch and bound](branch_and_bound.md)).
 
 ## Environment switches
 
