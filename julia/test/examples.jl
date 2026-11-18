@@ -22,6 +22,15 @@
 const PKG_DIR = dirname(@__DIR__)                       # .../PrimalSolver/julia
 const EXAMPLES_DIR = joinpath(dirname(PKG_DIR), "examples", "julia")
 
+# The subprocess must run in the environment the caller already resolved, not in
+# `julia/`: on a fresh clone `julia/` has no installed dependencies, so every
+# example dies on `PrimalSolver_jll ... is required but does not seem to be
+# installed` (reported by the registry reviewer, 2026-11-18).  Inside
+# `Pkg.test` the active project is the temporary test environment (which has
+# PrimalSolver and its dependencies); run by hand it is `julia/`, the same as
+# before.
+const PROJECT = something(Base.active_project(), joinpath(PKG_DIR, "Project.toml"))
+
 """Run every `examples/julia/*.jl` against this package; return the failures."""
 function run_examples(; coverage::Bool = get(ENV, "PRIMALSOLVER_COVERAGE", "") == "1")
     if !isdir(EXAMPLES_DIR)
@@ -32,7 +41,7 @@ function run_examples(; coverage::Bool = get(ENV, "PRIMALSOLVER_COVERAGE", "") =
     files = sort(filter(f -> endswith(f, ".jl"), readdir(EXAMPLES_DIR)))
     failed = String[]
     for f in files
-        cmd = `$(Base.julia_cmd()) $covflag --startup-file=no --project=$PKG_DIR $(joinpath(EXAMPLES_DIR, f))`
+        cmd = `$(Base.julia_cmd()) $covflag --startup-file=no --project=$PROJECT $(joinpath(EXAMPLES_DIR, f))`
         # `Pkg.test` exports JULIA_LOAD_PATH="@:<temp test env>", which would
         # hide the standard library (`using Printf` is in every example): every
         # program would fail for a reason that has nothing to do with the
