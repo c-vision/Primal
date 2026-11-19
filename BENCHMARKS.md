@@ -539,6 +539,114 @@ serie di 11 prove alternate (`d=8`, `rho=0.50`, `rep=1`). Tempi in ms.
 
 Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
+<a name="istanze-pubbliche"></a>
+
+## 3-quater. Istanze pubbliche — 2026-11-19
+
+49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
+(harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
+(SOC/exp/pow/PSD, con e senza interi), SDPLIB 6 (SDP puro), Maros-Meszaros 6
+(QP convesso), Netlib 6 (LP), MIPLIB 2017 4 (MILP). Un run per cella, tetto
+**60 s**; le celle Pajarito/Hypatia vengono da un processo Julia con run caldo
+(il tempo è della solve, non della compilazione).
+
+I lettori sono quelli corretti in `9933143` (T277/T278): le righe MPS di questo
+set, misurate prima di quella correzione, erano un **rilassamento** (il marker
+`MARK0000 'MARKER' 'INTORG'` letto come colonna). Le colonne di riferimento sono
+Python (`highspy`, `clarabel` 0.11.1, `scs` 3.3.1, `pyscipopt`) tranne
+Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
+(subsolver: HiGHS 1.26.0 per l'OA, Clarabel 0.11.1 senza decomposizione cordale).
+
+| instance | set | class | vars x cons | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | Pajarito/Hypatia (s) | obj |
+|---|---|---|---|---|---|---|---|---|---|---|
+| port_12_9_3_a_1 | cblib | soc+exp+psd+int | 90 x 169 | fail (rc=1007) | N/A | N/A | N/A | N/A | **8.0130** | -0.0332177 |
+| port_12_9_3_b_1 | cblib | soc+exp+psd+int | 91 x 170 | fail (rc=1007) | N/A | N/A | N/A | N/A | **6.3930** | -0.0347049 |
+| port_16_12_4_b_1 | cblib | soc+exp+psd+int | 120 x 232 | fail (rc=1007) | N/A | N/A | N/A | N/A | **49.4036** | -0.0440148 |
+| expdesign_D_8_4 | cblib | exp+psd+int | 61 x 148 | fail | N/A | N/A | N/A | N/A | **0.0432** | 0.843307 |
+| expdesign_D_12_6 | cblib | exp+psd+int | 127 x 311 | fail (rc=1007) | N/A | N/A | N/A | N/A | 0.6694 ✗ | -0.520253 |
+| expdesign_D_16_8 | cblib | exp+psd+int | 217 x 534 | fail (rc=1007) | N/A | N/A | N/A | N/A | fail (OTHER_ERROR) | 2.93132 |
+| kpart_diw.15.4.29 | cblib | psd+int | 105 x 255 | fail (rc=1007) | N/A | N/A | N/A | N/A | **48.8022** | -94 |
+| rt_2x4_3bars | cblib | psd+int | 64 x 190 | >60s | N/A | N/A | N/A | N/A | **29.0149** | 3.08114 |
+| clsq_random_32_2_a | cblib | psd+int | 33 x 979 | >60s | N/A | N/A | N/A | N/A | **10.5295** | 7.14855 |
+| expdesign_A_8_4 | cblib | psd+int | 29 x 134 | 0.5519 | N/A | N/A | N/A | N/A | **0.0272** | 5.93682 |
+| expdesign_E_8_4 | cblib | psd+int | 26 x 50 | 0.0403 | N/A | N/A | N/A | N/A | **0.0247** | -0.344045 |
+| syn05m | cblib | exp+int | 24 x 65 | 0.5676 | N/A | N/A | N/A | N/A | **0.0512** | -837.732 |
+| syn10m | cblib | exp+int | 42 x 120 | 6.9118 | N/A | N/A | N/A | N/A | **0.0304** | -1267.35 |
+| rsyn0805m | cblib | exp+int | 174 x 537 | >60s | N/A | N/A | N/A | N/A | **1.9644** | -1296.12 |
+| batchdes | cblib | exp+int | 25 x 73 | 0.6263 | N/A | N/A | N/A | N/A | **0.0170** | 167428 |
+| ex1223a | cblib | exp+int | 17 x 60 | **0.0097** | N/A | N/A | N/A | N/A | 0.0127 | 4.57958 |
+| synthes2 | cblib | exp+int | 16 x 47 | 0.3661 | N/A | N/A | N/A | N/A | **0.0306** | 73.0353 |
+| beck751 | cblib | exp | 80 x 59 | **0.0010** | N/A | 0.0014 | 0.0012 | N/A | 0.0038 | 7.50095 |
+| demb761 | cblib | exp | 131 x 93 | 0.0009 | N/A | **0.0007** | 0.2940 | N/A | 0.0043 | 22.3109 |
+| rijc781 | cblib | exp | 24 x 17 | 0.0072 | N/A | **0.0001** | 0.0002 | N/A | 0.0012 | -4.41429 |
+| gp_dave_1 | cblib | exp | 705 x 988 | 39.8111 | N/A | **0.0081** | 0.0445 | N/A | 0.2190 | 5.50653 |
+| LogExpCR-n20-m400 | cblib | exp | 2022 x 1603 | >60s | N/A | **0.0199** | 0.0273 | N/A | 2.6629 | 0.0164814 |
+| HMCR-n20-m400 | cblib | pow | 2022 x 1603 | 39.7349 | N/A | **0.0210** | 0.0608 | N/A | 2.5334 | 0.0345743 |
+| HMCR-n20-m800 | cblib | pow | 4022 x 3203 | >60s | N/A | fail | **0.1044** | N/A | 10.0290 | 0.0390837 |
+| infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | **0.0704** | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
+| infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | fail | **5.4682** | N/A | fail (SLOW_PROGRESS) | infeasible |
+| weak_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | fail | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
+| control1 | sdplib | sdp | 21 x 70 | fail (rc=1007) | N/A | **0.0033** | >60s | N/A | 0.0039 | 17.7846 |
+| hinf1 | sdplib | sdp | 13 x 41 | fail (rc=1007) | N/A | **0.0014** | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326 |
+| theta1 | sdplib | sdp | 104 x 1275 | >60s | N/A | 0.4421 | **0.0445** | N/A | 0.2877 | 23 |
+| truss1 | sdplib | sdp | 6 x 19 | 0.0021 | N/A | **0.0003** | 0.0008 | N/A | 0.0026 | -9 |
+| qap5 | sdplib | sdp | 136 x 351 | >60s | N/A | 0.0309 | **0.0115** | N/A | 0.0389 | -436 |
+| mcp100 | sdplib | sdp | 100 x 5050 | >60s | N/A | 6.8169 | 0.5768 | N/A | **0.5324** | 226.157 |
+| HS21 | maros-meszaros | qp | 2 x 1 | **0.0000** | 0.0028 | 0.0001 | 0.0001 | 0.0073 | 0.0019 | 0.0400007 |
+| HS118 | maros-meszaros | qp | 15 x 17 | 0.0003 | 0.0006 | **0.0001** | 0.0003 | 0.0094 | 0.0026 | 664.82 |
+| QAFIRO | maros-meszaros | qp | 32 x 27 | 0.0005 | 0.0005 | **0.0002** | **0.0002** | 0.0042 | 0.0028 | -1.59078 |
+| DUAL1 | maros-meszaros | qp | 85 x 1 | 0.0021 | **0.0011** | 0.0022 | **0.0011** | 0.0784 | 0.0116 | 0.035013 |
+| PRIMAL1 | maros-meszaros | qp | 325 x 85 | fail (rc=1007) | 0.0116 | 0.0039 | **0.0022** | 0.9942 | 0.1304 | -0.035013 |
+| CVXQP1_S | maros-meszaros | qp | 100 x 50 | 0.0100 | 0.0009 | **0.0006** | 0.0014 | 0.1125 | N/A | 11590.7 |
+| afiro | netlib | lp | 32 x 27 | **0.0001** | 0.0003 | 0.0002 | 0.0004 | 0.0007 | 0.0018 | -464.753 |
+| adlittle | netlib | lp | 97 x 56 | 0.0006 | 0.0007 | **0.0005** | 0.0014 | 0.0018 | 0.0070 | 225495 |
+| blend | netlib | lp | 83 x 74 | 0.0010 | 0.0008 | **0.0005** | 0.0013 | 0.0017 | 0.0029 | -30.8121 |
+| sc50a | netlib | lp | 48 x 50 | **0.0003** | **0.0003** | **0.0003** | 0.0010 | 0.0005 | 0.0016 | -64.5751 |
+| share2b | netlib | lp | 79 x 96 | 0.0012 | 0.0008 | **0.0006** | 0.0024 | 0.0021 | 0.0048 | -415.732 |
+| stocfor1 | netlib | lp | 111 x 117 | 0.0019 | **0.0007** | 0.0009 | 0.0035 | 0.0014 | 0.0045 | -41132 |
+| flugpl | miplib | milp | 18 x 18 | 1.1447 | 0.0408 | N/A | N/A | **0.0066** | 0.0872 | 1.2015e+06 |
+| p0201 | miplib | milp | 201 x 133 | >60s | 0.6562 | N/A | N/A | **0.2895** | 0.5229 | 7615 |
+| gt2 | miplib | milp | 188 x 29 | >60s | 0.0217 | N/A | N/A | **0.0181** | 0.0400 | 21166 |
+| pk1 | miplib | milp | 86 x 45 | >60s | >60s | N/A | N/A | **57.1295** | >60s | 11 |
+
+**Note misurate** (le celle con ✗ sono riferimenti che discordano dal valore
+pubblicato, non risposte di Primal; `N/A` nella colonna SCIP sulle righe CBF
+significa **non misurato**: `bench/scip_cbf.c` richiede le librerie di sviluppo
+di SCIP, che su questa macchina non ci sono — i wheel di `pyscipopt` non le
+portano. Su MPS e MILP SCIP c'è):
+
+- `expdesign_D_12_6`: Pajarito chiude a `-0.437` dove i punti ammissibili
+  arrivano a `-0.520253`; il README della PR lo documenta come limite del taglio.
+- `hinf1`: SCS `2.0339587` e Pajarito `2.0326681` contro il `2.0326` di SDPLIB.
+- **Primal non risolve** (e questo è il dato interessante, non un refuso): le
+  righe SDP "infeasible by construction" (`infeas_clean_*`, `weak_clean_*`) e
+  cinque SDP/SOCP SDP puri (`control1`, `hinf1`, `theta1`, `qap5`, `mcp100`,
+  `PRIMAL1`), più i modelli MIP+cono `port_*`, `expdesign_D_*`, `kpart_diw`.
+  Sono le famiglie su cui è atterrato il lavoro di novembre (KKT sparso conico,
+  Newton ridotto, fix SDP `125a3be`): il confronto con i numeri della PR è
+  nella sezione "Cosa è cambiato rispetto alla PR #32", sotto.
+
+### Perché il README porta solo due righe
+
+Il grassetto di questa tabella è il minimo di **un singolo run**, e su istanze
+da 0,1–1 ms non è stabile. Rimisurate le cinque righe in cui Primal risultava
+primo (5 solve per cella; le celle Julia sono la mediana di 3 batch con run
+caldo), solo **due** tengono:
+
+| istanza | Primal mediana 5 | migliore rivale | esito |
+|---|---:|---:|---|
+| `ex1223a` | 0.0110 | Pajarito 0.0167 | Primal primo (confermato) |
+| `HS21` | 0.000031 | Clarabel 0.000041 | Primal primo (confermato) |
+| `beck751` | 0.000748 | Clarabel 0.000392 | **Clarabel primo**: il singolo run mentiva |
+| `afiro` | 0.000131 | Clarabel 0.000116 | **Clarabel primo** |
+| `sc50a` | 0.000347 | HiGHS 0.000221 | **HiGHS primo** |
+
+Da qui la regola con cui il `README.md` riporta le istanze pubbliche: **solo le
+righe in cui Primal resta primo a mediana di 5**, con la tabella intera qui.
+Le due righe sono piccole (`ex1223a` 17×60, `HS21` 2×1) e non dicono nulla sulla
+scala: il valore della tabella è che mostra, senza selezione, dove siamo e dove
+non siamo.
+
 ## 3. Come estendere
 
 ```sh

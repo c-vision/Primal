@@ -27,6 +27,7 @@ iteration count come from one traced run that is not used for the timing.
 | SDP | 15 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
 | Mixed SOC/PEXP | 21 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
 | SOC/EXP/mixed matrix | 21 (tracing off) | Objective agreement at `1e-6` scaled against Clarabel; relative gap reported per cell |
+| Public sets (CBLIB, SDPLIB, Maros-Meszaros, Netlib, MIPLIB) | 1 per cell, 60 s cap | Published optimum where the set has one, certified infeasibility, otherwise agreement among solvers; a disagreeing reference is marked, only a wrong Primal answer fails |
 
 Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
 for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
@@ -45,6 +46,7 @@ tolerances.
 | Clarabel | 0.11.1 |
 | SCS | 3.3.1 |
 | SCIP / PySCIPOpt | 10.0 / 6.2.1 |
+| Julia (Pajarito, Hypatia) | 1.13.2, Pajarito 0.8.3, Hypatia 0.11.0 (HiGHS.jl 1.26.0 as OA solver) |
 
 ## What the timer includes
 

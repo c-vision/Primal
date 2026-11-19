@@ -305,6 +305,26 @@ density `0.25`, Primal takes **0.241 ms** (median of 21 runs) and Clarabel
 [wider cone benchmark](BENCHMARKS.md#wide-cone-benchmarks)
 includes sizes up to 64 free coordinates.
 
+### Public instance sets
+
+Two of the 49 public instances in the
+[external table](BENCHMARKS.md#istanze-pubbliche) keep PrimalSolver first when
+each cell is a median of repeated runs (5 solves; the Julia references are the
+median of 3 warm batches). Those are the only rows this section reports:
+on 0.1–1 ms instances a single run is not stable, and three rows that look won in
+one run go to Clarabel or HiGHS at the median.
+
+| instance | set | class | vars x cons | Primal (s) | best reference (s) | obj |
+|---|---|---|---:|---:|---:|---:|
+| ex1223a | CBLIB | exp + int | 17 x 60 | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
+| HS21 | Maros-Meszaros | QP | 2 x 1 | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
+
+The full 49-instance table — including the rows where PrimalSolver is slower,
+hits the 60 s cap or fails — is in
+[BENCHMARKS.md](BENCHMARKS.md#istanze-pubbliche). Primal timings cover
+`PRIMAL_optimize` with the file reading excluded, one thread; references as in the
+methodology, with Pajarito 0.8.3 and Hypatia 0.11.0 in Julia 1.13.2 (warm run).
+
 ## Documentation
 
 The [algorithm guide](algorithms/README.md) follows the numerical methods
