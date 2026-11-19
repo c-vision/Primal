@@ -81,9 +81,13 @@ registered artifact.
 ## Tests and continuous integration
 
 `.github/workflows/julia.yml` runs `Pkg.test()` on the supported Julia
-versions, on Linux and macOS, and uploads coverage. `src/Model.jl` is covered
-by the example programs, which the workflow runs through the test suite with
-`PRIMALSOLVER_COVERAGE=1`.
+versions, on Linux. `src/Model.jl` is covered by the example programs, which the
+test suite runs with `Base.active_project()`, so `Pkg.test()` covers the
+low-level API as well as the JuMP/MathOptInterface layer. The workflow uploads
+nothing: there is no coverage service and no badge, by decision (a step that
+fails with `Token required` while staying green proves nothing). For a local
+report, run the examples with `PRIMALSOLVER_COVERAGE=1` and
+`--code-coverage=user`, as documented in `julia/test/examples.jl`.
 
 ## License
 

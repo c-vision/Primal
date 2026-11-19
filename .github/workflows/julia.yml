@@ -42,19 +42,10 @@ jobs:
         run: julia --project=julia -e 'using Pkg; Pkg.instantiate()'
       # `Pkg.test()` runs julia/test/runtests.jl: the MathOptInterface and JuMP
       # suites, then the 171 programs of examples/julia (the only cover of the
-      # low-level API in src/Model.jl).  PRIMALSOLVER_COVERAGE makes each of
-      # those programs write .cov files too; without it only the in-process
-      # suites would be instrumented.
+      # low-level API in src/Model.jl).  No coverage is uploaded: the report
+      # would go to a third-party service that needs a token, and a step that
+      # fails with `Token required` while the job stays green proves nothing.
+      # For a local report use `PRIMALSOLVER_COVERAGE=1` with
+      # `--code-coverage=user` (see julia/test/examples.jl).
       - name: Test
-        run: julia --project=julia -e 'using Pkg; Pkg.test(; coverage=true)'
-        env:
-          PRIMALSOLVER_COVERAGE: '1'
-      - name: Process coverage
-        uses: julia-actions/julia-processcoverage@v1
-        with:
-          directories: julia/src
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: lcov.info
-          fail_ci_if_error: false
+        run: julia --project=julia -e 'using Pkg; Pkg.test()'
