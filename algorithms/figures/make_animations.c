@@ -424,6 +424,63 @@ static void anim_branch_and_bound(const char *dir) {
     fclose(seq.list);
 }
 
+static double tangent_master(double x, const double *anchors, int count) {
+    double t = 0;
+    for (int i = 0; i < count; i++) {
+        double a = anchors[i];
+        t = fmax(t, 2 * a * x - a * a);
+    }
+    return t;
+}
+
+static void anim_tangent_cuts(const char *dir) {
+    const double anchors[] = {0, 1, 0.5};
+    const double trial[] = {1, 0.5, 0.5};
+    const double endpoints[] = {0, 0.25, 0.5, 0.75, 1};
+    const double lower[] = {-1, -0.5, -0.25};
+    const double upper[] = {0, -0.25, -0.25};
+    Plot p = {0, 1, -0.25, 1.05, 82, 60, 550, 250};
+    Seq seq;
+    seq_open(&seq, dir, "tangent_cuts");
+    for (int step = 0; step < 3; step++) {
+        double x = trial[step];
+        double t = tangent_master(x, anchors, step + 1);
+        double best = t - x;
+        /* Each linear piece takes its minimum at an endpoint. */
+        for (size_t i = 0; i < sizeof endpoints / sizeof *endpoints; i++)
+            best = fmin(best, tangent_master(endpoints[i], anchors, step + 1) - endpoints[i]);
+        if (t - x != lower[step] || best != lower[step] || x * x - x != upper[step])
+            fail("tangent cuts: invalid bounds");
+        char label[100];
+        snprintf(label, sizeof label, "Round %d: lower bound %g, upper bound %g.", step + 1, lower[step], upper[step]);
+        FILE *f = frame_open(&seq, step == 2 ? 290 : 190, 720, 420,
+                             "Tangent cuts for the parabola t = x squared", label);
+        text(f, 360, 30, "middle", 21, INK, "Tangent cuts tighten the lower bound");
+        axes(f, &p, "x", "t", 1, 1);
+        line(f, PX(&p, 0.5), p.py + p.ph, PX(&p, 0.5), p.py + p.ph + 5, INK, 1, NULL, NULL);
+        text(f, PX(&p, 0.5), p.py + p.ph + 20, "middle", 14, INK, "0.5");
+        plot_clip(f, &p);
+        fputs("<g clip-path=\"url(#plot)\">\n", f);
+        for (int i = 0; i <= step; i++) {
+            double a = anchors[i];
+            line(f, PX(&p, 0), PY(&p, -a*a), PX(&p, 1), PY(&p, 2*a-a*a), GREY, 1.6, "5 5", NULL);
+        }
+        fputs("<polyline fill=\"none\" stroke=\"" BLUE "\" stroke-width=\"2.5\" points=\"", f);
+        for (int i = 0; i <= 100; i++) {
+            double u = i / 100.0;
+            fprintf(f, "%.1f,%.1f ", PX(&p, u), PY(&p, u*u));
+        }
+        fputs("\"/>\n</g>\n", f);
+        line(f, PX(&p, x), PY(&p, t), PX(&p, x), PY(&p, x*x), ORANGE, 2, NULL, NULL);
+        fprintf(f, "<circle cx=\"%.1f\" cy=\"%.1f\" r=\"6\" fill=\"%s\"/>\n", PX(&p, x), PY(&p, t), ORANGE);
+        text(f, 360, 363, "middle", 16, INK, label);
+        text(f, 360, 390, "middle", 14, GREY, "Blue: parabola. Dashed: cuts. Orange: master point and feasibility shortfall.");
+        svg_end(f);
+        fclose(f);
+    }
+    fclose(seq.list);
+}
+
 int main(int argc, char **argv) {
     const char *dir = ".";
     if (argc > 1) g_rev = argv[1];
@@ -433,6 +490,7 @@ int main(int argc, char **argv) {
     anim_central_path(dir);
     anim_exponential_sections(dir);
     anim_branch_and_bound(dir);
-    printf("make_animations: wrote frames for five animations in %s (revision %s)\n", dir, g_rev);
+    anim_tangent_cuts(dir);
+    printf("make_animations: wrote frames for six animations in %s (revision %s)\n", dir, g_rev);
     return 0;
 }

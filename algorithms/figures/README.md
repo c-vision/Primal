@@ -10,6 +10,7 @@ closed form that the program checks against the solver, except the small static 
 | `central_path.gif` | analytic animation | `make_animations.c` | each barrier minimizer is interior and satisfies stationarity |
 | `exponential_sections.gif` | analytic animation | `make_animations.c` | `expcone_barrier` accepts and rejects samples on the appropriate sides of every section |
 | `branch_and_bound.gif` | worked-example animation | `make_animations.c` | enumeration of the feasible integer points recovers the illustrated objective bound |
+| `tangent_cuts.gif` | analytic animation | `make_animations.c` | the lower bound is checked at all intersections of the tangent lines and both interval endpoints |
 | `qp_contours.svg` | analytic | `make_figures.c` | KKT conditions of the QP, optimum and multiplier against the API |
 | `supporting_hyperplane.svg` | analytic | `make_figures.c` | the optimal vertex and its multipliers |
 | `presolve_reduction.svg` | computed | `make_figures.c` | the reductions of `lp_presolve` and the lifted multipliers |

@@ -3,8 +3,17 @@
 **Source:** [`primal_conicopt.c`](../primal_conicopt.c),
 [`primal_sdptask.c`](../primal_sdptask.c), [`expcone.c`](../expcone.c)
 
-The fallback route for a model with a nonlinear or PSD block: linearize the
-nonlinear part, solve the resulting LP, cut, repeat.
+An outer approximation replaces a curved feasible set by an intersection of
+half-spaces that contains it. Each new half-space removes trial points that
+violate the original constraints. PRIMAL uses this approach as a fallback
+for exponential, power and semidefinite blocks.
+
+After this chapter you can derive a supporting cut, solve a sequence of
+relaxations by hand, and explain which quantities PRIMAL checks before
+returning a solution. Prerequisites are
+[convexity and supporting hyperplanes](mathematical_foundations.md) and
+[linear programming](simplex.md). The cone examples introduce their own
+membership conditions.
 
 ## The method
 
@@ -22,68 +31,144 @@ A point feasible for the original model supplies an upper bound. The two
 bounds certify optimality when they agree. A cut limit, a stalled sequence or
 a restricted master can leave the method without such a certificate.
 
+More generally, a convex constraint $F(x)\le0$ and a subgradient $g$ of $F$
+at a trial point $a$ give the cut $F(a)+g^\top(x-a)\le0$. The subgradient
+inequality makes this necessary for every feasible point. At $x=a$ the left
+side is $F(a)$, so the cut separates $a$ whenever $F(a)>0$.
+
 ### Worked example
 
-Minimize $t$ with $x=1$ and $t\ge x^2$. At $a=0$ the tangent is $t\ge0$,
-so the first LP returns $(x,t)=(1,0)$. That point violates the original
-constraint by 1. Adding the tangent at $a=1$ gives $t\ge2x-1$. The second
-LP returns $(1,1)$, which is feasible for the original problem. Its value 1
-is both a lower bound and an upper bound. The same supporting-plane argument
-applies to the cone constraints described in the
-[exponential-cone chapter](exponential_cone.md).
+Minimize $t-x$ subject to $0\le x\le1$ and $t\ge x^2$. A tangent at
+$x=a$ gives $t\ge2ax-a^2$. Evaluating the quadratic at a trial $x$ gives a
+feasible point $(x,x^2)$ and its upper bound.
 
-The cut is a genuine tangent of the block at the point, in the block's own
-units. A power cone is homogeneous of degree 1, and reading its residual in
-`t`-space shrinks a geometric violation by `1/(a·t^(a−1))` — a factor 6.4 on
-one of the finance samples, and 3333 at `a = 1/3, t = 1e-6`. The stop test
-therefore reads the **relative cone slack**, faces `t ≥ 0, u ≥ 0` included;
-outside the domain `pow()` returns NaN, and `NaN > violation` is false, which
-would read as "no violation".
+| Active approximation | One minimizing master point | Lower bound | Best feasible upper bound |
+|---|---|---:|---:|
+| $t\ge0$ | $(1,0)$ | $-1$ | $0$ |
+| Add $t\ge2x-1$ | $(1/2,0)$ | $-1/2$ | $-1/4$ |
+| Add $t\ge x-1/4$ | $(1/2,1/4)$ | $-1/4$ | $-1/4$ |
 
-## What it publishes
+In the last master the new inequality directly bounds $t-x$. Evaluate the
+original constraint at the displayed point to see the bound is attained.
+The original objective reduces to $(x-1/2)^2-1/4$, which independently
+checks the answer.
 
-`pobj = dobj`, and a dual block `Z_j = C_j − Σ y_i A^i_j` — without the
-multipliers of the cuts themselves. Those multipliers are an artifact of the
-approximation, not of the model, so they are excluded from the public reduced
-costs.
+![Three successive tangent cuts close the gap from one to zero](figures/tangent_cuts.gif)
 
-That leaves a real question: is the published `Z` inside `K*`? Measured, yes on
-the AM-GM case forced onto this route — spectrum `{2, 1.3e-16}`, `⟨Z, B⟩ = 0`
-at 2e-9, `dobj = pobj = 2`. It is a measurement, not a theorem, and a model
-where the cuts leave a hole in the dual cone is possible in principle.
+*Each frame adds one tangent. The orange marker is a minimizing point of
+the master. The orange segment reaches the parabola directly above it,
+showing how far the point falls short of the original constraint.*
 
-## How the route is chosen
+## Cuts for exponential and power cones
 
-By **measured quality**, never by an internal barrier parameter. μ is a path
-parameter; `⟨x, s⟩ = μ·ν` measures complementarity; neither is an accuracy
-certificate. The comparison is the relative triple against the tolerances the
-task declares — and the acceptance factor `TOL_NEAR_REL` does **not** move that
-choice, precisely so a fallback can never deliver a point that the native route
-would beat.
+For the [exponential cone](exponential_cone.md), write
+$f(u,v)=u e^{v/u}$ for $u>0$. At the tangent point $(\bar u,\bar v)$,
+let $w=\bar v/\bar u$. Differentiation gives $f_u=e^w(1-w)$ and $f_v=e^w$.
+The constant term cancels, since $f=f_u\bar u+f_v\bar v$. The supporting cut is
 
-## Measured
+$$
+t\ge e^w(1-w)u+e^w v.
+$$
 
-- Forcing this route with `GMB_NO_EXP_IPM=1` on `regression_regularized`:
-  converges in 8 rounds (`rel_viol` 1.78e-9), exit 0.
-- A risk-budgeting model: 0.98 s native, 0.07 s by cuts — the cuts are 14×
-  faster on that one, and both reach `pobj = 2 − log 2`.
+For $u=1$ and $v=1$, the cut at $w=0$ only enforces $t\ge2$.
+The cut at $w=1$ enforces $t\ge e$ and meets the true boundary there.
+A cut chosen at a different ratio can leave a sizeable gap on the same
+slice. `expp_add_cut` restricts the tangent anchor to $\bar u\ge10^{-2}$
+and $w\le10$ for this cone.
 
-## Normalization
+For the [ordinary power cone](power_cone.md) the cut is taken on the
+epigraph $t\ge f(u,v)=|v|^{1/\alpha}u^{1-1/\alpha}$ for $u>0$.
+Let $q=1/\alpha$. At nonzero $v$, $f_u=(1-q)f/u$ and $f_v=qf/v$.
+For the rotated version the code linearizes the concave function
+$g(t,u)=\sqrt2 t^\alpha u^{1-\alpha}$. Its tangent is an upper
+bound, so it supplies one inequality for $v$ and one for $-v$.
+The sign bounds on $t,u$ are retained as separate rows where required.
 
-Every cut row is normalized by its own `max |·|`. The half-space is identical
-and only the scale changes; without it the accumulated LP mixes coefficients
-from `1e-4` to `1e4` and the LP's own IPM diverges. With it, this route
-converges on the cases it previously failed, including the tightest tolerance
-case in the suite, which now returns `OPTIMAL` with a measured cone slack of
-2.1e-16.
+Stopping uses the more direct power-cone expression
+$|v|-\gamma t^\alpha u^{1-\alpha}$, where $\gamma$ is $1$ or $\sqrt2$.
+For example, at $\alpha=2/3$, $u=1$, $v=0.01$, the exact boundary is
+$t=0.001$. Taking $t=0$ gives an epigraph shortfall of $0.001$ and a
+slack violation of $0.01$ before the code's numerical floors and
+normalization. They measure different quantities. In the implementation
+negative coordinate violations are included explicitly, and the largest
+violation in each block is divided by $1+\max(|t|,|u|,|v|)$.
 
-## Limits
+## An eigenvector cut for a PSD block
 
-- Convergence is first-order in general: the number of rounds grows with the
-  accuracy demanded.
-- No ray is published from this route in either direction: it solves in **cut
-  space**, whose rows are tangents rather than the model's constraints, so a
-  witness of it is not a witness of the model, and lifting one is not sound.
-  The verdict stays in the problem status with no vector
-  ([certificates](certificates.md)).
-- The dual block `Z` is admissible in the measured cases, not by construction.
+Every positive semidefinite matrix satisfies $h^\top Xh\ge0$ for every
+vector $h$. If a trial $X_0$ has minimum eigenvalue $\lambda<0$, choose
+a corresponding unit eigenvector $h$. Then
+$\langle hh^\top,X_0\rangle=\lambda<0$, whereas the inequality
+$\langle hh^\top,X\rangle\ge0$ is valid on the entire PSD cone.
+This is a supporting cut for the convex function $-\lambda_{\min}(X)$.
+A repeated minimum eigenvalue still permits any normalized eigenvector in
+its eigenspace.
+
+For example, minimize $a+b$ with $X=\begin{pmatrix}a&1\\1&b\end{pmatrix}
+\succeq0$. Begin with the diagonal constraints $a,b\ge0$. The master gives
+$(a,b)=(0,0)$, where $\lambda=-1$ and $h=(1,-1)^\top/\sqrt2$.
+The cut is $(a+b)/2-1\ge0$. It gives the lower bound 2, attained by the
+original feasible point $(1,1)$. The off-diagonal contribution is
+$2 h_1h_2 X_{12}$ because the solver stores the symmetric triangle once.
+The `T89` regression solves this model through the cut route and checks
+the primal and dual objectives, PSD membership and complementarity.
+[`test_t89`](../test_primal.c#L4419)
+
+## One round in PRIMAL
+
+The continuous dispatcher may solve a model natively before calling a cut
+fallback. The PSD-only fallback in
+[`optimize_sdp_impl`](../primal_sdptask.c#L1649) solves an LP master.
+The general fallback in [`optimize_conic_impl`](../primal_conicopt.c)
+can retain exact second-order cone blocks, making its master conic.
+
+```text
+Build the master with the linear model, retained cones and initial cuts.
+Repeat within the round budget:
+    Solve the current master and check its status.
+    Measure each excluded cone at the resulting trial point.
+    If cone criteria pass, check any artificial cap and assemble the result.
+    Otherwise append supporting rows and solve the enlarged master.
+Return an iteration-limit status if the budget is exhausted.
+```
+
+`expp_add_cut` stores up to three coefficients per nonlinear row and scales
+each row by its largest coefficient in absolute value. Dividing both sides
+by a positive constant leaves the half-space unchanged. The mixed fallback
+repeats nonlinear cuts whenever another round is needed and adds eigenvector
+rows only for PSD blocks whose smallest eigenvalue is below its threshold.
+The pure PSD master starts with bounded bar entries and checks any candidate
+touching the artificial bound through `bar_cap_verdict`. A supported
+recession witness can establish the model's unbounded status. When the cap is
+active and the witness check fails, the result is an iteration limit.
+[`bar_cap_verdict`](../primal_sdptask.c#L1605)
+
+## Accuracy, cost and failure modes
+
+- A nested sequence of exact master relaxations gives nondecreasing
+  minimization bounds. The individual cone violations can increase when
+  the next minimizer moves to a different part of the master.
+- Each round solves a larger optimization problem. A nonlinear cut uses
+  three entries. An eigenvector cut for a dense $d$-by-$d$ bar uses up to
+  $d(d+1)/2$ entries, with an eigensolve to select their values. A Jacobi
+  eigensweep costs $O(d^3)$. Nearly parallel cuts can leave many more rounds
+  of work even when each separation is cheap.
+- For a PSD block the public dual matrix is reconstructed from the original
+  objective and constraints as $C_j-\sum_i y_i A_j^i$. The PSD example
+  above checks the published matrix independently. An equality between
+  reported objective values alone gives no check on dual cone membership.
+- The LP or conic master includes extra rows. Its raw infeasibility or
+  recession vector cannot be passed straight through as an original-model
+  [certificate](certificates.md). Inspect the model status and whether the
+  solver published a separately validated vector.
+
+## Exercise
+
+Keep $u=1$ in the exponential example and change $v$ to $-1$. How strong
+is the initial cut at $w=0$? It gives $t\ge0$. A cut evaluated at $w=-1$
+gives $t\ge e^{-1}$ at this slice point, meeting the true boundary.
+
+## References
+
+- J. E. Kelley, Jr., [*The Cutting-Plane Method for Solving Convex Programs*](https://doi.org/10.1137/0108053), 1960.
+- S. Boyd and L. Vandenberghe, [*Convex Optimization*](https://web.stanford.edu/~boyd/cvxbook/), `3.1 (first-order convexity) and `4.6 (semidefinite programming).

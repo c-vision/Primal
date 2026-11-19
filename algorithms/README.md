@@ -34,6 +34,7 @@ Detailed engineering and specialized backend notes:
 - [Simplex pivots](simplex.md#worked-example-1-the-polygon) follow the vertices of a feasible polygon.
 - [Interior-point animations](interior_point.md) show the analytic central path and a separate measured PRIMAL run.
 - [Exponential-cone sections](exponential_cone.md) show how fixing one coordinate gives a two-dimensional feasible region.
+- [Tangent cuts](tangent_cuts.md#worked-example) show how three supporting rows close the gap on a quadratic epigraph.
 - [Branch and bound](mixed_integer_optimization.md#worked-example) follows the search from a fractional root to an incumbent and a final bound.
 
 The [figure catalog](figures/README.md) identifies the source, checks and regeneration commands for each visual.
