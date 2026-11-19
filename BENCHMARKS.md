@@ -281,6 +281,49 @@ routing. Il MILP non ne beneficia (le rilassate restano sul simplesso).
 
 ## 3-ter. SOC / EXP / misto contro Clarabel
 
+### Verifica 2026-11-19 — le celle del README sono state rimisurate
+
+Le tabelle del `README.md` (principale, mista e matrice SOC/EXP) portano ora le
+misure di questa data, su un albero **pulito** di HEAD e con la stessa macchina
+delle sezioni seguenti. Due esiti distinti.
+
+**Tabella principale** (`tools/bench_repeat.py --runs 15`, 32 righe × 5 solver).
+Obiettivi identici in tutte le righe; Primal minimo in **32 su 32**; i grassetti
+del README restano corretti. Rispetto allo snapshot del 2026-11-12, Primal è
+`0..-21.6%` (mediana `-10.4%`) — ma anche i riferimenti sono più veloci:
+HiGHS `-17.4%`, SCIP `-16.6%`, Clarabel `-11.1%`, SCS `-11.4%`. Poiché HiGHS e
+SCIP sono binari che questo repository non compila, quella quota è **stato
+dell'host**, non codice: una singola tabella per sessione è confrontabile, due
+sessioni no.
+
+**Matrice SOC/EXP/mista** (`bench/pexp_matrix.py --only family --runs 21`).
+Le celle del 2026-11-18 non erano riproducibili dall'harness del repository:
+misurate oggi danno `+16..+47%` (per esempio EXP10 `0.017 -> 0.023`, Mixed80
+`0.031 -> 0.040`). Escluse per misura tre spiegazioni: il codice del solver è
+identico (`git diff b5e2029 HEAD -- '*.c'` tocca solo i generatori di figure),
+il livello di ottimizzazione non chiude il divario (`-O3` dà gli stessi tempi),
+la rotta e i passi sono quelli attesi (`reduced Newton`, `it` 7/8/4/4, ordine
+8). Restano due cause, entrambe di **misura**, non di solver:
+
+1. **Il runner accendeva `GMB_DBG` anche nelle run di tempo** e la traccia è
+   scritta **dentro** la solve: il valore pubblicato era gonfiato del 20-35%, e
+   il README dichiarava «tracing disabled» mentre la harness non lo faceva. Ora
+   `pexp_matrix.py` fa le run di tempo senza tracing e prende rotta/iterazioni
+   da **una** run tracciata, che non entra nella mediana (`pexp_matrix.py`, run
+   `--only family --runs 21`: EXP10 `0.023`, EXP80 `0.040`);
+2. **La provenienza**: le cifre del 2026-11-18 venivano da una harness locale
+   (`out/f266/integrated.py`, citata da F266 nel log dei tentativi) e non dal
+   runner del repository, che il README citava come generatore. Il punto 1
+   spiega una parte del divario, non tutto: dopo la correzione il residuo è
+   ancora `+18..+44%` sulla matrice, e resta attribuito alla harness locale.
+
+Il verdetto non cambia: con i numeri di oggi la matrice resta `0.04x-0.20x` di
+Clarabel, cioè 5-25× più veloce — non 5-50× come era stampato. Il caso a 240
+blocchi riproduce (`0.241 ms` Primal, `5.186 ms` Clarabel, mediane di 21 e 5
+run). Le sezioni `### Newton ridotto ...` che seguono restano il **record
+storico** delle misure del 2026-11-18 con le loro baseline: non vanno
+riscritte, e i loro "prima/dopo" non sono celle del README.
+
 ### Newton ridotto per EXP, 2026-11-18
 
 Il confronto completo è nel [README](README.md#soc-exponential-and-mixed-cone-matrix).

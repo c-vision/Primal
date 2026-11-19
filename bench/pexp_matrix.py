@@ -169,8 +169,10 @@ def run_clarabel(fam, n, d, rho, rep):
     return dt, float(sol.obj_val)
 
 
-def run(fam: str, n: int, d: int, rho: float, rep: int):
-    env = dict(os.environ, GMB_DBG="1")
+def run(fam: str, n: int, d: int, rho: float, rep: int, trace: bool = True):
+    env = dict(os.environ)
+    if trace:
+        env["GMB_DBG"] = "1"
     p = subprocess.run([str(BIN), fam, str(n), str(d), f"{rho:.2f}", str(rep)],
                        capture_output=True, text=True, env=env, timeout=600)
     out = [l for l in p.stdout.splitlines() if l.startswith("matrix,")]
@@ -215,12 +217,17 @@ def run(fam: str, n: int, d: int, rho: float, rep: int):
 
 
 def cell(fam, n, d, rho, rep, runs):
-    vals = [run(fam, n, d, rho, rep) for _ in range(runs)]
+    # The published timings are taken with debug tracing OFF: the trace lines are
+    # written from inside the solve, and with tracing on they inflate the measured
+    # ms by 20-35% (measured 2026-11-19).  Route, KKT order and iteration count are
+    # not visible without the trace, so they come from ONE traced run, which is not
+    # used for the timing.
+    vals = [run(fam, n, d, rho, rep, trace=False) for _ in range(runs)]
+    info = run(fam, n, d, rho, rep, trace=True)
     med = {k: statistics.median([v[k] for v in vals])
            for k in ("secs", "pobj", "pinf", "dinf", "relgap")}
-    first = vals[0]
-    med.update(order=first["order"], nnz=first["nnz"], sparse=first["sparse"],
-               its=first["its"], route=first["route"], retries=first["retries"])
+    med.update(order=info["order"], nnz=info["nnz"], sparse=info["sparse"],
+               its=info["its"], route=info["route"], retries=info["retries"])
     return med
 
 
@@ -252,9 +259,9 @@ def table(title, cases, runs, ref=False):
         per = ms / c["its"] if c["its"] else 0.0
         label = f"{fam} n={n} rho={rho:.2f} rep={rep}"
         row = (f"| {label} | {blocks} | {rows} | {order} | {nnz} | {route} | {c['its']} | "
-               f"{ms:.2f} | {per:.3f} |")
+               f"{ms:.3f} | {per:.3f} |")
         if ref:
-            row += f" {rms:.2f} | {ratio:.2f}x |"
+            row += f" {rms:.3f} | {ratio:.3f}x |"
         row += f" {gap:.1e} | {c['retries']} |"
         print(row)
 

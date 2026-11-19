@@ -182,50 +182,53 @@ Linux, macOS and the BSDs; on Windows use MinGW
 
 ## Benchmarks
 
-Measured on Apple Silicon (arm64), macOS 27.2, with Apple clang 21 and
-C99 `-O2`. Times are in seconds. **Bold** marks the lowest median in
-each row. The Primal and Clarabel LP cells were refreshed on
-**2026-11-18** using two interleaved series of 21 solves. Both solvers
-used `1e-8` tolerances and the Primal residuals and relative gap were
-within `1e-8`. The other cells use the **2026-11-12** snapshot, the median
-of 15 runs of `bench/bench_all.py` with stable objectives.
+Measured on Apple Silicon (arm64), macOS 27.2.1, with Apple clang 21.0.0 and
+C99 `-O2`, on **2026-11-19**. Times are in seconds. **Bold** marks the lowest
+median in each row. Every cell comes from the same session: the median of 15
+runs of `bench/bench_all.py` (`tools/bench_repeat.py --runs 15`), and the
+aggregator verified that every objective is identical across the 15. Primal
+residuals and relative gap were within `1e-8`. The reference columns drift with
+the machine by about 10% between sessions — HiGHS and SCIP do not share the
+Primal code, so a shift there is the host, not us — and a few rows are won by
+less than 10%: read the order within a row, not the absolute value across
+tables.
 
 <div>
 
 | instance | class | vars x cons | nnz | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|
-| lp_50x25 | lp | 50 x 25 | 171 | **0.000138** | 0.001898 | 0.000159 | N/A | N/A | 64.1886 |
-| lp_100x50 | lp | 100 x 50 | 576 | **0.000578** | 0.0020019 | 0.000644 | N/A | N/A | 121.946 |
-| lp_200x100 | lp | 200 x 100 | 2120 | **0.001246** | 0.0039886 | 0.002041 | N/A | N/A | 284.367 |
-| lp_400x200 | lp | 400 x 200 | 8026 | **0.005424** | 0.0138753 | 0.010998 | N/A | N/A | 546.481 |
-| qp_50x25 | qp | 50 x 25 | 1445 | **0.000414** | N/A | 0.0004446 | N/A | N/A | 12.8014 |
-| qp_100x50 | qp | 100 x 50 | 5631 | **0.001516** | N/A | 0.0024999 | N/A | N/A | 26.4052 |
-| qp_200x100 | qp | 200 x 100 | 22212 | **0.006619** | N/A | 0.0083538 | N/A | N/A | 55.9929 |
-| milp_40x20 | milp | 40 x 20 | 139 | **0.050301** | N/A | N/A | N/A | 0.1650697 | 143.955 |
-| milp_60x30 | milp | 60 x 30 | 260 | **0.102078** | N/A | N/A | N/A | 0.2896472 | 200.846 |
-| milp_80x40 | milp | 80 x 40 | 460 | **0.226509** | N/A | N/A | N/A | 1.1288082 | 277.019 |
-| socp_40 | socp | 60 x 1 | - | **0.000088** | N/A | 0.0001077 | 0.0002994 | N/A | 0.707107 |
-| socp_120 | socp | 180 x 1 | - | **0.000207** | N/A | 0.0002286 | 0.0007485 | N/A | 0.707107 |
-| socp_200 | socp | 300 x 1 | - | **0.000308** | N/A | 0.0004804 | 0.0011206 | N/A | 0.707107 |
-| sdp_4 | sdp | 4 x 4 | - | **0.000007** | N/A | 0.0001597 | 0.0002106 | N/A | -9.83233 |
-| sdp_5 | sdp | 5 x 5 | - | **0.000009** | N/A | 0.0001382 | 0.0002051 | N/A | -4.79948 |
-| sdp_6 | sdp | 6 x 6 | - | **0.000011** | N/A | 0.0001829 | 0.0002364 | N/A | -10.2438 |
-| sdp_7 | sdp | 7 x 7 | - | **0.000014** | N/A | 0.000262 | 0.0004361 | N/A | -8.18613 |
-| sdp_8 | sdp | 8 x 8 | - | **0.000013** | N/A | 0.000409 | 0.0005138 | N/A | -22.165 |
-| sdp_9 | sdp | 9 x 9 | - | **0.000016** | N/A | 0.0005606 | 0.0003815 | N/A | -17.0048 |
-| sdp_10 | sdp | 10 x 10 | - | **0.000018** | N/A | 0.0007308 | 0.000727 | N/A | -31.7195 |
-| sdp_11 | sdp | 11 x 11 | - | **0.000019** | N/A | 0.0011115 | 0.001754 | N/A | -20.5753 |
-| sdp_12 | sdp | 12 x 12 | - | **0.000021** | N/A | 0.0017411 | 0.0009743 | N/A | -44.5174 |
-| sdp_13 | sdp | 13 x 13 | - | **0.000024** | N/A | 0.0019783 | 0.0010971 | N/A | -38.7212 |
-| sdp_14 | sdp | 14 x 14 | - | **0.000029** | N/A | 0.0021138 | 0.0010811 | N/A | -74.2121 |
-| sdp_15 | sdp | 15 x 15 | - | **0.000032** | N/A | 0.0025229 | 0.0013528 | N/A | -51.0706 |
-| sdp_16 | sdp | 16 x 16 | - | **0.000032** | N/A | 0.0035157 | 0.0015331 | N/A | -69.7722 |
-| sdp_17 | sdp | 17 x 17 | - | **0.000042** | N/A | 0.0042324 | 0.001812 | N/A | -38.8839 |
-| sdp_18 | sdp | 18 x 18 | - | **0.000048** | N/A | 0.0046977 | 0.0021475 | N/A | -78.2696 |
-| sdp_19 | sdp | 19 x 19 | - | **0.000047** | N/A | 0.0044675 | 0.002027 | N/A | -123.432 |
-| sdp_20 | sdp | 20 x 20 | - | **0.000063** | N/A | 0.0067786 | 0.0025277 | N/A | -140.192 |
-| sdp_21 | sdp | 21 x 21 | - | **0.000062** | N/A | 0.0096266 | 0.0039798 | N/A | -93.0904 |
-| sdp_22 | sdp | 22 x 22 | - | **0.000084** | N/A | 0.0112217 | 0.0087102 | N/A | -149.613 |
+| lp_50x25 | lp | 50 x 25 | 171 | **0.000138** | 0.0014452 | 0.0001687 | N/A | N/A | 64.1886 |
+| lp_100x50 | lp | 100 x 50 | 576 | **0.000568** | 0.0015196 | 0.0006134 | N/A | N/A | 121.946 |
+| lp_200x100 | lp | 200 x 100 | 2120 | **0.001139** | 0.0032946 | 0.0020054 | N/A | N/A | 284.367 |
+| lp_400x200 | lp | 400 x 200 | 8026 | **0.005075** | 0.0114544 | 0.0106674 | N/A | N/A | 546.481 |
+| qp_50x25 | qp | 50 x 25 | 1445 | **0.00034** | N/A | 0.0003636 | N/A | N/A | 12.8014 |
+| qp_100x50 | qp | 100 x 50 | 5631 | **0.001299** | N/A | 0.0020746 | N/A | N/A | 26.4052 |
+| qp_200x100 | qp | 200 x 100 | 22212 | **0.005674** | N/A | 0.00668 | N/A | N/A | 55.9929 |
+| milp_40x20 | milp | 40 x 20 | 139 | **0.043884** | N/A | N/A | N/A | 0.1355436 | 143.955 |
+| milp_60x30 | milp | 60 x 30 | 260 | **0.090254** | N/A | N/A | N/A | 0.2418019 | 200.846 |
+| milp_80x40 | milp | 80 x 40 | 460 | **0.196321** | N/A | N/A | N/A | 0.9413622 | 277.019 |
+| socp_40 | socp | 60 x 1 | - | **0.000069** | N/A | 0.0000912 | 0.000265 | N/A | 0.707107 |
+| socp_120 | socp | 180 x 1 | - | **0.000172** | N/A | 0.000208 | 0.0006825 | N/A | 0.707107 |
+| socp_200 | socp | 300 x 1 | - | **0.000266** | N/A | 0.0003956 | 0.0010498 | N/A | 0.707107 |
+| sdp_4 | sdp | 4 x 4 | - | **0.000007** | N/A | 0.0001345 | 0.0001691 | N/A | -9.83233 |
+| sdp_5 | sdp | 5 x 5 | - | **0.000008** | N/A | 0.0001226 | 0.0001803 | N/A | -4.79948 |
+| sdp_6 | sdp | 6 x 6 | - | **0.00001** | N/A | 0.000152 | 0.0002013 | N/A | -10.2438 |
+| sdp_7 | sdp | 7 x 7 | - | **0.000013** | N/A | 0.0002342 | 0.0003712 | N/A | -8.18613 |
+| sdp_8 | sdp | 8 x 8 | - | **0.000012** | N/A | 0.0004059 | 0.0004301 | N/A | -22.165 |
+| sdp_9 | sdp | 9 x 9 | - | **0.000014** | N/A | 0.0005474 | 0.0003368 | N/A | -17.0048 |
+| sdp_10 | sdp | 10 x 10 | - | **0.000015** | N/A | 0.0007234 | 0.0006403 | N/A | -31.7195 |
+| sdp_11 | sdp | 11 x 11 | - | **0.000019** | N/A | 0.0010424 | 0.0014954 | N/A | -20.5753 |
+| sdp_12 | sdp | 12 x 12 | - | **0.000018** | N/A | 0.001674 | 0.0008633 | N/A | -44.5174 |
+| sdp_13 | sdp | 13 x 13 | - | **0.000024** | N/A | 0.0018503 | 0.0009397 | N/A | -38.7212 |
+| sdp_14 | sdp | 14 x 14 | - | **0.000026** | N/A | 0.0019185 | 0.0009463 | N/A | -74.2121 |
+| sdp_15 | sdp | 15 x 15 | - | **0.000028** | N/A | 0.0022253 | 0.0013447 | N/A | -51.0706 |
+| sdp_16 | sdp | 16 x 16 | - | **0.000031** | N/A | 0.0030726 | 0.0014801 | N/A | -69.7722 |
+| sdp_17 | sdp | 17 x 17 | - | **0.000037** | N/A | 0.0038465 | 0.0018549 | N/A | -38.8839 |
+| sdp_18 | sdp | 18 x 18 | - | **0.000043** | N/A | 0.0039952 | 0.0022638 | N/A | -78.2696 |
+| sdp_19 | sdp | 19 x 19 | - | **0.000045** | N/A | 0.0039709 | 0.0020052 | N/A | -123.432 |
+| sdp_20 | sdp | 20 x 20 | - | **0.000059** | N/A | 0.0057177 | 0.0025415 | N/A | -140.192 |
+| sdp_21 | sdp | 21 x 21 | - | **0.000057** | N/A | 0.0080453 | 0.0040277 | N/A | -93.0904 |
+| sdp_22 | sdp | 22 x 22 | - | **0.000068** | N/A | 0.0094083 | 0.0087225 | N/A | -149.613 |
 
 </div>
 
@@ -248,12 +251,12 @@ observations × features.
 
 | Instance | Primal (ms) | Clarabel (ms) | ratio |
 |---|---:|---:|---:|
-| 20×4 | **0.017** | 0.219 | 0.08× |
-| 40×8 | **0.024** | 0.482 | 0.05× |
-| 80×12 | **0.039** | 2.237 | 0.02× |
+| 20×4 | **0.017** | 0.188 | 0.09× |
+| 40×8 | **0.025** | 0.457 | 0.05× |
+| 80×12 | **0.042** | 2.195 | 0.02× |
 
-Measured on 2026-11-18 with `bench/pexp_bench.py --runs 21` in two
-interleaved series. Each cell is the median of the two series medians.
+Measured on 2026-11-19 with `bench/pexp_bench.py --runs 21` (one interleaved
+series; each cell is the median of 21 solves).
 `bench/pexp_bench.c` generates the instances from a fixed seed. The runner
 checks the known objectives (`18.718151648415301`, `47.09337729630259`,
 `81.84315908327622`), the residuals and the relative gap at `1e-8`.
@@ -263,39 +266,42 @@ and includes solver construction. See the
 
 ### SOC, exponential, and mixed cone matrix
 
-Measured on **2026-11-18** with the same generated instances in both solvers
+Measured on **2026-11-19** with the same generated instances in both solvers
 (`d=8`, link density `0.50`, one replica). The SOC instances consist of
 independent rotated cones with a fixed positive member in each block. EXP
 instances have fixed positive scales and affine arguments. Mixed instances
 have one rotated SOC in addition to the listed exponential blocks.
-Times are the medians of two series medians, each from 21 interleaved runs
-with debug tracing disabled. Primal timings cover `PRIMAL_optimize`.
-Clarabel 0.11.1 uses one thread, includes solver construction and runs with
-`1e-9` feasibility and gap tolerances. Primal uses `1e-8` tolerances.
-The largest public residual or relative gap was `2.5e-10`, and the maximum
-scaled objective difference was `2.6e-8`.
+Times are the medians of **21 runs with debug tracing disabled** — the trace is
+written from inside the solve and inflates the measured milliseconds — while
+the route and the iteration count come from one traced run
+(`bench/pexp_matrix.py --only family --runs 21`). Primal timings cover
+`PRIMAL_optimize`. Clarabel 0.11.1 uses one thread, includes solver
+construction and runs with `1e-9` feasibility and gap tolerances. Primal uses
+`1e-8` tolerances. The largest public relative gap was `2.5e-10`, and the
+runner checks every objective against the Clarabel reference at `1e-6`.
 
 | Family | Blocks | Primal (ms) | Clarabel (ms) | Primal / Clarabel |
 |---|---:|---:|---:|---:|
-| SOC | 10 | **0.023** | 0.290 | 0.08× |
-| SOC | 20 | **0.031** | 0.651 | 0.05× |
-| SOC | 40 | **0.043** | 1.085 | 0.04× |
-| SOC | 80 | **0.068** | 2.118 | 0.03× |
-| EXP | 10 | **0.017** | 0.177 | 0.09× |
-| EXP | 20 | **0.020** | 0.238 | 0.08× |
-| EXP | 40 | **0.022** | 0.352 | 0.06× |
-| EXP | 80 | **0.031** | 0.607 | 0.05× |
-| Mixed | 10 | **0.016** | 0.148 | 0.11× |
-| Mixed | 20 | **0.018** | 0.209 | 0.09× |
-| Mixed | 40 | **0.022** | 0.366 | 0.06× |
-| Mixed | 80 | **0.031** | 0.835 | 0.04× |
+| SOC | 10 | **0.023** | 0.259 | 0.09× |
+| SOC | 20 | **0.034** | 0.636 | 0.05× |
+| SOC | 40 | **0.051** | 1.096 | 0.05× |
+| SOC | 80 | **0.080** | 2.211 | 0.04× |
+| EXP | 10 | **0.023** | 0.143 | 0.16× |
+| EXP | 20 | **0.026** | 0.207 | 0.13× |
+| EXP | 40 | **0.026** | 0.328 | 0.08× |
+| EXP | 80 | **0.040** | 0.598 | 0.07× |
+| Mixed | 10 | **0.022** | 0.109 | 0.20× |
+| Mixed | 20 | **0.026** | 0.170 | 0.15× |
+| Mixed | 40 | **0.028** | 0.353 | 0.08× |
+| Mixed | 80 | **0.040** | 0.826 | 0.05× |
 
 The [matrix benchmark](bench/pexp_matrix.py) generates the instances and
 checks objective agreement. [Detailed measurements](BENCHMARKS.md#matrice-soc-exp)
 include solver routes and iteration counts.
 
-With 240 exponential blocks, 48 free coordinates and one rotated SOC,
-Primal takes **0.239 ms** and Clarabel takes **4.883 ms**. The
+With 240 exponential blocks, 48 free coordinates, one rotated SOC and link
+density `0.25`, Primal takes **0.241 ms** (median of 21 runs) and Clarabel
+**5.186 ms** (median of 5; measured 2026-11-19, same protocol). The
 [wider cone benchmark](BENCHMARKS.md#wide-cone-benchmarks)
 includes sizes up to 64 free coordinates.
 

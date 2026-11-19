@@ -1,16 +1,23 @@
 # Benchmark methodology
 
-The main README table starts from the 2026-11-12 snapshot. Each snapshot
-cell is the median of **15** runs of `bench/bench_all.py`
-(`tools/bench_repeat.py --runs 15`), and the aggregator verifies that every
-objective is identical across the 15. The mixed SOC/PEXP table is a separate
-harness: `bench/pexp_bench.c` defines and times the instance, and
-`bench/pexp_bench.py` interleaves 21 runs per cell against Clarabel and
-asserts the three known optima.
+The main README table is the **2026-11-19** snapshot, and every cell — Primal
+and the references — comes from the same session: the median of **15** runs of
+`bench/bench_all.py` (`tools/bench_repeat.py --runs 15`), with the aggregator
+verifying that every objective is identical across the 15. The mixed SOC/PEXP
+table is a separate harness: `bench/pexp_bench.c` defines and times the
+instance, and `bench/pexp_bench.py` interleaves 21 runs per cell against
+Clarabel and asserts the three known optima.
 
-The Primal and Clarabel LP cells were refreshed on 2026-11-18 in two
-interleaved series of 21 solves, with both solvers at `1e-8`. The HiGHS LP
-values come from the original snapshot. See the [LP comparison](../BENCHMARKS.md#sparse-bound-lp).
+The reference columns move with the host by roughly 10% between sessions
+(measured 2026-11-19: HiGHS -17%, SCIP -17%, Clarabel -11%, SCS -11% against
+the 2026-11-12 snapshot). HiGHS and SCIP are compiled elsewhere and share no
+code with this repository, so such a shift is the machine, not the solver:
+compare within a row of a single table, not a cell across two sessions.
+
+The SOC/EXP/mixed matrix (`bench/pexp_matrix.py`) is timed with **debug tracing
+disabled**: the trace lines are written from inside the solve and inflate the
+measured milliseconds by 20-35% (measured 2026-11-19). The route, KKT order and
+iteration count come from one traced run that is not used for the timing.
 
 | Family | Independent aggregations | Accuracy checks |
 |---|---:|---|
@@ -19,6 +26,7 @@ values come from the original snapshot. See the [LP comparison](../BENCHMARKS.md
 | SOCP | 15 | Analytic objective, primal feasibility, stationarity and relative gap within `1e-7` |
 | SDP | 15 | Optimal status and objective error within `1e-4 * (1 + abs(analytic objective))` |
 | Mixed SOC/PEXP | 21 | Objective agreement, feasibility, stationarity and relative gap within `1e-8` |
+| SOC/EXP/mixed matrix | 21 (tracing off) | Objective agreement at `1e-6` scaled against Clarabel; relative gap reported per cell |
 
 Primal and Clarabel ran at one thread. HiGHS and SCIP used one thread
 for MILP and read the same MPS fixtures as Primal. The SOCP SCS runs
@@ -29,7 +37,7 @@ tolerances.
 
 | Component | Measured configuration |
 |---|---|
-| Machine | Apple M5 Max, arm64, macOS 27.2 |
+| Machine | Apple M5 Max, arm64, macOS 27.2.1 |
 | C compiler | Apple clang 21.0.0, C99 `-O2 -Wall -Wextra -pedantic` |
 | NumPy / SciPy | 2.5.3 / 1.18.1 |
 | HiGHS used by SciPy | 1.12.0 |
