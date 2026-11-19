@@ -132,15 +132,99 @@ static int conic_fixed_epigraphs(int n, int nc, const SocpCone *cones,
            fabs(pobj-dobj)/(1.0+fabs(pobj)) <= tg;
 }
 
+enum { CONIC_EPIGRAPH_MAX_EQ = 4 };
+
+/* Eliminating the epigraphs leaves a diagonal positive Hessian D on
+ * the cone tails. Solve (E D^-1 E') y = E x_unconstrained - d.
+ * The original closed-form solver then verifies the cone certificate for
+ * cost c + E'y. Equalities touching any epigraph stay on the IPM route. */
+static int conic_fixed_epigraph_equalities(int n, int p, const ConicMatrix *E,
+    const double *d, int nc, const SocpCone *cones, const ConicMatrix *G,
+    const double *h, const double *c, double tg, double tf,
+    double *x, double *y, double *lm) {
+    if (p < 1 || p > CONIC_EPIGRAPH_MAX_EQ) return 0;
+    double *inverse = calloc((size_t)n, 2 * sizeof(*inverse));
+    double *ed = NULL;
+    int ok = 0, offset = 0;
+    if (!inverse) return 0;
+    double *adjusted = inverse + n;
+    for (int k = 0; k < nc; offset += cones[k++].nmem) {
+        if (cones[k].type == 0) continue;
+        const ConicRow *rows = G->row + offset;
+        if (cones[k].nmem < 2 || rows[0].nz != 1) goto done;
+        int axis = rows[0].entry[0].col;
+        if (inverse[axis] != 0.0) goto done;
+        inverse[axis] = -1.0;
+        double curvature = (c[axis] / rows[0].entry[0].value) / (2.0 * h[offset]);
+        if (!(curvature > 0.0) || !isfinite(curvature)) goto done;
+        for (int j = 2; j < cones[k].nmem; j++) {
+            if (rows[j].nz != 1) goto done;
+            int col = rows[j].entry[0].col;
+            if (inverse[col] != 0.0) goto done;
+            double coeff = rows[j].entry[0].value;
+            inverse[col] = (1.0 / curvature) / (coeff * coeff);
+            if (!(inverse[col] > 0.0) || !isfinite(inverse[col])) goto done;
+        }
+    }
+    for (int i = 0; i < p; i++)
+        for (int k = 0; k < E->row[i].nz; k++)
+            if (!(inverse[E->row[i].entry[k].col] > 0.0)) goto done;
+
+    ed = conic_matrix_dense(E, p);
+    if (!ed) goto done;
+    double normal[CONIC_EPIGRAPH_MAX_EQ][CONIC_EPIGRAPH_MAX_EQ] = {{0}};
+    double *rows[CONIC_EPIGRAPH_MAX_EQ];
+    for (int i = 0; i < p; i++) {
+        rows[i] = normal[i];
+        y[i] = -d[i];
+        const double *ei = ed + (size_t)i * n;
+        for (int j = 0; j < n; j++) {
+            if (ei[j] == 0.0) continue;
+            double a = ei[j] * inverse[j];
+            y[i] -= a * c[j];
+            for (int k = 0; k <= i; k++) normal[i][k] += a * ed[(size_t)k * n + j];
+        }
+    }
+    DMat H = {p, p, rows};
+    if (dmat_cholesky(&H, p) || dmat_chol_solve(&H, y, p)) goto done;
+    memcpy(adjusted, c, (size_t)n * sizeof(*adjusted));
+    for (int i = 0; i < p; i++) {
+        if (!isfinite(y[i])) goto done;
+        const ConicRow *row = E->row + i;
+        for (int q = 0; q < row->nz; q++)
+            adjusted[row->entry[q].col] += y[i] * row->entry[q].value;
+    }
+    if (!conic_fixed_epigraphs(n, nc, cones, G, h, adjusted, tg, tf, x, lm)) goto done;
+
+    double pobj = 0.0, dobj = 0.0;
+    for (int i = 0; i < p; i++) {
+        double activity = 0.0;
+        const ConicRow *row = E->row + i;
+        for (int q = 0; q < row->nz; q++)
+            activity += row->entry[q].value * x[row->entry[q].col];
+        if (!(fabs(activity - d[i]) <= tf)) goto done;
+        dobj -= d[i] * y[i];
+    }
+    for (int j = 0; j < n; j++) pobj += c[j] * x[j];
+    for (int j = 0; j < offset; j++) dobj -= h[j] * lm[j];
+    double gap = fabs(pobj - dobj) / (1.0 + fabs(pobj));
+    ok = isfinite(gap) && gap <= tg;
+done:
+    free(ed);
+    free(inverse);
+    return ok;
+}
+
 static int conic_solve_fixed(PRIMALtask_t t,
     int n,int p,ConicMatrix *E,const double *d,const double *c,
     int nc,const SocpCone *cones,ConicMatrix *G,const double *h,
     const int *kind,const int *idx,double tg,double tf,int maxit,
-    double *x,double *y,double *lm) {
+    double *x,double *y,double *lm,int direct_only) {
     int nf=0,K=0;
     for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)nf++;
     for(int k=0;k<nc;k++)K+=cones[k].nmem;
-    if(!nf||nf>=n) return conic_sparse_run(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm,1);
+    if(!nf||nf>=n)
+        return direct_only ? 1 : conic_sparse_run(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm,1);
     conic_matrix_sort(E);conic_matrix_sort(G);
     int nr=n-nf,pr=0,kr=0,ncr=0,rc=-1;
     int *cols=malloc((size_t)nr*sizeof(int)),*rows=malloc((size_t)(p?p:1)*sizeof(int));
@@ -191,12 +275,20 @@ static int conic_solve_fixed(PRIMALtask_t t,
     /* A translation can increase a relative residual's denominator. Tighten
      * the reduced tolerances so success implies the original criteria. */
     double fr=fmin(1.0,fmin((1+do_)/(1+drn),(1+ho)/(1+hrn)));
-    if (pr == 0 && maxit > 1 && conic_fixed_epigraphs(nr,ncr,cc,Gr,hr,cr,
-                                                     tg/(1+fabs(offset)),tf*fr,xr,lr)) {
+    double gap_limit = tg / (1 + fabs(offset)), feas_limit = tf * fr;
+    int direct = 0;
+    if (maxit > 1) {
+        if (pr == 0)
+            direct = conic_fixed_epigraphs(nr,ncr,cc,Gr,hr,cr,gap_limit,feas_limit,xr,lr);
+        else if (!getenv("GMB_SOCP_LDL"))
+            direct = conic_fixed_epigraph_equalities(nr,pr,Er,dr,ncr,cc,Gr,hr,cr,
+                                                     gap_limit,feas_limit,xr,yr,lr);
+    }
+    if (direct) {
         if (getenv("GMB_DBG")) fprintf(stderr, "  [route] fixed rotated SOC epigraphs\n");
         rc = 0;
-    } else {
-        rc=conic_sparse_run(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,tg/(1+fabs(offset)),tf*fr,maxit,xr,yr,lr,1);
+    } else if (!direct_only) {
+        rc=conic_sparse_run(nr,pr,Er,dr,cr,ncr,cc,Gr,hr,gap_limit,feas_limit,maxit,xr,yr,lr,1);
     }
     if(rc==0) {
         for(int j=0;j<t->numvar;j++)if(t->bkx[j]==PRIMAL_BK_FX)x[j]=t->blx[j];
@@ -227,7 +319,8 @@ static int conic_solve_fixed(PRIMALtask_t t,
 done:
     free(cols);free(rows);free(crow);conic_matrix_free(Er);free(dr);conic_matrix_free(Gr);free(hr);
     free(cr);free(xr);free(yr);free(lr);free(cc);free(map);free(station);
-    return rc==0?0:conic_sparse_run(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm,1);
+    if (rc == 0) return 0;
+    return direct_only ? 1 : conic_sparse_run(n,p,E,d,c,nc,cones,G,h,tg,tf,maxit,x,y,lm,1);
 }
 
 /* ---- nonlinear cones (PEXP/DEXP/PPOW/RPOW): tangent cuts ----
@@ -782,10 +875,23 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
                 }
                 prefer_sparse = coordinate_blocks && fixed_coordinate;
             }
-            int st = sparse_conic || prefer_sparse
+            /* Try direct elimination on small fixed-axis rotated cones
+             * without changing the dense fallback if their rows do not fit. */
+            int iterative_sparse = sparse_conic || prefer_sparse;
+            int direct_rotated = !iterative_sparse && !nb && !nNlin &&
+                                 Nsys >= 32 && neq > 0 &&
+                                 neq <= CONIC_EPIGRAPH_MAX_EQ && t->numcones >= 5 &&
+                                 !getenv("GMB_SOCP_LDL");
+            for (int k = 0; direct_rotated && k < t->numcones; k++) {
+                const int *members = t->cone_mem[k];
+                direct_rotated = t->cone_type[k] == PRIMAL_CT_RQUAD &&
+                    t->cone_nmem[k] >= 2 &&
+                    (t->bkx[members[0]] == PRIMAL_BK_FX || t->bkx[members[1]] == PRIMAL_BK_FX);
+            }
+            int st = iterative_sparse || direct_rotated
                 ? conic_solve_fixed(t,
                     ntot,neq,E,d,c,ncones_solver,cones,G,h,rowKind,rowIdx,
-                    t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm)
+                    t->tol_co_gap,tol_out,iter_cap(t->max_iter_intpnt),xs,ys,lm,!iterative_sparse)
                 : 1;
             if (!sparse_conic && st != 0)
                 st = conic_dense_run(ntot,neq,E,d,c,ncones_solver,cones,G,h,

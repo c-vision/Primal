@@ -18,8 +18,8 @@ point and a status you can check rather than trust.
 - **MILP, MIQP** — branch & bound with cutting planes, strong branching,
   probing and primal heuristics.
 - **SOCP** — primal-dual conic interior point with Nesterov–Todd scaling.
-  Primal also checks a closed-form solution for separable rotated cones
-  with one fixed positive member in each block.
+  Primal can eliminate rotated epigraphs with one fixed positive member
+  per block, including cases with up to four equalities on the tails.
 - **SDP** — Nesterov–Todd interior point on PSD blocks. For a single block
   with fixed diagonal and compatible objective signs, Primal constructs
   the primal and dual solution directly.

@@ -423,6 +423,26 @@ due uguaglianze supera la soglia storica del 5% contro entrambe le baseline.
 Il confronto diretto sul caso tra `39ebd1f` e la nuova build dà
 0.991 ms e 0.976 ms in 31 coppie alternate.
 
+### Recupero duale SOCP ed epigrafi ruotati con uguaglianze, 2026-11-18
+
+Due serie intercalate da 31 prove, baseline `b5e2029`, Clarabel 0.11.1
+a un thread. I tempi in ms sono le mediane delle due mediane.
+Il tempo Clarabel include costruzione e solve. Nei casi SOCP200 e
+RQUAD200 il numero indica le coordinate di coda, con 100 coni ciascuno.
+
+| Caso | Primal prima | Primal dopo | Clarabel |
+|---|---:|---:|---:|
+| SOCP200, pesi diversi e due uguaglianze | 0.991 | **0.339** | 0.655 |
+| RQUAD40, una somma sulle code | 0.554 | **0.010** | 0.134 |
+| RQUAD120, una somma sulle code | 0.396 | **0.022** | 0.341 |
+| RQUAD200, una somma sulle code | 0.680 | **0.035** | 0.571 |
+
+Il recupero duale chiude SOCP200 dopo il sesto passo. Il massimo fra
+residui pubblici e gap relativo è `1.7e-9` in quel caso, e al massimo
+`1.1e-15` nei tre RQUAD. Le soglie del task restano a `1e-8`.
+[Recupero duale](algorithms/socp.md)
+· [Eliminazione RQUAD](algorithms/socp_fixed_reduction.md#rotated-epigraphs-with-equalities-on-the-tails)
+
 ### Baseline della matrice, 2026-11-13
 
 Generatore `bench/pexp_matrix.c`, runner `bench/pexp_matrix.py` (costruisce il

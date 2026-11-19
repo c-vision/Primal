@@ -30,6 +30,28 @@ tolerance is multiplied by the smaller of 1 and the original/shifted
 `1+infinity-norm` ratios for d and h. The reduced c norm cannot increase.
 No declared tolerance, centering rule or iteration limit is increased.
 
+## Rotated epigraphs with equalities on the tails
+
+A rotated block $2u_i w_i\geq\|v_i\|^2$ with fixed $u_i>0$ and
+positive cost $c_i$ on $w_i$ contributes
+$c_i\|v_i\|^2/(2u_i)$ after eliminating $w_i$.
+Independent blocks therefore have a diagonal positive Hessian $D$ on
+their tail coordinates $x$. If the equalities $E x=d$ touch only those
+coordinates, write $x_0=-D^{-1}c$ for the unconstrained minimizer. In the
+public sign convention, the equality multiplier solves
+
+$$
+(E D^{-1}E^\top)y=E x_0-d,\qquad x=x_0-D^{-1}E^\top y.
+$$
+
+The implementation uses a Cholesky factorization for up to four
+equalities. It reconstructs the rotated cone multipliers with the
+adjusted costs $c+E^\top y$, then verifies the equations, cone
+memberships and objective gap. If the reduced system is singular,
+the certificate fails, or an equality touches $w_i$, the general conic
+solver takes over. Test `T317` checks the four-row limit, fallback
+at five rows and fallback for an equality on an epigraph.
+
 ## Sparse factorization
 
 The augmented LU fallback orders columns `[lambda,x,y]`: local cone

@@ -187,7 +187,7 @@ these holds, in which case that iteration uses the sparse **augmented LU** (`spl
   matrix exceeds $10^{10}$.
 
 Close to the optimum both $s$ and $\lambda$ approach the cone boundary and the NT direction
-becomes unavailable, so a solve typically ends on the LU direction.
+can become unavailable. The augmented LU then supplies the direction.
 
 **Corrector.** The dense solver takes the centered corrector described above. The
 *production sparse* solver adds a **second-order** term: the shift
@@ -205,11 +205,26 @@ residual (floor $10^{-9}$) and the iteration continues.
 sides, and its bound multipliers are lifted back from stationarity
 ([fixed reduction](socp_fixed_reduction.md)).
 
+**Dual recovery near convergence.** When the primal residual and gap
+already pass but stationarity is slightly above tolerance, the solver can
+reconstruct the dual before another Newton step. If each variable appears
+in exactly one second-order cone row, with coefficient $g_j$, it adds
+$(r_d)_j/g_j$ to that row's multiplier. This restores
+$c+E^\top y-G^\top\lambda=0$. The method also constructs a feasible
+anchor at $y=0$ by assigning the objective costs to the cone rows and
+setting the orthant multipliers to zero. It blends the reconstructed dual
+towards that anchor only as far as cone membership requires. The solver
+checks cone membership, stationarity and the gap with the original
+tolerances before accepting the result. Test `T316` uses the known dual
+direction for weighted cones with two equalities.
+
 **Which route.** `optimize_conic` (`primal_conicopt.c`) chooses the sparse route for large
 models, and since `01b4673` also for a smaller model that has at least 16 three-dimensional
 Lorentz blocks, at most 4 equalities, at least 96 KKT rows, no PSD or nonlinear parts and
 coordinate slack rows with a single entry. That sparse attempt does not retry the dense route.
-Otherwise the dense route runs. The opt-in [symmetric KKT](socp_symmetric_kkt.md)
+Eligible fixed-axis rotated epigraphs can be solved directly before the
+interior-point iteration. Otherwise the dense route runs for the small
+models. The opt-in [symmetric KKT](socp_symmetric_kkt.md)
 (`GMB_SOCP_LDL`, experimental) is a third operator for the sparse route. Mixed models with
 PSD or exponential blocks use the [unified conic route](semidefinite_programming.md).
 

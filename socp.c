@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 #include "socp.h"
 #include "linalg.h"
 
@@ -1174,6 +1175,88 @@ static double spchol_cond_diag(const SpChol *L){
  *
  *       GMB_NO_NT environment variable forces the LU path.
  */
+/* If cone rows expose each variable once, the whole stationarity residual
+ * for that variable can be put in its SOC multiplier. Mixing that dual
+ * with the interior dual at y=0 restores cone membership. Publish only
+ * after checking stationarity, cone membership and the original gap. */
+static int socp_restore_dual(const SpMat *E, const SpMat *G, const SocpCone *cones,
+                            const int *off, int count, int n, int p, int K,
+                            const double *c, const double *d, const double *h,
+                            const double *rd, double pobj, double dual_tol,
+                            double gap_tol, double *y, double *lam,
+                            double *candidate, double *anchor, double *trial_y,
+                            double *work, double *residual) {
+    double beta = 0.0;
+    memset(work, 0, (size_t)n * sizeof(*work));
+    for (int k = 0; k < count; k++) {
+        int o = off[k], dim = cones[k].nmem;
+        if (cones[k].type == 0) {
+            for (int i = o; i < o + dim; i++) {
+                if (!(lam[i] >= 0.0) || !isfinite(lam[i])) return 0;
+                candidate[i] = lam[i];
+                anchor[i] = 0.0;
+            }
+            continue;
+        }
+        double nt = 0.0, na = 0.0;
+        for (int i = o; i < o + dim; i++) {
+            int q = G->rp[i];
+            if (G->rp[i+1] - q != 1 || G->rv[q] == 0.0) return 0;
+            int j = G->ri[q];
+            if (work[j] != 0.0) return 0;
+            work[j] = 1.0;
+            candidate[i] = lam[i] + rd[j] / G->rv[q];
+            anchor[i] = c[j] / G->rv[q];
+            if (!isfinite(candidate[i]) || !isfinite(anchor[i])) return 0;
+            if (i > o) {
+                nt += candidate[i] * candidate[i];
+                na += anchor[i] * anchor[i];
+            }
+        }
+        nt = sqrt(nt);
+        na = sqrt(na);
+        double target_margin = candidate[o] - nt;
+        double anchor_margin = anchor[o] - na;
+        if (!(anchor_margin > 0.0) || !isfinite(target_margin)) return 0;
+        /* Concavity of head minus tail norm gives the required mixture.
+         * Leave enough margin for evaluating that mixture in double. */
+        double roundoff = 8.0 * DBL_EPSILON *
+                          fmax(fabs(candidate[o]) + nt, fabs(anchor[o]) + na);
+        if (target_margin < roundoff) {
+            if (!(anchor_margin > roundoff)) return 0;
+            beta = fmax(beta, (roundoff - target_margin) /
+                              (anchor_margin - target_margin));
+        }
+    }
+    for (int j = 0; j < n; j++) if (work[j] == 0.0) return 0;
+    double keep = 1.0 - beta;
+    if (!(keep > 0.0)) return 0;
+    for (int i = 0; i < p; i++) trial_y[i] = keep * y[i];
+    for (int i = 0; i < K; i++) candidate[i] = keep * candidate[i] + beta * anchor[i];
+
+    double dobj = 0.0;
+    for (int i = 0; i < p; i++) dobj -= d[i] * trial_y[i];
+    for (int i = 0; i < K; i++) dobj -= h[i] * candidate[i];
+    double gap = fabs(pobj - dobj) / (1.0 + fabs(pobj));
+    if (!isfinite(gap) || !(gap <= gap_tol)) return 0;
+
+    for (int k = 0; k < count; k++) {
+        if (cones[k].type == 0) continue;
+        int o = off[k];
+        double norm = 0.0;
+        for (int i = 1; i < cones[k].nmem; i++)
+            norm += candidate[o+i] * candidate[o+i];
+        if (!(candidate[o] >= sqrt(norm))) return 0;
+    }
+    sp_colT(E, trial_y, work, n);
+    sp_colT(G, candidate, residual, n);
+    for (int j = 0; j < n; j++)
+        if (!(fabs(c[j] + work[j] - residual[j]) <= dual_tol)) return 0;
+    memcpy(y, trial_y, (size_t)p * sizeof(*y));
+    memcpy(lam, candidate, (size_t)K * sizeof(*lam));
+    return 1;
+}
+
 static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,const double *c,
                       int ncones,const SocpCone *cones,const double *G,const double *h,
                       double tol_gap,double tol_feas,int max_iter,double *x,double *y,double *lam,
@@ -1341,6 +1424,16 @@ static int socp_solve_sparse_impl(int n,int p,const double *E,const double *d,co
         if(getenv("GMB_DBG")&&(it%10==0||feas_p<=tol_feas))
             fprintf(stderr,"socp_sp it=%d feas_p=%.3g feas_d=%.3g gap=%.3g mu=%.3g\n",it,feas_p,feas_d,gap,mu);
         if(feas_p<=tol_feas&&feas_d<=tol_feas&&gap<=tol_gap){status=OPT_OK;break;}
+        if (!qd_enabled && it > 0 && p > 0 && feas_p <= tol_feas &&
+            feas_d <= 8.0 * tol_feas && gap <= tol_gap &&
+            socp_restore_dual(&SE, &SG, cones, off, ncones, n, p, K, c, d, h,
+                              rd, pobj, tol_feas * cnorm, tol_gap, ys, lm,
+                              dlm, ds, dy, t1, dx)) {
+            if (getenv("GMB_DBG")) fprintf(stderr,"socp_sp it=%d restored dual\n",it);
+            status = OPT_OK;
+            break;
+        }
+
         /* ---- choose direction: NT (symmetric, sparse Cholesky) with an
          * augmented sparse-LU fallback near the cone boundary ---- */
         int use_nt = (n>0) && !getenv("GMB_NO_NT");

@@ -22099,8 +22099,106 @@ static void test_t315(void) {
     }
 }
 
+/* T316: weighted SOCs with separate sums for the two transverse
+ * coordinates. The cheapest blocks can carry the vector (0.6, 0.4);
+ * its unit direction gives both an objective and a dual oracle. */
+static void test_t316(void) {
+    cur_name = "T316 weighted SOCP dual certificate";
+    enum { blocks = 100, tails = 2 * blocks, vars = 3 * blocks };
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    PRIMAL_appendvars(t, vars);
+    PRIMAL_appendcons(t, 2);
+    for (int i = 0; i < tails; i++) {
+        PRIMAL_putvarbound(t, i, PRIMAL_BK_FR, 0, 0);
+        PRIMAL_putaij(t, i % 2, i, 1.0);
+    }
+    PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 0.6, 0.6);
+    PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 0.4, 0.4);
+    for (int k = 0; k < blocks; k++) {
+        int head = tails + k;
+        int members[] = {head, 2*k, 2*k+1};
+        PRIMAL_putvarbound(t, head, PRIMAL_BK_LO, 0, 0);
+        PRIMAL_putcj(t, head, 1.0 + 0.05 * (k % 7));
+        PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0, 3, members);
+    }
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T316 optimize");
+    double po = INFINITY, du = -INFINITY, y[2] = {0};
+    double pr = INFINITY, pv = INFINITY, pc = INFINITY;
+    double dr = INFINITY, dv = INFINITY, dc = INFINITY;
+    check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                   &du, &dr, &dv, NULL, &dc),
+             PRIMAL_RES_OK, "T316 solution quality");
+    const double goal = hypot(0.6, 0.4);
+    check(fabs(po - goal) <= 1e-8 && fabs(du - goal) <= 1e-8, "T316 known optimum");
+    check(fabs(po - du) / (1 + fabs(po)) <= 1e-8, "T316 objective gap");
+    check(fmax(pr, fmax(pv, pc)) <= 1e-8, "T316 primal feasibility");
+    check(fmax(dr, fmax(dv, dc)) <= 1e-8, "T316 dual feasibility");
+    check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "T316 row multipliers");
+    check(hypot(y[0], y[1]) <= 1.0 + 1e-8, "T316 dual of the cheapest cone");
+    check(fabs(y[0] + 0.6/goal) <= 1e-6 && fabs(y[1] + 0.4/goal) <= 1e-6,
+          "T316 row multiplier direction");
+    pend(&p);
+}
+
+/* T317: fixed-axis epigraphs with sums on both tails. An extra equality
+ * on an epigraph or a fifth tail equality uses the general conic engine. */
+static void test_t317(void) {
+    cur_name = "T317 fixed rotated epigraphs with equalities";
+    enum { blocks = 6, dim = 4, vars = blocks * dim };
+    for (int mode = 0; mode < 4; mode++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int cap = mode == 1, rows = 2 + mode;
+        PRIMAL_appendvars(t, vars);
+        PRIMAL_appendcons(t, rows);
+        for (int j = 0; j < vars; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0, 0);
+        for (int k = 0; k < blocks; k++) {
+            int j = k * dim;
+            int mem[] = {j + k%2, j + 1 - k%2, j+2, j+3};
+            PRIMAL_putvarbound(t, j+1, PRIMAL_BK_FX, 2, 2);
+            PRIMAL_putcj(t, j, 2);
+            PRIMAL_putaij(t, 0, j+2, 1);
+            PRIMAL_putaij(t, 1, j+3, 1);
+            PRIMAL_appendcone(t, PRIMAL_CT_RQUAD, 0, 4, mem);
+        }
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, blocks, blocks);
+        PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 2*blocks, 2*blocks);
+        if (cap) {
+            PRIMAL_putaij(t, 2, 0, 1);
+            PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 2, 2);
+        } else {
+            for (int i = 2; i < rows; i++) {
+                PRIMAL_putaij(t, i, (i-2)*dim + 2, 1);
+                PRIMAL_putconbound(t, i, PRIMAL_BK_FX, 1, 1);
+            }
+        }
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "T317 optimize");
+        double po = INFINITY, du = -INFINITY, y[5] = {0};
+        double pr = INFINITY, pv = INFINITY, pc = INFINITY;
+        double dr = INFINITY, dv = INFINITY, dc = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                       &du, &dr, &dv, NULL, &dc),
+                 PRIMAL_RES_OK, "T317 solution quality");
+        double rest = blocks * sqrt(5.0) - sqrt(8.0);
+        double goal = cap ? 4 + rest*rest / (2*(blocks-1)) : 2.5*blocks;
+        check(fabs(po - goal) <= 1e-8 * (1 + goal), "T317 known objective");
+        check(fabs(po - du) / (1 + fabs(po)) <= 1e-8, "T317 objective gap");
+        check(fmax(pr, fmax(pv, pc)) <= 1e-8, "T317 primal feasibility");
+        check(fmax(dr, fmax(dv, dc)) <= 1e-8, "T317 dual feasibility");
+        if (!cap) {
+            check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "T317 equality multipliers");
+            check(fabs(y[0] + 1) <= 1e-6 && fabs(y[1] + 2) <= 1e-6,
+                  "T317 analytic multipliers");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t317();
+    test_t316();
     test_t315();
     test_t314();
     test_t313();
