@@ -22195,8 +22195,39 @@ static void test_t317(void) {
     }
 }
 
+/* T318: the active inequality has a row index beyond the variable table. */
+static void test_t318(void) {
+    enum { vars = 3, active = 7, rows = active + 1 };
+    const int cone[] = {1, 2};
+    for (int upper = 0; upper <= 1; upper++) {
+        cur_name = upper ? "T318 late conic upper row dual" : "T318 late conic lower row dual";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, vars);
+        PRIMAL_appendcons(t, rows);
+        PRIMAL_putintparam(t, PRIMAL_IPAR_PRESOLVE, 0);
+        PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0, 0);
+        PRIMAL_putvarbound(t, 1, PRIMAL_BK_FX, 1, 1);
+        PRIMAL_putvarbound(t, 2, PRIMAL_BK_FX, 0, 0);
+        PRIMAL_putcj(t, 0, upper ? -1 : 1);
+        for (int i = 0; i < active; i++) PRIMAL_putconbound(t, i, PRIMAL_BK_FR, 0, 0);
+        PRIMAL_putconbound(t, active, upper ? PRIMAL_BK_UP : PRIMAL_BK_LO, 2, 2);
+        PRIMAL_putaij(t, active, 0, 1);
+        PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0, 2, cone);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve conic inequality");
+        double y[rows] = {0}, residual = INFINITY;
+        check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "row multipliers");
+        check(fabs(y[active] - (upper ? 1 : -1)) <= 1e-8, "active row multiplier");
+        check_rc(PRIMAL_getdualinfeas(t, PRIMAL_SOL_ITR, &residual), PRIMAL_RES_OK,
+                 "dual infeasibility");
+        check(residual <= 1e-8, "original model stationarity");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t318();
     test_t317();
     test_t316();
     test_t315();

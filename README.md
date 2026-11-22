@@ -320,6 +320,9 @@ The [full 49-instance comparison](BENCHMARKS.md#istanze-pubbliche)
 includes timings, timeouts and solver failures. Primal timings cover
 `PRIMAL_optimize` with the file reading excluded, one thread; references as in the
 methodology, with Pajarito 0.8.3 and Hypatia 0.11.0 in Julia 1.13.2 (warm run).
+The [November 22 follow-up](BENCHMARKS.md#verifica-mirata-del-2026-11-22)
+reports successful solves for `PRIMAL1` and `LogExpCR-n20-m400`, with
+accuracy checks and timings against Clarabel.
 
 ## Documentation
 

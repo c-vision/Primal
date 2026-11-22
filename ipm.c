@@ -1576,7 +1576,13 @@ int ipm_solve_qp_csc(const int *Aptr, const int *Arow, const double *Aval,
         double mx = 0.0, mz = 0.0;
         for (int j = 0; j < n; j++) { mx += x[j]; mz += z[j]; }
         mx /= (double)n; mz /= (double)n;
-        double delta = 1e-6, dp = delta * (1.0 + mx), dd = delta * (1.0 + mz);
+        double delta = 1e-6;
+        /* Once only stationarity remains, let the regularization shrink with
+         * complementarity. A fixed perturbation can dominate the final
+         * Newton step when the Hessian has flat directions. */
+        if (feas_p <= tol_pfeas && gap <= tol_gap)
+            delta = fmax(1e-12, fmin(delta, mu));
+        double dp = delta * (1.0 + mx), dd = delta * (1.0 + mz);
         for (int j = 0; j < n; j++) D[j] = (z[j] + dd) / (x[j] + dp);
         for (int p = 0; p < nnzQ; p++) Mval[p] = Qval[p];
         for (int j = 0; j < n; j++) Mval[diagpos[j]] += D[j];

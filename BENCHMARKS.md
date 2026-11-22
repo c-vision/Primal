@@ -618,13 +618,49 @@ portano. Su MPS e MILP SCIP c'è):
 - `expdesign_D_12_6`: Pajarito chiude a `-0.437` dove i punti ammissibili
   arrivano a `-0.520253`; il README della PR lo documenta come limite del taglio.
 - `hinf1`: SCS `2.0339587` e Pajarito `2.0326681` contro il `2.0326` di SDPLIB.
-- **Primal non risolve** (e questo è il dato interessante, non un refuso): le
-  righe SDP "infeasible by construction" (`infeas_clean_*`, `weak_clean_*`) e
-  cinque SDP/SOCP SDP puri (`control1`, `hinf1`, `theta1`, `qap5`, `mcp100`,
-  `PRIMAL1`), più i modelli MIP+cono `port_*`, `expdesign_D_*`, `kpart_diw`.
-  Sono le famiglie su cui è atterrato il lavoro di novembre (KKT sparso conico,
-  Newton ridotto, fix SDP `125a3be`): il confronto con i numeri della PR è
-  nella sezione "Cosa è cambiato rispetto alla PR #32", sotto.
+- **Primal si ferma senza soluzione o senza certificato** sui casi SDP
+  costruiti come inammissibili (`infeas_clean_*`, `weak_clean_*`), sui cinque
+  SDP puri `control1`, `hinf1`, `theta1`, `qap5`, `mcp100`, sul QP `PRIMAL1`
+  e sui modelli misto-interi conici `port_*`, `expdesign_D_*`, `kpart_diw`.
+  Il confronto con la PR #32 è riportato sotto.
+
+### Verifica mirata del 2026-11-22
+
+Queste prove aggiornano i singoli casi indicati nella fotografia del 19 novembre.
+
+Sul QP pubblico `PRIMAL1`, il passo finale a regolarizzazione adattiva
+risolve il caso che nella tabella del 19 novembre era fermo a `rc=1007`.
+Due serie da 21 solve alternate fra la base `cf8a3c8` e la build modificata,
+con Clarabel 0.11.1 a un thread. Tutti i tempi escludono lettura, conversione
+e costruzione del solver di riferimento. Le tolleranze restano `1e-8`.
+
+| Istanza | Primal prima (ms) | Primal dopo (ms) | Clarabel (ms) |
+|---|---:|---:|---:|
+| `PRIMAL1` | `rc=1007` in 42/42 | 8.653 / 8.655 | 2.619 / 2.582 |
+
+La build modificata restituisce `OPTIMAL` in 42/42 solve, obiettivo
+`-0.03501296573288044`, violazione pubblica massima `3.43e-10` e gap relativo
+`1.98e-11`. Lo scarto di obiettivo rispetto a Clarabel, scalato per
+`1 + abs(obj_ref)`, è `5.59e-10`. I QP di controllo `DUAL1` e `CVXQP1_S`
+mantengono stato e obiettivo e cambiano al massimo dello 0,4% nelle mediane.
+Il confronto usa gli stessi dati Maros–Meszaros della tabella storica.
+
+Sul CBLIB `LogExpCR-n20-m400`, il correttore nativo a complementarità zero
+chiude entro le tolleranze prima del fallback a tagli. Mediana di tre solve
+senza debug, con lo stesso criterio di misura e tolleranze.
+
+| Istanza | Primal prima (s) | Primal dopo (s) | Clarabel (s) |
+|---|---:|---:|---:|
+| `LogExpCR-n20-m400` | >60 | 2.423 | 0.02027 |
+
+Primal restituisce `OPTIMAL` in 3/3 solve, obiettivo `0.016481437317`, gap
+relativo `2.60e-9` e violazione pubblica massima `4.76e-13`. L'obiettivo di
+Clarabel è `0.016481441943` e lo scarto scalato è `4.55e-9`.
+
+Su `gp_dave_1`, il ripristino dei moltiplicatori delle righe originali
+riduce il residuo di stazionarietà pubblicato da `3.312` a `1.70e-10`.
+L'obiettivo primale e il gap relativo rimangono rispettivamente
+`5.506526406863336` e `5.92e-10` nella verifica fra le due build.
 
 ### Perché il README porta solo due righe
 

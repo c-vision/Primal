@@ -283,6 +283,13 @@ PRIMAL_optimize
 The tangent-cut route replaces the cone by supporting hyperplanes ([tangent cuts](tangent_cuts.md)); a near-optimal
 point saved by the native route is published only if the cuts do not answer.
 
+In secant mode on a model whose only nonscalar cones are primal exponential
+blocks, the
+corrector can target zero complementarity once both relative residuals are
+below one tenth of their tolerances and the gap is within 5% above its
+tolerance. The cone line search and the final accuracy checks still apply.
+[`sdp_ipm_run`](../sdp.c)
+
 ## Worked example, solved
 
 $$

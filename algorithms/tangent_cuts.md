@@ -157,6 +157,10 @@ active and the witness check fails, the result is an iteration limit.
   objective and constraints as $C_j-\sum_i y_i A_j^i$. The PSD example
   above checks the published matrix independently. An equality between
   reported objective values alone gives no check on dual cone membership.
+- The conic master maps inequality multipliers by their original constraint
+  indices. Its variable-bound multipliers use a separate column index. Test
+  `T318` checks stationarity with an active constraint whose row index exceeds
+  the number of variables. [Conic master and dual mapping](../primal_conicopt.c)
 - The LP or conic master includes extra rows. Its raw infeasibility or
   recession vector cannot be passed straight through as an original-model
   [certificate](certificates.md). Inspect the model status and whether the

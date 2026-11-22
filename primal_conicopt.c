@@ -1077,13 +1077,15 @@ static PRIMALrescodee optimize_conic_impl(PRIMALtask_t t, int s) {
             zmin[mem[1]] -= (rowKind[q] == CR_RQUAD_T ? r2 : -r2) * lam;
             continue;
         }
-        if (rowIdx[q] >= nvar) continue;  /* aux rows: dual discarded */
+        /* Constraint indices are independent of variable indices.
+         * Only variable bounds on internal columns are omitted. */
+        int idx = rowIdx[q];
         switch (rowKind[q]) {
-            case CR_ROWLO: ymin[rowIdx[q]] -= lam; break;
-            case CR_ROWUP: ymin[rowIdx[q]] += lam; break;
-            case CR_VARLO: zmin[rowIdx[q]] -= lam; break;
-            case CR_VARUP: zmin[rowIdx[q]] += lam; break;
-            case CR_VARNEG: zmin[rowIdx[q]] += lam; break;
+            case CR_ROWLO: ymin[idx] -= lam; break;
+            case CR_ROWUP: ymin[idx] += lam; break;
+            case CR_VARLO: if (idx < nvar) zmin[idx] -= lam; break;
+            case CR_VARUP:
+            case CR_VARNEG: if (idx < nvar) zmin[idx] += lam; break;
             case CR_CUT:
                 {
                     int ci = q - r_cut;

@@ -57,7 +57,10 @@ $Q\succeq0$ and $x,z>0$.
 
 **What PRIMAL regularizes.** The sparse engine (`ipm_solve_qp_csc`) uses
 $D_{jj}=(z_j+d_d)/(x_j+d_p)$ with $d_p=\delta(1+\bar x)$, $d_d=\delta(1+\bar z)$ and
-$\delta=10^{-6}$, and replaces the second equation by $A\Delta x+\delta\Delta y=-r_p$.
+$\delta=10^{-6}$ at the start, and replaces the second equation by
+$A\Delta x+\delta\Delta y=-r_p$. Once the primal residual and gap pass their
+tolerances, the sparse engine tries $\delta=\max(10^{-12},\min(10^{-6},\mu))$
+to reduce the perturbation in the final stationarity steps.
 The dense engine (`ipm_solve_std`) factors the augmented matrix
 $\begin{pmatrix}-(Q+D+\delta I)&A^\top\\A&-\delta I\end{pmatrix}$ with
 $\delta=10^{-8}$ (raised by a factor of 100 if the factorization fails). The two

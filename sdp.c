@@ -3165,6 +3165,17 @@ redo_dir:
                 if (rescue_iters > 0) { if (sigma < 0.7) sigma = 0.7; rescue_iters--; }
                 if (sigma > 1) sigma = 1;
                 if (polish_center) sigma = 1.0;
+                /* On a pure exponential problem already inside the residual
+                 * gate, centering can stall just above the requested gap.
+                 * Target zero complementarity and keep the cone line search. */
+                if (secant && nb == 0 && nsoc == 0 && nep > 0 &&
+                    Q.pri <= 0.1 * rtol_pri && Q.dual <= 0.1 * rtol_dual &&
+                    Q.gap > rtol_gap && Q.gap <= 1.05 * rtol_gap) {
+                    int pure_pexp = 1;
+                    for (int i = 0; i < nep && pure_pexp; i++)
+                        pure_pexp = ekind[i] == EXPCONE_PEXP;
+                    if (pure_pexp) sigma = 0.0;
+                }
             } else {
                 /* Rescue for a MULTI-BLOCK PSD path whose Schur elimination lost
                  * the small directions near a PSD face: when the previous step
