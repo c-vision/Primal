@@ -618,11 +618,12 @@ portano. Su MPS e MILP SCIP c'è):
 - `expdesign_D_12_6`: Pajarito chiude a `-0.437` dove i punti ammissibili
   arrivano a `-0.520253`; il README della PR lo documenta come limite del taglio.
 - `hinf1`: SCS `2.0339587` e Pajarito `2.0326681` contro il `2.0326` di SDPLIB.
-- **Primal si ferma senza soluzione o senza certificato** sui casi SDP
+- **Nel confronto del 19 novembre Primal si ferma senza soluzione o senza certificato** sui casi SDP
   costruiti come inammissibili (`infeas_clean_*`, `weak_clean_*`), sui cinque
   SDP puri `control1`, `hinf1`, `theta1`, `qap5`, `mcp100`, sul QP `PRIMAL1`
   e sui modelli misto-interi conici `port_*`, `expdesign_D_*`, `kpart_diw`.
-  Il confronto con la PR #32 è riportato sotto.
+  Le verifiche del 22 e 23 novembre riportano i risultati successivi per
+  `PRIMAL1`, `LogExpCR-n20-m400` e `control1`.
 
 ### Verifica mirata del 2026-11-22
 
@@ -662,26 +663,34 @@ riduce il residuo di stazionarietà pubblicato da `3.312` a `1.70e-10`.
 L'obiettivo primale e il gap relativo rimangono rispettivamente
 `5.506526406863336` e `5.92e-10` nella verifica fra le due build.
 
-### Perché il README porta solo due righe
+### Verifica mirata del 2026-11-23
 
-Il grassetto di questa tabella è il minimo di **un singolo run**, e su istanze
-da 0,1–1 ms non è stabile. Rimisurate le cinque righe in cui Primal risultava
-primo (5 solve per cella; le celle Julia sono la mediana di 3 batch con run
-caldo), solo **due** tengono:
+Su `control1` (SDPLIB), la base `c52903d` termina con `rc=1007` dopo 23.72 s.
+Con l'equilibratura per congruenza delle LMI affini il modello originale
+raggiunge `OPTIMAL` in 7 solve su 7. Mediana **60.44 ms**, un thread e sola
+chiamata di solve. Obiettivo primale `17.78462672722526`,
+coerente con `17.78463` alla precisione pubblicata da SDPLIB. Il gap relativo
+è `8.74e-10` e la massima violazione pubblica è `3.56e-15`, con tolleranze
+`1e-8`. Le misure si riferiscono al punto ricostruito nelle unità originali.
+[Equilibratura e verifica](algorithms/semidefinite_programming.md#equilibrating-an-affine-matrix-inequality)
+
+### Vittorie confermate sulle istanze pubbliche
+
+Il grassetto nella tabella del 19 novembre indica il minimo di **un singolo
+run**. Dopo cinque solve per cella e tre batch caldi per i riferimenti
+Julia, Primal risulta primo in due delle cinque righe ricontrollate.
 
 | istanza | Primal mediana 5 | migliore rivale | esito |
 |---|---:|---:|---|
 | `ex1223a` | 0.0110 | Pajarito 0.0167 | Primal primo (confermato) |
 | `HS21` | 0.000031 | Clarabel 0.000041 | Primal primo (confermato) |
-| `beck751` | 0.000748 | Clarabel 0.000392 | **Clarabel primo**: il singolo run mentiva |
+| `beck751` | 0.000748 | Clarabel 0.000392 | **Clarabel primo** |
 | `afiro` | 0.000131 | Clarabel 0.000116 | **Clarabel primo** |
 | `sc50a` | 0.000347 | HiGHS 0.000221 | **HiGHS primo** |
 
-Da qui la regola con cui il `README.md` riporta le istanze pubbliche: **solo le
-righe in cui Primal resta primo a mediana di 5**, con la tabella intera qui.
-Le due righe sono piccole (`ex1223a` 17×60, `HS21` 2×1) e non dicono nulla sulla
-scala: il valore della tabella è che mostra, senza selezione, dove siamo e dove
-non siamo.
+Il README riporta le vittorie confermate dalle misure ripetute, `ex1223a`
+e `HS21`. Le dimensioni delle due istanze sono rispettivamente `17 × 60`
+e `2 × 1`. [Public instance sets nel README](README.md#public-instance-sets)
 
 ## 3. Come estendere
 

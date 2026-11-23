@@ -22225,8 +22225,53 @@ static void test_t318(void) {
     }
 }
 
+static void t319_capture_route(void *handle, const char *message) {
+    if (strstr(message, "equilibrated affine SDP")) *(int *)handle = 1;
+}
+
+/* T319: X = [[4096*x,64],[64,1]] is PSD exactly when x >= 1. */
+static void test_t319(void) {
+    cur_name = "T319 affine SDP equilibration in original units";
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    const int dim = 2, row[] = {0, 0, 1}, col[] = {0, 1, 1};
+    const double rhs[] = {0.0, -64.0, -1.0}, one = 1.0;
+    PRIMAL_appendvars(t, 1);
+    PRIMAL_appendcons(t, 3);
+    PRIMAL_appendbarvars(t, 1, &dim);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_putaij(t, 0, 0, 4096.0);
+    for (int i = 0; i < 3; i++) {
+        int sym;
+        double coef = row[i] == col[i] ? -1.0 : -0.5;
+        PRIMAL_appendsparsesymmat(t, dim, 1, &row[i], &col[i], &one, &sym);
+        PRIMAL_putbaraij(t, i, 0, 1, &sym, &coef);
+        PRIMAL_putconbound(t, i, PRIMAL_BK_FX, rhs[i], rhs[i]);
+    }
+    int used = 0;
+    PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+    PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t319_capture_route);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve affine SDP");
+    check(used, "equilibrated result was accepted");
+    double po = NAN, du = NAN, pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+    double x[4] = {0}, z[4] = {0};
+    check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, NULL, &pb, NULL, NULL,
+                                    &du, NULL, &dv, &db, NULL), PRIMAL_RES_OK, "original quality");
+    check(fabs(po - 1) <= 1e-8 && fabs(du - 1) <= 1e-8, "known primal and dual values");
+    check(fmax(pr, pb) <= 1e-8 && fmax(dv, db) <= 1e-8, "original primal and dual feasibility");
+    check_rc(PRIMAL_getbarxj(t, PRIMAL_SOL_ITR, 0, x), PRIMAL_RES_OK, "original bar");
+    check_rc(PRIMAL_getbarsj(t, PRIMAL_SOL_ITR, 0, z), PRIMAL_RES_OK, "original dual bar");
+    check(fabs(x[0] - 4096) <= 1e-6 && x[1] == 64 && x[2] == 64 && x[3] == 1,
+          "congruence lifted to original entries");
+    check(fabs(z[0] * 4096 - 1) <= 1e-8 && fabs(z[1] * 64 + 1) <= 1e-7 &&
+          fabs(z[3] - 1) <= 1e-7, "dual lifted with the inverse map");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t319();
     test_t318();
     test_t317();
     test_t316();

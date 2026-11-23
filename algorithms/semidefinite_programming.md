@@ -322,6 +322,37 @@ The sparse formulation of the same KKT system (`sdp_sp_build`, used when the den
 $N^3+m^2\sum d_j^2$ reaches $4\cdot10^8$; override with `GMB_SDP_DENSE` / `GMB_SDP_SPARSE`) emits
 the same entries one by one and produces the same iterates.
 
+## Equilibrating an affine matrix inequality
+
+Some models link every entry of a PSD block to an affine function of free
+scalars, so the constraint is $X=F(x)$ and $X\succeq0$. A diagonal
+congruence replaces it by $\widehat X=D F(x) D$ and
+$\widehat X\succeq0$. For positive diagonal $D$, these feasible sets have
+the same scalar points, since
+$v^\top D X D v=(Dv)^\top X(Dv)$.
+
+For each coordinate $p$, PRIMAL computes the largest absolute coefficient
+$m_p$ across the affine entries in row $p$ of $F$, including constants. It
+uses $D_{pp}=1/\sqrt{m_p}$ when an eligible block has at least a $64$-fold
+spread in these magnitudes. The auxiliary solve keeps the single-entry
+coefficient of the bar fixed and scales the scalar coefficients and right
+side of that equality by $D_{pp}D_{qq}$.
+
+For example, $X=\begin{pmatrix}4096x&64\\64&1\end{pmatrix}$ becomes
+$\widehat X=\begin{pmatrix}x&1/8\\1/8&1/64\end{pmatrix}$.
+Both determinants are nonnegative exactly when $x\ge1$. The auxiliary
+solve leaves $x$ in its original units. PRIMAL rebuilds $X=F(x)$ from the
+original rows and maps the auxiliary row multipliers back through the same
+positive scaling. The corresponding dual slack is $Z=D\widehat ZD$.
+Rebuilding the primal block avoids magnifying the scaled equality error
+by dividing the computed block by small factors.
+
+The shortcut checks the original equalities, both PSD cones, scalar
+stationarity and the relative objective gap before returning the result.
+The ordinary route handles a rejected result. Test `T319` checks the
+original entries and both objectives on the example above.
+[`sdp_affine_solve`](../primal_sdptask.c)
+
 ## How PRIMAL reaches this code, and where it goes if it fails
 
 `PRIMAL_optimize` sends a task with bar variables to

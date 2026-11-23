@@ -307,22 +307,21 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-On **2026-11-19**, Primal was fastest on the two public instances below
-after repeating the measurements. Times are medians of five solves. The
-Julia reference uses the median of three warm batches.
+The table lists the public instances on which Primal was fastest in the
+repeated comparison on **2026-11-19**. Times are medians of five solves.
+The Julia reference uses the median of three warm batches.
 
 | instance | set | class | vars x cons | Primal (s) | best reference (s) | obj |
 |---|---|---|---:|---:|---:|---:|
 | ex1223a | CBLIB | exp + int | 17 x 60 | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
 | HS21 | Maros-Meszaros | QP | 2 x 1 | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
 
-The [full 49-instance comparison](BENCHMARKS.md#istanze-pubbliche)
-includes timings, timeouts and solver failures. Primal timings cover
-`PRIMAL_optimize` with the file reading excluded, one thread; references as in the
-methodology, with Pajarito 0.8.3 and Hypatia 0.11.0 in Julia 1.13.2 (warm run).
-The [November 22 follow-up](BENCHMARKS.md#verifica-mirata-del-2026-11-22)
-reports successful solves for `PRIMAL1` and `LogExpCR-n20-m400`, with
-accuracy checks and timings against Clarabel.
+Primal timings cover `PRIMAL_optimize` on one thread, excluding file reading.
+The benchmark report includes the full comparison and the follow-up solves on
+`PRIMAL1`, `LogExpCR-n20-m400` and `control1`.
+[49 public instances](BENCHMARKS.md#istanze-pubbliche) ·
+[November 22 results](BENCHMARKS.md#verifica-mirata-del-2026-11-22) ·
+[November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23)
 
 ## Documentation
 

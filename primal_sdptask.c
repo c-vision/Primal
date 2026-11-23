@@ -185,12 +185,183 @@ static int sdp_tri_csr(const SdpTri *T, int m, int n, int **orp, int **oci, doub
  * plus a cap row.  Used instead of the tangent-cut outer approximation (which
  * is limited by its dense LP master). */
 static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s);
+
+typedef struct {
+    int block, p, q;
+    double left, right;
+} SdpAffineRow;
+
+/* Recognize complete entrywise links A_i x - X[p,q] = b_i. */
+static SdpAffineRow *sdp_affine_scaling(PRIMALtask_t t) {
+    int nb = t->numbarvar, nr = t->numcon;
+    if (!nb || !nr || !t->numvar || t->numcones || t->nbarC ||
+        t->nbarA != nr || t->has_qobj || t->has_qcon || t->has_warm ||
+        !t->scaling || t->cbfn || t->progcb || t->optimizer_max_time >= 0.0 ||
+        t->lower_obj_cut > -0.5 * DBL_MAX || t->upper_obj_cut < 0.5 * DBL_MAX ||
+        iter_cap(t->max_iter_intpnt) <= 1 || getenv("GMB_SDP_HSD")) return NULL;
+    for (int j = 0; j < t->numvar; j++)
+        if (t->bkx[j] != PRIMAL_BK_FR || t->vartype[j] != PRIMAL_VAR_TYPE_CONT)
+            return NULL;
+    size_t *offset = calloc((size_t)nb + 1, sizeof(*offset));
+    SdpAffineRow *rows = calloc((size_t)nr, sizeof(*rows));
+    unsigned char *seen = calloc((size_t)nr, sizeof(*seen));
+    double *largest = calloc((size_t)nr, sizeof(*largest));
+    double *mag = malloc((size_t)nr * sizeof(*mag));
+    int imbalanced = 0, use = 0;
+    if (!offset || !rows || !seen || !largest || !mag) goto done;
+    for (int b = 0; b < nb; b++) {
+        size_t d = (size_t)t->barDim[b];
+        offset[b+1] = offset[b] + d * (d + 1) / 2;
+    }
+    if (offset[nb] != (size_t)nr) goto done;
+    for (int i = 0; i < nr; i++) {
+        if (t->bkc[i] != PRIMAL_BK_FX || !isfinite(t->blc[i])) goto done;
+        rows[i].block = -1;
+        mag[i] = fabs(t->blc[i]);
+    }
+    for (int k = 0; k < nr; k++) {
+        int i = t->barA_con[k], b = t->barA_bar[k], m = t->barA_sym[k];
+        if (rows[i].block >= 0 || t->sym_nnz[m] != 1) goto done;
+        int p = t->sym_subi[m][0], q = t->sym_subj[m][0];
+        double entry = t->barA_coef[k] * t->sym_val[m][0];
+        if (entry != (p == q ? -1.0 : -0.5)) goto done;
+        int d = t->barDim[b];
+        size_t index = offset[b] + (size_t)bar_pack(d, p < q ? p : q, p < q ? q : p);
+        if (seen[index]) goto done;
+        seen[index] = 1;
+        rows[i] = (SdpAffineRow){b, p, q, 0.0, 0.0};
+    }
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *col = &t->cols[j];
+        for (int k = 0; k < col->nz; k++) {
+            int i = col->sub[k];
+            if (!isfinite(col->val[k])) goto done;
+            mag[i] = fmax(mag[i], fabs(col->val[k]));
+        }
+    }
+    for (int i = 0; i < nr; i++) {
+        const SdpAffineRow *a = &rows[i];
+        double *block_mag = largest + offset[a->block];
+        block_mag[a->p] = fmax(block_mag[a->p], mag[i]);
+        block_mag[a->q] = fmax(block_mag[a->q], mag[i]);
+    }
+    for (int b = 0; b < nb; b++) {
+        double lo = HUGE_VAL, hi = 0.0;
+        for (int p = 0; p < t->barDim[b]; p++) {
+            double *v = &largest[offset[b] + p];
+            if (*v < 1e-16 || *v > 1e16) goto done;
+            lo = fmin(lo, *v);
+            hi = fmax(hi, *v);
+            *v = 1.0 / sqrt(*v);
+        }
+        if (hi >= 64.0 * lo) imbalanced = 1;
+    }
+    for (int i = 0; i < nr; i++) {
+        SdpAffineRow *a = &rows[i];
+        a->left = largest[offset[a->block] + a->p];
+        a->right = largest[offset[a->block] + a->q];
+    }
+    use = imbalanced;
+done:
+    free(offset); free(seen); free(largest); free(mag);
+    if (!use) { free(rows); return NULL; }
+    return rows;
+}
+
+/* The auxiliary task owns all work buffers until the original KKT checks
+ * pass. Rebuilding X from the original equalities avoids magnifying a
+ * scaled equality residual by the inverse congruence. */
+static int sdp_affine_lift(PRIMALtask_t t, PRIMALtask_t sh, int s,
+                           const SdpAffineRow *rows) {
+    double *activity = sh->xc;
+    memset(activity, 0, (size_t)t->numcon * sizeof(*activity));
+    double primal = t->cfix, dual = t->cfix;
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *col = &t->cols[j];
+        for (int k = 0; k < col->nz; k++)
+            activity[col->sub[k]] += col->val[k] * sh->x[j];
+        primal += t->c[j] * sh->x[j];
+    }
+    for (int i = 0; i < t->numcon; i++) {
+        const SdpAffineRow *a = &rows[i];
+        int d = t->barDim[a->block];
+        size_t p = (size_t)a->p * d + a->q, q = (size_t)a->q * d + a->p;
+        double x = activity[i] - t->blc[i];
+        double y = (sh->y[i] * a->left) * a->right;
+        if (!isfinite(x) || !isfinite(y) ||
+            !(fabs((activity[i] - x) - t->blc[i]) <= t->tol_co_pfeas)) return 0;
+        sh->barx[a->block][p] = sh->barx[a->block][q] = x;
+        sh->barsj[a->block][p] = sh->barsj[a->block][q] = -s * y * (p == q ? 1.0 : 0.5);
+        sh->y[i] = y;
+        dual -= t->blc[i] * y;
+    }
+    if (!isfinite(primal) || !isfinite(dual) ||
+        !(fabs(primal - dual) <= t->tol_co_gap * (1.0 + fabs(primal) + fabs(dual))))
+        return 0;
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *col = &t->cols[j];
+        double residual = t->c[j];
+        for (int k = 0; k < col->nz; k++) residual += col->val[k] * sh->y[col->sub[k]];
+        if (!(fabs(residual) <= t->tol_co_dfeas)) return 0;
+    }
+    for (int b = 0; b < t->numbarvar; b++) {
+        int d = t->barDim[b];
+        double p = bar_min_eig(d, sh->barx[b], NULL), q = bar_min_eig(d, sh->barsj[b], NULL);
+        if (!isfinite(p) || !isfinite(q) || p < -t->tol_co_pfeas || q < -t->tol_co_dfeas)
+            return 0;
+    }
+    memcpy(t->x, sh->x, (size_t)t->numvar * sizeof(*t->x));
+    for (int i = 0; i < t->numcon; i++) {
+        t->y[i] = sh->y[i];
+        t->slc[i] = fmin(0.0, t->y[i]);
+        t->suc[i] = fmax(0.0, t->y[i]);
+    }
+    for (int b = 0; b < t->numbarvar; b++) {
+        size_t d = (size_t)t->barDim[b], bytes = d * d * sizeof(double);
+        memcpy(t->barx[b], sh->barx[b], bytes);
+        memcpy(t->barsj[b], sh->barsj[b], bytes);
+    }
+    t->pobj = primal;
+    t->dobj = dual;
+    t->has_sol = 1;
+    t->solsta = PRIMAL_SOL_STA_OPTIMAL;
+    return 1;
+}
+
+static int sdp_affine_solve(PRIMALtask_t t, int s) {
+    SdpAffineRow *rows = sdp_affine_scaling(t);
+    if (!rows) return 0;
+    PRIMALtask_t sh = NULL;
+    int solved = 0;
+    if (PRIMAL_clonetask(t, &sh) != PRIMAL_RES_OK) goto done;
+    param_copy(sh, t);
+    sh->tol_near_rel = 1.0;
+    for (int i = 0; i < sh->numcon; i++)
+        sh->blc[i] = sh->buc[i] = (sh->blc[i] * rows[i].left) * rows[i].right;
+    for (int j = 0; j < sh->numvar; j++) {
+        Col *col = &sh->cols[j];
+        for (int k = 0; k < col->nz; k++) {
+            const SdpAffineRow *a = &rows[col->sub[k]];
+            col->val[k] = (col->val[k] * a->left) * a->right;
+        }
+    }
+    if (opt_prepare(sh) == PRIMAL_RES_OK &&
+        optimize_sdp_ipm_impl(sh, s) == PRIMAL_RES_OK &&
+        sh->has_sol && sh->solsta == PRIMAL_SOL_STA_OPTIMAL)
+        solved = sdp_affine_lift(t, sh, s, rows);
+done:
+    PRIMAL_deletetask(&sh);
+    free(rows);
+    if (solved) tlog(t, "optimal solution found (equilibrated affine SDP)\n");
+    return solved;
+}
+
 /* Run the native SDP/conic interior-point route with conic begin/end
  * callbacks around the implementation. Returns its result code. */
 PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
     iter_cb_begin(t);
     cb_fire(t, PRIMAL_CALLBACK_BEGIN_CONIC);
-    PRIMALrescodee r = optimize_sdp_ipm_impl(t, s);
+    PRIMALrescodee r = sdp_affine_solve(t, s) ? PRIMAL_RES_OK : optimize_sdp_ipm_impl(t, s);
     cb_fire(t, PRIMAL_CALLBACK_END_CONIC);
     iter_cb_end();
     return r;
