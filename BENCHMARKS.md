@@ -688,9 +688,9 @@ Julia, Primal risulta primo in due delle cinque righe ricontrollate.
 | `afiro` | 0.000131 | Clarabel 0.000116 | **Clarabel primo** |
 | `sc50a` | 0.000347 | HiGHS 0.000221 | **HiGHS primo** |
 
-Il README riporta le vittorie confermate dalle misure ripetute, `ex1223a`
-e `HS21`. Le dimensioni delle due istanze sono rispettivamente `17 × 60`
-e `2 × 1`. [Public instance sets nel README](README.md#public-instance-sets)
+Il README riporta tutte e cinque le istanze con l'esito del singolo run
+e le mediane del confronto ripetuto.
+[Public instance sets nel README](README.md#public-instance-sets)
 
 ## 3. Come estendere
 

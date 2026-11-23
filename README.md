@@ -307,19 +307,24 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-The table lists the public instances on which Primal was fastest in the
-repeated comparison on **2026-11-19**. Times are medians of five solves.
-The Julia reference uses the median of three warm batches.
+Primal posted the fastest time or shared it at the reported precision
+on these five public instances in the **2026-11-19** single-run comparison.
+The timing columns show the follow-up medians. Bold marks the faster median.
+Each median uses five solves, with three warm batches for the Julia references.
 
-| instance | set | class | vars x cons | Primal (s) | best reference (s) | obj |
-|---|---|---|---:|---:|---:|---:|
-| ex1223a | CBLIB | exp + int | 17 x 60 | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
-| HS21 | Maros-Meszaros | QP | 2 x 1 | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
+| instance | set | class | vars x cons | fastest in single run | Primal median (s) | fastest reference median (s) | obj |
+|---|---|---|---:|---|---:|---:|---:|
+| ex1223a | CBLIB | exp + int | 17 x 60 | Primal | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
+| beck751 | CBLIB | exp | 80 x 59 | Primal | 0.000748 | **0.000392 (Clarabel)** | 7.50095 |
+| HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
+| afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
+| sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
 
 Primal timings cover `PRIMAL_optimize` on one thread, excluding file reading.
 The benchmark report includes the full comparison and the follow-up solves on
 `PRIMAL1`, `LogExpCR-n20-m400` and `control1`.
 [49 public instances](BENCHMARKS.md#istanze-pubbliche) ·
+[Repeated comparison](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
 [November 22 results](BENCHMARKS.md#verifica-mirata-del-2026-11-22) ·
 [November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23)
 
