@@ -35,7 +35,8 @@ point and a status you can check rather than trust.
   method on the reduced problem, including a single rotated quadratic
   penalty. Positive weighted sums of fixed-scale epigraphs can also be
   reduced to log-sum-exp constraints on the free variables. Primal
-  verifies the reconstructed conic solution in both cases.
+  verifies the reconstructed conic solution. For certain weighted
+  power-cone loss models, a penalty bound permits a reduction to LP.
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
 - **Modeling** — affine conic constraints (ACC), disjunctive constraints
   (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.
@@ -317,8 +318,9 @@ The single-run column records the **2026-11-19** comparison. Bold marks
 the faster follow-up median. The `beck751` and `rijc781` times are
 from two interleaved series of 21 runs on **2026-11-24**, with solver
 construction excluded from Clarabel's times. The `mcp100` comparison
-uses three interleaved runs on the same date. The remaining rows use five
-solves, with three warm batches for the Julia references.
+uses three interleaved runs on the same date. The HMCR results use
+five solves per solver. The remaining rows use five solves, with three
+warm batches for the Julia references.
 
 | instance | set | class | vars x cons | fastest in single run | Primal median (s) | reference median (s) | obj |
 |---|---|---|---:|---|---:|---:|---:|
@@ -326,6 +328,8 @@ solves, with three warm batches for the Julia references.
 | beck751 | CBLIB | exp | 80 x 59 | Primal | **0.000029** | 0.000331 (Clarabel) | 7.50095 |
 | rijc781 | CBLIB | exp | 24 x 17 | Clarabel | **0.000020** | 0.000056 (Clarabel) | -4.41429 |
 | mcp100 | SDPLIB | SDP | 100 x 5050 | Pajarito/Hypatia | **0.05636** | 0.16674 (Clarabel) | 226.15735 |
+| HMCR-n20-m400 | CBLIB | power | 2022 x 1603 | Clarabel | **0.002946** | 0.015535 (Clarabel) | 0.0345743 |
+| HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | SCS | **0.005703** | 0.104136 (SCS) | 0.0390837 |
 | HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
 | afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
 | sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
@@ -338,7 +342,8 @@ The benchmark report includes the full comparison and the follow-up solves on
 [November 24 results](BENCHMARKS.md#verifica-mirata-del-2026-11-24) ·
 [November 22 results](BENCHMARKS.md#verifica-mirata-del-2026-11-22) ·
 [November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23) ·
-[SDPLIB results for mcp100, qap5 and hinf1](BENCHMARKS.md#verifica-sdplib-del-2026-11-24)
+[SDPLIB results for mcp100, qap5 and hinf1](BENCHMARKS.md#verifica-sdplib-del-2026-11-24) ·
+[CBLIB power results](BENCHMARKS.md#verifica-power-cblib-del-2026-11-24)
 
 In a separate infeasibility comparison on **2026-11-23**, both Primal and
 Clarabel identified `infeas_clean_10_10_1` (CBLIB). Median time to verdict

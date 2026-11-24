@@ -22568,8 +22568,69 @@ static void test_t325(void) {
     pend(&p);
 }
 
+static void t326_capture_route(void *handle, const char *message) {
+    if (strstr(message, "zero-loss power reduction")) *(int *)handle = 1;
+}
+
+/* T326: min eta + k*||(max(0,1-eta),max(0,-eta))||_2.
+ * For k=2 the optimum is eta=1 with zero norm. For k=4/5 the
+ * optimum has both losses positive and value 1/2+sqrt(7)/10. */
+static void test_t326(void) {
+    for (int strong = 0; strong <= 1; strong++) {
+        cur_name = strong ? "T326 zero-loss power reduction" : "T326 power penalty below threshold";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, 12);
+        PRIMAL_appendcons(t, 9);
+        for (int j = 0; j < 12; j++)
+            PRIMAL_putvarbound(t, j, j == 2 || j == 3 ? PRIMAL_BK_LO : PRIMAL_BK_FR, 0.0, 0.0);
+        PRIMAL_putcj(t, 0, 1.0);
+        PRIMAL_putcj(t, 1, strong ? 2.0 : 0.8);
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 0.0, 0.0);
+        PRIMAL_putaij(t, 0, 1, 1.0);
+        for (int i = 0; i < 2; i++) {
+            int r = 1 + 3*i, loss = 2+i, allocation = 4+i;
+            int cone[3] = {6 + 3*i, 7 + 3*i, 8 + 3*i};
+            int sources[3] = {1, allocation, loss};
+            PRIMAL_appendcone(t, PRIMAL_CT_PPOW, 0.5, 3, cone);
+            PRIMAL_putaij(t, 0, allocation, -1.0);
+            for (int k = 0; k < 3; k++) {
+                PRIMAL_putconbound(t, r+k, PRIMAL_BK_FX, 0.0, 0.0);
+                PRIMAL_putaij(t, r+k, sources[k], 1.0);
+                PRIMAL_putaij(t, r+k, cone[k], -1.0);
+            }
+            PRIMAL_putconbound(t, 7+i, PRIMAL_BK_LO, 1.0-i, 0.0);
+            PRIMAL_putaij(t, 7+i, 0, 1.0);
+            PRIMAL_putaij(t, 7+i, loss, 1.0);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t326_capture_route);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve power loss norm");
+        check(used == strong, "reduction follows the domination inequality");
+        double x[12] = {0}, po = NAN, du = NAN, pr = INFINITY, pv = INFINITY;
+        double pc = INFINITY, dr = INFINITY, dv = INFINITY, dc = INFINITY;
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "primal coordinates");
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, &pv, NULL, &pc, NULL,
+                                        &du, &dr, &dv, NULL, &dc),
+                 PRIMAL_RES_OK, "quality in the original model");
+        double want = strong ? 1.0 : 0.5 + sqrt(7.0)/10.0;
+        check(fabs(po - want) <= 1e-7, "analytic objective");
+        if (strong) {
+            check(x[1] == 0.0 && x[2] == 0.0 && x[3] == 0.0, "zero norm and losses");
+            check(fmax(pr, fmax(pv, pc)) <= 1e-8 && fmax(dr, fmax(dv, dc)) <= 1e-8,
+                  "original primal and dual feasibility");
+            check(fabs(po-du) <= 1e-8 * (1.0+fabs(po)+fabs(du)), "original gap");
+        } else {
+            check(x[1] > 0.0 && x[0] < 0.0, "fallback reaches positive-loss optimum");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t326();
     test_t325();
     test_t324();
     test_t323();

@@ -116,6 +116,56 @@ cone ([exponential cone](exponential_cone.md#the-newton-row-of-a-cone-block)); `
   uses the plain engine ([`primal_sdptask.c:568`](../primal_sdptask.c#L568));
 - the routes are those of the exponential cone: native `sdp_ipm_run`, secant retry, then [tangent cuts](tangent_cuts.md).
 
+## When a weighted loss norm reduces to an LP
+
+Let $p=1/(1-\alpha)$ for a common exponent $\alpha$. A set of power
+cones $(\lambda,u_i,\gamma_i r_i)$ with $\sum_i u_i=\lambda$ and
+$\gamma_i>0$ represents
+
+$$
+\lambda\ge\left(\sum_i(\gamma_i r_i)^p\right)^{1/p},
+\qquad r_i\ge0.
+$$
+
+For $\lambda>0$, each cone requires
+$u_i\ge\lambda(\gamma_i r_i/\lambda)^p$. Summation gives the norm
+inequality, and any surplus allocation can be placed in a cone without
+violating it. At $\lambda=0$, each $u_i$ and $r_i$ is zero.
+
+Suppose the loss rows are $a_i^\top x+\eta+r_i\ge b_i$, the cost of
+the free offset is $c_\eta>0$, and the cost of the norm epigraph is
+$k>0$. If the offset appears only in these rows, increasing it by
+$\max_i r_i$ and setting the losses to zero preserves feasibility.
+The original cost of the norm is at least
+$k(\min_i\gamma_i)\max_i r_i$. Thus
+$c_\eta\le k\min_i\gamma_i$ guarantees that this change cannot
+increase the objective. The remaining constraints are linear.
+
+PRIMAL checks this structure and solves the dual of the reduced LP,
+which has one row per retained scalar. If $\pi_i\ge0$ is the multiplier
+of a loss row in the usual nonnegative convention, put
+$q_i=\pi_i/\gamma_i$. A dual cone triple on the power boundary is
+
+$$
+\left(\alpha k(q_i/k)^{1/\alpha},\ (1-\alpha)k,\ -q_i\right).
+$$
+
+The stationarity condition for the offset gives
+$\sum_i\pi_i=c_\eta$. The domination inequality implies
+$\sum_i q_i\le k$, so the sum of the leading dual coordinates is at
+most $\alpha k$. PRIMAL places the surplus in a leading coordinate,
+which preserves membership and satisfies stationarity for $\lambda$.
+It then verifies the original rows, scalar stationarity, dual cone
+membership and gap. Models outside the recognized structure and
+rejected candidates use the general conic solver.
+
+For a small example, consider
+$\eta+k\sqrt{\max(0,1-\eta)^2+\max(0,-\eta)^2}$. At $k=2$ the
+minimum is 1 at $\eta=1$. At $k=4/5$ both losses are positive at
+the optimum, which has value $1/2+\sqrt{7}/10$. Test `T326` exercises
+both cases. [Implementation](../primal_power_reduce.c) ·
+[CBLIB measurements](../BENCHMARKS.md#verifica-power-cblib-del-2026-11-24)
+
 ## Worked example, solved
 
 $$

@@ -543,6 +543,32 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ## 3-quater. Istanze pubbliche — 2026-11-19
 
+### Stato verificato al 2026-11-24
+
+Primal ha ora un verdetto verificato per **11 dei 24 casi** che nella
+rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
+inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
+
+| Famiglia | Casi chiusi | Esito aggiornato |
+|---|---|---|
+| SDP SDPLIB | `control1`, `theta1`, `mcp100`, `qap5`, `hinf1` | `OPTIMAL` |
+| SDP CBLIB | `infeas_clean_10_10_1`, `infeas_clean_10_10_3`, `weak_clean_10_10_3` | `PRIM_INFEAS` |
+| Convesso continuo | `PRIMAL1`, `LogExpCR-n20-m400`, `HMCR-n20-m800` | `OPTIMAL` |
+
+Restano 13 casi senza un verdetto verificato in questo confronto.
+
+| Famiglia | Casi aperti |
+|---|---|
+| CBLIB misto-intero conico | Le tre istanze `port_*`, le tre `expdesign_D_*`, `kpart_diw.15.4.29`, `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
+| MIPLIB MILP | `p0201`, `gt2`, `pk1` |
+
+[Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
+[Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
+[SDPLIB](#verifica-sdplib-del-2026-11-24) ·
+[Coni power](#verifica-power-cblib-del-2026-11-24)
+
+### Rilevazione originale del 19 novembre
+
 49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
 (harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
 (SOC/exp/pow/PSD, con e senza interi), SDPLIB 6 (SDP puro), Maros-Meszaros 6
@@ -557,7 +583,7 @@ Python (`highspy`, `clarabel` 0.11.1, `scs` 3.3.1, `pyscipopt`) tranne
 Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 (subsolver: HiGHS 1.26.0 per l'OA, Clarabel 0.11.1 senza decomposizione cordale).
 
-| instance | set | class | vars x cons | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | Pajarito/Hypatia (s) | obj |
+| instance | set | class | vars x cons | Primal 19/11 (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | Pajarito/Hypatia (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|---|
 | port_12_9_3_a_1 | cblib | soc+exp+psd+int | 90 x 169 | fail (rc=1007) | N/A | N/A | N/A | N/A | **8.0130** | -0.0332177 |
 | port_12_9_3_b_1 | cblib | soc+exp+psd+int | 91 x 170 | fail (rc=1007) | N/A | N/A | N/A | N/A | **6.3930** | -0.0347049 |
@@ -785,6 +811,28 @@ escludono la costruzione del solver.
 
 I tre solver dichiarano l'ottimo in tutte le prove, con scarto scalato
 degli obiettivi entro `4.22e-9` rispetto a Primal.
+
+### Verifica power CBLIB del 2026-11-24
+
+Nei modelli HMCR il costo della norma è sufficiente perché esista
+un ottimo a perdita positiva zero. Primal risolve il duale dell'LP
+ridotto e verifica i moltiplicatori dei coni originali.
+[Derivazione della riduzione](algorithms/power_cone.md#when-a-weighted-loss-norm-reduces-to-an-lp)
+
+| Istanza | Primal 19/11 | Primal 24/11 (ms) | SCS 24/11 (ms) | Obiettivo Primal | Gap relativo Primal |
+|---|---:|---:|---:|---:|---:|
+| `HMCR-n20-m400` | 39.735 s | **2.946** | 52.495 | 0.03457429115475112 | 5.88e-11 |
+| `HMCR-n20-m800` | >60 s | **5.703** | 104.136 | 0.03908368729046473 | 2.75e-11 |
+
+Mediane di cinque prove alternate sui CBF originali, a un thread e
+tolleranze `1e-8`. Primal copre `PRIMAL_optimize` e usa il fattore
+near-optimal pari a 1. SCS 3.3.1 usa la sola solve. Entrambi hanno
+dichiarato l'ottimo in tutte le prove. Il massimo scarto obiettivo
+scalato è `7.58e-11` tra i due solver. Le massime violazioni originali
+di Primal sono `7.11e-15` e `2.49e-14`, rispettivamente. In una serie
+separata di cinque solve, Clarabel 0.11.1 risolve `HMCR-n20-m400`
+in **15.535 ms** di mediana senza costruzione. Lo scarto scalato
+dall'obiettivo di Primal è `3.03e-9`.
 
 ## 3. Come estendere
 

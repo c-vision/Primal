@@ -411,6 +411,7 @@ PRIMALrescodee optimize_sdp(PRIMALtask_t t, int s);
 /* Native primal-dual interior-point route for conic/SDP models. */
 PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s);
 int exp_sum_constraints_solve(PRIMALtask_t t);
+int power_zero_risk_solve(PRIMALtask_t t);
 /* Copies the parameter fields from the task src into the task dst. */
 void param_copy(struct PRIMAL_task_s *dst, struct PRIMAL_task_s *src);
 /* Applies the declarative-table defaults to a task. */
