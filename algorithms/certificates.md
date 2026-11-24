@@ -140,6 +140,13 @@ $\pm$`SDP_BIGM` is not an answer: [`bar_cap_verdict`](../primal_sdptask.c#L1096)
 recession direction is measured on the model's own rows and cones, and otherwise no verdict ([SDP](semidefinite_programming.md)).
 Mixed-integer infeasibility and the tangent-cut route likewise leave the verdict in `prosta` (relaxation rays do not certify integer infeasibility).
 
+Some pure SDP models admit a proof through a sequence of smaller PSD
+faces. PRIMAL can exploit exact zero diagonal constraints to remove
+rows and columns of the PSD matrix and test the remaining equalities
+for a sign contradiction. It reports `PRIM_INFEAS` in `prosta` on
+this route. The ordinary dual-ray getter remains unavailable.
+[Worked SDP example](semidefinite_programming.md#detecting-infeasibility-on-coordinate-faces)
+
 ## An optimality certificate that is measured: the fixed-diagonal SDP
 
 Certificates are not only for failure. For $\min\langle C,X\rangle$ with fixed positive diagonals, [`sdp_fixed_diagonal`](../sdp.c#L2995) builds

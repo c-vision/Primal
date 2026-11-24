@@ -623,7 +623,8 @@ portano. Su MPS e MILP SCIP c'è):
   SDP puri `control1`, `hinf1`, `theta1`, `qap5`, `mcp100`, sul QP `PRIMAL1`
   e sui modelli misto-interi conici `port_*`, `expdesign_D_*`, `kpart_diw`.
   Le verifiche del 22 e 23 novembre riportano i risultati successivi per
-  `PRIMAL1`, `LogExpCR-n20-m400` e `control1`.
+  `PRIMAL1`, `LogExpCR-n20-m400`, `control1`, `theta1` e i tre SDP CBLIB
+  inammissibili.
 
 ### Verifica mirata del 2026-11-22
 
@@ -674,6 +675,44 @@ coerente con `17.78463` alla precisione pubblicata da SDPLIB. Il gap relativo
 `1e-8`. Le misure si riferiscono al punto ricostruito nelle unità originali.
 [Equilibratura e verifica](algorithms/semidefinite_programming.md#equilibrating-an-affine-matrix-inequality)
 
+Su `theta1` (SDPLIB), la misura storica sul CBF originale superava il
+limite di 60 s. Il nuovo percorso costruisce internamente il duale con
+104 vincoli al posto dei 1.275 link, poi verifica la coppia primale-duale
+nelle unità del modello originale.
+
+| Istanza | Primal 2026-11-19 (s) | Primal 2026-11-23 (s) | Clarabel 2026-11-19 (s) | SCS 2026-11-19 (s) |
+|---|---:|---:|---:|---:|
+| `theta1` | >60 | 4.426 | 0.4421 | 0.0445 |
+
+Con una build `-O2`, un thread e tolleranze `1e-8`, il CBF originale
+restituisce `OPTIMAL` in 3 solve su 3. I tempi di `PRIMAL_optimize` vanno
+da 4.418 a 4.454 s. L'obiettivo primale è `23.00000000871891`, il gap
+relativo `2.06e-9` e la massima violazione pubblica `3.34e-9`,
+incluse le verifiche di appartenenza al cono PSD. I tempi dei riferimenti
+provengono dalla tabella del 19 novembre.
+[Derivazione e mappa dei moltiplicatori](algorithms/semidefinite_programming.md#solving-an-affine-matrix-inequality-in-dual-form)
+
+#### Inammissibilità SDP CBLIB
+
+Il presolve riconosce una contraddizione nelle uguaglianze originali di tre
+SDP CBLIB. In tutti i solve Primal restituisce `rc=1002` con
+`prosta=PRIM_INFEAS` e `solsta=UNKNOWN`. I getter del punto e del raggio
+duale rispondono `ERR_ARG`.
+
+| Istanza | Primal `0d99119`, prima | Primal 23/11 (ms) | Clarabel 23/11 (ms) | Esito Clarabel |
+|---|---|---:|---:|---|
+| `infeas_clean_10_10_1` | rc=1007 (3.001 s) | **0.021** | 3.718 | `PrimalInfeasible` |
+| `infeas_clean_10_10_3` | rc=1007 (2.927 s) | 0.013 | 3.230 | `AlmostPrimalInfeasible` |
+| `weak_clean_10_10_3` | rc=1007 (3.053 s) | 0.011 | 7.770 | `AlmostSolved` |
+
+Verifica a un thread e tolleranze `1e-8`. Una misura per la build di
+partenza, mediana di tre chiamate a `PRIMAL_optimize` per la nuova
+build e mediana di cinque solve per Clarabel 0.11.1, con costruzione del
+solver inclusa. La lettura del CBF e la conversione in dati triangolari
+sono fuori dai tempi. Il grassetto indica il tempo minore sulla riga con
+lo stesso verdetto esplicito.
+[Prova per riduzione facciale](algorithms/semidefinite_programming.md#detecting-infeasibility-on-coordinate-faces)
+
 ### Vittorie confermate sulle istanze pubbliche
 
 Il grassetto nella tabella del 19 novembre indica il minimo di **un singolo
@@ -688,9 +727,33 @@ Julia, Primal risulta primo in due delle cinque righe ricontrollate.
 | `afiro` | 0.000131 | Clarabel 0.000116 | **Clarabel primo** |
 | `sc50a` | 0.000347 | HiGHS 0.000221 | **HiGHS primo** |
 
-Il README riporta tutte e cinque le istanze con l'esito del singolo run
-e le mediane del confronto ripetuto.
+Il README riporta l'esito del singolo run e le mediane più recenti.
 [Public instance sets nel README](README.md#public-instance-sets)
+
+### Verifica mirata del 2026-11-24
+
+La riduzione dei vincoli log-sum-exp porta il sistema di Newton di
+`beck751` dall'ordine 134 all'ordine 8. Le cinque disequazioni ridotte
+contengono gli stessi 18 termini esponenziali del CBF.
+[Derivazione e verifica sul modello originale](algorithms/exponential_cone.md#reducing-grouped-exponential-epigraphs)
+
+| Istanza | Primal prima (ms) | Primal ridotto (ms) | Clarabel solo solve (ms) | Clarabel costruzione e solve (ms) |
+|---|---:|---:|---:|---:|
+| `beck751` | 0.657 | **0.029** | 0.331 | 0.467 |
+| `rijc781` | 7.282 | **0.020** | 0.056 | 0.151 |
+
+Media delle mediane di due serie da 21 prove intercalate, senza debug,
+un thread e tolleranze `1e-8`. Primal è compilato con `-O2` e i tempi
+coprono `PRIMAL_optimize`. Clarabel 0.11.1 usa gli stessi CBF senza
+includere la lettura dei file o la conversione delle matrici. La build
+Primal di partenza ha le correzioni SDP del 23 novembre e precede la
+riduzione log-sum-exp.
+
+Primal restituisce `OPTIMAL` in 42 solve su 42 per caso. Su `beck751`
+l'obiettivo vale `7.500952151967790`, la massima violazione originale è
+`1.69e-10`, il gap relativo è `2.13e-11` e lo scarto obiettivo scalato
+rispetto a Clarabel è `5.74e-10`. Su `rijc781` i valori corrispondenti
+sono `-4.414286537325904`, `4.36e-10`, `1.45e-10` e `8.28e-9`.
 
 ## 3. Come estendere
 

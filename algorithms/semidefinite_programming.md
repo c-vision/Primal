@@ -353,6 +353,97 @@ The ordinary route handles a rejected result. Test `T319` checks the
 original entries and both objectives on the example above.
 [`sdp_affine_solve`](../primal_sdptask.c)
 
+## Solving an affine matrix inequality in dual form
+
+Let one PSD block have order $d$, and let $x$ contain $n$ free scalar
+variables. Collect the coefficients of $x_j$ into a symmetric matrix
+$A_j$ and the right sides of the entrywise equalities into $B$. Then
+$X=\sum_j x_j A_j-B$. Put $\bar c=s c$, where $s=1$ for minimization
+and $s=-1$ for maximization. The following derivation uses minimization
+with cost $\bar c$, omitting the constant term.
+
+Pair the PSD constraint with a PSD matrix $Z$ in the Lagrangian:
+
+$$
+L(x,Z)=\bar c^\top x-\left\langle\sum_j x_j A_j-B,Z\right\rangle
+      =\langle B,Z\rangle+\sum_j x_j(\bar c_j-\langle A_j,Z\rangle).
+$$
+
+Since $x_j$ is free, its coefficient must vanish for the infimum to be
+finite. This gives the dual SDP
+
+$$
+\max_{Z\succeq0}\ \langle B,Z\rangle
+\qquad
+\text{subject to}\quad \langle A_j,Z\rangle=\bar c_j
+\quad (j=1,\dots,n).
+$$
+
+The entrywise formulation has $d(d+1)/2$ linking rows. The dual has $n$
+equality rows for the same PSD block, so the Schur system is smaller when
+$n$ is small relative to the triangle size. The matrix coefficients of the
+dual equalities can also retain the sparsity of the original columns.
+On SDPLIB's `theta1`, the PSD order is 50 and the row count drops from
+1,275 to 104. [Measured solve](../BENCHMARKS.md#verifica-mirata-del-2026-11-23)
+
+PRIMAL tries this form for one bar of order at most 64 with at least
+512 complete entrywise links and at least eight links per free scalar.
+The auxiliary solve returns $Z$ as its primal matrix and recovers $x$ from
+its equality multipliers. In PRIMAL's original equality convention
+$c+A^\top y=0$, the multiplier is $y_i=-sZ_{pp}$ for row $(p,p)$
+and $y_i=-2sZ_{pq}$ for row $(p,q)$ with $p\ne q$. The factor two in
+the second formula comes from the two symmetric entries in the trace
+product. The entries of $A_j$ and $B$ themselves are the coefficients
+and right sides of the original links.
+
+For a worked example, let $X$ have diagonal $x$ except for its first
+two entries $x-2$, and let its only off-diagonal pair be $x/4-1$.
+The first two coordinates give eigenvalues $5x/4-3$ and $3x/4-1$, so
+minimizing $x$ gives $x=12/5$. At that point $u=(1,1,0,\dots,0)^\top$ is
+a null vector of $X$. The dual choice $Z=\tfrac25 uu^\top$ satisfies
+$\langle A_1,Z\rangle=1$ and $\langle B,Z\rangle=12/5$. The link for the
+off-diagonal entry has multiplier $-4/5$ in minimization. Test `T320`
+checks the same model in both objective senses.
+
+The lift rebuilds $X$ from the original equalities and checks those rows,
+both PSD blocks, scalar stationarity and the objective gap against the
+task tolerances. If the reconstructed pair fails a check, the dispatcher
+continues with the existing SDP routes.
+[`sdp_affine_dual_solve` and `sdp_affine_lift`](../primal_sdptask.c)
+
+## Detecting infeasibility on coordinate faces
+
+A PSD matrix satisfies $X_{ii}\ge0$ and
+$|X_{ij}|^2\le X_{ii}X_{jj}$ for every pair of indices, by the
+nonnegativity of its $2\times2$ principal minors. When an equality
+$\sum_i a_i X_{ii}=0$ has $a_i>0$ on its support, each of those diagonal
+entries must vanish. The minor inequality then forces the corresponding
+full rows and columns to vanish. The PSD constraint is now restricted
+to the face supported on the other coordinates.
+
+For example, suppose $X_{11}=0$, $X_{22}+2X_{12}=0$ and
+$X_{33}+2X_{23}=-1$. The first equality forces $X_{12}=0$, so the
+second gives $X_{22}=0$. It follows that $X_{23}=0$ and the last
+equality requires $X_{33}=-1$, which contradicts $X\succeq0$.
+This conclusion also holds when the equalities are supplied in reverse
+order. Revisiting the rows after a reduction exposes the contradiction.
+
+PRIMAL applies the test to pure SDP equality models with a single bar
+of order at most 64 and one sparse matrix term per equality. It checks
+for a one-sign diagonal after removing retired coordinates, treating
+entries and zero right sides exactly. A contradictory right side must
+exceed the task's primal feasibility tolerance in magnitude. If each
+scan removes at least one coordinate, there can be at most $d$ such
+scans. A scan with no reduction or contradiction returns control to the
+usual SDP solver.
+
+The sequence of restricted faces proves infeasibility, including in
+cases where an ordinary separating dual ray is unavailable. In this
+route the problem status is `PRIM_INFEAS`, the solution status is
+`UNKNOWN`, and the solver publishes neither a point nor a ray. Test
+`T321` checks the deduction and two feasible variants.
+[`sdp_coordinate_infeasible`](../primal_sdptask.c)
+
 ## How PRIMAL reaches this code, and where it goes if it fails
 
 `PRIMAL_optimize` sends a task with bar variables to

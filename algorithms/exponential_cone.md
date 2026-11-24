@@ -267,12 +267,73 @@ They are both on the cone boundary and their inner product is zero.
 Test `T314` checks both head positions and the general conic route when
 a bound on $x$ changes the optimum. [Regression test](../test_primal.c#L22002)
 
+### Reducing grouped exponential epigraphs
+
+Consider a linear objective in free coordinates $x$ and inequalities that
+cap positive weighted sums of exponential epigraph variables. A group $g$
+has disjoint cone heads $t_i$ with fixed positive scales $u_i$ and affine
+arguments $v_i(x)$. If $B_g>0$ denotes the cap, a feasible choice of heads
+exists exactly when
+
+$$
+F_g(x)=\log\left(\sum_{i\in g}\exp(z_i(x))\right)\le 0,
+\qquad z_i(x)=v_i(x)/u_i+\log(w_i u_i/B_g).
+$$
+
+Every feasible head contributes at least $w_i u_i\exp(v_i/u_i)$ to the
+sum. Choosing $t_i=u_i\exp(v_i/u_i)$ attains that lower bound. A free
+alias tied to the head by an equality can be eliminated along with it.
+Thus these bounds become smooth convex inequalities in $x$, while the
+objective stays linear.
+
+Write $a_i=\nabla z_i$ and $p_i=\exp(z_i)/\sum_{k\in g}\exp(z_k)$ within a
+group. The gradient of $F_g$ is the weighted mean $m_g=\sum_{i\in g}p_i a_i$.
+Its Hessian is the covariance $\sum_{i\in g}p_i(a_i-m_g)(a_i-m_g)^\top$,
+which is positive semidefinite. PRIMAL subtracts the largest argument
+before computing the exponential weights.
+
+Let $J$ have rows $m_g^\top$, and let $s_g$ and $\lambda_g$ be the positive
+slack and multiplier of the reduced inequality. The Newton equations for
+stationarity, feasibility and complementarity use
+$H=\sum_g\lambda_g\nabla^2F_g$. Eliminating the slack and multiplier
+directions gives the matrix
+
+$$
+H+\sum_g (\lambda_g/s_g)m_g m_g^\top .
+$$
+
+PRIMAL factors this matrix once per iteration, computes an affine predictor
+and a centered corrector, and backtracks on positive slacks, multipliers
+and the residual merit. The matrix order is the number of free coordinates.
+For example, `beck751` retains eight free coordinates and five inequalities
+from 80 scalar columns and 59 rows. [Measurements](../BENCHMARKS.md#verifica-mirata-del-2026-11-24)
+
+For the lift, set $S_g=\sum_{i\in g}w_i t_i$. The original upper-row
+multiplier is $y_g=\lambda_g/S_g$. For a term $i$ put $r=v_i/u_i$ and
+$d_0=w_i y_g$. Its dual cone triple in PRIMAL's order is
+$(d_0,\ d_0 e^r(r-1),\ -d_0 e^r)$, a supporting plane at the recovered
+primal triple. The equality coefficients convert this triple into the
+original scale, argument and alias multipliers. The implementation checks the
+original rows, free-variable stationarity, primal and dual cone membership
+and the relative gap. The native conic route handles a failed check or
+factorization. The reduced path covers minimization models with up to 16
+free coordinates, 16 positive upper sums and 48 disjoint PEXP blocks.
+The scale of each block is fixed by a singleton equality.
+
+For example, minimize $x$ subject to $2e^{-x}+e^x/2\le3$. Setting $y=e^x$
+gives $y^2-6y+4\le0$, so the minimum is $x=\log(3-\sqrt5)$. The
+multiplier of the original upper row is $1/\sqrt5$ because the derivative
+of the sum there is $-\sqrt5$. Test `T322` checks this value and the
+lifted multipliers for both a direct head and a free alias.
+[Implementation](../primal_gp.c)
+
 ## Routes in PRIMAL
 
 ```text
 PRIMAL_optimize
   -> optimize_sdp_ipm               unless GMB_NO_EXP_IPM
        try reduced Newton for eligible PEXP epigraphs, with an optional RQUAD penalty
+       try the reduced log-sum-exp inequalities for eligible grouped PEXP epigraphs
        otherwise pass exp/power cones as native blocks to the interior-point method
        first attempt: Hessian-NT row
        if not solved and nb = 0:    retry in SECANT mode (Dahl-Andersen primal-dual secant scaling),

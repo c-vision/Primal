@@ -22269,8 +22269,169 @@ static void test_t319(void) {
     pend(&p);
 }
 
+static void t320_capture_route(void *handle, const char *message) {
+    if (strstr(message, "dual affine SDP")) *(int *)handle = 1;
+}
+
+/* T320: X has diagonal x except for the first two entries (x-2).
+ * Its only nonzero off-diagonal is x/4-1. The top block eigenvalues
+ * are 5*x/4-3 and 3*x/4-1, so the smallest feasible x is 12/5. */
+static void test_t320(void) {
+    enum { dim = 32, nr = dim * (dim + 1) / 2 };
+    for (int maximize = 0; maximize <= 1; maximize++) {
+        cur_name = maximize ? "T320 dual affine SDP (max)" : "T320 dual affine SDP (min)";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        const int d = dim;
+        const double one = 1.0, sign = maximize ? -1.0 : 1.0;
+        PRIMAL_appendvars(t, 1);
+        PRIMAL_appendcons(t, nr);
+        PRIMAL_appendbarvars(t, 1, &d);
+        PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
+        PRIMAL_putobjsense(t, maximize ? PRIMAL_OPTIMIZE_MAXIMIZE : PRIMAL_OPTIMIZE_MINIMIZE);
+        PRIMAL_putcj(t, 0, sign);
+        PRIMAL_putcfix(t, 7.0);
+        int i = 0;
+        for (int a = 0; a < dim; a++) for (int b = 0; b <= a; b++, i++) {
+            const double rhs = a < 2 ? (a == b ? 2.0 : 1.0) : 0.0;
+            const double coef = a == b ? -1.0 : -0.5;
+            int sym;
+            PRIMAL_appendsparsesymmat(t, dim, 1, &b, &a, &one, &sym);
+            PRIMAL_putbaraij(t, i, 0, 1, &sym, &coef);
+            PRIMAL_putconbound(t, i, PRIMAL_BK_FX, rhs, rhs);
+            if (a == b) PRIMAL_putaij(t, i, 0, one);
+            else if (a == 1) PRIMAL_putaij(t, i, 0, 0.25);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t320_capture_route);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve through candidate");
+        check(used, "dual affine result was accepted");
+
+        double x = NAN, y[nr] = {0}, po = NAN, du = NAN;
+        double pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, &x), PRIMAL_RES_OK, "original scalar");
+        check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "original multipliers");
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, NULL, &pb, NULL, NULL,
+                                        &du, NULL, &dv, &db, NULL),
+                 PRIMAL_RES_OK, "original quality");
+        check(fabs(x - 2.4) <= 1e-7, "analytic optimum");
+        check(fabs(po - (7.0 + sign * 2.4)) <= 1e-7, "original objective sense and offset");
+        check(fabs(po - du) <= 1e-8 * (1.0 + fabs(po) + fabs(du)), "original gap");
+        check(pr <= 1e-8 && pb <= 1e-8 && dv <= 1e-8 && db <= 1e-8, "original feasibility");
+        check(fabs(sign * y[1] + 0.8) <= 1e-7, "off-diagonal trace weight and multiplier sign");
+        pend(&p);
+    }
+}
+
+static void t321_capture_route(void *handle, const char *message) {
+    if (strstr(message, "SDP coordinate faces")) *(int *)handle = 1;
+}
+
+/* T321: X00=0 forces X01=0, then X11+2*X01=0 forces X12=0.
+ * Enter the rows in reverse deduction order to exercise the repeated scan. */
+static void test_t321(void) {
+    for (int variant = 0; variant < 3; variant++) {
+        cur_name = "T321 SDP coordinate faces";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        const int dim = 4;
+        const double one = 1.0, vals[] = {1.0, 1.0};
+        const int a[][2] = {{2, 2}, {1, 0}, {0, 0}};
+        const int b[][2] = {{2, variant == 2 ? 3 : 1}, {1, 1}, {0, 0}};
+        PRIMAL_appendcons(t, 3);
+        PRIMAL_appendbarvars(t, 1, &dim);
+        for (int i = 0; i < 3; i++) {
+            int sym;
+            const double rhs = i == 0 ? (variant == 1 ? 1.0 : -1.0) : 0.0;
+            PRIMAL_appendsparsesymmat(t, dim, i == 2 ? 1 : 2, a[i], b[i], vals, &sym);
+            PRIMAL_putbaraij(t, i, 0, 1, &sym, &one);
+            PRIMAL_putconbound(t, i, PRIMAL_BK_FX, rhs, rhs);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t321_capture_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        if (variant == 0) {
+            PRIMALprostae pro = PRIMAL_PRO_STA_UNKNOWN;
+            PRIMALsolstae sol = PRIMAL_SOL_STA_UNKNOWN;
+            double ray[3] = {0};
+            check_rc(rc, PRIMAL_RES_ERR_INFEASIBLE, "contradiction on reduced face");
+            check(used, "presolve found the contradiction");
+            check_rc(PRIMAL_getprosta(t, PRIMAL_SOL_ITR, &pro), PRIMAL_RES_OK, "problem status");
+            check_rc(PRIMAL_getsolsta(t, PRIMAL_SOL_ITR, &sol), PRIMAL_RES_OK, "solution status");
+            check(pro == PRIMAL_PRO_STA_PRIM_INFEAS && sol == PRIMAL_SOL_STA_UNKNOWN,
+                  "infeasibility verdict without an ordinary certificate");
+            check(t99_no_point(t), "no primal or dual point was published");
+            check_rc(PRIMAL_getdualray(t, ray), PRIMAL_RES_ERR_ARG, "no Farkas ray published");
+        } else {
+            check(!used && rc != PRIMAL_RES_ERR_INFEASIBLE,
+                  "compatible sign or surviving off-diagonal prevents the verdict");
+        }
+        pend(&p);
+    }
+}
+
+static void t322_capture_route(void *handle, const char *message) {
+    if (strstr(message, "reduced log-sum-exp constraints")) *(int *)handle = 1;
+}
+
+/* T322: minimize x with 2*exp(-x) + 0.5*exp(x) <= 3.
+ * The smaller root in exp(x) is 3-sqrt(5). One head has a free alias. */
+static void test_t322(void) {
+    cur_name = "T322 log-sum-exp grouped heads in original units";
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    PRIMAL_appendvars(t, 8);
+    PRIMAL_appendcons(t, 6);
+    for (int j = 0; j < 8; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_putcfix(t, 2.0);
+    for (int i = 0; i < 2; i++) {
+        int k = 1 + 3*i, r = 2*i;
+        double scale = i == 0 ? 2.0 : 0.5;
+        int members[] = {k, k+1, k+2};
+        PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0, 3, members);
+        PRIMAL_putaij(t, r, k+1, 2.0);
+        PRIMAL_putconbound(t, r, PRIMAL_BK_FX, 2.0*scale, 2.0*scale);
+        PRIMAL_putaij(t, r+1, k+2, -1.0);
+        PRIMAL_putaij(t, r+1, 0, i == 0 ? -scale : scale);
+        PRIMAL_putconbound(t, r+1, PRIMAL_BK_FX, 0.0, 0.0);
+    }
+    PRIMAL_putaij(t, 4, 1, -2.0);
+    PRIMAL_putaij(t, 4, 7, 2.0);
+    PRIMAL_putconbound(t, 4, PRIMAL_BK_FX, 0.0, 0.0);
+    PRIMAL_putaij(t, 5, 7, 1.0);
+    PRIMAL_putaij(t, 5, 4, 1.0);
+    PRIMAL_putconbound(t, 5, PRIMAL_BK_UP, 0.0, 3.0);
+    int used = 0;
+    PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+    PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t322_capture_route);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve grouped exponential epigraphs");
+    check(used, "used reduced log-sum-exp route");
+    double x[8] = {0}, y[6] = {0}, po = NAN, du = NAN;
+    double pr = INFINITY, pc = INFINITY, dr = INFINITY, dv = INFINITY, dc = INFINITY;
+    check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "original primal variables");
+    check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "original row multipliers");
+    check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, NULL, NULL, &pc, NULL,
+                                    &du, &dr, &dv, NULL, &dc),
+             PRIMAL_RES_OK, "original quality");
+    check(fabs(x[0] - log(3.0 - sqrt(5.0))) <= 1e-8, "analytic optimum");
+    check(fabs(po - x[0] - 2.0) <= 1e-12, "objective offset");
+    check(fabs(po - du) <= 1e-8 * (1.0 + fabs(po) + fabs(du)), "original gap");
+    check(fmax(pr, pc) <= 1e-8 && fmax(dr, fmax(dv, dc)) <= 1e-8,
+          "original primal and dual feasibility");
+    check(x[1] == x[7] && x[2] == 2.0 && x[5] == 0.5, "lifted heads and scales");
+    check(fabs(y[5] - 1.0/sqrt(5.0)) <= 1e-8 && fabs(2.0*y[4] + y[5]) <= 1e-8,
+          "upper-row and alias multipliers");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t322();
+    test_t321();
+    test_t320();
     test_t319();
     test_t318();
     test_t317();

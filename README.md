@@ -22,14 +22,18 @@ point and a status you can check rather than trust.
   per block, including cases with up to four equalities on the tails.
 - **SDP** — Nesterov–Todd interior point on PSD blocks. For a single block
   with fixed diagonal and compatible objective signs, Primal constructs
-  the primal and dual solution directly.
+  the primal and dual solution directly. It can also dualize an affine
+  matrix inequality to remove entrywise linking rows and detect
+  infeasibility from exact zero diagonal constraints in presolve.
 - **Exponential and power cones** — native interior point with closed-form
   barriers. Mixed SOC and primal exponential models, and larger models with
   only primal exponential cones, can use a higher-order corrector and a
   sparse KKT solve. For exponential epigraphs with fixed positive scales and
   affine arguments in up to 64 free variables, Primal can use Newton's
   method on the reduced problem, including a single rotated quadratic
-  penalty, and verify the reconstructed conic solution.
+  penalty. Positive weighted sums of fixed-scale epigraphs can also be
+  reduced to log-sum-exp constraints on the free variables. Primal
+  verifies the reconstructed conic solution in both cases.
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
 - **Modeling** — affine conic constraints (ACC), disjunctive constraints
   (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.
@@ -307,26 +311,36 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-Primal posted the fastest time or shared it at the reported precision
-on these five public instances in the **2026-11-19** single-run comparison.
-The timing columns show the follow-up medians. Bold marks the faster median.
-Each median uses five solves, with three warm batches for the Julia references.
+The single-run column records the **2026-11-19** comparison. Bold marks
+the faster follow-up median. The `beck751` and `rijc781` times are
+from two interleaved series of 21 runs on **2026-11-24**, with solver
+construction excluded from Clarabel's times. The other rows use five
+solves, with three warm batches for the Julia references.
 
-| instance | set | class | vars x cons | fastest in single run | Primal median (s) | fastest reference median (s) | obj |
+| instance | set | class | vars x cons | fastest in single run | Primal median (s) | reference median (s) | obj |
 |---|---|---|---:|---|---:|---:|---:|
 | ex1223a | CBLIB | exp + int | 17 x 60 | Primal | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
-| beck751 | CBLIB | exp | 80 x 59 | Primal | 0.000748 | **0.000392 (Clarabel)** | 7.50095 |
+| beck751 | CBLIB | exp | 80 x 59 | Primal | **0.000029** | 0.000331 (Clarabel) | 7.50095 |
+| rijc781 | CBLIB | exp | 24 x 17 | Clarabel | **0.000020** | 0.000056 (Clarabel) | -4.41429 |
 | HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
 | afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
 | sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
 
 Primal timings cover `PRIMAL_optimize` on one thread, excluding file reading.
 The benchmark report includes the full comparison and the follow-up solves on
-`PRIMAL1`, `LogExpCR-n20-m400` and `control1`.
+`PRIMAL1`, `LogExpCR-n20-m400`, `control1` and `theta1`.
 [49 public instances](BENCHMARKS.md#istanze-pubbliche) ·
 [Repeated comparison](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
+[November 24 results](BENCHMARKS.md#verifica-mirata-del-2026-11-24) ·
 [November 22 results](BENCHMARKS.md#verifica-mirata-del-2026-11-22) ·
 [November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23)
+
+In a separate infeasibility comparison on **2026-11-23**, both Primal and
+Clarabel identified `infeas_clean_10_10_1` (CBLIB). Median time to verdict
+was **0.021 ms** for Primal and **3.718 ms** for Clarabel. Primal reports
+the problem status from a sequence of exact face reductions. This route
+leaves the dual-ray getter unavailable.
+[Infeasibility results and timing protocol](BENCHMARKS.md#inammissibilità-sdp-cblib)
 
 ## Documentation
 

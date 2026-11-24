@@ -652,11 +652,12 @@ static double dviol_con(const PRIMALtask_t t, int i) {
 /* Dual violation of variable j: the reference's
  *   max( rho(s_l, l), rho(s_u, -u), |A'y + s_l - s_u - c| )
  * in the same mirrored convention. The stationarity term is our own residual
- * `s*c + A'y + s*(slx+sux)`, the same quantity getdualinfeas reads. A cone member
+ * `c + Qx + A'y + slx+sux`, in the original objective sense. Its absolute
+ * value equals the min-normalized residual in getdualinfeas. A cone member
  * is left UNMEASURED (0): its dual lives inside the cone, not in a scalar reduced
  * cost -- the boundary getdualinfeas and cone_dual_worst already draw. */
 /* Compute the dual violation of variable j including stationarity. */
-static double dviol_var(const PRIMALtask_t t, int j, int s) {
+static double dviol_var(const PRIMALtask_t t, int j) {
     if (var_in_cone(t, j)) return 0.0;
     double lo, up;
     bound_range(t->bkx[j], t->blx[j], t->bux[j], &lo, &up);
@@ -670,7 +671,7 @@ static double dviol_var(const PRIMALtask_t t, int j, int s) {
         if (t->qt_i[e] == j) qg += t->qt_v[e] * t->x[t->qt_j[e]];
         if (t->qt_j[e] == j && t->qt_i[e] != j) qg += t->qt_v[e] * t->x[t->qt_i[e]];
     }
-    double t3 = fabs(s * t->c[j] + s * qg + av + s * (t->slx[j] + t->sux[j]));
+    double t3 = fabs(t->c[j] + qg + av + t->slx[j] + t->sux[j]);
     double m = t1 > t2 ? t1 : t2;
     return t3 > m ? t3 : (m > 0.0 ? m : 0.0);
 }
@@ -869,8 +870,7 @@ PRIMALrescodee PRIMAL_getdviolvar(PRIMALtask_t t, PRIMALsolt which, int num,
                                   const int *sub, PRIMALrealt *viol) {
     PRIMALrescodee rc = viol_precheck(t, which, num, sub, viol, t ? t->numvar : 0);
     if (rc != PRIMAL_RES_OK) return rc;
-    int s = (t->sense == PRIMAL_OPTIMIZE_MAXIMIZE) ? -1 : 1;
-    for (int k = 0; k < num; k++) viol[k] = dviol_var(t, sub[k], s);
+    for (int k = 0; k < num; k++) viol[k] = dviol_var(t, sub[k]);
     return PRIMAL_RES_OK;
 }
 
@@ -958,7 +958,7 @@ PRIMALrescodee PRIMAL_getsolutioninfo(PRIMALtask_t t, PRIMALsolt which,
     }
     if (dviolvar) {
         double w = 0.0;
-        for (int j = 0; j < t->numvar; j++) { double v = dviol_var(t, j, s); if (v > w) w = v; }
+        for (int j = 0; j < t->numvar; j++) { double v = dviol_var(t, j); if (v > w) w = v; }
         *dviolvar = w;
     }
     if (dviolbarvar) {
