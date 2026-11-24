@@ -411,6 +411,97 @@ task tolerances. If the reconstructed pair fails a check, the dispatcher
 continues with the existing SDP routes.
 [`sdp_affine_dual_solve` and `sdp_affine_lift`](../primal_sdptask.c)
 
+## A log-det barrier for a free diagonal
+
+Suppose $X$ has fixed off-diagonal entries and its diagonal entries $v_i$
+are free. The normalized objective is $w^\top v$ plus a constant, with
+$w_i>0$. In PRIMAL this form can arise from complete links
+$a_j x_j-X_{ii}=b_{ii}$ with a distinct $x_j$ for each $i$. Substituting
+the link gives $w_i=s c_j/a_j$ for objective sense $s$.
+
+A positive, strictly diagonally dominant $X$ is an interior start. For
+$\mu>0$, apply Newton's method to the barrier objective
+
+$$
+w^\top v-\mu\log\det X(v).
+$$
+
+Writing $W=X^{-1}$, its gradient is $w_i-\mu W_{ii}$ and its Hessian has
+entries $\mu W_{ij}^2$. These follow by differentiating the inverse
+$dW=-W(dX)W$ where $dX$ is diagonal. The Newton system has order $d$.
+PRIMAL uses a Cholesky factorization to compute $W$, backtracks to keep
+$X$ positive definite and lower the barrier objective, and decreases
+$\mu$ between stages.
+
+A positive definite $X$ already gives a useful dual candidate. Set
+$D_{ii}=\sqrt{w_i/W_{ii}}$ and $Z=DWD$. It is positive semidefinite by
+congruence and satisfies $Z_{ii}=w_i$, the stationarity condition for the
+free diagonal. PRIMAL maps $Z$ into the original row multipliers and
+checks both PSD matrices, the link equalities, stationarity and the
+objective gap. The same test applies to minimization and maximization
+after objective-sense normalization.
+
+For example, a $4\times4$ matrix with all off-diagonal entries equal
+to $-1$ must have trace at least 12, since the quadratic form on the
+all-ones vector is the trace minus 12. A diagonal of 3 attains the bound
+with $X=4I-\mathbf1\mathbf1^\top$, and
+$Z=\mathbf1\mathbf1^\top$ certifies the bound. Test `T323` also checks
+shifted and scaled diagonal links. For SDPLIB's `mcp100`, the system
+has order 100 with 5,050 linking equalities eliminated.
+[`sdp_affine_diagonal_solve`](../primal_sdptask.c)
+
+## A log-det barrier for small affine blocks
+
+Write the PSD blocks as one block-diagonal matrix
+$X(x)=\sum_j x_j A_j-B$. If the independent matrices $A_j$ span the
+identity, solving the Gram system for that identity gives
+$\sum_j v_j A_j=I$. Then $x=(1+\|B\|_\infty)v$ makes $X(x)$ positive
+definite, where $\|B\|_\infty$ is the maximum absolute row sum.
+PRIMAL checks the identity reconstruction and the initial Cholesky factor.
+
+For small multiple-block models the solver can also start with
+$X(x)+\tau I$, using a common scalar shift $\tau$ on every block.
+The auxiliary problem minimizes $\tau$ inside the shifted cones. When
+the solver finds $\tau<0$ with $X(x)+\tau I\succ0$, the original
+$X(x)$ is positive definite and the original objective can take over.
+Test `T325` covers this case with two blocks and a known minimum.
+
+Let $X=LL^\top$. Form a matrix $M$ whose $j$th column stores the symmetric
+triangle of $L^{-1}A_j L^{-\top}$, multiplying off-diagonal entries by
+$\sqrt{2}$. This preserves the trace inner product in the Euclidean
+dot product. The Hessian of $-\mu\log\det X(x)$ is $\mu M^\top M$.
+PRIMAL computes $M=QR$ with a second orthogonalization pass and solves
+two triangular systems. Forming the normal matrix $M^\top M$ would square
+the condition number and can lose the small directions near a PSD face.
+
+The barrier objective includes a trace term proportional to $\mu$ to
+control growth along directions of constant original cost. Its coefficient
+is $\mu/(1+\|B\|_\infty)$ for one block and uses a denominator of at least
+$10^4$ for multiple blocks. When recovering a dual, PRIMAL uses the original normalized
+cost $\bar c$. With $W=X^{-1}$ and a Newton direction $\Delta x$ computed
+from the original gradient $\bar c_j-\mu\langle A_j,W\rangle$, the
+dual candidate is
+
+$$
+Z=\mu\left(W-W\left(\sum_j \Delta x_j A_j\right)W\right).
+$$
+
+The Newton equation makes $\langle A_j,Z\rangle=\bar c_j$ in exact
+arithmetic. PRIMAL evaluates this correction through the QR factors and
+the Cholesky congruence. It checks original stationarity, both PSD
+conditions, the link equalities and the objective gap before publishing.
+A failed factorization or quality check leaves the usual SDP routes available.
+
+The route requires complete entrywise links and total PSD order at
+most 32. For a single block it accepts up to 160 free scalars and
+requires the identity start. For multiple blocks it accepts up to 32
+free scalars. `qap5` uses a block of order 26 and 136 free scalars.
+`hinf1` uses three blocks of orders 4, 4 and 6 with 13 free scalars.
+Test `T324` verifies the identity start and QR recovery on a model with
+two coupled principal minors.
+[`sdp_affine_barrier_solve`](../primal_sdptask.c) ·
+[SDPLIB measurements](../BENCHMARKS.md#verifica-sdplib-del-2026-11-24)
+
 ## Detecting infeasibility on coordinate faces
 
 A PSD matrix satisfies $X_{ii}\ge0$ and

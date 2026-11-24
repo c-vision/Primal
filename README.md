@@ -25,6 +25,8 @@ point and a status you can check rather than trust.
   the primal and dual solution directly. It can also dualize an affine
   matrix inequality to remove entrywise linking rows and detect
   infeasibility from exact zero diagonal constraints in presolve.
+  Specialized log-det barriers solve free-diagonal and small affine SDPs
+  in the original scalar coordinates.
 - **Exponential and power cones** — native interior point with closed-form
   barriers. Mixed SOC and primal exponential models, and larger models with
   only primal exponential cones, can use a higher-order corrector and a
@@ -314,7 +316,8 @@ includes sizes up to 64 free coordinates.
 The single-run column records the **2026-11-19** comparison. Bold marks
 the faster follow-up median. The `beck751` and `rijc781` times are
 from two interleaved series of 21 runs on **2026-11-24**, with solver
-construction excluded from Clarabel's times. The other rows use five
+construction excluded from Clarabel's times. The `mcp100` comparison
+uses three interleaved runs on the same date. The remaining rows use five
 solves, with three warm batches for the Julia references.
 
 | instance | set | class | vars x cons | fastest in single run | Primal median (s) | reference median (s) | obj |
@@ -322,6 +325,7 @@ solves, with three warm batches for the Julia references.
 | ex1223a | CBLIB | exp + int | 17 x 60 | Primal | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
 | beck751 | CBLIB | exp | 80 x 59 | Primal | **0.000029** | 0.000331 (Clarabel) | 7.50095 |
 | rijc781 | CBLIB | exp | 24 x 17 | Clarabel | **0.000020** | 0.000056 (Clarabel) | -4.41429 |
+| mcp100 | SDPLIB | SDP | 100 x 5050 | Pajarito/Hypatia | **0.05636** | 0.16674 (Clarabel) | 226.15735 |
 | HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
 | afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
 | sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
@@ -333,7 +337,8 @@ The benchmark report includes the full comparison and the follow-up solves on
 [Repeated comparison](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
 [November 24 results](BENCHMARKS.md#verifica-mirata-del-2026-11-24) ·
 [November 22 results](BENCHMARKS.md#verifica-mirata-del-2026-11-22) ·
-[November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23)
+[November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23) ·
+[SDPLIB results for mcp100, qap5 and hinf1](BENCHMARKS.md#verifica-sdplib-del-2026-11-24)
 
 In a separate infeasibility comparison on **2026-11-23**, both Primal and
 Clarabel identified `infeas_clean_10_10_1` (CBLIB). Median time to verdict

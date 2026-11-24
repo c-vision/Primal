@@ -339,6 +339,425 @@ static int sdp_affine_lift(PRIMALtask_t t, int s, const SdpAffineRow *rows,
     return 1;
 }
 
+enum { SDP_DIAGONAL_DIM = 128, SDP_DIAGONAL_STEPS = 120 };
+
+static double sdp_diagonal_barrier(int d, const double *x, const double *weight,
+                                   double mu, DMat *factor) {
+    for (int i = 0; i < d; i++)
+        memcpy(factor->v[i], x + (size_t)i * d, (size_t)(i+1) * sizeof(*x));
+    if (dmat_cholesky(factor, d)) return INFINITY;
+    double value = 0.0;
+    for (int i = 0; i < d; i++)
+        value += weight[i] * x[(size_t)i * d + i] - 2.0 * mu * log(factor->v[i][i]);
+    return value;
+}
+
+/* X has fixed off-diagonals. Its free diagonal has positive cost w, so
+ * the log-det barrier Hessian is mu * (X^-1 .* X^-1). For any X > 0 the
+ * inverse also gives a feasible dual block: scale it to diagonal w. */
+static int sdp_affine_diagonal_solve(PRIMALtask_t t, int sense) {
+    int nr = t->numcon, d = t->numvar;
+    if (t->numbarvar != 1 || d < 4 || d > SDP_DIAGONAL_DIM || t->barDim[0] != d ||
+        nr != d * (d+1) / 2 || getenv("GMB_SDP_DENSE") || getenv("GMB_SDP_SPARSE"))
+        return 0;
+    SdpAffineRow *rows = sdp_affine_rows(t, 0);
+    if (!rows) return 0;
+    int solved = 0, column[SDP_DIAGONAL_DIM];
+    double weight[SDP_DIAGONAL_DIM];
+    for (int i = 0; i < d; i++) column[i] = -1;
+    size_t square = (size_t)d * d;
+    double *buffer = malloc((4 * square + 2 * (size_t)nr) * sizeof(*buffer));
+    if (!buffer) goto done;
+    double *x = buffer, *z = x + square, *inverse = z + square, *hess = inverse + square;
+    double *y = hess + square, *activity = y + nr;
+    for (int j = 0; j < d; j++) {
+        const Col *c = &t->cols[j];
+        if (c->nz != 1 || !isfinite(c->val[0]) || c->val[0] == 0.0) goto done;
+        const SdpAffineRow *a = &rows[c->sub[0]];
+        if (a->p != a->q || column[a->p] >= 0) goto done;
+        double w = sense * t->c[j] / c->val[0];
+        if (!(w > 0.0) || !isfinite(w) || !isfinite(1.0 / w)) goto done;
+        column[a->p] = j;
+        weight[a->p] = w;
+    }
+    for (int r = 0; r < nr; r++) {
+        const SdpAffineRow *a = &rows[r];
+        double v = a->p == a->q ? 0.0 : -t->blc[r];
+        x[(size_t)a->p * d + a->q] = x[(size_t)a->q * d + a->p] = v;
+    }
+    double *factor_rows[SDP_DIAGONAL_DIM], *hessian_rows[SDP_DIAGONAL_DIM];
+    DMat factor = {d, d, factor_rows}, hessian = {d, d, hessian_rows};
+    for (int i = 0; i < d; i++) {
+        double sum = 1.0 / weight[i];
+        for (int j = 0; j < d; j++) sum += fabs(x[(size_t)i * d + j]);
+        x[(size_t)i * d + i] = sum;
+        factor_rows[i] = z + (size_t)i * d;
+        hessian_rows[i] = hess + (size_t)i * d;
+    }
+
+    int limit = iter_cap(t->max_iter_intpnt);
+    if (limit > SDP_DIAGONAL_STEPS) limit = SDP_DIAGONAL_STEPS;
+    double mu = 1.0;
+    int iterations = 0;
+    for (int stage = 0; stage < 12 && iterations < limit; stage++, mu *= 0.1) {
+        for (int it = 0; it < 20 && iterations < limit; it++) {
+            iterations++;
+            double value = sdp_diagonal_barrier(d, x, weight, mu, &factor);
+            if (!isfinite(value)) goto done;
+            double step[SDP_DIAGONAL_DIM], old[SDP_DIAGONAL_DIM], scale[SDP_DIAGONAL_DIM];
+            double variables[SDP_DIAGONAL_DIM];
+            for (int j = 0; j < d; j++) {
+                memset(step, 0, (size_t)d * sizeof(*step));
+                step[j] = 1.0;
+                dmat_chol_solve(&factor, step, d);
+                for (int i = 0; i <= j; i++)
+                    inverse[(size_t)i * d + j] = inverse[(size_t)j * d + i] = step[i];
+                if (!(step[j] > 0.0) || !isfinite(step[j])) goto done;
+                scale[j] = sqrt(weight[j] / step[j]);
+                old[j] = x[(size_t)j * d + j];
+                const Col *c = &t->cols[column[j]];
+                variables[column[j]] = (old[j] + t->blc[c->sub[0]]) / c->val[0];
+            }
+            double primal = t->cfix, dual = t->cfix;
+            for (int j = 0; j < d; j++) primal += t->c[j] * variables[j];
+            for (int r = 0; r < nr; r++) {
+                const SdpAffineRow *a = &rows[r];
+                double entry = inverse[(size_t)a->p * d + a->q] * scale[a->p] * scale[a->q];
+                y[r] = -sense * (a->p == a->q ? 1.0 : 2.0) * entry;
+                dual -= t->blc[r] * y[r];
+            }
+            if (isfinite(primal) && isfinite(dual) &&
+                fabs(primal - dual) <= 0.75 * t->tol_co_gap * (1.0 + fabs(primal) + fabs(dual))) {
+                const SdpAffinePoint point = {variables, y, activity, &x, &z};
+                if (sdp_affine_lift(t, sense, rows, &point)) {
+                    solved = 1;
+                    goto done;
+                }
+                /* The original checks can reject this feasible-barrier point.
+                 * Leave the original task to its usual solver in that case. */
+                goto done;
+            }
+            double minus_grad[SDP_DIAGONAL_DIM];
+            for (int i = 0; i < d; i++) {
+                step[i] = minus_grad[i] = mu * inverse[(size_t)i * d + i] - weight[i];
+                for (int j = 0; j <= i; j++) {
+                    double v = inverse[(size_t)i * d + j];
+                    hessian_rows[i][j] = mu * v * v;
+                }
+            }
+            if (dmat_cholesky(&hessian, d)) goto done;
+            dmat_chol_solve(&hessian, step, d);
+            double decrement = 0.0;
+            for (int i = 0; i < d; i++) decrement += minus_grad[i] * step[i];
+            if (!isfinite(decrement)) goto done;
+            if (decrement <= 1e-8 * mu) break;
+            double alpha = 1.0;
+            int accepted = 0;
+            for (int bt = 0; bt < 30; bt++, alpha *= 0.5) {
+                for (int i = 0; i < d; i++) x[(size_t)i * d + i] = old[i] + alpha * step[i];
+                double next = sdp_diagonal_barrier(d, x, weight, mu, &factor);
+                if (next <= value - 0.01 * alpha * decrement) {
+                    accepted = 1;
+                    break;
+                }
+            }
+            if (!accepted) {
+                for (int i = 0; i < d; i++) x[(size_t)i * d + i] = old[i];
+                break;
+            }
+        }
+    }
+done:
+    free(buffer);
+    free(rows);
+    if (solved) tlog(t, "optimal solution found (diagonal affine SDP)\n");
+    return solved;
+}
+
+enum {
+    SDP_AFFINE_BARRIER_ORDER = 32, SDP_AFFINE_BARRIER_VARS = 160,
+    SDP_AFFINE_BARRIER_ROWS = SDP_AFFINE_BARRIER_ORDER * (SDP_AFFINE_BARRIER_ORDER + 1) / 2
+};
+
+static double sdp_affine_trace(const SdpAffineRow *rows, const Col *col,
+                               int d, const double *matrix) {
+    double value = 0.0;
+    for (int k = 0; k < col->nz; k++) {
+        const SdpAffineRow *a = &rows[col->sub[k]];
+        double v = matrix[(size_t)a->p * d + a->q];
+        value += col->val[k] * (a->p == a->q ? v : 2.0*v);
+    }
+    return value;
+}
+
+static void sdp_affine_matrix(PRIMALtask_t t, const SdpAffineRow *rows,
+                              const double *x, double *matrix, int d, int constant) {
+    memset(matrix, 0, (size_t)d * d * sizeof(*matrix));
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *c = &t->cols[j];
+        for (int k = 0; k < c->nz; k++) {
+            const SdpAffineRow *a = &rows[c->sub[k]];
+            matrix[(size_t)a->p * d + a->q] += c->val[k] * x[j];
+        }
+    }
+    for (int i = 0; i < t->numcon; i++) {
+        const SdpAffineRow *a = &rows[i];
+        double *v = &matrix[(size_t)a->p * d + a->q];
+        if (constant) *v -= t->blc[i];
+        matrix[(size_t)a->q * d + a->p] = *v;
+    }
+}
+
+static double sdp_affine_barrier_value(PRIMALtask_t t, const SdpAffineRow *rows,
+                                       const double *x, int sense, double mu, double trace_cost, int phase,
+                                       double *matrix, DMat *factor) {
+    int d = factor->n, n = t->numvar;
+    sdp_affine_matrix(t, rows, x, matrix, d, 1);
+    if (phase)
+        for (int i = 0; i < d; i++) matrix[(size_t)i*d+i] += x[n];
+    for (int i = 0; i < d; i++)
+        memcpy(factor->v[i], matrix + (size_t)i * d, (size_t)(i+1) * sizeof(*matrix));
+    if (dmat_cholesky(factor, d)) return INFINITY;
+    double value = phase ? x[n] : 0.0;
+    if (!phase)
+        for (int j = 0; j < n; j++) value += sense * t->c[j] * x[j];
+    for (int i = 0; i < d; i++)
+        value += trace_cost * matrix[(size_t)i*d+i] - 2.0 * mu * log(factor->v[i][i]);
+    return value;
+}
+
+/* Solve the LMI with a log-det barrier in the original scalar variables.
+ * A combination A*x = I supplies an interior start when available.
+ * Small block-diagonal problems can instead drive a shift tau*I below zero.
+ * A cost on the trace
+ * that vanishes with mu controls growth in flat directions. For the
+ * dual correction, solve the Newton system with the original cost:
+ * Z = mu*(W - W*(A*dx)*W), W = X^-1. */
+static int sdp_affine_barrier_solve(PRIMALtask_t t, int sense) {
+    int n = t->numvar, nr = t->numcon, nb = t->numbarvar;
+    if (!nb || nb > SDP_AFFINE_BARRIER_ORDER || !n || n > SDP_AFFINE_BARRIER_VARS ||
+        (nb == 1 && n/2 < t->barDim[0]) || (nb > 1 && n > 32) ||
+        getenv("GMB_SDP_DENSE") || getenv("GMB_SDP_SPARSE")) return 0;
+    int d = 0, offset[SDP_AFFINE_BARRIER_ORDER];
+    for (int b = 0; b < nb; b++) {
+        if (t->barDim[b] > SDP_AFFINE_BARRIER_ORDER - d) return 0;
+        offset[b] = d;
+        d += t->barDim[b];
+    }
+    int packed_size = d * (d+1) / 2;
+    if (nr > packed_size) return 0;
+    SdpAffineRow *local_rows = sdp_affine_rows(t, 0);
+    if (!local_rows) return 0;
+    SdpAffineRow rows[SDP_AFFINE_BARRIER_ROWS];
+    for (int i = 0; i < nr; i++) {
+        rows[i] = local_rows[i];
+        rows[i].p += offset[rows[i].block];
+        rows[i].q += offset[rows[i].block];
+    }
+    int solved = 0;
+    size_t sq = (size_t)d * d;
+    int variables = n + (nb > 1);
+    double *storage = malloc((5 * sq + (size_t)variables*variables +
+                              (size_t)(variables+1)*packed_size + (size_t)nr) * sizeof(*storage));
+    if (!storage) goto done;
+    double *xbar = storage, *zbar = xbar + sq, *w = zbar + sq;
+    double *product = w + sq, *transform = product + sq;
+    double *hbuf = transform + sq, *q = hbuf + (size_t)variables*variables;
+    double *y = q + (size_t)variables*packed_size, *activity = y + nr;
+    double *lp[SDP_AFFINE_BARRIER_ORDER], *hp[SDP_AFFINE_BARRIER_VARS+1];
+    double *primal_blocks[SDP_AFFINE_BARRIER_ORDER], *dual_blocks[SDP_AFFINE_BARRIER_ORDER];
+    size_t block_start = 0;
+    for (int b = 0; b < nb; b++) {
+        primal_blocks[b] = xbar + block_start;
+        dual_blocks[b] = zbar + block_start;
+        block_start += (size_t)t->barDim[b] * t->barDim[b];
+    }
+    DMat factor = {d, d, lp}, hessian = {n, n, hp};
+    for (int j = 0; j < d; j++) lp[j] = zbar + (size_t)j * d;
+    for (int j = 0; j < variables; j++) hp[j] = hbuf + (size_t)j * variables;
+
+    double x[SDP_AFFINE_BARRIER_VARS+1] = {0}, direction[SDP_AFFINE_BARRIER_VARS+1];
+    double step[SDP_AFFINE_BARRIER_VARS+1], gradient[SDP_AFFINE_BARRIER_VARS+1];
+    const double root_two = sqrt(2.0);
+    double trace[SDP_AFFINE_BARRIER_VARS+1];
+    trace[n] = d;
+    for (int i = 0; i < n; i++) {
+        const Col *col = &t->cols[i];
+        if (!col->nz || !isfinite(t->c[i])) goto done;
+        for (int k = 0; k < col->nz; k++)
+            if (!isfinite(col->val[k])) goto done;
+        x[i] = 1.0;
+        sdp_affine_matrix(t, rows, x, xbar, d, 0);
+        x[i] = 0.0;
+        for (int j = 0; j <= i; j++) hp[i][j] = sdp_affine_trace(rows, &t->cols[j], d, xbar);
+        trace[i] = 0.0;
+        for (int j = 0; j < d; j++) trace[i] += xbar[(size_t)j*d+j];
+        direction[i] = trace[i];
+    }
+    if (dmat_cholesky(&hessian, n)) goto done;
+    dmat_chol_solve(&hessian, direction, n);
+    sdp_affine_matrix(t, rows, direction, xbar, d, 0);
+    double row_norm[SDP_AFFINE_BARRIER_ORDER] = {0};
+    int identity = 1;
+    for (int r = 0; r < nr; r++) {
+        const SdpAffineRow *a = &rows[r];
+        row_norm[a->p] += fabs(t->blc[r]);
+        if (a->p != a->q) row_norm[a->q] += fabs(t->blc[r]);
+        double want = a->p == a->q ? 1.0 : 0.0;
+        if (!(fabs(xbar[(size_t)a->p*d+a->q] - want) <= 1e-10)) identity = 0;
+    }
+    double scale = 1.0;
+    for (int j = 0; j < d; j++) scale = fmax(scale, 1.0 + row_norm[j]);
+    if (identity) {
+        for (int j = 0; j < n; j++) x[j] = scale * direction[j];
+    } else {
+        if (nb == 1) goto done;
+        x[n] = scale;
+    }
+    int limit = iter_cap(t->max_iter_intpnt);
+    int cap = nb == 1 ? SDP_DIAGONAL_STEPS : 240;
+    if (limit > cap) limit = cap;
+
+    int iterations = 0;
+    int phase = !identity;
+restart_barrier:;
+    int system = n + phase;
+    double mu = phase ? 0.1 : 1.0;
+    for (int stage = 0; stage < 12 && iterations < limit; stage++, mu *= 0.1) {
+        double trace_cost = phase ? 0.0 : mu / (nb == 1 ? scale : fmax(scale, 1e4));
+        for (int it = 0; it < 28 && iterations < limit; it++) {
+            iterations++;
+            double value = sdp_affine_barrier_value(t, rows, x, sense, mu, trace_cost,
+                                                    phase, xbar, &factor);
+            if (!isfinite(value)) goto done;
+            memset(w, 0, sq * sizeof(*w));
+            for (int j = 0; j < d; j++) for (int i = j; i < d; i++) {
+                double v = i == j ? 1.0 : 0.0;
+                for (int k = j; k < i; k++) v -= lp[i][k] * w[(size_t)k*d+j];
+                w[(size_t)i*d+j] = v / lp[i][i];
+            }
+            for (int j = 0; j < system; j++) {
+                if (j == n) {
+                    for (int i = 0; i < d; i++) for (int k = 0; k < d; k++)
+                        product[(size_t)i*d+k] = w[(size_t)k*d+i];
+                } else {
+                    const Col *col = &t->cols[j];
+                    memset(product, 0, sq * sizeof(*product));
+                    for (int k = 0; k < col->nz; k++) {
+                        const SdpAffineRow *a = &rows[col->sub[k]];
+                        double v = col->val[k];
+                        for (int i = a->q; i < d; i++)
+                            product[(size_t)a->p*d+i] += v * w[(size_t)i*d+a->q];
+                        if (a->p != a->q)
+                            for (int i = a->p; i < d; i++)
+                                product[(size_t)a->q*d+i] += v * w[(size_t)i*d+a->p];
+                    }
+                }
+                double *feature = q + (size_t)j*packed_size;
+                double tr = 0.0;
+                int packed = 0;
+                for (int i = 0; i < d; i++) for (int l = i; l < d; l++) {
+                    double v = 0.0;
+                    for (int k = 0; k <= i; k++) v += w[(size_t)i*d+k] * product[(size_t)k*d+l];
+                    feature[packed++] = i == l ? v : root_two * v;
+                    if (i == l) tr += v;
+                }
+                double cost = phase ? (j == n ? 1.0 : 0.0) : sense * t->c[j];
+                gradient[j] = mu * tr - cost;
+                direction[j] = (gradient[j] - trace_cost * trace[j]) / mu;
+                for (int k = 0; k < j; k++) hp[k][j] = 0.0;
+                /* Modified Gram-Schmidt with a second pass. Working with
+                 * the whitened matrices avoids factoring a Gram matrix. */
+                for (int pass = 0; pass < 2; pass++) for (int k = 0; k < j; k++) {
+                    const double *previous = q + (size_t)k*packed_size;
+                    double projection = dvec_dot(packed_size, feature, previous);
+                    dvec_axpy(packed_size, -projection, previous, feature);
+                    hp[k][j] += projection;
+                }
+                double norm = dvec_norm2(packed_size, feature);
+                if (!(norm > 0.0) || !isfinite(norm)) goto done;
+                hp[j][j] = norm;
+                for (int k = 0; k < packed_size; k++) feature[k] /= norm;
+            }
+            for (int i = 0; i < system; i++) {
+                double v = direction[i];
+                for (int j = 0; j < i; j++) v -= hp[j][i] * direction[j];
+                direction[i] = v / hp[i][i];
+            }
+            for (int i = system-1; i >= 0; i--) {
+                double v = direction[i];
+                for (int j = i+1; j < system; j++) v -= hp[i][j] * direction[j];
+                direction[i] = v / hp[i][i];
+            }
+
+            if (!phase && stage > 0) {
+                for (int i = 0; i < n; i++) {
+                    double v = gradient[i] / mu;
+                    for (int j = 0; j < i; j++) v -= hp[j][i] * step[j];
+                    step[i] = v / hp[i][i];
+                }
+                memset(activity, 0, (size_t)packed_size * sizeof(*activity));
+                for (int i = 0; i < n; i++)
+                    dvec_axpy(packed_size, -step[i], q + (size_t)i*packed_size, activity);
+                int packed = 0;
+                for (int i = 0; i < d; i++) for (int j = i; j < d; j++) {
+                    double v = activity[packed++];
+                    v = i == j ? 1.0 + v : v / root_two;
+                    transform[(size_t)i*d+j] = transform[(size_t)j*d+i] = v;
+                }
+                memset(product, 0, sq * sizeof(*product));
+                for (int i = 0; i < d; i++) for (int j = 0; j < d; j++) {
+                    double v = transform[(size_t)i*d+j];
+                    for (int k = 0; k <= j; k++) product[(size_t)i*d+k] += v * w[(size_t)j*d+k];
+                }
+                double primal = t->cfix, dual = t->cfix;
+                for (int j = 0; j < n; j++) primal += t->c[j] * x[j];
+                for (int r = 0; r < nr; r++) {
+                    const SdpAffineRow *a = &rows[r];
+                    double p = 0.0;
+                    for (int k = a->p; k < d; k++) p += w[(size_t)k*d+a->p] * product[(size_t)k*d+a->q];
+                    y[r] = -sense * mu * (a->p == a->q ? p : 2.0*p);
+                    dual -= t->blc[r] * y[r];
+                }
+                const SdpAffinePoint point = {x, y, activity, primal_blocks, dual_blocks};
+                if (isfinite(primal) && isfinite(dual) &&
+                    fabs(primal - dual) <= t->tol_co_gap * (1.0 + fabs(primal) + fabs(dual)) &&
+                    sdp_affine_lift(t, sense, local_rows, &point)) {
+                    solved = 1;
+                    goto done;
+                }
+            }
+            double decrement = 0.0;
+            for (int j = 0; j < system; j++)
+                decrement += (gradient[j] - trace_cost * trace[j]) * direction[j];
+            if (!isfinite(decrement)) goto done;
+            if (decrement <= 1e-8 * mu) break;
+            double alpha = 1.0;
+            int accepted = 0;
+            for (int bt = 0; bt < 42; bt++, alpha *= 0.5) {
+                for (int j = 0; j < system; j++) step[j] = x[j] + alpha * direction[j];
+                double f = sdp_affine_barrier_value(t, rows, step, sense, mu, trace_cost,
+                                                    phase, xbar, &factor);
+                if (f <= value - 0.01 * alpha * decrement) {
+                    memcpy(x, step, (size_t)system * sizeof(*x));
+                    if (phase && x[n] < -1e-5) {
+                        phase = 0;
+                        goto restart_barrier;
+                    }
+                    accepted = 1;
+                    break;
+                }
+            }
+            if (!accepted) break;
+        }
+    }
+done:
+    free(storage);
+    free(local_rows);
+    if (solved) tlog(t, "optimal solution found (affine SDP log-det barrier)\n");
+    return solved;
+}
+
 /* Dual of min s*c'x with A_i x - X[p,q] = b_i and X PSD. The
  * original scalar coefficients are the entries of symmetric matrices. */
 static int sdp_affine_dual_solve(PRIMALtask_t t, int s) {
@@ -508,7 +927,10 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
         t->prosta = PRIMAL_PRO_STA_PRIM_INFEAS;
         tlog(t, "primal infeasible (SDP coordinate faces)\n");
         r = PRIMAL_RES_ERR_INFEASIBLE;
-    } else if (sdp_affine_dual_solve(t, s) || sdp_affine_solve(t, s)) r = PRIMAL_RES_OK;
+    } else if (sdp_affine_diagonal_solve(t, s) || sdp_affine_dual_solve(t, s) ||
+               (t->numbarvar == 1 && sdp_affine_barrier_solve(t, s)) ||
+               sdp_affine_solve(t, s) ||
+               (t->numbarvar > 1 && sdp_affine_barrier_solve(t, s))) r = PRIMAL_RES_OK;
     else r = optimize_sdp_ipm_impl(t, s);
     cb_fire(t, PRIMAL_CALLBACK_END_CONIC);
     iter_cb_end();

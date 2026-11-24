@@ -755,6 +755,37 @@ l'obiettivo vale `7.500952151967790`, la massima violazione originale è
 rispetto a Clarabel è `5.74e-10`. Su `rijc781` i valori corrispondenti
 sono `-4.414286537325904`, `4.36e-10`, `1.45e-10` e `8.28e-9`.
 
+### Verifica SDPLIB del 2026-11-24
+
+I tre SDP rimasti aperti dopo le verifiche del 23 novembre ora restituiscono
+`OPTIMAL` in cinque solve su cinque nei CBF originali. Build `-O2`, un
+thread, tolleranze `1e-8`, fattore near-optimal pari a 1. I tempi sono
+mediane di `PRIMAL_optimize`, con lettura dei file esclusa.
+
+| Istanza | Primal 19/11 | Primal 24/11 (ms) | Obiettivo primale | Gap relativo | Violazione massima |
+|---|---|---:|---:|---:|---:|
+| `mcp100` | >60 s | 56.368 | 226.1573515174849 | 1.51e-9 | 2.22e-16 |
+| `qap5` | >60 s | 232.564 | -435.9999990000009 | 3.01e-9 | 5.12e-11 |
+| `hinf1` | rc=1007 | 1.731 | 2.032600777938155 | 5.56e-9 | 5.10e-13 |
+
+Su `mcp100` la barriera lavora sulla sola diagonale libera, mentre
+`qap5` e `hinf1` usano QR sulle matrici scalate dalla Cholesky della
+barra. `hinf1` usa una fase I con uno shift comune ai tre blocchi.
+[`mcp100` e la diagonale libera](algorithms/semidefinite_programming.md#a-log-det-barrier-for-a-free-diagonal) ·
+[QR, recupero duale e fase I](algorithms/semidefinite_programming.md#a-log-det-barrier-for-small-affine-blocks)
+
+Il confronto ripetuto su `mcp100` usa tre solve intercalati a un thread
+e tolleranze `1e-8`. Clarabel 0.11.1 e SCS 3.3.1 ricevono la stessa
+LMI originale in forma triangolare scalata. I tempi dei riferimenti
+escludono la costruzione del solver.
+
+| Primal (ms) | Clarabel (ms) | SCS (ms) |
+|---:|---:|---:|
+| **56.361** | 166.745 | 851.940 |
+
+I tre solver dichiarano l'ottimo in tutte le prove, con scarto scalato
+degli obiettivi entro `4.22e-9` rispetto a Primal.
+
 ## 3. Come estendere
 
 ```sh

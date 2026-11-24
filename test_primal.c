@@ -22427,8 +22427,152 @@ static void test_t322(void) {
     pend(&p);
 }
 
+static void t323_capture_route(void *handle, const char *message) {
+    if (strstr(message, "diagonal affine SDP")) *(int *)handle = 1;
+}
+
+/* T323: a PSD block with all off-diagonals equal to -1 has minimum
+ * trace d*(d-1), by testing the all-ones vector. The equal diagonal
+ * d-1 attains the bound, and the all-ones matrix certifies it. */
+static void test_t323(void) {
+    enum { dim = 4, nr = 10 };
+    for (int maximize = 0; maximize <= 1; maximize++) {
+        cur_name = maximize ? "T323 diagonal affine SDP (max)" : "T323 diagonal affine SDP (min)";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        const int d = dim;
+        double sign = maximize ? -1.0 : 1.0;
+        const double one = 1.0;
+        PRIMAL_appendvars(t, dim);
+        PRIMAL_appendcons(t, nr);
+        PRIMAL_appendbarvars(t, 1, &d);
+        PRIMAL_putobjsense(t, maximize ? PRIMAL_OPTIMIZE_MAXIMIZE : PRIMAL_OPTIMIZE_MINIMIZE);
+        PRIMAL_putcfix(t, 20.0);
+        int i = 0;
+        for (int a = 0; a < dim; a++) for (int b = 0; b <= a; b++, i++) {
+            int sym, j = dim-1-a;
+            double coeff = a == b ? -1.0 : -0.5;
+            double rhs = a == b ? 0.5*a : 1.0;
+            PRIMAL_appendsparsesymmat(t, dim, 1, &b, &a, &one, &sym);
+            PRIMAL_putbaraij(t, i, 0, 1, &sym, &coeff);
+            PRIMAL_putconbound(t, i, PRIMAL_BK_FX, rhs, rhs);
+            if (a == b) {
+                double aj = a % 2 == 0 ? 2.0 : -0.5;
+                PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0.0, 0.0);
+                PRIMAL_putaij(t, i, j, aj);
+                PRIMAL_putcj(t, j, sign * aj);
+            }
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t323_capture_route);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve diagonal objective");
+        check(used, "diagonal barrier result accepted");
+        double y[nr] = {0}, po = NAN, du = NAN, pr = INFINITY;
+        double pb = INFINITY, dv = INFINITY, db = INFINITY;
+        check_rc(PRIMAL_gety(t, PRIMAL_SOL_ITR, y), PRIMAL_RES_OK, "original row multipliers");
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, NULL, &pb,
+                                        NULL, NULL, &du, NULL, &dv, &db, NULL),
+                 PRIMAL_RES_OK, "original quality");
+        check(fabs(po - (20.0 + sign*15.0)) <= 1e-6, "analytic objective in original units");
+        check(fabs(po - du) <= 1e-8 * (1.0 + fabs(po) + fabs(du)), "original gap");
+        check(pr <= 1e-8 && pb <= 1e-8 && dv <= 1e-8 && db <= 1e-8, "original feasibility");
+        check(fabs(y[0] + sign) <= 1e-8 && fabs(y[1] + 2.0*sign) <= 1e-7,
+              "diagonal and off-diagonal dual weights");
+        pend(&p);
+    }
+}
+
+static void t324_capture_route(void *handle, const char *message) {
+    if (strstr(message, "affine SDP log-det barrier")) *(int *)handle = 1;
+}
+
+/* T324: the two disjoint 2x2 principal minors with off-diagonals -1
+ * and -1/2 force the trace to be at least 3. Zero cross entries and
+ * equal diagonals within each minor attain this bound. */
+static void test_t324(void) {
+    cur_name = "T324 affine SDP log-det barrier with QR dual recovery";
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    const int dim = 4;
+    const double one = 1.0;
+    PRIMAL_appendvars(t, 8);
+    PRIMAL_appendcons(t, 10);
+    PRIMAL_appendbarvars(t, 1, &dim);
+    int i = 0, j = 0;
+    for (int a = 0; a < dim; a++) for (int b = a; b < dim; b++, i++) {
+        int sym;
+        double rhs = a == 0 && b == 1 ? 1.0 : (a == 2 && b == 3 ? 0.5 : 0.0);
+        double coef = a == b ? -1.0 : -0.5;
+        PRIMAL_appendsparsesymmat(t, dim, 1, &a, &b, &one, &sym);
+        PRIMAL_putbaraij(t, i, 0, 1, &sym, &coef);
+        PRIMAL_putconbound(t, i, PRIMAL_BK_FX, rhs, rhs);
+        if (rhs == 0.0) {
+            PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0.0, 0.0);
+            PRIMAL_putaij(t, i, j, 1.0);
+            if (a == b) PRIMAL_putcj(t, j, 1.0);
+            j++;
+        }
+    }
+    int used = 0;
+    PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+    PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t324_capture_route);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve affine matrix inequality");
+    check(used, "QR barrier result accepted");
+    double po = NAN, du = NAN, pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+    check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, NULL, &pb,
+                                    NULL, NULL, &du, NULL, &dv, &db, NULL),
+             PRIMAL_RES_OK, "quality in the original model");
+    check(fabs(po - 3.0) <= 1e-7 && fabs(du - 3.0) <= 1e-7, "analytic objective");
+    check(fabs(po - du) <= 1e-8 * (1.0 + fabs(po) + fabs(du)), "original gap");
+    check(pr <= 1e-8 && pb <= 1e-8 && dv <= 1e-8 && db <= 1e-8, "original feasibility");
+    pend(&p);
+}
+
+/* T325: two blocks with off-diagonal and lower diagonal fixed at 1.
+ * Their upper diagonals x and x+1 require x >= 1. The coefficient
+ * of x cannot generate the identity, so an interior start needs phase I. */
+static void test_t325(void) {
+    cur_name = "T325 affine SDP phase I across blocks";
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    const int dims[] = {2, 2};
+    const double one = 1.0;
+    PRIMAL_appendvars(t, 1);
+    PRIMAL_appendcons(t, 6);
+    PRIMAL_appendbarvars(t, 2, dims);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    int r = 0;
+    for (int b = 0; b < 2; b++) for (int i = 0; i < 2; i++) for (int j = i; j < 2; j++, r++) {
+        int sym;
+        double coef = i == j ? -1.0 : -0.5;
+        double rhs = j == 0 ? -b : -1.0;
+        PRIMAL_appendsparsesymmat(t, 2, 1, &i, &j, &one, &sym);
+        PRIMAL_putbaraij(t, r, b, 1, &sym, &coef);
+        PRIMAL_putconbound(t, r, PRIMAL_BK_FX, rhs, rhs);
+        if (j == 0) PRIMAL_putaij(t, r, 0, one);
+    }
+    int used = 0;
+    PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+    PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t324_capture_route);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve from an artificial diagonal shift");
+    check(used, "accepted the affine barrier result");
+    double po = NAN, du = NAN, pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+    check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &po, &pr, NULL, &pb,
+                                    NULL, NULL, &du, NULL, &dv, &db, NULL),
+             PRIMAL_RES_OK, "quality in original blocks");
+    check(fabs(po - 1.0) <= 1e-7 && fabs(du - 1.0) <= 1e-7, "analytic objective");
+    check(fabs(po - du) <= 1e-8 * (1.0 + fabs(po) + fabs(du)), "original gap");
+    check(pr <= 1e-8 && pb <= 1e-8 && dv <= 1e-8 && db <= 1e-8, "original feasibility");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t325();
+    test_t324();
+    test_t323();
     test_t322();
     test_t321();
     test_t320();
