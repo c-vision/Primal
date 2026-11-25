@@ -363,6 +363,63 @@ matrix and must satisfy the original rows, bounds, integrality, PSD and
 exponential constraints. T330 also exercises an instance in which a
 negative contribution makes the optimal allocation leave budget unused.
 
+For larger designs, PRIMAL bounds a box of integer allocations before
+enumerating its points. Let $W=M(u)+\eta B I$. For any invertible $Q$
+and positive semidefinite $W$, the arithmetic–geometric mean inequality
+applied to the eigenvalues of $QWQ^\top$ gives
+
+$$
+\det W\le
+\frac{\left(\mathrm{tr}(QWQ^\top)/d\right)^d}{(\det Q)^2}.
+$$
+
+With $Q$ fixed, the trace is affine in the weights. Its maximum in a box
+with fixed total budget comes from filling capacity in decreasing order
+of the trace coefficients, starting at the lower bounds. PRIMAL uses
+pairwise exchanges of real weights to find a useful reference Cholesky
+factor and takes its triangular inverse as $Q$. The upper bound uses the
+original coefficients with a rounding margin. Any invertible $Q$ gives
+a valid bound, so the exchange iterations can stop before convergence.
+The search records a bound for every terminal box and verifies the
+reconstructed optimum against their maximum.
+
+### Partitions encoded by a PSD matrix
+
+Some models use binary indicators $x_{ij}$ for pairs of vertices.
+A positive semidefinite matrix $X$ has diagonal 1 and two possible
+off-diagonal values $a$ and $b$, with $a$ near 1 and $b<0$.
+The model sets $X_{ij}=a$ when $x_{ij}=1$.
+
+If $x_{ij}=x_{jk}=1$ but $x_{ik}=0$, the corresponding principal
+minor equals $(1-b)(1+b-2a^2)$. When this is negative, such a triple
+violates positive semidefiniteness. The indicators therefore define
+groups. Selecting one vertex from each of $k+1$ distinct groups
+produces a principal submatrix with all off-diagonal entries equal
+to $b$. Its quadratic form on the all-ones vector is negative
+when $1+kb<0$, so at most $k$ groups are possible.
+
+For a vertex set $S$, let $C(S)=\sum_{i<j,\ i,j\in S}c_{ij}$
+be its within-group cost. A constraint with terms only on edges
+incident to a vertex can be tested using the group containing that
+vertex. After filtering groups by those constraints, use
+
+$$
+F_g(U)=\min_{S\subseteq U,\ \min U\in S}
+\left[C(S)+F_{g-1}(U\setminus S)\right].
+$$
+
+The minimum uses only admissible groups. $F_g(\varnothing)=0$,
+and $F_1(U)$ is the cost of one admissible group or $+\infty$.
+Anchoring each chosen group at the first remaining vertex avoids
+counting group permutations. The time bound is $O(k3^n)$ and the
+stored choices take $O(k2^n)$ space.
+
+[`mip_partition_solve`](../primal_mip_partition.c) uses this path for
+small models with explicit pair-to-matrix equalities. It checks every
+row and the smallest PSD eigenvalue after reconstructing the
+partition. T331 covers a five-vertex model whose optimum moves from
+4 to 6 when the group of vertex zero must have at least four members.
+
 ## The relaxation solver and the slack-basis start
 
 For an LP relaxation PRIMAL solves the standard form with the simplex method:

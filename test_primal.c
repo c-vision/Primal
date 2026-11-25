@@ -22778,15 +22778,15 @@ static void t330_capture_route(void *handle, const char *message) {
 }
 
 /* D-optimal design with active diagonal entries 1+w0 and 1+2*w1.
- * Extra unit entries exercise the shared minors in dimension six.
+ * Extra unit entries exercise shared minors and determinant bounds.
  * Check both rejection of the lifted point and a non-PSD coefficient
  * for which the best allocation leaves part of the budget unused. */
 static void test_t330(void) {
-    for (int variant = 0; variant < 4; variant++) {
+    for (int variant = 0; variant < 5; variant++) {
         cur_name = variant == 2 ? "T330 logdet original-row guard" : "T330 integer logdet";
         P p; pbegin(&p);
         PRIMALtask_t t = p.task;
-        int d = variant == 1 ? 6 : 2;
+        int d = variant == 4 ? 8 : (variant == 1 || variant == 3 ? 6 : 2);
         int objective = 2+3*d, info = objective+1, zero = info+d;
         int dims[2] = {d, 2*d};
         PRIMAL_appendvars(t, zero+1);
@@ -22861,13 +22861,13 @@ static void test_t330(void) {
             check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITG, &obj, &row, &var, &psd, &expcone,
                                             &integer, NULL, NULL, NULL, NULL, NULL),
                      PRIMAL_RES_OK, "point in original model");
-            const double determinant[] = {10.0, 7.0, 0.0, 2.0};
+            const double determinant[] = {10.0, 7.0, 0.0, 2.0, 10.0};
             check(fabs(obj + log(determinant[variant])) <= 1e-8, "enumerated objective");
             check(fmax(fmax(row,var),fmax(psd,fmax(expcone,integer))) <= 1e-8,
                   "linear, PSD, EXP and integer violations");
-            double x[28] = {0};
+            double x[36] = {0};
             check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITG, x), PRIMAL_RES_OK, "original weights");
-            const double weight[][2] = {{1,2}, {0,3}, {0,0}, {1,0}};
+            const double weight[][2] = {{1,2}, {0,3}, {0,0}, {1,0}, {1,2}};
             check(x[0] == weight[variant][0] && x[1] == weight[variant][1],
                   "best discrete allocation");
         }
@@ -22875,8 +22875,70 @@ static void test_t330(void) {
     }
 }
 
+static void t331_capture_route(void *handle, const char *message) {
+    if (strstr(message, "partition optimality certified")) *(int *)handle = 1;
+}
+
+/* Five vertices in at most two groups. Without a capacity the minimum
+ * number of within-group pairs is 1+3. Requiring three neighbours of
+ * vertex zero gives a group of four and raises the objective to six. */
+static void test_t331(void) {
+    for (int variant = 0; variant < 3; variant++) {
+        cur_name = variant == 2 ? "T331 partition global row guard" : "T331 exact PSD partition";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int dim = 5;
+        PRIMAL_appendvars(t, 10);
+        PRIMAL_appendcons(t, 15+(variant != 0));
+        PRIMAL_appendbarvars(t, 1, &dim);
+        int col = 0, row = 0;
+        for (int i = 0; i < dim; i++)
+            for (int j = 0; j <= i; j++, row++) {
+                int sym = -1;
+                double one = 1.0, weight = i == j ? -1.0 : -0.5;
+                PRIMAL_appendsparsesymmat(t, dim, 1, &j, &i, &one, &sym);
+                PRIMAL_putbaraij(t, row, 0, 1, &sym, &weight);
+                double rhs = i == j ? -1.0 : 1.0;
+                PRIMAL_putconbound(t, row, PRIMAL_BK_FX, rhs, rhs);
+                if (i == j) continue;
+                PRIMAL_putvarbound(t, col, PRIMAL_BK_RA, 0.0, 1.0);
+                PRIMAL_putvartype(t, col, PRIMAL_VAR_TYPE_INT_BIN);
+                PRIMAL_putcj(t, col, 1.0);
+                PRIMAL_putaij(t, row, col, 2.0);
+                if (variant == 2 || (variant == 1 && j == 0))
+                    PRIMAL_putaij(t, 15, col, 1.0);
+                col++;
+            }
+        if (variant)
+            PRIMAL_putconbound(t, 15, PRIMAL_BK_LO, variant == 1 ? 3.0 : 5.0, 0.0);
+        if (variant == 2) {
+            PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1);
+            PRIMAL_putintparam(t, PRIMAL_IPAR_MIP_MAX_NODES, 1);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t331_capture_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(used == (variant != 2), "subset route must check the reconstructed partition");
+        if (variant != 2) {
+            check_rc(rc, PRIMAL_RES_OK, "partition solve");
+            PRIMALsolstae solsta = PRIMAL_SOL_STA_UNKNOWN;
+            check_rc(PRIMAL_getsolsta(t, PRIMAL_SOL_ITG, &solsta), PRIMAL_RES_OK, "integer status");
+            check(solsta == PRIMAL_SOL_STA_INTEGER_OPTIMAL, "subset exact minimum");
+            double obj = NAN, con = INFINITY, var = INFINITY, psd = INFINITY, integer = INFINITY;
+            check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITG, &obj, &con, &var, &psd, NULL,
+                                            &integer, NULL, NULL, NULL, NULL, NULL),
+                     PRIMAL_RES_OK, "original partition model metrics");
+            check(obj == (variant ? 6.0 : 4.0), "hand optimum with and without a star capacity");
+            check(fmax(fmax(con,var),fmax(psd,integer)) <= 1e-8, "original feasibility");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t331();
     test_t330();
     test_t329();
     test_t328();

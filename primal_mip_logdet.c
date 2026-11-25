@@ -8,9 +8,9 @@
 #include <float.h>
 
 enum {
-    DESIGN_DIM = 6, DESIGN_INTS = 12, DESIGN_ROWS = 384, DESIGN_VARS = 192,
+    DESIGN_DIM = 8, DESIGN_INTS = 16, DESIGN_ROWS = 576, DESIGN_VARS = 256,
     DESIGN_COLS = DESIGN_VARS + DESIGN_DIM*(DESIGN_DIM+1)/2 + DESIGN_DIM*(2*DESIGN_DIM+1),
-    DESIGN_SMALL_NODES = 180000, DESIGN_LARGE_NODES = 50000000
+    DESIGN_SMALL_NODES = 180000, DESIGN_LARGE_NODES = 50000000, DESIGN_BOX_NODES = 32768
 };
 
 typedef struct {
@@ -28,6 +28,7 @@ typedef struct {
     int nodes, max_nodes, saturated, tail[DESIGN_INTS+1];
     int row_of[1 << DESIGN_DIM], col_of[1 << DESIGN_DIM];
     int x[DESIGN_INTS], best_x[DESIGN_INTS];
+    double vector[DESIGN_INTS][DESIGN_DIM];
     double shift, best_det;
 } DesignSearch;
 
@@ -262,14 +263,14 @@ static int design_pattern(PRIMALtask_t t, Design *p) {
 /* Each coefficient A is within eta I of a positive semidefinite vv'.
  * The row sums of A-vv' bound its spectral norm. fma evaluates each
  * entry in one rounding, and the inflation covers the norm reduction. */
-static double design_psd_shift(const Design *p) {
+static double design_psd_shift(const Design *p, double vector[][DESIGN_DIM]) {
     int d = p->d;
     double eta = 0.0, scale = 0.0;
     for (int k = 1; k <= p->count; k++) {
         const double *a = p->matrix[k];
         int pivot = 0;
         for (int i = 1; i < d; i++) if (a[i*d+i] > a[pivot*d+pivot]) pivot = i;
-        double v[DESIGN_DIM] = {0};
+        double *v = vector[k-1];
         if (a[pivot*d+pivot] > 0.0) {
             double head = sqrt(a[pivot*d+pivot]);
             for (int i = 0; i < d; i++) v[i] = a[i*d+pivot]/head;
@@ -285,6 +286,264 @@ static double design_psd_shift(const Design *p) {
     }
     double shift = nextafter(p->budget*(eta*(1.0+64.0*DBL_EPSILON)+DBL_MIN),INFINITY);
     return shift <= 1e-11*fmax(1.0,scale) ? shift : -1.0;
+}
+
+typedef struct {
+    DesignSearch *search;
+    double upper, allowance, ridge;
+    int nodes;
+} DesignTree;
+
+static int design_factor(const DesignSearch *s, const double *w, double ridge, double *matrix) {
+    const Design *p = s->model;
+    int d = p->d;
+    double *row[DESIGN_DIM];
+    for (int i = 0; i < d*d; i++) {
+        matrix[i] = p->matrix[0][i];
+        for (int k = 0; k < p->count; k++) matrix[i] += w[k]*p->matrix[k+1][i];
+    }
+    for (int i = 0; i < d; i++) {
+        row[i] = matrix+i*d;
+        row[i][i] += s->shift + ridge;
+    }
+    DMat factor = {d,d,row};
+    return dmat_cholesky(&factor,d) == 0;
+}
+
+static void design_project(int n, int budget, const int *lo, const int *hi, double *x) {
+    double sum = 0.0;
+    for (int k = 0; k < n; k++) {
+        x[k] = fmax(lo[k],fmin(hi[k],x[k]));
+        sum += x[k];
+    }
+    double left = budget-sum, room = 0.0;
+    for (int k = 0; k < n; k++) room += left >= 0.0 ? hi[k]-x[k] : x[k]-lo[k];
+    if (room <= 0.0) return;
+    double step = fmin(1.0,fabs(left)/room);
+    for (int k = 0; k < n; k++) x[k] += step*(left >= 0.0 ? hi[k]-x[k] : lo[k]-x[k]);
+}
+
+/* Rank-one exchanges only select a useful reference factor. Its
+ * certificate below uses the original matrices for every trace. */
+static int design_relax(const DesignTree *tree, const int *lo, const int *hi,
+                        double *x, double *factor) {
+    const DesignSearch *s = tree->search;
+    const Design *p = s->model;
+    int d = p->d, n = p->count;
+    design_project(n,p->budget,lo,hi,x);
+    for (int iteration = 0; iteration <= 65; iteration++) {
+        if ((iteration & 7) == 0 && !design_alive(s->task)) return 0;
+        if (!design_factor(s,x,tree->ridge,factor)) return 0;
+        if (iteration == 65) return 1;
+        double u[DESIGN_INTS][DESIGN_DIM], gradient[DESIGN_INTS];
+        int donor = -1, add = -1;
+        for (int k = 0; k < n; k++) {
+            gradient[k] = 0.0;
+            for (int i = 0; i < d; i++) {
+                double v = s->vector[k][i];
+                for (int j = 0; j < i; j++) v -= factor[i*d+j]*u[k][j];
+                u[k][i] = v/factor[i*d+i];
+                gradient[k] += u[k][i]*u[k][i];
+            }
+            if (!isfinite(gradient[k])) return 1;
+            if (x[k] > lo[k]+1e-9 && (donor < 0 || gradient[k] < gradient[donor])) donor = k;
+            if (x[k] < hi[k]-1e-9 && (add < 0 || gradient[k] > gradient[add])) add = k;
+        }
+        if (donor < 0 || add < 0 || add == donor) return 1;
+        double slope = gradient[add]-gradient[donor];
+        if (slope <= 1e-7) return 1;
+        double inner = 0.0;
+        for (int i = 0; i < d; i++) inner += u[donor][i]*u[add][i];
+        double curvature = gradient[donor]*gradient[add]-inner*inner;
+        double step = fmin(x[donor]-lo[donor],hi[add]-x[add]);
+        if (curvature > 0.0) step = fmin(step,slope/(2.0*curvature));
+        x[donor] -= step;
+        x[add] += step;
+    }
+    return 0;
+}
+
+/* For PSD W, det(W) <= (tr(Q W Q')/d)^d / det(Q)^2. The
+ * rounded inverse of the reference factor defines Q itself, so its
+ * inversion error cannot weaken the bound. Only the subsequent trace
+ * and determinant arithmetic needs an error margin. */
+static double design_trace_upper(const DesignSearch *s, const int *lo, const int *hi,
+                                 const double *factor, int lower_sum) {
+    const Design *p = s->model;
+    int d = p->d, n = p->count;
+    double q[DESIGN_DIM*DESIGN_DIM] = {0};
+    double product = 1.0;
+    for (int j = 0; j < d; j++) {
+        q[j*d+j] = 1.0/factor[j*d+j];
+        product *= q[j*d+j];
+        for (int i = j+1; i < d; i++) {
+            double v = 0.0;
+            for (int k = j; k < i; k++) v -= factor[i*d+k]*q[k*d+j];
+            q[i*d+j] = v/factor[i*d+i];
+        }
+    }
+    for (int i = 0; i < d*d; i++)
+        if (!(fabs(q[i]) <= 1e24)) return INFINITY;
+    double det_lower = nextafter(product*(1.0-64.0*DBL_EPSILON),0.0);
+    double denominator = nextafter(det_lower*det_lower,0.0);
+    if (!(denominator > 0.0 && isfinite(denominator))) return INFINITY;
+    double gram[DESIGN_DIM*DESIGN_DIM], mag[DESIGN_DIM*DESIGN_DIM];
+    for (int i = 0; i < d; i++)
+        for (int j = 0; j < d; j++) {
+            double dot = 0.0, envelope = 0.0;
+            for (int k = 0; k < d; k++) {
+                double v = q[k*d+i]*q[k*d+j];
+                dot += v;
+                envelope += fabs(v);
+            }
+            gram[i*d+j] = dot;
+            mag[i*d+j] = envelope;
+        }
+    double coeff[DESIGN_INTS], trace = 0.0, envelope = 0.0;
+    for (int k = 0; k <= n; k++) {
+        double term = 0.0, scale = 0.0;
+        for (int i = 0; i < d*d; i++) {
+            double a = p->matrix[k][i];
+            if (k == 0 && i%(d+1) == 0) a += s->shift;
+            term += gram[i]*a;
+            scale += mag[i]*(fabs(p->matrix[k][i]) + (k == 0 && i%(d+1) == 0 ? s->shift : 0.0));
+        }
+        if (k == 0) { trace = term; envelope = scale; }
+        else {
+            coeff[k-1] = term;
+            trace += lo[k-1]*term;
+            envelope += hi[k-1]*scale;
+        }
+    }
+    int order[DESIGN_INTS];
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && coeff[order[j-1]] < coeff[i]) { order[j] = order[j-1]; j--; }
+        order[j] = i;
+    }
+    int slack = p->budget-lower_sum;
+    for (int i = 0; i < n && slack > 0; i++) {
+        int k = order[i], room = hi[k]-lo[k];
+        int take = room < slack ? room : slack;
+        trace += take*coeff[k];
+        slack -= take;
+    }
+    /* At most eight terms in a Gram product and 64 in its contraction,
+     * followed by at most 32 weighted contributions. The absolute sum
+     * bounds forward error, including roundoff in that envelope. */
+    double cap = nextafter(trace + 512.0*DBL_EPSILON*envelope + 1e-240,INFINITY);
+    if (!isfinite(cap)) return INFINITY;
+    if (cap <= 0.0) return 0.0;
+    double ratio = nextafter(cap/d,INFINITY), power = 1.0;
+    for (int k = 0; k < d; k++) power = nextafter(power*ratio,INFINITY);
+    return nextafter(power/denominator,INFINITY);
+}
+
+static double design_score(const DesignSearch *s, const int *allocation) {
+    double w[DESIGN_INTS], factor[DESIGN_DIM*DESIGN_DIM];
+    int d = s->model->d;
+    for (int k = 0; k < s->model->count; k++) w[k] = allocation[k];
+    if (!design_factor(s,w,0.0,factor)) return 0.0;
+    double det = 1.0;
+    for (int i = 0; i < d; i++) det *= factor[i*d+i];
+    return isfinite(det*det) ? det*det : 0.0;
+}
+
+static void design_candidate(DesignTree *tree, const int *lo, const int *hi, const double *x) {
+    DesignSearch *s = tree->search;
+    int n = s->model->count, slack = s->model->budget, w[DESIGN_INTS];
+    for (int k = 0; k < n; k++) {
+        w[k] = (int)fmax(lo[k],fmin(hi[k],floor(x[k])));
+        slack -= w[k];
+    }
+    if (slack < 0 || slack > n) return;
+    while (slack-- > 0) {
+        int add = -1;
+        for (int k = 0; k < n; k++)
+            if (w[k] < hi[k] && (add < 0 || x[k]-w[k] > x[add]-w[add])) add = k;
+        if (add < 0) return;
+        w[add]++;
+    }
+    double score = design_score(s,w);
+    if (tree->nodes == 1) {
+        for (int sweep = 0; sweep < 8; sweep++) {
+            int donor = -1, add = -1;
+            double improved = score;
+            for (int a = 0; a < n; a++) if (w[a] > lo[a])
+                for (int b = 0; b < n; b++) if (a != b && w[b] < hi[b]) {
+                    w[a]--; w[b]++;
+                    double v = design_score(s,w);
+                    w[a]++; w[b]--;
+                    if (v > improved) { donor = a; add = b; improved = v; }
+                }
+            if (donor < 0) break;
+            w[donor]--; w[add]++;
+            score = improved;
+        }
+    }
+    if (score > s->best_det) {
+        s->best_det = score;
+        memcpy(s->best_x,w,(size_t)n*sizeof(*w));
+    }
+}
+
+static int design_branch(DesignTree *tree, int *lo, int *hi, const double *warm) {
+    DesignSearch *s = tree->search;
+    const Design *p = s->model;
+    if (++tree->nodes > DESIGN_BOX_NODES || !design_alive(s->task)) return 0;
+    int low = 0, high = 0;
+    for (int k = 0; k < p->count; k++) { low += lo[k]; high += hi[k]; }
+    if (low > p->budget || high < p->budget) return 1;
+    int singleton = low == p->budget || high == p->budget;
+    double x[DESIGN_INTS], factor[DESIGN_DIM*DESIGN_DIM];
+    if (singleton) {
+        for (int k = 0; k < p->count; k++) x[k] = low == p->budget ? lo[k] : hi[k];
+        if (!design_factor(s,x,tree->ridge,factor)) return 0;
+    } else {
+        memcpy(x,warm,(size_t)p->count*sizeof(*x));
+        if (!design_relax(tree,lo,hi,x,factor)) return 0;
+    }
+    double upper = design_trace_upper(s,lo,hi,factor,low);
+    if (!isfinite(upper)) return 0;
+    if (upper > s->best_det*(1.0+tree->allowance))
+        design_candidate(tree,lo,hi,x);
+    if (singleton || upper <= s->best_det*(1.0+tree->allowance)) {
+        tree->upper = fmax(tree->upper,upper);
+        return 1;
+    }
+    int split = -1;
+    double score = -1.0;
+    for (int k = 0; k < p->count; k++) if (lo[k] < hi[k]) {
+        double fraction = x[k]-floor(x[k]);
+        double value = fraction*(1.0-fraction);
+        if (value > score) { split = k; score = value; }
+    }
+    if (split < 0) return 0;
+    int lower = lo[split], higher = hi[split], cut = (int)floor(x[split]);
+    if (cut < lower) cut = lower;
+    if (cut >= higher) cut = higher-1;
+    int left_first = x[split]-cut <= 0.5;
+    for (int pass = 0; pass < 2; pass++) {
+        int left = pass == 0 ? left_first : !left_first;
+        lo[split] = left ? lower : cut+1;
+        hi[split] = left ? cut : higher;
+        if (!design_branch(tree,lo,hi,x)) return 0;
+    }
+    lo[split] = lower;
+    hi[split] = higher;
+    return 1;
+}
+
+static double design_tree_search(DesignSearch *s, double tolerance) {
+    const Design *p = s->model;
+    int lo[DESIGN_INTS] = {0}, hi[DESIGN_INTS];
+    double x[DESIGN_INTS] = {0}, scale = 1.0;
+    memcpy(hi,p->upper,(size_t)p->count*sizeof(*hi));
+    for (int k = 0; k <= p->count; k++)
+        for (int j = 0; j < p->d*p->d; j++) scale = fmax(scale,fabs(p->matrix[k][j]));
+    DesignTree tree = {s,0.0,0.25*tolerance,1e-13*scale,0};
+    if (!design_branch(&tree,lo,hi,x)) return INFINITY;
+    return tree.upper;
 }
 
 /* The absolute Leibniz expansion bounds the sum of magnitudes even
@@ -451,6 +710,25 @@ static int design_measures(PRIMALtask_t t, const Design *p, const double *x,
     return 1;
 }
 
+static int design_publish(PRIMALtask_t t, const DesignSearch *s, double upper, double tolerance) {
+    const Design *p = s->model;
+    if (!(upper > 0.0 && isfinite(upper) && s->best_det > 0.0)) return 0;
+    double x[DESIGN_COLS], bars[5*DESIGN_DIM*DESIGN_DIM];
+    if (!design_lift(p,s,x) || !design_measures(t,p,x,bars)) return 0;
+    double log_gap = log(upper) - x[p->objective];
+    double objective = t->cfix - x[p->objective];
+    if (!(fabs(log_gap) <= tolerance) || !design_alive(t) || !isfinite(objective)) return 0;
+    int d = p->d;
+    memcpy(t->x,x,(size_t)t->numvar*sizeof(*t->x));
+    memcpy(t->barx[p->bar[0]],bars,(size_t)d*d*sizeof(*bars));
+    memcpy(t->barx[p->bar[1]],bars+d*d,(size_t)4*d*d*sizeof(*bars));
+    t->pobj = t->dobj = objective;
+    t->has_sol = 1;
+    t->solsta = PRIMAL_SOL_STA_INTEGER_OPTIMAL;
+    tlog(t,"MIP: determinant bound certified for integer design\n");
+    return 1;
+}
+
 /* A verified lift matching the determinant upper bound proves optimality.
  * Other dimensions, missing model identities, or an incomplete enumeration
  * use the ordinary MIP solver. */
@@ -482,9 +760,17 @@ int mip_logdet_solve(PRIMALtask_t t) {
     s.task = t;
     s.model = &p;
     s.max_nodes = d <= 4 ? DESIGN_SMALL_NODES : DESIGN_LARGE_NODES;
-    s.shift = design_psd_shift(&p);
+    s.shift = design_psd_shift(&p,s.vector);
     s.saturated = s.shift >= 0.0;
     if (!s.saturated) s.shift = 0.0;
+    double tolerance = fmin(1e-8,t->tol_co_gap);
+    if (d > 4 && s.saturated) {
+        double upper = design_tree_search(&s,tolerance);
+        solved = design_publish(t,&s,upper,tolerance);
+        if (solved) goto done;
+    }
+    if (d > 6 || !design_alive(t)) goto done;
+    s.best_det = 0.0;
     for (int k = p.count-1; k >= 0; k--) s.tail[k] = s.tail[k+1] + p.upper[k];
     for (int i = 0; i < d; i++) s.col_of[1u << i] = i;
     s.row_of[0] = d;
@@ -496,22 +782,8 @@ int mip_logdet_solve(PRIMALtask_t t) {
     double start[DESIGN_DIM*DESIGN_DIM];
     memcpy(start,p.matrix[0],(size_t)d*d*sizeof(*start));
     for (int i = 0; i < d; i++) start[i*d+i] += s.shift;
-    if (!design_enumerate(&s,0,p.budget,start) || s.best_det <= 0.0) goto done;
-    double x[DESIGN_COLS], bars[5*DESIGN_DIM*DESIGN_DIM];
-    if (!design_lift(&p,&s,x) || !design_measures(t,&p,x,bars)) goto done;
-    double upper = nextafter(s.best_det + design_error(&s),INFINITY);
-    double log_gap = log(upper) - x[p.objective];
-    double tolerance = fmin(1e-8,t->tol_co_gap);
-    if (!(fabs(log_gap) <= tolerance) || !design_alive(t) ||
-        !isfinite(t->cfix - x[p.objective])) goto done;
-    memcpy(t->x,x,(size_t)t->numvar*sizeof(*t->x));
-    memcpy(t->barx[p.bar[0]],bars,(size_t)d*d*sizeof(*bars));
-    memcpy(t->barx[p.bar[1]],bars+d*d,(size_t)4*d*d*sizeof(*bars));
-    t->pobj = t->dobj = t->cfix - x[p.objective];
-    t->has_sol = 1;
-    t->solsta = PRIMAL_SOL_STA_INTEGER_OPTIMAL;
-    tlog(t,"MIP: determinant bound certified for integer design\n");
-    solved = 1;
+    if (design_enumerate(&s,0,p.budget,start))
+        solved = design_publish(t,&s,nextafter(s.best_det + design_error(&s),INFINITY),tolerance);
 done:
     free(p.raw);
     return solved;
