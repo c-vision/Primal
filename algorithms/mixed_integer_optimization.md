@@ -314,6 +314,55 @@ cumulative supplies and deficits. PRIMAL bounds the frontier size and
 falls back to branch and bound if the bound is reached or the model
 falls outside the recognized form.
 
+### Small integer D-optimal designs
+
+D-optimal experimental design allocates integer weights $w_k$ to maximize
+the determinant of an information matrix $M(w)=M_0+\sum_k w_k A_k$.
+A conic formulation introduces a diagonal matrix $D$ with positive entries,
+an upper triangular matrix $T$ with $T_{ii}=D_{ii}$, and log variables $v_i$.
+The constraints and minimization objective are
+
+$$
+\begin{bmatrix}D&T\\T^\top&M(w)\end{bmatrix}\succeq0,\qquad
+(D_{ii},1,v_i)\in\mathcal K_{\exp},\qquad
+\min -\sum_i v_i.
+$$
+
+The Schur complement gives $M(w)\succeq T^\top D^{-1}T$. The determinant
+on the right is $\det D$, because $\det T=\prod_iD_{ii}$.
+The exponential constraints give $v_i\le\log D_{ii}$. Thus the conic
+objective is bounded below by $-\log\det M(w)$ for every feasible allocation.
+
+For a positive definite $M(w)=LL^\top$, set $D_{ii}=L_{ii}^2$,
+$T=\mathrm{diag}(L_{ii})L^\top$ and $v_i=\log D_{ii}$. This makes
+the Schur complement zero and attains the bound. For example, with
+$M=\mathrm{diag}(1+w_0,\,1+2w_1)$ and $w_0+w_1\le3$, allocations
+$(0,3),(1,2),(2,1),(3,0)$ give determinants 7, 10, 9 and 4.
+The optimum is $(1,2)$, at objective $-\log 10$.
+
+[`mip_logdet_solve`](../primal_mip_logdet.c) recognizes the identities from
+the task's linear equalities, bounds and cones. For small bounded integer
+boxes it enumerates allocations and bounds the largest determinant,
+including a margin for floating-point rounding. In dimension six it
+reuses minors indexed by column subsets, taking $O(d2^d)$ operations per
+determinant. The enumeration itself can grow exponentially in the
+number of integer weights.
+
+If $A_k+\eta I\succeq0$ for all $k$, a budget $B$ can be filled in the
+determinant bound. Given $w$ with $\sum_k w_k\le B$, extend it to $u\ge w$
+with $\sum_k u_k=B$ inside the integer box. Then
+
+$$
+M(u)+\eta B I-M(w)=\sum_k(u_k-w_k)(A_k+\eta I)
++\eta\left(\sum_k w_k\right)I\succeq0 .
+$$
+
+PRIMAL derives $\eta$ from a bound on the row sums of $A_k-a_ka_k^\top$.
+Only the determinant bound uses this shift. The lift uses the original
+matrix and must satisfy the original rows, bounds, integrality, PSD and
+exponential constraints. T330 also exercises an instance in which a
+negative contribution makes the optimal allocation leave budget unused.
+
 ## The relaxation solver and the slack-basis start
 
 For an LP relaxation PRIMAL solves the standard form with the simplex method:

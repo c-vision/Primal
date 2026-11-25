@@ -22773,8 +22773,111 @@ static void test_t329(void) {
     pend(&p);
 }
 
+static void t330_capture_route(void *handle, const char *message) {
+    if (strstr(message, "determinant bound certified")) *(int *)handle = 1;
+}
+
+/* D-optimal design with active diagonal entries 1+w0 and 1+2*w1.
+ * Extra unit entries exercise the shared minors in dimension six.
+ * Check both rejection of the lifted point and a non-PSD coefficient
+ * for which the best allocation leaves part of the budget unused. */
+static void test_t330(void) {
+    for (int variant = 0; variant < 4; variant++) {
+        cur_name = variant == 2 ? "T330 logdet original-row guard" : "T330 integer logdet";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int d = variant == 1 ? 6 : 2;
+        int objective = 2+3*d, info = objective+1, zero = info+d;
+        int dims[2] = {d, 2*d};
+        PRIMAL_appendvars(t, zero+1);
+        PRIMAL_appendcons(t, 4 + d*(d+1)/2 + d*(2*d+1) - d*(d-1)/2 + (variant == 2));
+        PRIMAL_appendbarvars(t, 2, dims);
+        for (int j = 0; j <= zero; j++) PRIMAL_putvarbound(t, j, PRIMAL_BK_FR, 0.0, 0.0);
+        double upper[2] = {3.0, 3.0};
+        if (variant == 1) upper[0] = 0.0;
+        if (variant == 3) upper[0] = 1.0;
+        for (int j = 0; j < 2; j++) {
+            PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT);
+            PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, upper[j]);
+        }
+        for (int j = 0; j < d; j++) {
+            PRIMAL_putvarbound(t, 3+3*j, PRIMAL_BK_FX, 1.0, 1.0);
+            PRIMAL_appendcone(t, PRIMAL_CT_PEXP, 0.0, 3, (int[]){2+3*j, 3+3*j, 4+3*j});
+            if (j >= 2) PRIMAL_putvarbound(t, info+j, PRIMAL_BK_FX, 1.0, 1.0);
+        }
+        PRIMAL_putvarbound(t, zero, PRIMAL_BK_FX, 0.0, 0.0);
+        PRIMAL_putcj(t, objective, -1.0);
+        int r = 0;
+        PRIMAL_putconbound(t, r, PRIMAL_BK_UP, 0.0, 3.0);
+        PRIMAL_putaij(t, r, 0, 1.0);
+        PRIMAL_putaij(t, r++, 1, 1.0);
+        PRIMAL_putconbound(t, r, PRIMAL_BK_FX, 0.0, 0.0);
+        for (int j = 0; j < d; j++) PRIMAL_putaij(t, r, 4+3*j, 1.0);
+        PRIMAL_putaij(t, r++, objective, -1.0);
+        for (int j = 0; j < 2; j++) {
+            PRIMAL_putconbound(t, r, PRIMAL_BK_FX, 1.0, 1.0);
+            PRIMAL_putaij(t, r, info+j, 1.0);
+            PRIMAL_putaij(t, r++, j, variant == 3 && j == 1 ? 0.1 : -(1.0+j));
+        }
+        for (int block = 0; block < 2; block++) {
+            for (int i = 0; i < dims[block]; i++)
+                for (int j = 0; j <= i; j++) {
+                    int col = zero, sym = -1;
+                    if (!block && i == j) col = info+i;
+                    if (block) {
+                        if (i < d && i == j) col = 2+3*i;
+                        if (i >= d && i == j) col = info+i-d;
+                        if (i >= d && j < d) {
+                            if (j < i-d) continue; /* free upper-triangular cross entry */
+                            if (j == i-d) col = 2+3*j;
+                        }
+                    }
+                    double entry = 1.0, coef = i == j ? -1.0 : -0.5;
+                    PRIMAL_appendsparsesymmat(t, dims[block], 1, &j, &i, &entry, &sym);
+                    PRIMAL_putbaraij(t, r, block, 1, &sym, &coef);
+                    PRIMAL_putaij(t, r, col, 1.0);
+                    PRIMAL_putconbound(t, r++, PRIMAL_BK_FX, 0.0, 0.0);
+                }
+        }
+        if (variant == 2) {
+            PRIMAL_putconbound(t, r, PRIMAL_BK_LO, 0.0, 0.0);
+            PRIMAL_putaij(t, r, 0, 1.0);
+            PRIMAL_putaij(t, r, 1, -1.0);
+            PRIMAL_putintparam(t, PRIMAL_IPAR_INTPNT_MAX_ITERATIONS, 1);
+            PRIMAL_putintparam(t, PRIMAL_IPAR_MIP_MAX_NODES, 1);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t330_capture_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(used == (variant != 2), "verify original rows before publishing a logdet solution");
+        if (variant != 2) {
+            check_rc(rc, PRIMAL_RES_OK, "integer logdet solved");
+            PRIMALsolstae sta = PRIMAL_SOL_STA_UNKNOWN;
+            check_rc(PRIMAL_getsolsta(t, PRIMAL_SOL_ITG, &sta), PRIMAL_RES_OK, "integer status");
+            check(sta == PRIMAL_SOL_STA_INTEGER_OPTIMAL, "determinant upper bound proves optimality");
+            double obj = NAN, row = INFINITY, var = INFINITY, psd = INFINITY;
+            double expcone = INFINITY, integer = INFINITY;
+            check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITG, &obj, &row, &var, &psd, &expcone,
+                                            &integer, NULL, NULL, NULL, NULL, NULL),
+                     PRIMAL_RES_OK, "point in original model");
+            const double determinant[] = {10.0, 7.0, 0.0, 2.0};
+            check(fabs(obj + log(determinant[variant])) <= 1e-8, "enumerated objective");
+            check(fmax(fmax(row,var),fmax(psd,fmax(expcone,integer))) <= 1e-8,
+                  "linear, PSD, EXP and integer violations");
+            double x[28] = {0};
+            check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITG, x), PRIMAL_RES_OK, "original weights");
+            const double weight[][2] = {{1,2}, {0,3}, {0,0}, {1,0}};
+            check(x[0] == weight[variant][0] && x[1] == weight[variant][1],
+                  "best discrete allocation");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t330();
     test_t329();
     test_t328();
     test_t327();

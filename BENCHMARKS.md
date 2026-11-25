@@ -545,7 +545,7 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ### Stato verificato al 2026-11-25
 
-Primal ha ora un verdetto verificato per **12 dei 24 casi** che nella
+Primal ha ora un verdetto verificato per **14 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
 inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 
@@ -555,14 +555,15 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | SDP CBLIB | `infeas_clean_10_10_1`, `infeas_clean_10_10_3`, `weak_clean_10_10_3` | `PRIM_INFEAS` |
 | Convesso continuo | `PRIMAL1`, `LogExpCR-n20-m400`, `HMCR-n20-m800` | `OPTIMAL` |
 | MIPLIB MILP | `p0201` | `INTEGER_OPTIMAL` |
+| CBLIB misto-intero conico | `expdesign_D_8_4`, `expdesign_D_12_6` | `INTEGER_OPTIMAL` |
 
-Restano 12 casi senza un verdetto conclusivo. Per `gt2`, Primal trova ora
+Restano 10 casi senza un verdetto conclusivo. Per `gt2`, Primal trova ora
 una soluzione intera a costo 21166, pari al valore riportato da MIPLIB.
 La prova di ottimalità resta aperta.
 
 | Famiglia | Casi aperti |
 |---|---|
-| CBLIB misto-intero conico | Le tre istanze `port_*`, le tre `expdesign_D_*`, `kpart_diw.15.4.29`, `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
+| CBLIB misto-intero conico | Le tre istanze `port_*`, `expdesign_D_16_8`, `kpart_diw.15.4.29`, `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
 | MIPLIB MILP | `gt2`, `pk1` |
 
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
@@ -571,7 +572,7 @@ La prova di ottimalità resta aperta.
 [Coni power](#verifica-power-cblib-del-2026-11-24) ·
 [`gt2`](#verifica-miplib-gt2-del-2026-11-24) ·
 [`p0201`](#verifica-miplib-p0201-del-2026-11-25) ·
-[`expdesign_D_8_4`](#diagnosi-cblib-expdesign_d_8_4-del-2026-11-25)
+[Disegno sperimentale CBLIB](#verifica-cblib-expdesign-del-2026-11-25)
 
 ### Rilevazione originale del 19 novembre
 
@@ -647,8 +648,10 @@ significa **non misurato**: `bench/scip_cbf.c` richiede le librerie di sviluppo
 di SCIP, che su questa macchina non ci sono — i wheel di `pyscipopt` non le
 portano. Su MPS e MILP SCIP c'è):
 
-- `expdesign_D_12_6`: Pajarito chiude a `-0.437` dove i punti ammissibili
-  arrivano a `-0.520253`; il README della PR lo documenta come limite del taglio.
+- `expdesign_D_12_6`: nella rilevazione originale Pajarito chiude a
+  `-0.437`. Il riferimento `-0.520253` era stato controllato con una
+  tolleranza esponenziale di `5e-6`. La verifica successiva certifica il
+  valore `-0.5202490151` a `1e-8`.
 - `hinf1`: SCS `2.0339587` e Pajarito `2.0326681` contro il `2.0326` di SDPLIB.
 - **Nel confronto del 19 novembre Primal si ferma senza soluzione o senza certificato** sui casi SDP
   costruiti come inammissibili (`infeas_clean_*`, `weak_clean_*`), sui cinque
@@ -885,19 +888,28 @@ I tre solver dichiarano l'ottimo in tutte le prove. La massima
 violazione di riga, bound o interezza nel modello originale è zero
 per Primal e SCIP e `2.85e-14` per HiGHS.
 
-### Diagnosi CBLIB expdesign_D_8_4 del 2026-11-25
+### Verifica CBLIB expdesign del 2026-11-25
 
-La riduzione SOCP del fallback ora alloca lo spazio per tutte le righe
-mantenute. Il CBF termina senza crash in sei verifiche e restituisce
-`TRM_MAX_ITER` con soluzione `UNKNOWN`. Il sistema nativo ha 156
-uguaglianze e rango 122. Una prova con le sole righe indipendenti
-raggiunge un residuo primale relativo di `1.24e-11`, con un gap ancora
-pari a `3.11e-4`.
+Primal certifica entrambi gli ottimi interi sul CBF originale con un
+limite sul determinante. La ricostruzione del punto passa le verifiche
+di riga, bound, PSD, cono esponenziale e interezza a `1e-8`.
+[Derivazione e implementazione](algorithms/mixed_integer_optimization.md#small-integer-d-optimal-designs)
 
-Una sonda separata enumera le 8092 allocazioni intere e massimizza
-il determinante della matrice di informazione. Il punto ricostruito
-ha obiettivo `0.8433069245` e violazione originale massima `2.65e-16`.
-L'istanza rimane aperta per il solver nativo.
+| Istanza | Primal `-O2` (ms) | Pajarito 0.8.3 (ms) | Obiettivo Primal | Massima violazione Primal |
+|---|---:|---:|---:|---:|
+| `expdesign_D_8_4` | **0.938** | 45.817 | 0.843306924474911 | 2.46e-16 |
+| `expdesign_D_12_6` | 4156.184 | — | -0.520249015131837 | 3.20e-16 |
+
+Per `expdesign_D_8_4` i tempi sono mediane di cinque prove intercalate
+a un thread, con lettura del CBF esclusa. Pajarito usa HiGHS 1.26.0 e
+Clarabel 0.11.1, con gap di arresto `1e-8`. Entrambi i solver dichiarano
+l'ottimo in tutte le prove. Pajarito restituisce `0.843306920413041`
+con massima violazione originale `1.44e-9`.
+
+Su `expdesign_D_12_6` Primal dichiara l'ottimo in tre prove su tre.
+Un ricalcolo indipendente sulla matrice di informazione del CBF dà
+`-0.520249015131838`. Il valore storico `-0.5202525` veniva da un punto
+controllato con tolleranza esponenziale `5e-6`.
 
 ## 3. Come estendere
 
