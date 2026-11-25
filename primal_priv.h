@@ -386,6 +386,7 @@ int mip_plan_solve(PRIMALtask_t t);
 int mip_logdet_solve(PRIMALtask_t t);
 /* Certifies a small partition model encoded by a two-level PSD matrix. */
 int mip_partition_solve(PRIMALtask_t t);
+int mip_portfolio_solve(PRIMALtask_t t);
 /* Solves the LP/QP relaxation of a node over the given box; xout gets the point. */
 int mip_relax(PRIMALtask_t t, int s, const double *lx, const double *ux,
                      const double *lc, const double *uc,

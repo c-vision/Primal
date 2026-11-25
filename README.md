@@ -37,6 +37,10 @@ point and a status you can check rather than trust.
   reduced to log-sum-exp constraints on the free variables. Primal
   verifies the reconstructed conic solution. For certain weighted
   power-cone loss models, a penalty bound permits a reduction to LP.
+- **Mixed-integer conic** — branch and bound with conic relaxations.
+  For cardinality-constrained portfolios with separate SOC, EXP and PSD
+  risk blocks, Primal can certify a global bound from the individual blocks.
+  [Portfolio algorithm](algorithms/mixed_integer_optimization.md#cardinality-constrained-portfolios-with-separate-risk-blocks).
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
 - **Modeling** — affine conic constraints (ACC), disjunctive constraints
   (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.
@@ -321,8 +325,10 @@ construction excluded from Clarabel's times. The `mcp100` comparison
 uses three interleaved runs on the same date. The HMCR results use
 five solves per solver. The `p0201` and `expdesign_D_8_4` comparisons
 use five interleaved solves on **2026-11-25**, with MIP gap set to zero
-and `1e-8`, respectively. The remaining rows use five solves, with three
-warm batches for the Julia references.
+and `1e-8`, respectively. The portfolio comparisons use five Primal
+and two Pajarito solves per instance on **2026-11-25**, after a warm-up
+for each solver. The remaining rows use five solves, with three warm
+batches for the Julia references.
 
 | instance | set | class | vars x cons | fastest in single run | Primal median (s) | reference median (s) | obj |
 |---|---|---|---:|---|---:|---:|---:|
@@ -334,6 +340,8 @@ warm batches for the Julia references.
 | HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | SCS | **0.005703** | 0.104136 (SCS) | 0.0390837 |
 | p0201 | MIPLIB | MILP | 201 x 133 | SCIP | **0.004656** | 0.297278 (SCIP) | 7615 |
 | expdesign_D_8_4 | CBLIB | exp + PSD + int | 61 x 148 | Pajarito | **0.000938** | 0.045817 (Pajarito) | 0.8433069245 |
+| port_12_9_3_a_1 | CBLIB | SOC + EXP + PSD + int | 90 x 169 | Pajarito | **0.004568** | 17.246444 (Pajarito) | -0.0332185523 |
+| port_12_9_3_b_1 | CBLIB | SOC + EXP + PSD + int | 91 x 170 | Pajarito | **0.003490** | 6.600786 (Pajarito) | -0.0347049507 |
 | HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
 | afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
 | sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
@@ -349,7 +357,8 @@ The benchmark report includes the full comparison and the follow-up solves on
 [SDPLIB results for mcp100, qap5 and hinf1](BENCHMARKS.md#verifica-sdplib-del-2026-11-24) ·
 [CBLIB power results](BENCHMARKS.md#verifica-power-cblib-del-2026-11-24) ·
 [MIPLIB p0201 results](BENCHMARKS.md#verifica-miplib-p0201-del-2026-11-25) ·
-[CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25)
+[CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25) ·
+[CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25)
 
 In a separate infeasibility comparison on **2026-11-23**, both Primal and
 Clarabel identified `infeas_clean_10_10_1` (CBLIB). Median time to verdict

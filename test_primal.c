@@ -22936,8 +22936,107 @@ static void test_t331(void) {
     }
 }
 
+static void t332_route(void *handle, const char *message) {
+    if (strstr(message, "portfolio bound certified")) *(int *)handle = 1;
+}
+
+/* The first two weights share an indicator. Their independent limits are
+ * 1/4 (SOC) and 1/8 (EXP). The PSD group can reach 1/4 at s=1/2 since
+ * w^2/(1-s)+w^2/s <= 1/4. With one gate the first pair wins at -1/2. */
+static void test_t332(void) {
+    for (int variant = 0; variant < 4; variant++) {
+        cur_name = "T332 mixed-cone portfolio";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, 19);
+        PRIMAL_appendcons(t, 25+(variant == 3));
+        PRIMAL_appendbarvars(t, 1, (int[]){3});
+        for (int j = 0; j <= 5; j++) PRIMAL_putvarbound(t,j,PRIMAL_BK_LO,0.0,0.0);
+        for (int j = 6; j < 19; j++) PRIMAL_putvarbound(t,j,PRIMAL_BK_FR,0.0,0.0);
+        for (int j = 3; j < 5; j++) PRIMAL_putvartype(t,j,PRIMAL_VAR_TYPE_INT);
+        PRIMAL_putclist(t,3,(int[]){0,1,2},(double[]){-1.0,-2.0,-1.0});
+        for (int i = 0; i < 8; i++) PRIMAL_putconbound(t,i,PRIMAL_BK_LO,0.0,0.0);
+        for (int i = 8; i < 25; i++) PRIMAL_putconbound(t,i,PRIMAL_BK_FX,0.0,0.0);
+        PRIMAL_putconbound(t,0,PRIMAL_BK_LO,variant == 2 ? -0.2 : -1.0,0.0);
+        PRIMAL_putarow(t,0,3,(int[]){0,1,2},(double[]){-1.0,-1.0,-1.0});
+        PRIMAL_putconbound(t,1,PRIMAL_BK_LO,variant == 1 ? -2.0 : -1.0,0.0);
+        PRIMAL_putarow(t,1,2,(int[]){3,4},(double[]){-1.0,-1.0});
+        for (int j = 0; j < 3; j++)
+            PRIMAL_putarow(t,2+j,2,(int[]){j,j == 2 ? 4 : 3},(double[]){-1.0,1.0});
+        double entropy = 1.125*log(1.125)+0.875*log(0.875);
+        PRIMAL_putconbound(t,5,PRIMAL_BK_LO,-entropy,0.0);
+        PRIMAL_putarow(t,5,2,(int[]){9,10},(double[]){-1.0,-1.0});
+        for (int j = 0; j < 2; j++) {
+            PRIMAL_putconbound(t,6+j,PRIMAL_BK_LO,-1.0,0.0);
+            PRIMAL_putaij(t,6+j,3+j,-1.0);
+        }
+        for (int j = 0; j < 3; j++)
+            PRIMAL_putarow(t,8+j,2,(int[]){j,6+j},(double[]){1.0,-1.0});
+        PRIMAL_appendconeseq(t,PRIMAL_CT_QUAD,0.0,2,11);
+        PRIMAL_putconbound(t,11,PRIMAL_BK_FX,-0.25,-0.25);
+        PRIMAL_putaij(t,11,11,-1.0);
+        PRIMAL_putarow(t,12,2,(int[]){6,12},(double[]){1.0,-1.0});
+        for (int j = 0; j < 2; j++) {
+            int r = 13+3*j;
+            PRIMAL_appendconeseq(t,PRIMAL_CT_PEXP,0.0,3,r);
+            PRIMAL_putconbound(t,r,PRIMAL_BK_FX,-1.0,-1.0);
+            PRIMAL_putconbound(t,r+1,PRIMAL_BK_FX,-1.0,-1.0);
+            PRIMAL_putaij(t,r,r,-1.0);
+            PRIMAL_putarow(t,r+1,2,(int[]){7,r+1},(double[]){j ? -1.0 : 1.0,-1.0});
+            PRIMAL_putarow(t,r+2,2,(int[]){9+j,r+2},(double[]){-1.0,-1.0});
+        }
+        int row = 19;
+        for (int i = 0; i < 3; i++) for (int j = 0; j <= i; j++, row++) {
+            int id = -1;
+            double one = 1.0, coef = i == j ? -1.0 : -0.5;
+            PRIMAL_appendsparsesymmat(t,3,1,&j,&i,&one,&id);
+            PRIMAL_putbaraij(t,row,0,1,&id,&coef);
+        }
+        PRIMAL_putconbound(t,19,PRIMAL_BK_FX,-0.25,-0.25);
+        PRIMAL_putaij(t,20,8,1.0);
+        PRIMAL_putconbound(t,21,PRIMAL_BK_FX,-1.0,-1.0);
+        PRIMAL_putaij(t,21,5,-1.0);
+        PRIMAL_putaij(t,22,2,1.0);
+        PRIMAL_putaij(t,24,5,1.0);
+        if (variant == 3) {
+            PRIMAL_putconbound(t,25,PRIMAL_BK_UP,0.0,0.01);
+            PRIMAL_putaij(t,25,0,1.0);
+        }
+        PRIMAL_putdouparam(t,PRIMAL_DPAR_MIP_TOL_FEAS,1e-8);
+        PRIMAL_putdouparam(t,PRIMAL_DPAR_MIP_TOL_REL_GAP,1e-8);
+        if (variant >= 2) {
+            PRIMAL_putintparam(t,PRIMAL_IPAR_INTPNT_MAX_ITERATIONS,1);
+            PRIMAL_putdouparam(t,PRIMAL_DPAR_MIO_MAX_TIME,0.05);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t332_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(used == (variant < 2), "certificate requires original mass row and recognized structure");
+        if (variant < 2) {
+            check_rc(rc,PRIMAL_RES_OK,"portfolio solve");
+            PRIMALsolstae status = PRIMAL_SOL_STA_UNKNOWN;
+            PRIMAL_getsolsta(t,PRIMAL_SOL_ITG,&status);
+            check(status == PRIMAL_SOL_STA_INTEGER_OPTIMAL,"certified integer optimum");
+            double obj = NAN, row_viol = INFINITY, var = INFINITY, psd = INFINITY;
+            double cone = INFINITY, integer = INFINITY, bound = NAN;
+            check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITG,&obj,&row_viol,&var,&psd,&cone,
+                                            &integer,NULL,NULL,NULL,NULL,NULL),
+                     PRIMAL_RES_OK,"original solution");
+            check(fabs(obj+(variant ? 0.75 : 0.5)) <= 1e-8,"hand-computed optimum");
+            check(fmax(fmax(row_viol,var),fmax(psd,fmax(cone,integer))) <= 1e-8,
+                  "feasible in all original cones, bounds and rows");
+            check_rc(PRIMAL_getdouinf(t,PRIMAL_DINF_MIO_OBJ_BOUND,&bound),PRIMAL_RES_OK,
+                     "published lower bound");
+            check(bound <= obj && obj-bound <= 1e-8,"lower bound closes the integer gap");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t332();
     test_t331();
     test_t330();
     test_t329();

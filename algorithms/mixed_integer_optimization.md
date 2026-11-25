@@ -420,6 +420,65 @@ row and the smallest PSD eigenvalue after reconstructing the
 partition. T331 covers a five-vertex model whose optimum moves from
 4 to 6 when the group of vertex zero must have at least four members.
 
+### Cardinality-constrained portfolios with separate risk blocks
+
+A portfolio can impose different risk limits on disjoint groups of
+assets. Let $x$ be the nonnegative weights and $y$ the binary selection
+variables. Each weight has a bound $x_j \le y_{g(j)}$. The cardinality
+constraint $\sum_i y_i\le K$ limits how many indicators can be active.
+An indicator can control several weights when an asset appears in
+more than one group.
+
+Fix the state of any shared indicator. Drop the total-weight constraint
+$\sum_j x_j\le B$ from the search and enumerate the allowed supports of
+each group separately. For every group and each quota $k$, store its
+best feasible return and an upper bound on the return of any support
+using at most $k$ indicators. The maximum sum of the group upper bounds
+over splits of $K$ bounds the original portfolio return. If the sum of
+the best reconstructed weights satisfies $\sum_j x_j\le B$ and closes
+the gap, it certifies the optimum of the original problem.
+
+The three risk limits yield different upper bounds for a fixed support.
+
+- **Second-order cone.** If $\lVert Ax\rVert_2\le r$ and
+  $c-A^Tu\le\epsilon\mathbf 1$, then
+  $c^Tx\le r\lVert u\rVert_2+\epsilon B$ for any original feasible
+  point and $\epsilon\ge 0$. A nonnegative least-squares direction
+  provides a useful $u$.
+- **Paired exponential cones.** A pair with arguments $1+z$ and $1-z$
+  contributes at least
+  $\phi(z)=(1+z)\log(1+z)+(1-z)\log(1-z)$ to the shared risk limit.
+  The Taylor coefficients of $\phi(\sqrt v)$ are positive for
+  $0\le v<1$, so its tangent in $v$ gives a lower bound. Applying
+  those tangents componentwise yields an ellipsoidal relaxation.
+  Evaluating the original entropy sum when scaling the candidate
+  restores feasibility.
+- **Arrow PSD matrix.** Consider a matrix with top-left entry $h>0$,
+  first column below it $Ax$, and lower-right block $D(s)=D_0+sD_1$.
+  Testing the quadratic form on vectors supported by the first
+  coordinate and a direction $u$ in the lower block yields
+  $(u^TAx)^2\le h\,u^TD(s)u$. The right-hand side is affine in $s$,
+  so its maximum on the allowed interval gives a bound valid even at
+  a singular endpoint. The solver uses a Cholesky factor at interior
+  values of $s$ to find feasible candidates and tight directions.
+
+For example, suppose two weights share an indicator and can reach
+$1/4$ in the SOC block and $1/8$ in the exponential block. With
+returns $1$ and $2$, selecting that indicator can earn $1/2$.
+A third weight with its own indicator is limited to $1/4$ at return
+$1$. With $K=1$ and $B=1$, the first indicator is optimal and uses
+$3/8$ of the budget. Tightening $B$ to $1/5$ rules out that point and
+the upper bound alone can no longer certify the answer.
+
+[`mip_portfolio_solve`](../primal_mip_portfolio.c) checks the CBF
+matrix and row structure before using this route. It handles one
+shared indicator and blocks of at most 16 weights, so the enumeration
+scales by the sum of the block support counts. It verifies the
+original rows, bounds, integrality, cones and PSD eigenvalues before
+publishing. A structure mismatch, an infeasible reconstructed point,
+a search limit or an open gap returns control to branch and bound.
+T332 covers the shared indicator, a binding budget and an extra row.
+
 ## The relaxation solver and the slack-basis start
 
 For an LP relaxation PRIMAL solves the standard form with the simplex method:

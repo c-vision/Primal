@@ -25,7 +25,8 @@
  * node cap or an optimal incumbent. Returns the result code. */
 PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
     int nvar = t->numvar, ncon = t->numcon;
-    if (s > 0 && (mip_plan_solve(t) || mip_logdet_solve(t) || mip_partition_solve(t))) {
+    if (s > 0 && (mip_plan_solve(t) || mip_logdet_solve(t) ||
+                  mip_partition_solve(t) || mip_portfolio_solve(t))) {
         tlog(t, "integer optimal solution found\n");
         return PRIMAL_RES_OK;
     }

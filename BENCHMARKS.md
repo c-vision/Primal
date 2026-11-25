@@ -545,7 +545,7 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ### Stato verificato al 2026-11-25
 
-Primal ha ora un verdetto verificato per **16 dei 24 casi** che nella
+Primal ha ora un verdetto verificato per **19 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
 inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 
@@ -557,14 +557,15 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | MIPLIB MILP | `p0201` | `INTEGER_OPTIMAL` |
 | CBLIB misto-intero conico | `expdesign_D_8_4`, `expdesign_D_12_6`, `expdesign_D_16_8` | `INTEGER_OPTIMAL` |
 | CBLIB SDP misto-intero | `kpart_diw.15.4.29` | `INTEGER_OPTIMAL` |
+| CBLIB portafogli misti-interi | `port_12_9_3_a_1`, `port_12_9_3_b_1`, `port_16_12_4_b_1` | `INTEGER_OPTIMAL` |
 
-Restano 8 casi senza un verdetto conclusivo. Per `gt2`, Primal trova ora
+Restano 5 casi senza un verdetto conclusivo. Per `gt2`, Primal trova ora
 una soluzione intera a costo 21166, pari al valore riportato da MIPLIB.
 La prova di ottimalità resta aperta.
 
 | Famiglia | Casi aperti |
 |---|---|
-| CBLIB misto-intero conico | Le tre istanze `port_*`, `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
+| CBLIB misto-intero conico | `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
 | MIPLIB MILP | `gt2`, `pk1` |
 
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
@@ -574,16 +575,18 @@ La prova di ottimalità resta aperta.
 [`gt2`](#verifica-miplib-gt2-del-2026-11-24) ·
 [`p0201`](#verifica-miplib-p0201-del-2026-11-25) ·
 [Disegno sperimentale CBLIB](#verifica-cblib-expdesign-del-2026-11-25) ·
-[Partizionamento CBLIB](#verifica-cblib-kpart-del-2026-11-25)
+[Partizionamento CBLIB](#verifica-cblib-kpart-del-2026-11-25) ·
+[Portafogli CBLIB](#verifica-cblib-portafogli-del-2026-11-25)
 
 ### Confronto per istanza
 
-Le tre righe `expdesign_D_*` e la riga `kpart_diw.15.4.29` riportano
+Le righe `port_*`, `expdesign_D_*` e `kpart_diw.15.4.29` riportano
 gli esiti, gli obiettivi e i tempi delle verifiche del 25 novembre.
 Il trattino nella colonna Pajarito indica che manca un tempo valido
 per lo stesso ottimo. Le altre righe risalgono al 19 novembre.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
-[Partizionamento](#verifica-cblib-kpart-del-2026-11-25)
+[Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
+[Portafogli](#verifica-cblib-portafogli-del-2026-11-25)
 
 49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
 (harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
@@ -602,9 +605,9 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 
 | instance | set | class | vars x cons | Primal (s) | HiGHS (s) | Clarabel (s) | SCS (s) | SCIP (s) | Pajarito/Hypatia (s) | obj |
 |---|---|---|---|---|---|---|---|---|---|---|
-| port_12_9_3_a_1 | cblib | soc+exp+psd+int | 90 x 169 | fail (rc=1007) | N/A | N/A | N/A | N/A | **8.0130** | -0.0332177 |
-| port_12_9_3_b_1 | cblib | soc+exp+psd+int | 91 x 170 | fail (rc=1007) | N/A | N/A | N/A | N/A | **6.3930** | -0.0347049 |
-| port_16_12_4_b_1 | cblib | soc+exp+psd+int | 120 x 232 | fail (rc=1007) | N/A | N/A | N/A | N/A | **49.4036** | -0.0440148 |
+| port_12_9_3_a_1 | cblib | soc+exp+psd+int | 90 x 169 | **0.004568** (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | 17.246444 | -0.0332185523 |
+| port_12_9_3_b_1 | cblib | soc+exp+psd+int | 91 x 170 | **0.003490** (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | 6.600786 | -0.0347049507 |
+| port_16_12_4_b_1 | cblib | soc+exp+psd+int | 120 x 232 | 0.090776 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | -0.0440155425 |
 | expdesign_D_8_4 | cblib | exp+psd+int | 61 x 148 | **0.000938** (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | 0.045817 | 0.8433069245 |
 | expdesign_D_12_6 | cblib | exp+psd+int | 127 x 311 | 0.000472 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | -0.5202490151 |
 | expdesign_D_16_8 | cblib | exp+psd+int | 217 x 534 | 0.002238 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | 2.9313367330 |
@@ -951,6 +954,34 @@ nulle. HiGHS conferma `-95` con gap zero sulla formulazione
 indipendente a colonne-gruppo. La rilevazione originale riporta `-94`.
 Nel confronto aggiornato Pajarito 0.8.3 termina a 60 secondi con
 `TIME_LIMIT` e senza una soluzione pubblicata.
+
+### Verifica CBLIB portafogli del 2026-11-25
+
+Primal risolve i tre CBF originali con un bound globale ottenuto
+separando i blocchi di rischio SOC, EXP e PSD per quota di indicatori.
+La ricostruzione passa tutte le verifiche nel modello originale.
+[Derivazione e implementazione](algorithms/mixed_integer_optimization.md#cardinality-constrained-portfolios-with-separate-risk-blocks)
+
+| Istanza | Primal `-O2` (ms) | Pajarito 0.8.3 (ms) | Obiettivo Primal | Gap assoluto | Massima violazione pubblica |
+|---|---:|---:|---:|---:|---:|
+| `port_12_9_3_a_1` | **4.568** | 17246.444 | -0.033218552320920 | 1.67e-11 | 1.12e-16 |
+| `port_12_9_3_b_1` | **3.490** | 6600.786 | -0.034704950687185 | 2.11e-11 | 1.12e-16 |
+| `port_16_12_4_b_1` | 90.776 | — | -0.044015542534373 | 3.31e-11 | 1.12e-16 |
+
+Mediane di cinque solve per istanza a un thread dopo una prova di
+riscaldamento, con lettura CBF esclusa. Primal restituisce
+`INTEGER_OPTIMAL` in ogni prova, con tolleranze di fattibilità e gap a
+`1e-8`. Un ricalcolo dai coefficienti dei CBF dà violazioni al più
+`1.9e-18`. Clarabel 0.11.1, con gli indicatori fissati, conferma
+l'obiettivo di ciascun sottoproblema continuo entro `8.6e-9`.
+
+I tempi di Pajarito sono mediane di due solve per istanza dopo una prova
+di riscaldamento, con HiGHS 1.26.0 e Clarabel 0.11.1 a un thread.
+Pajarito dichiara `OPTIMAL` sui due casi 12×9×3 e concorda con Primal
+sull'obiettivo entro `1.3e-9`. Il massimo residuo ricalcolato sui CBF
+è `9.01e-10`. La tolleranza di fattibilità di Pajarito è `1e-9` per
+`a_1` e `1e-8` per `b_1`. Sul 16×12×4 Pajarito termina con
+`TIME_LIMIT` dopo 75 s.
 
 ## 3. Come estendere
 
