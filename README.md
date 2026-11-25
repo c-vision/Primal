@@ -360,6 +360,13 @@ The benchmark report includes the full comparison and the follow-up solves on
 [CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25) ·
 [CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25)
 
+On **2026-11-25**, Primal returned `OPTIMAL` on the original SDPLIB
+models `control1` and `hinf1` in 21 solves per instance. The median
+times were 55.899 ms and 1.729 ms. Independent checks on the original
+SDPA coefficients confirmed feasibility and relative gaps below `1e-8`.
+Clarabel was faster on `control1` at the same verified accuracy.
+[SDPLIB timings and accuracy](BENCHMARKS.md#verifica-sdplib-control1-e-hinf1-del-2026-11-25)
+
 On **2026-11-25**, Primal verified infeasibility on three CBLIB SDPs
 through exact face reductions. Both Primal and Clarabel gave a definitive
 infeasibility verdict on `infeas_clean_10_10_1`, with medians of

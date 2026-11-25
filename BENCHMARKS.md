@@ -582,14 +582,15 @@ La prova di ottimalità resta aperta.
 
 Le righe `port_*`, `expdesign_D_*` e `kpart_diw.15.4.29` riportano
 gli esiti, gli obiettivi e i tempi delle verifiche del 25 novembre.
-Per `infeas_clean_*` e `weak_clean_10_10_3`, le colonne Primal e Clarabel
-riportano il tempo e il verdetto verificati il 25 novembre.
+Per `infeas_clean_*`, `weak_clean_10_10_3`, `control1` e `hinf1`, le
+colonne Primal e Clarabel riportano i risultati del 25 novembre.
 Le altre misure risalgono al 19 novembre. Il trattino nella colonna
 Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
 [Portafogli](#verifica-cblib-portafogli-del-2026-11-25) ·
-[Inammissibilità SDP](#inammissibilità-sdp-cblib)
+[Inammissibilità SDP](#inammissibilità-sdp-cblib) ·
+[SDPLIB control1 e hinf1](#verifica-sdplib-control1-e-hinf1-del-2026-11-25)
 
 49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
 (harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
@@ -635,8 +636,8 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | **0.000010** (`PRIM_INFEAS`) | N/A | 0.003661 (`PrimalInfeasible`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
 | infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000009 (`PRIM_INFEAS`) | N/A | 0.003072 (`AlmostPrimalInfeasible`) | 5.4682 | N/A | fail (SLOW_PROGRESS) | infeasible |
 | weak_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000010 (`PRIM_INFEAS`) | N/A | 0.007492 (`AlmostSolved`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
-| control1 | sdplib | sdp | 21 x 70 | fail (rc=1007) | N/A | **0.0033** | >60s | N/A | 0.0039 | 17.7846 |
-| hinf1 | sdplib | sdp | 13 x 41 | fail (rc=1007) | N/A | **0.0014** | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326 |
+| control1 | sdplib | sdp | 21 x 70 | 0.055899 (`OPTIMAL`) | N/A | **0.003418** | >60s | N/A | 0.0039 | 17.7846267272 |
+| hinf1 | sdplib | sdp | 13 x 41 | 0.001729 (`OPTIMAL`) | N/A | 0.001320 ✗ | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326007779 |
 | theta1 | sdplib | sdp | 104 x 1275 | >60s | N/A | 0.4421 | **0.0445** | N/A | 0.2877 | 23 |
 | truss1 | sdplib | sdp | 6 x 19 | 0.0021 | N/A | **0.0003** | 0.0008 | N/A | 0.0026 | -9 |
 | qap5 | sdplib | sdp | 136 x 351 | >60s | N/A | 0.0309 | **0.0115** | N/A | 0.0389 | -436 |
@@ -668,7 +669,10 @@ portano. Su MPS e MILP SCIP c'è):
   `-0.437`. Il riferimento `-0.520253` era stato controllato con una
   tolleranza esponenziale di `5e-6`. La verifica successiva certifica il
   valore `-0.5202490151` a `1e-8`.
-- `hinf1`: SCS `2.0339587` e Pajarito `2.0326681` contro il `2.0326` di SDPLIB.
+- `hinf1`: SCS `2.0339587` e Pajarito `2.0326681` contro il `2.0326` di
+  SDPLIB. Nella verifica del 25 novembre Clarabel restituisce
+  `AlmostSolved` a `2.0326400951`, con scarto obiettivo scalato
+  `7.76e-6` rispetto alla soluzione di Primal.
 - **Nel confronto del 19 novembre Primal si ferma senza soluzione o senza certificato** sui casi SDP
   costruiti come inammissibili (`infeas_clean_*`, `weak_clean_*`), sui cinque
   SDP puri `control1`, `hinf1`, `theta1`, `qap5`, `mcp100`, sul QP `PRIMAL1`
@@ -840,6 +844,29 @@ escludono la costruzione del solver.
 
 I tre solver dichiarano l'ottimo in tutte le prove, con scarto scalato
 degli obiettivi entro `4.22e-9` rispetto a Primal.
+
+### Verifica SDPLIB control1 e hinf1 del 2026-11-25
+
+Primal `010e435` restituisce `OPTIMAL` su entrambi i modelli in tutte
+le 21 prove misurate. I CBF coincidono con la conversione dei file SDPA
+originali. Un controllo indipendente ricostruisce entrambi gli obiettivi,
+i minimi autovalori dei blocchi e la stazionarietà dai dati SDPA e dalle
+soluzioni pubblicate da Primal.
+
+| Istanza | Primal (ms) | Clarabel (ms) | Obiettivo Primal | Gap relativo Primal | Massima violazione Primal |
+|---|---:|---:|---:|---:|---:|
+| `control1` | 55.899 | **3.418** | 17.78462672722526 | 8.74e-10 | 3.56e-15 |
+| `hinf1` | 1.729 | 1.320 ✗ | 2.032600777938155 | 5.56e-9 | 5.10e-13 |
+
+Mediane di 21 solve intercalati a un thread dopo il riscaldamento.
+Primal è compilato con `-O2`, usa tolleranze `1e-8` e fattore near-optimal
+pari a 1. Clarabel 0.11.1 usa tolleranze interne `1e-10` e decomposizione
+cordale disattivata. I tempi coprono `PRIMAL_optimize` e `solve()`.
+La lettura dei file e la costruzione del solver Clarabel sono escluse.
+Su `control1`, Clarabel concorda sull'obiettivo entro `1.88e-10`
+in scala relativa e il massimo residuo ricalcolato è `2.14e-10`.
+Su `hinf1`, lo scarto obiettivo di Clarabel supera il criterio comune
+di `1e-8`. Il tempo con ✗ indica una solve fuori criterio.
 
 ### Verifica power CBLIB del 2026-11-24
 
