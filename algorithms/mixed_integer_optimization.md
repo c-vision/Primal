@@ -202,10 +202,10 @@ side is infeasible the variable is fixed to the other (`T165`).
 
 ### Primal heuristics
 
-All are on by default; each has a `GMB_NO_MIP_<NAME>` switch. They run after a
-node's relaxation, on a schedule keyed to the node counter `nodes`, and they
-only ever *improve the incumbent*, so they change the path of the search but
-not its optimum.
+The heuristics in the table run after a node's relaxation, on a schedule
+keyed to the node counter `nodes`. They are enabled by default. Each has a
+`GMB_NO_MIP_<NAME>` switch and can improve the incumbent when its candidate
+passes the feasibility checks.
 
 | Heuristic | Runs at node | Needs an incumbent | Test |
 |---|---|---|---|
@@ -218,6 +218,101 @@ not its optimum.
 
 A caller can also supply a starting incumbent with `PRIMAL_putxx`; it is
 accepted only if it passes `mip_point_measures` (`T59`).
+
+#### Shared-capacity integer covers
+
+Some allocation problems have demand rows $r$ and shared capacities $s$.
+An integer decision $x_{rs}$ contributes $a_{rs}x_{rs}$ toward demand $d_r$
+and consumes $x_{rs}$ units of capacity $b_s$. Here $0\le x_{rs}\le u_{rs}$,
+$\sum_s a_{rs}x_{rs}\ge d_r$, and $\sum_r x_{rs}\le b_s$.
+Solving the demand rows independently may exhaust a resource that another
+row needs. A nonnegative price $\lambda_s$ raises the effective cost of
+each unit taken from capacity $s$.
+
+For one demand row, let $F_k(h)$ be the cheapest way for items $k$ onward
+to cover at least $h$ residual units. The final state has
+$F_{n+1}(0)=0$ and $F_{n+1}(h)=+\infty$ for $h>0$. For integer amounts,
+the recurrence is
+
+$$
+F_k(h)=\min_{0\le q\le u_k,\ q\in\mathbb Z}
+\left[q(c_k+\lambda_{s(k)})+F_{k+1}(\max(0,h-qa_k))\right].
+$$
+
+Storing the minimizing $q$ at each state recovers the selected plan.
+With demand $d_r$, $k_r$ items and maximum item count $U_r$, this takes
+$O(k_r(d_r+1)(U_r+1))$ time and $O(k_r(d_r+1))$ space for the traceback.
+Rows expressed in half units are scaled to integers before the recurrence.
+
+Every integer plan $z_r$ for demand $r$ gives an upper bound on that row's
+minimum priced cost. The price master maximizes
+$\sum_r\theta_r-\sum_s b_s\lambda_s$ under
+$\theta_r\le\sum_s(c_{rs}+\lambda_s)z_{rs}$ for each plan generated so far.
+After solving the master, the row dynamic programs find any cheaper plans
+at those prices and add their inequalities.
+
+**In PRIMAL**, [`mip_cover_incumbent`](../primal_mip_cover.c) tries this at
+the root of eligible single-threaded linear integer minimizations without
+a warm incumbent. It visits demands in several orders, reconstructing
+each row's plan against the remaining stock. It passes the assembled point
+to `mip_point_measures` on the original model. The prices rank plans and
+the verified point supplies an objective cutoff for branch and bound.
+The tree still determines the solution status.
+
+In `T327`, two demands need 5 and 5.5 units, and only one cheap unit is
+available. That unit supplies 5.5 to either row and costs 1. Giving it to
+the second row leaves two items of 2.5 for the first, at cost 2 each.
+The total cost is 5, and both demand rows and the shared stock are feasible.
+
+### Exact dynamic programming for choice sequences
+
+Some binary models choose exactly one option $x_g$ from each ordered
+group $g$. An option can forbid choices in the following two groups.
+It also supplies $a_{rg}(x_g)\ge0$ units of resource $r$. Cumulative
+requirements are
+
+$$
+z_r + \sum_{i=1}^g a_{ri}(x_i) \ge d_{rg},
+\qquad 0\le z_r\le U_r.
+$$
+
+Here $z_r$ is a reserve with a nonnegative price $p_r$ per unit. Binary
+weights $1,2,4,\ldots$ represent every integer up to $U_r$. For a fixed
+sequence of choices the least feasible reserve is
+
+$$
+z_r^*=\max\left(0,\ \max_g\left[d_{rg}-\sum_{i=1}^g a_{ri}(x_i)\right]\right).
+$$
+
+This eliminates the reserve decision from each transition. The solver
+keeps the cumulative supply $S_r$ and the largest deficit $H_r$ so far.
+On choosing $x_g$, add $a_{rg}(x_g)$ to $S_r$ and set
+$H_r\gets\max(H_r,d_{rg}-S_r)$. Drop the state if $H_r>U_r$.
+Two partial sequences with identical $(S,H)$ and identical permitted
+continuations can use the same suffix, so only the cheaper prefix
+is needed. At the final layer, add $\sum_r p_r H_r$ to each surviving
+prefix cost and reconstruct the choices and reserve bits from the
+least-cost state.
+
+For example, T328 chooses one of two options in each of three groups.
+The options with positive supply give 2, 3 and 2 units, at prices 2, 4
+and 1. The first and third of those options are incompatible. The
+requirements are 2 after the first group and 5 after the third,
+with up to 3 units in reserve at a price of 3 per unit. Choosing the
+first two supply options satisfies both requirements without a reserve,
+at total cost 6. If the middle option instead costs 9, the best plan
+takes the third supply option and buys 3 reserve units for a total of 10.
+
+[`mip_plan_solve`](../primal_mip_plan.c) checks every finite row
+before applying this recurrence. In particular, it checks that
+a resource's coefficients agree across all of its prefixes and groups
+choices by their compatibility with the next two groups. A completed
+search supplies the proof of optimality. The original model checks the
+reconstructed point before PRIMAL publishes it. Frontiers can grow
+exponentially with the number of resources and the ranges of their
+cumulative supplies and deficits. PRIMAL bounds the frontier size and
+falls back to branch and bound if the bound is reached or the model
+falls outside the recognized form.
 
 ## The relaxation solver and the slack-basis start
 
@@ -242,7 +337,7 @@ revised simplex, then the tableau with phase 1.
 | Outcome | `PRIMAL_optimize` returns | Solution status |
 |---|---|---|
 | Tree exhausted, incumbent found | `OK` | `INTEGER_OPTIMAL` |
-| Node cap or time cap with open nodes | `TRM_MAX_ITER` (1007) | `PRIM_FEAS` when an incumbent exists |
+| Node cap or time cap with open nodes | `TRM_MAX_ITER` (1007) or `TRM_MAX_TIME` (1008) | `PRIM_FEAS` when an incumbent exists |
 | Root relaxation infeasible | `ERR_INFEASIBLE` | `UNKNOWN`, problem status `PRIM_INFEAS` |
 | Unbounded relaxation | `ERR_UNBOUNDED` only if an integer point was found | no ray is published |
 

@@ -102,6 +102,18 @@ $EH^{-1}E^\top$ (a second Cholesky), then recovers $\Delta x=H^{-1}(\text{rhs}-E
 $\Delta s=r_g+G\Delta x$ and $\Delta\lambda$ from the first equation. This is the *NT
 direction*; the augmented system above is the same step computed without scaling.
 
+### Redundant rows in the dense route
+
+Before forming the Newton system, [`socp_solve`](../socp.c) can remove an
+unused zero-cost column or a redundant equality. An exact row $0=0$ adds
+no restriction. A zero row with a nonzero right-hand side must be kept.
+It occupies a row in the reduced system even though it contributes
+nothing to the rank of $E$. The routine sizes the reduced buffers by the
+number of retained rows, restores zero multipliers for removed rows and
+preserves cone blocks whose members are defined by slack-row position.
+Test T329 checks the original solution and gap for a model with an
+unused column, redundant equalities and such an orthant block.
+
 ## One iteration, with the recovery PRIMAL has
 
 ```text

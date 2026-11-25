@@ -29,7 +29,7 @@ HEADERS = primal.h linalg.h stdform.h simplex.h ipm.h socp.h conic_matrix.h sdp.
 PRIMAL_OBJS = primal_core.o primal_put.o primal_qcon.o primal_vartype.o \
           primal_get.o primal_names.o primal_meta.o primal_solution.o \
           primal_afe.o primal_djc.o primal_bar.o primal_sdptask.o primal_gp.o primal_power_reduce.o \
-          primal_mip.o primal_mip_opt.o primal_conicopt.o primal_quad.o \
+          primal_mip.o primal_mip_opt.o primal_mip_cover.o primal_mip_plan.o primal_conicopt.o primal_quad.o \
           primal_solio.o primal_std.o primal_verdict.o primal_optimize.o \
           primal_misc.o primal_info.o
 OBJS    = $(addprefix $(OUT)/,linalg.o stdform.o simplex.o ipm.o socp.o conic_matrix.o sdp.o sdp_corrected.o \
@@ -187,7 +187,7 @@ SAMPLES = $(MOSEK_SAMPLES) $(COMPLEX_SAMPLES) $(FINANCE_SAMPLES) $(BOOK_SAMPLES)
 LIBSRCS = linalg.c stdform.c simplex.c ipm.c socp.c conic_matrix.c sdp.c sdp_corrected.c expcone.c expcone_corrector.c mpsio.c cbf.c scaling.c presolve.c \
           primal_core.c primal_put.c primal_qcon.c primal_vartype.c primal_get.c primal_names.c \
           primal_meta.c primal_solution.c primal_afe.c primal_djc.c primal_bar.c primal_sdptask.c primal_gp.c primal_power_reduce.c \
-          primal_mip.c primal_mip_opt.c primal_conicopt.c primal_quad.c primal_solio.c primal_std.c \
+          primal_mip.c primal_mip_opt.c primal_mip_cover.c primal_mip_plan.c primal_conicopt.c primal_quad.c primal_solio.c primal_std.c \
           primal_verdict.c primal_optimize.c primal_misc.c primal_info.c
 
 samples: $(LIB_A) $(MOSEK_SAMPLES:%=$(OUT)/examples/c/%) $(COMPLEX_SAMPLES:%=$(OUT)/examples/c/%) $(FINANCE_SAMPLES:%=$(OUT)/examples/c/%) $(BOOK_SAMPLES:%=$(OUT)/examples/c/%)

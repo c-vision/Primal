@@ -543,9 +543,9 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ## 3-quater. Istanze pubbliche — 2026-11-19
 
-### Stato verificato al 2026-11-24
+### Stato verificato al 2026-11-25
 
-Primal ha ora un verdetto verificato per **11 dei 24 casi** che nella
+Primal ha ora un verdetto verificato per **12 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
 inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 
@@ -554,18 +554,24 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | SDP SDPLIB | `control1`, `theta1`, `mcp100`, `qap5`, `hinf1` | `OPTIMAL` |
 | SDP CBLIB | `infeas_clean_10_10_1`, `infeas_clean_10_10_3`, `weak_clean_10_10_3` | `PRIM_INFEAS` |
 | Convesso continuo | `PRIMAL1`, `LogExpCR-n20-m400`, `HMCR-n20-m800` | `OPTIMAL` |
+| MIPLIB MILP | `p0201` | `INTEGER_OPTIMAL` |
 
-Restano 13 casi senza un verdetto verificato in questo confronto.
+Restano 12 casi senza un verdetto conclusivo. Per `gt2`, Primal trova ora
+una soluzione intera a costo 21166, pari al valore riportato da MIPLIB.
+La prova di ottimalità resta aperta.
 
 | Famiglia | Casi aperti |
 |---|---|
 | CBLIB misto-intero conico | Le tre istanze `port_*`, le tre `expdesign_D_*`, `kpart_diw.15.4.29`, `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
-| MIPLIB MILP | `p0201`, `gt2`, `pk1` |
+| MIPLIB MILP | `gt2`, `pk1` |
 
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
 [Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
 [SDPLIB](#verifica-sdplib-del-2026-11-24) ·
-[Coni power](#verifica-power-cblib-del-2026-11-24)
+[Coni power](#verifica-power-cblib-del-2026-11-24) ·
+[`gt2`](#verifica-miplib-gt2-del-2026-11-24) ·
+[`p0201`](#verifica-miplib-p0201-del-2026-11-25) ·
+[`expdesign_D_8_4`](#diagnosi-cblib-expdesign_d_8_4-del-2026-11-25)
 
 ### Rilevazione originale del 19 novembre
 
@@ -833,6 +839,65 @@ di Primal sono `7.11e-15` e `2.49e-14`, rispettivamente. In una serie
 separata di cinque solve, Clarabel 0.11.1 risolve `HMCR-n20-m400`
 in **15.535 ms** di mediana senza costruzione. Lo scarto scalato
 dall'obiettivo di Primal è `3.03e-9`.
+
+### Verifica MIPLIB gt2 del 2026-11-24
+
+Tre prove alternate sul [MPS originale di `gt2`](https://miplib.zib.de/instance_details_gt2.html),
+build `-O2`, un thread, `PRIMAL_DPAR_MIO_MAX_TIME=5` e
+`PRIMAL_IPAR_MIP_MAX_NODES=999999`. Il tempo al primo punto è la
+mediana dei tempi CPU dall'ingresso in `PRIMAL_optimize` al messaggio
+`MIP: capacity-priced cover incumbent`. La lettura del MPS è esclusa.
+
+| Build | Tempo al primo punto (ms) | Obiettivo | Esito al limite di tempo |
+|---|---:|---:|---|
+| `747bdf2` | — | — | `TRM_MAX_TIME`, nessun punto in 3 prove su 3 |
+| Con euristica di copertura | 42.3 | 21166 | `TRM_MAX_TIME`, `PRIM_FEAS` in 3 prove su 3 |
+
+`PRIMAL_getsolutioninfo` riporta violazioni nulle sulle righe, sui
+bound e sull'interezza in tutte e tre le prove. Il valore coincide
+con quello pubblicato da MIPLIB. Una verifica indipendente sui
+coefficienti originali restituisce il limite lagrangiano
+`933472/45`, che si arrotonda a `20744` per l'obiettivo intero.
+Questo lascia un divario di 422 unità. La tabella storica dei tempi
+fino alla prova di ottimalità conserva la sua misura originale.
+[Euristica e formulazione](algorithms/mixed_integer_optimization.md#shared-capacity-integer-covers)
+
+### Verifica MIPLIB p0201 del 2026-11-25
+
+Sul [MPS originale](https://miplib.zib.de/instance_details_p0201.html),
+la build precedente con l'euristica di `gt2` raggiungeva 7805 a
+5 secondi e restituiva `PRIM_FEAS`. Primal ora riconosce i gruppi
+binari a scelta unica, le compatibilità locali e i vincoli cumulativi
+di riserva. La programmazione dinamica esaurisce gli stati che
+possono influenzare le scelte successive e prova l'ottimo.
+[Formulazione e verifica](algorithms/mixed_integer_optimization.md#exact-dynamic-programming-for-choice-sequences)
+
+Mediane di cinque prove intercalate sull'MPS originale a un thread,
+con tolleranza di ammissibilità `1e-8` e gap MIP assoluto e relativo
+impostati a zero. I tempi escludono la lettura del file e comprendono
+presolve, ricerca e prova dell'ottimo.
+
+| Primal `-O2` (ms) | SCIP 10.0 (ms) | HiGHS 1.15.1 (ms) | Obiettivo |
+|---:|---:|---:|---:|
+| **4.656** | 297.278 | 514.129 | 7615 |
+
+I tre solver dichiarano l'ottimo in tutte le prove. La massima
+violazione di riga, bound o interezza nel modello originale è zero
+per Primal e SCIP e `2.85e-14` per HiGHS.
+
+### Diagnosi CBLIB expdesign_D_8_4 del 2026-11-25
+
+La riduzione SOCP del fallback ora alloca lo spazio per tutte le righe
+mantenute. Il CBF termina senza crash in sei verifiche e restituisce
+`TRM_MAX_ITER` con soluzione `UNKNOWN`. Il sistema nativo ha 156
+uguaglianze e rango 122. Una prova con le sole righe indipendenti
+raggiunge un residuo primale relativo di `1.24e-11`, con un gap ancora
+pari a `3.11e-4`.
+
+Una sonda separata enumera le 8092 allocazioni intere e massimizza
+il determinante della matrice di informazione. Il punto ricostruito
+ha obiettivo `0.8433069245` e violazione originale massima `2.65e-16`.
+L'istanza rimane aperta per il solver nativo.
 
 ## 3. Come estendere
 

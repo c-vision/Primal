@@ -203,10 +203,11 @@ int socp_solve(int n, int p,
             double *c2 = (double *)malloc((size_t)(nk > 0 ? nk : 1) * sizeof(double));
             double *x2 = (double *)calloc((size_t)(nk > 0 ? nk : 1), sizeof(double));
             SocpCone *cn = (SocpCone *)malloc((size_t)(ncones > 0 ? ncones : 1) * sizeof(SocpCone));
-            int **cnm = (int **)malloc((size_t)(ncones > 0 ? ncones : 1) * sizeof(int *));
+            int **cnm = (int **)calloc((size_t)(ncones > 0 ? ncones : 1), sizeof(int *));
             int okc = E2 && G2 && c2 && x2 && cn && cnm;
             for (int k = 0; okc && k < ncones; k++) {
                 cn[k] = cones[k];
+                if (!cones[k].mem) continue;  /* positional slack rows */
                 cnm[k] = (int *)malloc((size_t)(cones[k].nmem > 0 ? cones[k].nmem : 1) * sizeof(int));
                 if (!cnm[k]) { okc = 0; break; }
                 for (int i = 0; i < cones[k].nmem; i++) cnm[k][i] = keep[cones[k].mem[i]];
@@ -226,7 +227,7 @@ int socp_solve(int n, int p,
                 free(used); free(keep);
                 return st;
             }
-            for (int k = 0; k < ncones; k++) free(cnm[k]);
+            if (cnm) for (int k = 0; k < ncones; k++) free(cnm[k]);
             free(cn); free(cnm); free(E2); free(G2); free(c2); free(x2);
         }
         free(used); free(keep);
@@ -256,6 +257,10 @@ int socp_solve(int n, int p,
                 double nn = 0.0, oo = 0.0;
                 for (int j = 0; j < n; j++) { nn += tmp[j] * tmp[j]; oo += E[(size_t)i * n + j] * E[(size_t)i * n + j]; }
                 nn = sqrt(nn); oo = sqrt(oo);
+                if (oo == 0.0 && d[i] == 0.0 && maxabs(E + (size_t)i * n, n) == 0.0) {
+                    drop = 1;
+                    continue;
+                }
                 if (oo == 0.0 || nn > 1e-10 * oo) {
                     if (nn > 0.0) { for (int j = 0; j < n; j++) Qb[(size_t)rank * n + j] = tmp[j] / nn; rank++; }
                     rowkeep[i] = 1;
@@ -265,11 +270,14 @@ int socp_solve(int n, int p,
         if (drop) {
             int pk = 0;
             int *rmap = (int *)malloc((size_t)p * sizeof(int));
-            double *E3 = (double *)calloc((size_t)(rank > 0 ? rank : 1) * (size_t)(n > 0 ? n : 1), sizeof(double));
-            double *d3 = (double *)calloc((size_t)(rank > 0 ? rank : 1), sizeof(double));
-            double *y2 = (double *)calloc((size_t)(rank > 0 ? rank : 1), sizeof(double));
-            if (rmap && E3 && d3 && y2) {
+            if (rmap)
                 for (int i = 0; i < p; i++) rmap[i] = rowkeep[i] ? pk++ : -1;
+            /* An inconsistent zero row must survive. It uses a slot even
+             * though it contributes nothing to the matrix rank. */
+            double *E3 = (double *)calloc((size_t)(pk > 0 ? pk : 1) * (size_t)(n > 0 ? n : 1), sizeof(double));
+            double *d3 = (double *)calloc((size_t)(pk > 0 ? pk : 1), sizeof(double));
+            double *y2 = (double *)calloc((size_t)(pk > 0 ? pk : 1), sizeof(double));
+            if (rmap && E3 && d3 && y2) {
                 for (int i = 0; i < p; i++) if (rowkeep[i]) {
                     memcpy(E3 + (size_t)rmap[i] * n, E + (size_t)i * n, (size_t)n * sizeof(double));
                     d3[rmap[i]] = d[i];

@@ -25,6 +25,10 @@
  * node cap or an optimal incumbent. Returns the result code. */
 PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
     int nvar = t->numvar, ncon = t->numcon;
+    if (s > 0 && mip_plan_solve(t)) {
+        tlog(t, "integer optimal solution found\n");
+        return PRIMAL_RES_OK;
+    }
 
     /* conic/quadratic/SDP node relaxations need a shadow env */
     int use_conic = (t->numcones > 0) || (t->has_qcon > 0) ||
@@ -253,6 +257,8 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         }
     }
     t->has_warm = 0;
+    if (s > 0 && best == INF && t->num_threads <= 1)
+        mip_cover_incumbent(t, lc, uc, flx, flux, bestx, xs, &best);
 
     /* Parallel B&B (num_threads > 1): solve the root, branch on the most
      * fractional and solve the two children in two threads (clone of the task

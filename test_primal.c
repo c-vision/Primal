@@ -22628,8 +22628,156 @@ static void test_t326(void) {
     }
 }
 
+static void t327_capture_route(void *handle, const char *message) {
+    if (strstr(message, "capacity-priced cover incumbent")) *(int *)handle = 1;
+}
+
+/* Two demands share one cheap unit. Assigning that unit to the second
+ * demand and meeting the first with two half-unit coefficients costs 5. */
+static void test_t327(void) {
+    for (int supported = 0; supported <= 1; supported++) {
+        cur_name = supported ? "T327 shared-capacity root incumbent" : "T327 capacity coefficient guard";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, 4);
+        PRIMAL_appendcons(t, 4);
+        PRIMAL_putconbound(t, 0, PRIMAL_BK_LO, 5.0, 0.0);
+        PRIMAL_putconbound(t, 1, PRIMAL_BK_LO, 5.5, 0.0);
+        PRIMAL_putconbound(t, 2, PRIMAL_BK_UP, 0.0, 1.0);
+        PRIMAL_putconbound(t, 3, PRIMAL_BK_UP, 0.0, 4.0);
+        const double amount[4] = {5.5, 2.5, 5.5, 4.0};
+        const double cost[4] = {1.0, 2.0, 1.0, 5.0};
+        for (int j = 0; j < 4; j++) {
+            PRIMAL_putvarbound(t, j, PRIMAL_BK_LO, 0.0, 0.0);
+            PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT);
+            PRIMAL_putcj(t, j, cost[j]);
+            PRIMAL_putaij(t, j/2, j, amount[j]);
+            PRIMAL_putaij(t, 2+j%2, j, !supported && j == 0 ? 2.0 : 1.0);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t327_capture_route);
+        if (supported) PRIMAL_putintparam(t, PRIMAL_IPAR_MIP_MAX_NODES, 1);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(rc == PRIMAL_RES_OK || (supported && rc == PRIMAL_RES_TRM_MAX_ITER), "MIP termination");
+        check(used == supported, "cover route requires unit capacity consumption");
+        PRIMALsolstae sta = PRIMAL_SOL_STA_UNKNOWN;
+        check_rc(PRIMAL_getsolsta(t, PRIMAL_SOL_ITG, &sta), PRIMAL_RES_OK, "integer status");
+        check(sta == (rc == PRIMAL_RES_OK ? PRIMAL_SOL_STA_INTEGER_OPTIMAL : PRIMAL_SOL_STA_PRIM_FEAS),
+              "solution status reflects whether the tree completed");
+        double obj = NAN, row = INFINITY, var = INFINITY, integer = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITG, &obj, &row, &var, NULL, NULL,
+                                        &integer, NULL, NULL, NULL, NULL, NULL),
+                 PRIMAL_RES_OK, "original model has an integer point");
+        check(obj == 5.0, "known objective");
+        check(fmax(row, fmax(var, integer)) <= 1e-8, "original row, bound and integer violations");
+        pend(&p);
+    }
+}
+
+static void t328_capture_route(void *handle, const char *message) {
+    if (strstr(message, "optimal choice sequence with prefix reserves")) *(int *)handle = 1;
+}
+
+/* Three one-hot groups, a lag-two exclusion and one two-bit reserve.
+ * A distinct coefficient in the last prefix must disable the exact route. */
+static void test_t328(void) {
+    for (int variant = 0; variant < 3; variant++) {
+        cur_name = variant == 2 ? "T328 incompatible prefix fallback" : "T328 exact choice sequence";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t, 8);
+        PRIMAL_appendcons(t, 7);
+        const double cost[8] = {0, 2, 0, variant ? 9 : 4, 0, 1, 3, 6};
+        for (int j = 0; j < 8; j++) {
+            PRIMAL_putvarbound(t, j, PRIMAL_BK_RA, 0.0, 1.0);
+            PRIMAL_putvartype(t, j, PRIMAL_VAR_TYPE_INT_BIN);
+            PRIMAL_putcj(t, j, cost[j]);
+        }
+        for (int g = 0; g < 3; g++) {
+            PRIMAL_putconbound(t, g, PRIMAL_BK_FX, 1.0, 1.0);
+            PRIMAL_putaij(t, g, 2*g, 1.0);
+            PRIMAL_putaij(t, g, 2*g+1, 1.0);
+        }
+        PRIMAL_putconbound(t, 3, PRIMAL_BK_UP, 0.0, 3.0);
+        PRIMAL_putconbound(t, 4, PRIMAL_BK_LO, 2.0, 0.0);
+        PRIMAL_putconbound(t, 5, PRIMAL_BK_LO, 5.0, 0.0);
+        for (int r = 3; r <= 5; r++) {
+            PRIMAL_putaij(t, r, 6, 1.0);
+            PRIMAL_putaij(t, r, 7, 2.0);
+        }
+        PRIMAL_putaij(t, 4, 1, 2.0);
+        PRIMAL_putaij(t, 5, 1, variant == 2 ? 3.0 : 2.0);
+        PRIMAL_putaij(t, 5, 3, 3.0);
+        PRIMAL_putaij(t, 5, 5, 2.0);
+        PRIMAL_putconbound(t, 6, PRIMAL_BK_UP, 0.0, 1.0);
+        PRIMAL_putaij(t, 6, 1, 1.0);
+        PRIMAL_putaij(t, 6, 5, 1.0);
+
+        int used = 0;
+        PRIMAL_putintparam(t, PRIMAL_IPAR_LOG, 1);
+        PRIMAL_linkfunctotaskstream(t, PRIMAL_STREAM_LOG, &used, t328_capture_route);
+        if (variant < 2) PRIMAL_putintparam(t, PRIMAL_IPAR_MIP_MAX_NODES, 1);
+        check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "solve binary choice sequence");
+        check(used == (variant < 2), "all prefix rows must have consistent coefficients");
+        PRIMALsolstae sta = PRIMAL_SOL_STA_UNKNOWN;
+        check_rc(PRIMAL_getsolsta(t, PRIMAL_SOL_ITG, &sta), PRIMAL_RES_OK, "integer status");
+        check(sta == PRIMAL_SOL_STA_INTEGER_OPTIMAL, "integer optimum proved");
+        double obj = NAN, row = INFINITY, var = INFINITY, integer = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITG, &obj, &row, &var, NULL, NULL,
+                                        &integer, NULL, NULL, NULL, NULL, NULL),
+                 PRIMAL_RES_OK, "point in original model");
+        const double expected[3] = {6.0, 10.0, 8.0};
+        check(fabs(obj-expected[variant]) <= 1e-8, "enumerated objective");
+        check(fmax(row, fmax(var, integer)) <= 1e-8, "row, bound and integer violations");
+        double x[8] = {0};
+        check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITG, x), PRIMAL_RES_OK, "binary variables");
+        check(fabs(x[6] + 2.0*x[7] - (variant == 0 ? 0.0 : variant == 1 ? 3.0 : 2.0)) <= 1e-8,
+              "reserve restored from the maximum prefix deficit");
+        pend(&p);
+    }
+}
+
+/* T329: min t on t >= |w| and w=1, with a duplicate, a zero row
+ * and an unused free scalar. The bound t>=0 also adds a positional cone. */
+static void test_t329(void) {
+    cur_name = "T329 redundant equalities and positional cone";
+    P p; pbegin(&p);
+    PRIMALtask_t t = p.task;
+    PRIMAL_appendvars(t, 3);
+    PRIMAL_appendcons(t, 3);
+    PRIMAL_putvarbound(t, 0, PRIMAL_BK_LO, 0.0, 0.0);
+    PRIMAL_putvarbound(t, 1, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putvarbound(t, 2, PRIMAL_BK_FR, 0.0, 0.0);
+    PRIMAL_putcj(t, 0, 1.0);
+    PRIMAL_appendcone(t, PRIMAL_CT_QUAD, 0.0, 2, (int[]){0, 1});
+    PRIMAL_putconbound(t, 0, PRIMAL_BK_FX, 1.0, 1.0);
+    PRIMAL_putconbound(t, 1, PRIMAL_BK_FX, 2.0, 2.0);
+    PRIMAL_putconbound(t, 2, PRIMAL_BK_FX, 0.0, 0.0);
+    PRIMAL_putaij(t, 0, 1, 1.0);
+    PRIMAL_putaij(t, 1, 1, 2.0);
+    check_rc(PRIMAL_optimize(t), PRIMAL_RES_OK, "dense conic reduction completes");
+    double x[3] = {NAN, NAN, NAN};
+    check_rc(PRIMAL_getxx(t, PRIMAL_SOL_ITR, x), PRIMAL_RES_OK, "original coordinates");
+    check(fabs(x[0]-1.0) <= 1e-8 && fabs(x[1]-1.0) <= 1e-8 && x[2] == 0.0,
+          "known minimum and restored free column");
+    double obj = NAN, dobj = NAN, pr = INFINITY, pv = INFINITY, pc = INFINITY;
+    double dr = INFINITY, dv = INFINITY, dc = INFINITY;
+    check_rc(PRIMAL_getsolutioninfo(t, PRIMAL_SOL_ITR, &obj, &pr, &pv, NULL, &pc, NULL,
+                                    &dobj, &dr, &dv, NULL, &dc),
+             PRIMAL_RES_OK, "original primal and dual measures");
+    check(fabs(obj-1.0) <= 1e-8 && fabs(obj-dobj) <= 1e-8 * (1.0+fabs(obj)+fabs(dobj)),
+          "hand objective and relative gap");
+    check(fmax(fmax(pr,pv),pc) <= 1e-8 && fmax(fmax(dr,dv),dc) <= 1e-8,
+          "primal and dual violations");
+    pend(&p);
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t329();
+    test_t328();
+    test_t327();
     test_t326();
     test_t325();
     test_t324();
