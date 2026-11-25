@@ -582,11 +582,14 @@ La prova di ottimalità resta aperta.
 
 Le righe `port_*`, `expdesign_D_*` e `kpart_diw.15.4.29` riportano
 gli esiti, gli obiettivi e i tempi delle verifiche del 25 novembre.
-Il trattino nella colonna Pajarito indica che manca un tempo valido
-per lo stesso ottimo. Le altre righe risalgono al 19 novembre.
+Per `infeas_clean_*` e `weak_clean_10_10_3`, le colonne Primal e Clarabel
+riportano il tempo e il verdetto verificati il 25 novembre.
+Le altre misure risalgono al 19 novembre. Il trattino nella colonna
+Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
-[Portafogli](#verifica-cblib-portafogli-del-2026-11-25)
+[Portafogli](#verifica-cblib-portafogli-del-2026-11-25) ·
+[Inammissibilità SDP](#inammissibilità-sdp-cblib)
 
 49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
 (harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
@@ -629,9 +632,9 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | LogExpCR-n20-m400 | cblib | exp | 2022 x 1603 | >60s | N/A | **0.0199** | 0.0273 | N/A | 2.6629 | 0.0164814 |
 | HMCR-n20-m400 | cblib | pow | 2022 x 1603 | 39.7349 | N/A | **0.0210** | 0.0608 | N/A | 2.5334 | 0.0345743 |
 | HMCR-n20-m800 | cblib | pow | 4022 x 3203 | >60s | N/A | fail | **0.1044** | N/A | 10.0290 | 0.0390837 |
-| infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | **0.0704** | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
-| infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | fail | **5.4682** | N/A | fail (SLOW_PROGRESS) | infeasible |
-| weak_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | fail (rc=1007) | N/A | fail | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
+| infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | **0.000010** (`PRIM_INFEAS`) | N/A | 0.003661 (`PrimalInfeasible`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
+| infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000009 (`PRIM_INFEAS`) | N/A | 0.003072 (`AlmostPrimalInfeasible`) | 5.4682 | N/A | fail (SLOW_PROGRESS) | infeasible |
+| weak_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000010 (`PRIM_INFEAS`) | N/A | 0.007492 (`AlmostSolved`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
 | control1 | sdplib | sdp | 21 x 70 | fail (rc=1007) | N/A | **0.0033** | >60s | N/A | 0.0039 | 17.7846 |
 | hinf1 | sdplib | sdp | 13 x 41 | fail (rc=1007) | N/A | **0.0014** | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326 |
 | theta1 | sdplib | sdp | 104 x 1275 | >60s | N/A | 0.4421 | **0.0445** | N/A | 0.2877 | 23 |
@@ -742,23 +745,27 @@ provengono dalla tabella del 19 novembre.
 
 #### Inammissibilità SDP CBLIB
 
-Il presolve riconosce una contraddizione nelle uguaglianze originali di tre
-SDP CBLIB. In tutti i solve Primal restituisce `rc=1002` con
-`prosta=PRIM_INFEAS` e `solsta=UNKNOWN`. I getter del punto e del raggio
-duale rispondono `ERR_ARG`.
+Due uguaglianze nei CBF originali restringono il blocco PSD da 10 a 8
+e poi a 5 coordinate. Sulla faccia residua la terza uguaglianza impone che
+la somma di due elementi diagonali non negativi valga `-1`, `-1` e `-2`
+nelle tre istanze rispettivamente. Primal riconosce la contraddizione
+nel presolve e restituisce `rc=1002`, `prosta=PRIM_INFEAS` e
+`solsta=UNKNOWN`. I getter del punto e del raggio duale rispondono
+`ERR_ARG`.
 
-| Istanza | Primal `0d99119`, prima | Primal 23/11 (ms) | Clarabel 23/11 (ms) | Esito Clarabel |
+| Istanza | Primal `0d99119`, prima | Primal 25/11 (ms) | Clarabel 25/11 (ms) | Esito Clarabel |
 |---|---|---:|---:|---|
-| `infeas_clean_10_10_1` | rc=1007 (3.001 s) | **0.021** | 3.718 | `PrimalInfeasible` |
-| `infeas_clean_10_10_3` | rc=1007 (2.927 s) | 0.013 | 3.230 | `AlmostPrimalInfeasible` |
-| `weak_clean_10_10_3` | rc=1007 (3.053 s) | 0.011 | 7.770 | `AlmostSolved` |
+| `infeas_clean_10_10_1` | rc=1007 (3.001 s) | **0.010** | 3.661 | `PrimalInfeasible` |
+| `infeas_clean_10_10_3` | rc=1007 (2.927 s) | 0.009 | 3.072 | `AlmostPrimalInfeasible` |
+| `weak_clean_10_10_3` | rc=1007 (3.053 s) | 0.010 | 7.492 | `AlmostSolved` |
 
-Verifica a un thread e tolleranze `1e-8`. Una misura per la build di
-partenza, mediana di tre chiamate a `PRIMAL_optimize` per la nuova
-build e mediana di cinque solve per Clarabel 0.11.1, con costruzione del
-solver inclusa. La lettura del CBF e la conversione in dati triangolari
-sono fuori dai tempi. Il grassetto indica il tempo minore sulla riga con
-lo stesso verdetto esplicito.
+Verifica del 25 novembre 2026 a un thread e tolleranze `1e-8`.
+Primal `ffd4cf4`, build `-O2`, dà lo stesso verdetto in 21 prove
+misurate per istanza. I tempi sono le mediane di quelle prove e di
+cinque solve per Clarabel 0.11.1, con costruzione del solver inclusa
+per Clarabel. La lettura del CBF e la conversione in dati triangolari
+sono fuori dai tempi. Il grassetto indica il tempo minore sulla riga
+con lo stesso verdetto esplicito.
 [Prova per riduzione facciale](algorithms/semidefinite_programming.md#detecting-infeasibility-on-coordinate-faces)
 
 ### Vittorie confermate sulle istanze pubbliche

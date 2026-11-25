@@ -360,11 +360,13 @@ The benchmark report includes the full comparison and the follow-up solves on
 [CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25) ·
 [CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25)
 
-In a separate infeasibility comparison on **2026-11-23**, both Primal and
-Clarabel identified `infeas_clean_10_10_1` (CBLIB). Median time to verdict
-was **0.021 ms** for Primal and **3.718 ms** for Clarabel. Primal reports
-the problem status from a sequence of exact face reductions. This route
-leaves the dual-ray getter unavailable.
+On **2026-11-25**, Primal verified infeasibility on three CBLIB SDPs
+through exact face reductions. Both Primal and Clarabel gave a definitive
+infeasibility verdict on `infeas_clean_10_10_1`, with medians of
+**0.010 ms** for Primal and **3.661 ms** for Clarabel. Primal also reported
+`PRIM_INFEAS` on `infeas_clean_10_10_3` and `weak_clean_10_10_3`.
+This route exposes the verdict through the problem status. The dual-ray
+getter returns `ERR_ARG`.
 [Infeasibility results and timing protocol](BENCHMARKS.md#inammissibilità-sdp-cblib)
 
 ## Documentation
