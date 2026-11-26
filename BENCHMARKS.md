@@ -543,7 +543,7 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ## 3-quater. Istanze pubbliche
 
-### Stato verificato al 2026-11-25
+### Stato verificato al 2026-11-26
 
 Primal ha ora un verdetto verificato per **19 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
@@ -584,13 +584,15 @@ Le righe `port_*`, `expdesign_D_*` e `kpart_diw.15.4.29` riportano
 gli esiti, gli obiettivi e i tempi delle verifiche del 25 novembre.
 Per `infeas_clean_*`, `weak_clean_10_10_3`, `control1` e `hinf1`, le
 colonne Primal e Clarabel riportano i risultati del 25 novembre.
-Le altre misure risalgono al 19 novembre. Il trattino nella colonna
-Pajarito indica che manca un tempo valido per lo stesso ottimo.
+Per `PRIMAL1`, le colonne Primal, Clarabel e SCS riportano il confronto
+del 26 novembre. Le altre misure risalgono al 19 novembre.
+Il trattino nella colonna Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
 [Portafogli](#verifica-cblib-portafogli-del-2026-11-25) ·
 [Inammissibilità SDP](#inammissibilità-sdp-cblib) ·
-[SDPLIB control1 e hinf1](#verifica-sdplib-control1-e-hinf1-del-2026-11-25)
+[SDPLIB control1 e hinf1](#verifica-sdplib-control1-e-hinf1-del-2026-11-25) ·
+[PRIMAL1](#verifica-primal1-del-2026-11-26)
 
 49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
 (harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
@@ -646,7 +648,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | HS118 | maros-meszaros | qp | 15 x 17 | 0.0003 | 0.0006 | **0.0001** | 0.0003 | 0.0094 | 0.0026 | 664.82 |
 | QAFIRO | maros-meszaros | qp | 32 x 27 | 0.0005 | 0.0005 | **0.0002** | **0.0002** | 0.0042 | 0.0028 | -1.59078 |
 | DUAL1 | maros-meszaros | qp | 85 x 1 | 0.0021 | **0.0011** | 0.0022 | **0.0011** | 0.0784 | 0.0116 | 0.035013 |
-| PRIMAL1 | maros-meszaros | qp | 325 x 85 | fail (rc=1007) | 0.0116 | 0.0039 | **0.0022** | 0.9942 | 0.1304 | -0.035013 |
+| PRIMAL1 | maros-meszaros | qp | 325 x 85 | 0.008826 (`OPTIMAL`) | 0.0116 | 0.002543 | **0.001159** | 0.9942 | 0.1304 | -0.0350129657 |
 | CVXQP1_S | maros-meszaros | qp | 100 x 50 | 0.0100 | 0.0009 | **0.0006** | 0.0014 | 0.1125 | N/A | 11590.7 |
 | afiro | netlib | lp | 32 x 27 | **0.0001** | 0.0003 | 0.0002 | 0.0004 | 0.0007 | 0.0018 | -464.753 |
 | adlittle | netlib | lp | 97 x 56 | 0.0006 | 0.0007 | **0.0005** | 0.0014 | 0.0018 | 0.0070 | 225495 |
@@ -718,6 +720,24 @@ Su `gp_dave_1`, il ripristino dei moltiplicatori delle righe originali
 riduce il residuo di stazionarietà pubblicato da `3.312` a `1.70e-10`.
 L'obiettivo primale e il gap relativo rimangono rispettivamente
 `5.506526406863336` e `5.92e-10` nella verifica fra le due build.
+
+### Verifica PRIMAL1 del 2026-11-26
+
+Il QP Maros–Meszaros restituisce `OPTIMAL` con Primal `1d5ce18`
+in tutte le 21 prove misurate. Il lettore MPS riceve gli stessi
+coefficienti del file `.mat` originale usato per i due riferimenti.
+
+| Solver | Mediana (ms) | Obiettivo | Massimo residuo | Gap relativo |
+|---|---:|---:|---:|---:|
+| Primal `-O2` | 8.826 | -0.035012965733 | 3.43e-10 | 1.98e-11 |
+| Clarabel 0.11.1 | 2.543 | -0.035012965154 | 2.22e-11 | 1.14e-9 |
+| SCS 3.3.1 | **1.159** | -0.035012965698 | 5.26e-10 | 4.03e-11 |
+
+Mediane di 21 prove intercalate a un thread dopo il riscaldamento.
+Tolleranze `1e-8` per tutti e tre i solver. I tempi escludono lettura,
+conversione e costruzione dei solver di riferimento. Obiettivo,
+fattibilità e stazionarietà sono ricalcolati dai dati Maros–Meszaros.
+Lo scarto scalato fra gli obiettivi è al più `5.59e-10`.
 
 ### Verifica mirata del 2026-11-23
 

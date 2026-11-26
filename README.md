@@ -348,7 +348,10 @@ batches for the Julia references.
 
 Primal timings cover `PRIMAL_optimize` on one thread, excluding file reading.
 The benchmark report includes the full comparison and the follow-up solves on
-`PRIMAL1`, `LogExpCR-n20-m400`, `control1` and `theta1`.
+`LogExpCR-n20-m400`, `control1` and `theta1`. On **2026-11-26**, Primal
+returned `OPTIMAL` on `PRIMAL1` in all 21 measured runs at `1e-8`.
+The median was 8.826 ms for Primal, 2.543 ms for Clarabel and 1.159 ms
+for SCS. [PRIMAL1 results](BENCHMARKS.md#verifica-primal1-del-2026-11-26)
 [49 public instances](BENCHMARKS.md#istanze-pubbliche) ·
 [Repeated comparison](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
 [November 24 results](BENCHMARKS.md#verifica-mirata-del-2026-11-24) ·
