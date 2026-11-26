@@ -16,7 +16,10 @@ point and a status you can check rather than trust.
 
 - **LP, QP** — presolve, then simplex or a Mehrotra interior point.
 - **MILP, MIQP** — branch & bound with cutting planes, strong branching,
-  probing and primal heuristics.
+  probing and primal heuristics. For some integer covers with shared
+  capacity, Primal can certify the exact optimum using a cost cutoff
+  and an aggregate bound on free stock.
+  [Integer covers](algorithms/mixed_integer_optimization.md#shared-capacity-integer-covers).
 - **SOCP** — primal-dual conic interior point with Nesterov–Todd scaling.
   Primal can eliminate rotated epigraphs with one fixed positive member
   per block, including cases with up to four equalities on the tails.
@@ -365,6 +368,7 @@ for SCS. [PRIMAL1 results](BENCHMARKS.md#verifica-primal1-del-2026-11-26)
 [SDPLIB results for mcp100, qap5 and hinf1](BENCHMARKS.md#verifica-sdplib-del-2026-11-24) ·
 [CBLIB power results](BENCHMARKS.md#verifica-power-cblib-del-2026-11-24) ·
 [MIPLIB p0201 results](BENCHMARKS.md#verifica-miplib-p0201-del-2026-11-25) ·
+[Verified gt2 optimum](BENCHMARKS.md#verifica-miplib-gt2-del-2026-11-26) ·
 [CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25) ·
 [CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25) ·
 [CBLIB binary PSD selection results](BENCHMARKS.md#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)

@@ -259,8 +259,8 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
         }
     }
     t->has_warm = 0;
-    if (s > 0 && best == INF && t->num_threads <= 1)
-        mip_cover_incumbent(t, lc, uc, flx, flux, bestx, xs, &best);
+    int cover_proven = s > 0 && best == INF && t->num_threads <= 1 &&
+                       mip_cover_incumbent(t, lc, uc, flx, flux, bestx, xs, &best);
 
     /* Parallel B&B (num_threads > 1): solve the root, branch on the most
      * fractional and solve the two children in two threads (clone of the task
@@ -337,7 +337,7 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
     }
 
     int deadline_hit = 0;
-    while (sp > 0 && nodes < t->mip_max_nodes) {
+    while (!cover_proven && sp > 0 && nodes < t->mip_max_nodes) {
         if (t->mip_deadline >= 0.0 && (double)clock() >= t->mip_deadline) { deadline_hit = 1; break; }
         /* best-bound: expand the node with the lowest bound (the parent leaves
          * it in `bound`), not the deepest. Among equal bounds the most recent
@@ -1022,7 +1022,8 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
      * INTEGER_OPTIMAL asserts optimality the tree never established, so the
      * reference's pairing for that outcome (Table 7.3: PRIM_FEAS + PRIM_FEAS,
      * "integer feasible point") is what goes out, with a termination code. */
-    if (root_status == 1)      rc = PRIMAL_RES_ERR_INFEASIBLE;
+    if (cover_proven)         rc = PRIMAL_RES_OK;
+    else if (root_status == 1) rc = PRIMAL_RES_ERR_INFEASIBLE;
     else if (root_status == 2)
         /* An unbounded relaxation is unboundedness only when the MIP has an
          * integer point (a relaxation ray alone proves nothing: an infeasible

@@ -23134,8 +23134,60 @@ static void test_t333(void) {
     }
 }
 
+static void t334_route(void *handle, const char *message) {
+    if (strstr(message,"shared-capacity cover optimality certified")) *(int *)handle = 1;
+}
+
+/* Each demand can be covered by the free resources alone, but the
+ * two demands cannot share them at zero cost. In variant 2 the
+ * pooled fractional relaxation can split a unit of stock, so it
+ * must leave the inexpensive branch open. */
+static void test_t334(void) {
+    for (int variant = 0; variant < 3; variant++) {
+        cur_name = "T334 exact bound for covers with shared free stock";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t,6);
+        PRIMAL_appendcons(t,5);
+        for (int r = 0; r < 2; r++)
+            PRIMAL_putconbound(t,r,PRIMAL_BK_LO,variant == 2 ? 2 : 4,0.0);
+        for (int r = 2; r < 5; r++) PRIMAL_putconbound(t,r,PRIMAL_BK_UP,0.0,1.0);
+        const double yields[2][3] = {{3,1,4},{1,3,4}};
+        const double fractional[3] = {4,1,4};
+        for (int j = 0; j < 6; j++) {
+            int stock = j%3, demand = j/3;
+            PRIMAL_putvartype(t,j,PRIMAL_VAR_TYPE_INT);
+            PRIMAL_putvarbound(t,j,PRIMAL_BK_LO,0.0,0.0);
+            PRIMAL_putaij(t,demand,j,variant == 2 ? fractional[stock] : yields[demand][stock]);
+            PRIMAL_putaij(t,2+stock,j,1.0);
+            PRIMAL_putcj(t,j,stock == 2 ? 2.0 : 0.0);
+        }
+        if (variant == 1) PRIMAL_putintparam(t,PRIMAL_IPAR_MIP_MAX_NODES,1);
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t334_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(used == (variant == 0),"a search limit or a feasible aggregate leaves the proof open");
+        if (variant != 1) {
+            check_rc(rc,PRIMAL_RES_OK,"cover solved");
+            PRIMALsolstae status = PRIMAL_SOL_STA_UNKNOWN;
+            PRIMAL_getsolsta(t,PRIMAL_SOL_ITG,&status);
+            check(status == PRIMAL_SOL_STA_INTEGER_OPTIMAL,"minimum proved");
+            double obj = NAN, rows = INFINITY, vars = INFINITY, ints = INFINITY, bound = NAN;
+            check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITG,&obj,&rows,&vars,NULL,NULL,&ints,
+                                            NULL,NULL,NULL,NULL,NULL),PRIMAL_RES_OK,
+                     "original cover solution");
+            PRIMAL_getdouinf(t,PRIMAL_DINF_MIO_OBJ_BOUND,&bound);
+            check(obj == 2.0 && bound == obj,"hand-computed exact bound");
+            check(fmax(rows,fmax(vars,ints)) <= 1e-8,"original cover feasibility");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t334();
     test_t333();
     test_t332();
     test_t331();

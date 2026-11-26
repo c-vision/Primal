@@ -255,9 +255,35 @@ at those prices and add their inequalities.
 the root of eligible single-threaded linear integer minimizations without
 a warm incumbent. It visits demands in several orders, reconstructing
 each row's plan against the remaining stock. It passes the assembled point
-to `mip_point_measures` on the original model. The prices rank plans and
-the verified point supplies an objective cutoff for branch and bound.
-The tree still determines the solution status.
+to `mip_point_measures` on the original model. The prices rank the plans,
+and an integer incumbent of cost $C$ gives the exact cutoff $C-1$
+after removing the fixed objective offset.
+
+If the zero-cost items have at most two profiles of yields per stock
+unit, PRIMAL searches only the items with positive cost below that cutoff.
+For each demand, it first subtracts the maximum contribution of the
+zero-cost items if all their stock were available to that demand alone.
+The same suffix recurrence, restricted to positive-cost items, bounds
+the cost of making up this deficit. Summing these row bounds allows
+entire sets of paid assignments to be excluded.
+
+For a fixed assignment, add up the remaining demand within each yield
+profile. Pool the free stock on each side and allow it to be split
+fractionally between the profiles. This relaxes the original constraints.
+For free yields $(a_s,b_s)$, reserve enough stock to meet the second
+profile's residual demand. The largest possible yield for the first
+profile comes from assigning its share in decreasing order of $a_s/b_s$.
+PRIMAL compares these ratios by integer cross-products and rounds any
+fractional yield upward. If the pooled demands cannot be met, the
+original assignment cannot be feasible. If every cheaper assignment is
+excluded, the incumbent is optimal. A feasible pooled assignment or
+a search limit returns control to branch and bound.
+
+In T334, one unit of each of two free resources yields $(3,1)$ for the
+first demand and $(1,3)$ for the second. Both demands are 4. Satisfying
+one with free stock leaves the other uncovered, so at least one paid
+item at cost 2 is needed. The test also covers a feasible fractional
+allocation that leaves the proof open.
 
 In `T327`, two demands need 5 and 5.5 units, and only one cheap unit is
 available. That unit supplies 5.5 to either row and costs 1. Giving it to

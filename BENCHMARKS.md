@@ -545,7 +545,7 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ### Stato verificato al 2026-11-26
 
-Primal ha ora un verdetto verificato per **21 dei 24 casi** che nella
+Primal ha ora un verdetto verificato per **22 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
 inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 
@@ -554,26 +554,26 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | SDP SDPLIB | `control1`, `theta1`, `mcp100`, `qap5`, `hinf1` | `OPTIMAL` |
 | SDP CBLIB | `infeas_clean_10_10_1`, `infeas_clean_10_10_3`, `weak_clean_10_10_3` | `PRIM_INFEAS` |
 | Convesso continuo | `PRIMAL1`, `LogExpCR-n20-m400`, `HMCR-n20-m800` | `OPTIMAL` |
-| MIPLIB MILP | `p0201` | `INTEGER_OPTIMAL` |
+| MIPLIB MILP | `p0201`, `gt2` | `INTEGER_OPTIMAL` |
 | CBLIB misto-intero conico | `expdesign_D_8_4`, `expdesign_D_12_6`, `expdesign_D_16_8` | `INTEGER_OPTIMAL` |
 | CBLIB SDP misto-intero | `kpart_diw.15.4.29` | `INTEGER_OPTIMAL` |
 | CBLIB portafogli misti-interi | `port_12_9_3_a_1`, `port_12_9_3_b_1`, `port_16_12_4_b_1` | `INTEGER_OPTIMAL` |
 | CBLIB selezione binaria con PSD | `clsq_random_32_2_a`, `rt_2x4_3bars` | `INTEGER_OPTIMAL` |
 
-Restano 3 casi senza un verdetto conclusivo. Per `gt2`, Primal trova
-una soluzione intera a costo 21166, pari al valore riportato da MIPLIB.
-La prova di ottimalità resta aperta.
+Restano 2 casi senza un verdetto conclusivo. Su `pk1`, la prova
+mirata a 5 s trova un punto intero verificato a costo 15 e si ferma
+al limite di tempo.
 
 | Famiglia | Casi aperti |
 |---|---|
 | CBLIB misto-intero conico | `rsyn0805m` |
-| MIPLIB MILP | `gt2`, `pk1` |
+| MIPLIB MILP | `pk1` |
 
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
 [Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
 [SDPLIB](#verifica-sdplib-del-2026-11-24) ·
 [Coni power](#verifica-power-cblib-del-2026-11-24) ·
-[`gt2`](#verifica-miplib-gt2-del-2026-11-24) ·
+[`gt2`](#verifica-miplib-gt2-del-2026-11-26) ·
 [`p0201`](#verifica-miplib-p0201-del-2026-11-25) ·
 [Disegno sperimentale CBLIB](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento CBLIB](#verifica-cblib-kpart-del-2026-11-25) ·
@@ -586,8 +586,9 @@ gli esiti, gli obiettivi e i tempi delle verifiche del 25 novembre.
 Per `infeas_clean_*`, `weak_clean_10_10_3`, `control1` e `hinf1`, le
 colonne Primal e Clarabel riportano i risultati del 25 novembre.
 Per `PRIMAL1`, le colonne Primal, Clarabel e SCS riportano il confronto
-del 26 novembre. Le righe `clsq_random_32_2_a` e `rt_2x4_3bars` riportano
-le verifiche dello stesso giorno. Le altre misure risalgono al 19 novembre.
+del 26 novembre. Le righe `clsq_random_32_2_a`, `rt_2x4_3bars` e
+`gt2` riportano le verifiche dello stesso giorno. Le altre misure
+risalgono al 19 novembre.
 Il trattino nella colonna Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
@@ -661,7 +662,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | stocfor1 | netlib | lp | 111 x 117 | 0.0019 | **0.0007** | 0.0009 | 0.0035 | 0.0014 | 0.0045 | -41132 |
 | flugpl | miplib | milp | 18 x 18 | 1.1447 | 0.0408 | N/A | N/A | **0.0066** | 0.0872 | 1.2015e+06 |
 | p0201 | miplib | milp | 201 x 133 | >60s | 0.6562 | N/A | N/A | **0.2895** | 0.5229 | 7615 |
-| gt2 | miplib | milp | 188 x 29 | >60s | 0.0217 | N/A | N/A | **0.0181** | 0.0400 | 21166 |
+| gt2 | miplib | milp | 188 x 29 | 0.044372 (`INTEGER_OPTIMAL`) | 0.024667 | N/A | N/A | **0.014623** | 0.0400 | 21166 |
 | pk1 | miplib | milp | 86 x 45 | >60s | >60s | N/A | N/A | **57.1295** | >60s | 11 |
 
 **Note misurate** (le celle con ✗ sono riferimenti che discordano dal valore
@@ -931,9 +932,29 @@ bound e sull'interezza in tutte e tre le prove. Il valore coincide
 con quello pubblicato da MIPLIB. Una verifica indipendente sui
 coefficienti originali restituisce il limite lagrangiano
 `933472/45`, che si arrotonda a `20744` per l'obiettivo intero.
-Questo lascia un divario di 422 unità. La tabella storica dei tempi
-fino alla prova di ottimalità conserva la sua misura originale.
+Questa verifica del 24 novembre lasciava un divario di 422 unità.
 [Euristica e formulazione](algorithms/mixed_integer_optimization.md#shared-capacity-integer-covers)
+
+### Verifica MIPLIB gt2 del 2026-11-26
+
+Primal dichiara `INTEGER_OPTIMAL` in tutte le prove sul
+[MPS originale di MIPLIB](https://miplib.zib.de/instance_details_gt2.html).
+L'incumbent di costo 21166 passa le verifiche originali. La ricerca
+esclude ogni combinazione di acquisti a costo intero al più 21165,
+verificando se lo stock a costo zero può coprire le domande residue.
+Il limite pubblicato coincide con l'incumbent.
+
+| Solver | Mediana (ms) | Obiettivo | Massima violazione originale |
+|---|---:|---:|---:|
+| Primal `-O2` | 44.372 | 21166 | 0 |
+| HiGHS 1.15.1 | 24.667 | 21166 | 0 |
+| SCIP 10.0.2 | **14.623** | 21166 | 4.44e-16 |
+
+Cinque solve intercalati dopo il riscaldamento, un thread, lettura MPS
+esclusa. Tolleranza di fattibilità e interezza `1e-8`. Tutti e tre
+pubblicano lo stesso limite obiettivo. Primal usa una ricerca di 4.944
+stati dopo l'euristica di radice.
+[Limite e prova](algorithms/mixed_integer_optimization.md#shared-capacity-integer-covers)
 
 ### Verifica MIPLIB p0201 del 2026-11-25
 

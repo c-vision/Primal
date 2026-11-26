@@ -376,8 +376,8 @@ void *mip_kid_run(void *arg);
 int mip_point_measures(PRIMALtask_t t, const double *lx, const double *ux,
                               const double *lc, const double *uc, const double *w,
                               double ftol, double itol);
-/* Tries a root incumbent for a linear integer cover with shared capacities. */
-void mip_cover_incumbent(PRIMALtask_t t, const double *lc, const double *uc,
+/* Tries a root incumbent and certifies its bound when the cover proof closes. */
+int mip_cover_incumbent(PRIMALtask_t t, const double *lc, const double *uc,
                          double *lx, double *ux, double *candidate,
                          double *scratch, double *objective);
 /* Solves a recognized binary choice sequence by exact dynamic programming. */

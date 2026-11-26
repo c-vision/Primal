@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "primal_priv.h"
+#include <stdint.h>
 
 enum {
     COVER_DEMANDS = 16, COVER_RESOURCES = 24, COVER_MAX_ROWS = 64,
@@ -229,20 +230,217 @@ done:
     PRIMAL_deletetask(&lp);
 }
 
-void mip_cover_incumbent(PRIMALtask_t t, const double *lc, const double *uc,
+/* Enumerate the paid choices separately from the free allocations. Rows
+ * sharing a free-yield profile are pooled in the relaxation. For two
+ * profiles, the fractional allocation is a one-constraint knapsack. */
+typedef struct {
+    CoverItem paid[COVER_RESOURCES];
+    int count, demand, free_supply, kind, width;
+    int64_t *cost;
+} PaidDemand;
+
+typedef struct {
+    PRIMALtask_t task;
+    PaidDemand row[COVER_DEMANDS];
+    int n, visits, limit, free_order[COVER_RESOURCES], free_count;
+    int yield[2][COVER_RESOURCES];
+    int remaining[COVER_RESOURCES], deficit[2];
+    int64_t suffix[COVER_DEMANDS+1], cutoff;
+} CoverProof;
+
+static const int64_t cover_no_plan = INT64_MAX/4;
+
+static int cover_paid_dp(const CoverModel *p, PaidDemand *d) {
+    int need = d->demand-d->free_supply;
+    if (need < 0) need = 0;
+    int width = need+1;
+    d->width = width;
+    d->cost = malloc((size_t)(d->count+1)*width*sizeof(*d->cost));
+    if (!d->cost) return 0;
+    int64_t *last = d->cost+(size_t)d->count*width;
+    last[0] = 0;
+    for (int i = 1; i <= need; i++) last[i] = cover_no_plan;
+    for (int k = d->count-1; k >= 0; k--) {
+        const CoverItem *a = &d->paid[k];
+        int64_t *out = d->cost+(size_t)k*width;
+        const int64_t *tail = out+width;
+        for (int i = 0; i <= need; i++) {
+            int cap = (i+a->units-1)/a->units;
+            if (cap > a->upper) cap = a->upper;
+            if (cap > p->supply[a->resource]) cap = p->supply[a->resource];
+            int64_t value = tail[i];
+            for (int q = 1; q <= cap; q++) {
+                int left = i-q*a->units;
+                int64_t v = (int64_t)a->cost*q+tail[left > 0 ? left : 0];
+                if (v < value) value = v;
+            }
+            out[i] = value;
+        }
+    }
+    return 1;
+}
+
+static int cover_paid_read(CoverProof *q, const CoverModel *p) {
+    int kinds = 0;
+    for (int i = 0; i < p->demands; i++) {
+        const CoverDemand *d = &p->demand[i];
+        if (!d->need) continue;
+        int yield[COVER_RESOURCES] = {0}, free_supply = 0;
+        PaidDemand *row = &q->row[q->n++];
+        row->demand = d->need;
+        for (int k = 0; k < d->count; k++) {
+            CoverItem a = d->item[k];
+            if (a.cost > 0.0) row->paid[row->count++] = a;
+            else {
+                yield[a.resource] = a.units;
+                free_supply += a.units*a.upper;
+            }
+        }
+        row->free_supply = free_supply;
+        int kind = 0;
+        while (kind < kinds && memcmp(yield,q->yield[kind],sizeof(yield))) kind++;
+        if (kind >= 2) return 0;
+        if (kind == kinds) {
+            memcpy(q->yield[kinds],yield,sizeof(yield));
+            kinds++;
+        }
+        row->kind = kind;
+        if (!cover_paid_dp(p,row) || !cover_time_left(q->task)) return 0;
+    }
+    if (!kinds) return 0;
+    if (kinds == 1) memcpy(q->yield[1],q->yield[0],sizeof(q->yield[0]));
+    for (int r = 0; r < p->resources; r++) {
+        if ((q->yield[0][r] > 0) != (q->yield[1][r] > 0)) return 0;
+        if (!q->yield[0][r]) continue;
+        int i = q->free_count++;
+        for (; i > 0; i--) {
+            int s = q->free_order[i-1];
+            if ((int64_t)q->yield[0][r]*q->yield[1][s] <=
+                (int64_t)q->yield[0][s]*q->yield[1][r]) break;
+            q->free_order[i] = s;
+        }
+        q->free_order[i] = r;
+    }
+    for (int j = 1; j < q->n; j++) {
+        PaidDemand row = q->row[j];
+        int i = j;
+        for (; i > 0 && row.cost[row.width-1] > q->row[i-1].cost[q->row[i-1].width-1]; i--)
+            q->row[i] = q->row[i-1];
+        q->row[i] = row;
+    }
+    for (int i = q->n-1; i >= 0; i--) {
+        int64_t value = q->row[i].cost[q->row[i].width-1];
+        q->suffix[i] = value > q->cutoff ? q->cutoff+1 : q->suffix[i+1]+value;
+    }
+    memcpy(q->remaining,p->supply,sizeof(q->remaining));
+    return 1;
+}
+
+/* Allocate the residual stock fractionally between profiles, ignoring
+ * individual free-variable caps. Rounding each fractional contribution
+ * upward preserves an upper bound on the first profile's supply. */
+static int cover_free_possible(const CoverProof *q) {
+    int a = q->deficit[0], b = q->deficit[1], total = 0;
+    for (int i = 0; i < q->free_count; i++) {
+        int r = q->free_order[i];
+        total += q->remaining[r]*q->yield[1][r];
+    }
+    if (b > total) return 0;
+    int slack = total-b;
+    for (int i = 0; i < q->free_count && a > 0 && slack > 0; i++) {
+        int r = q->free_order[i], yield = q->yield[1][r];
+        int units = q->remaining[r]*yield;
+        if (units > slack) units = slack;
+        a -= (int)(((int64_t)units*q->yield[0][r]+yield-1)/yield);
+        slack -= units;
+    }
+    return a <= 0;
+}
+
+/* Return 1 only if every cheaper paid assignment is excluded. */
+static int cover_paid_search(CoverProof *q, int row, int item, int need, int64_t cost) {
+    if (++q->visits > q->limit || !cover_time_left(q->task)) return 0;
+    PaidDemand *d = &q->row[row];
+    int paid_need = need-d->free_supply;
+    if (paid_need < 0) paid_need = 0;
+    int64_t lower = d->cost[(size_t)item*d->width+paid_need];
+    if (cost+lower+q->suffix[row+1] > q->cutoff) return 1;
+    if (item == d->count || need == 0) {
+        q->deficit[d->kind] += need;
+        /* A feasible aggregate allocation is an open case unless the
+         * search can still exclude it using the remaining paid choices. */
+        int closed = !cover_free_possible(q);
+        if (!closed && row+1 < q->n)
+            closed = cover_paid_search(q,row+1,0,q->row[row+1].demand,cost);
+        q->deficit[d->kind] -= need;
+        return closed;
+    }
+    const CoverItem *a = &d->paid[item];
+    int r = a->resource, cap = (need+a->units-1)/a->units, saved = q->remaining[r];
+    if (cap > a->upper) cap = a->upper;
+    if (cap > saved) cap = saved;
+    for (int n = 0; n <= cap; n++) {
+        int64_t spent = cost+n*(int64_t)a->cost;
+        if (spent+q->suffix[row+1] > q->cutoff) break;
+        int left = need-n*a->units;
+        q->remaining[r] = saved-n;
+        if (!cover_paid_search(q,row,item+1,left > 0 ? left : 0,spent)) {
+            q->remaining[r] = saved;
+            return 0;
+        }
+    }
+    q->remaining[r] = saved;
+    return 1;
+}
+
+static int cover_prove_optimum(PRIMALtask_t t, const CoverModel *p, const double *candidate) {
+    if (!cover_time_left(t)) return 0;
+    int stock[COVER_RESOURCES] = {0};
+    int64_t cost = 0;
+    /* Check the incumbent on the exact row lattice used in the proof. */
+    for (int r = 0; r < p->demands; r++) {
+        const CoverDemand *d = &p->demand[r];
+        int amount = 0;
+        for (int k = 0; k < d->count; k++) {
+            const CoverItem *a = &d->item[k];
+            double value = candidate[a->column];
+            if (!cover_integer(value,a->upper)) return 0;
+            int n = (int)value;
+            stock[a->resource] += n;
+            amount += n*a->units;
+            cost += n*(int64_t)a->cost;
+        }
+        if (amount < d->need) return 0;
+    }
+    for (int r = 0; r < p->resources; r++) if (stock[r] > p->supply[r]) return 0;
+    if (!cost) return 1;
+    CoverProof q = {0};
+    q.task = t;
+    q.cutoff = cost-1;
+    q.limit = t->mip_max_nodes < 100000 ? t->mip_max_nodes : 100000;
+    int proven = cover_paid_read(&q,p) && (q.suffix[0] > q.cutoff ||
+                  (q.n && cover_paid_search(&q,0,0,q.row[0].demand,0)));
+    for (int i = 0; i < q.n; i++) free(q.row[i].cost);
+    if (getenv("GMB_DBG"))
+        fprintf(stderr,"  [cover-proof] nodes=%d cutoff=%lld proven=%d\n",
+                q.visits,(long long)q.cutoff,proven);
+    return proven && cover_time_left(t);
+}
+
+int mip_cover_incumbent(PRIMALtask_t t, const double *lc, const double *uc,
                          double *lx, double *ux, double *candidate,
                          double *scratch, double *objective) {
     if (t->numcon > COVER_MAX_ROWS || t->numvar > COVER_DEMANDS * COVER_RESOURCES ||
         t->has_qobj || t->has_qcon || t->numcones || t->numbarvar || t->numsos ||
-        t->cbfn || t->progcb || !cover_time_left(t)) return;
+        t->cbfn || t->progcb || !cover_time_left(t)) return 0;
     for (int j = 0; j < t->numvar; j++)
         bound_range(t->bkx[j], t->blx[j], t->bux[j], &lx[j], &ux[j]);
     CoverModel p = {0};
-    if (!cover_pattern(t, lx, ux, lc, uc, &p)) return;
+    if (!cover_pattern(t, lx, ux, lc, uc, &p)) return 0;
     size_t width = (size_t)p.max_need + 1;
     double *dp = malloc(2 * width * sizeof(*dp));
     unsigned char *choice = malloc(COVER_RESOURCES * width * sizeof(*choice));
-    if (!dp || !choice) { free(dp); free(choice); return; }
+    if (!dp || !choice) { free(dp); free(choice); return 0; }
     CoverWorkspace w = {dp, dp + width, choice};
     double price[COVER_RESOURCES] = {0}, zero[COVER_RESOURCES] = {0};
     cover_prices(t, &p, &w, price);
@@ -292,7 +490,10 @@ void mip_cover_incumbent(PRIMALtask_t t, const double *lc, const double *uc,
     }
     free(dp);
     free(choice);
-    if (!isfinite(best)) return;
+    if (!isfinite(best)) return 0;
     *objective = best;
     tlog(t, "MIP: capacity-priced cover incumbent\n");
+    if (!cover_prove_optimum(t,&p,candidate)) return 0;
+    tlog(t, "MIP: shared-capacity cover optimality certified\n");
+    return 1;
 }
