@@ -545,7 +545,7 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ### Stato verificato al 2026-11-26
 
-Primal ha ora un verdetto verificato per **19 dei 24 casi** che nella
+Primal ha ora un verdetto verificato per **21 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
 inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 
@@ -558,14 +558,15 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | CBLIB misto-intero conico | `expdesign_D_8_4`, `expdesign_D_12_6`, `expdesign_D_16_8` | `INTEGER_OPTIMAL` |
 | CBLIB SDP misto-intero | `kpart_diw.15.4.29` | `INTEGER_OPTIMAL` |
 | CBLIB portafogli misti-interi | `port_12_9_3_a_1`, `port_12_9_3_b_1`, `port_16_12_4_b_1` | `INTEGER_OPTIMAL` |
+| CBLIB selezione binaria con PSD | `clsq_random_32_2_a`, `rt_2x4_3bars` | `INTEGER_OPTIMAL` |
 
-Restano 5 casi senza un verdetto conclusivo. Per `gt2`, Primal trova ora
+Restano 3 casi senza un verdetto conclusivo. Per `gt2`, Primal trova
 una soluzione intera a costo 21166, pari al valore riportato da MIPLIB.
 La prova di ottimalità resta aperta.
 
 | Famiglia | Casi aperti |
 |---|---|
-| CBLIB misto-intero conico | `rt_2x4_3bars`, `clsq_random_32_2_a`, `rsyn0805m` |
+| CBLIB misto-intero conico | `rsyn0805m` |
 | MIPLIB MILP | `gt2`, `pk1` |
 
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
@@ -585,14 +586,16 @@ gli esiti, gli obiettivi e i tempi delle verifiche del 25 novembre.
 Per `infeas_clean_*`, `weak_clean_10_10_3`, `control1` e `hinf1`, le
 colonne Primal e Clarabel riportano i risultati del 25 novembre.
 Per `PRIMAL1`, le colonne Primal, Clarabel e SCS riportano il confronto
-del 26 novembre. Le altre misure risalgono al 19 novembre.
+del 26 novembre. Le righe `clsq_random_32_2_a` e `rt_2x4_3bars` riportano
+le verifiche dello stesso giorno. Le altre misure risalgono al 19 novembre.
 Il trattino nella colonna Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
 [Portafogli](#verifica-cblib-portafogli-del-2026-11-25) ·
 [Inammissibilità SDP](#inammissibilità-sdp-cblib) ·
 [SDPLIB control1 e hinf1](#verifica-sdplib-control1-e-hinf1-del-2026-11-25) ·
-[PRIMAL1](#verifica-primal1-del-2026-11-26)
+[PRIMAL1](#verifica-primal1-del-2026-11-26) ·
+[Selezione binaria con PSD](#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)
 
 49 istanze da cinque set pubblici, scaricate da `bench/fetch_instances.py`
 (harness della **PR #32**, usata in prestito e **non** mergiata): CBLIB 27
@@ -618,8 +621,8 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | expdesign_D_12_6 | cblib | exp+psd+int | 127 x 311 | 0.000472 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | -0.5202490151 |
 | expdesign_D_16_8 | cblib | exp+psd+int | 217 x 534 | 0.002238 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | 2.9313367330 |
 | kpart_diw.15.4.29 | cblib | psd+int | 105 x 255 | 0.018999 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | -95 |
-| rt_2x4_3bars | cblib | psd+int | 64 x 190 | >60s | N/A | N/A | N/A | N/A | **29.0149** | 3.08114 |
-| clsq_random_32_2_a | cblib | psd+int | 33 x 979 | >60s | N/A | N/A | N/A | N/A | **10.5295** | 7.14855 |
+| rt_2x4_3bars | cblib | psd+int | 64 x 190 | 0.030947 (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | — | 3.0811388301 |
+| clsq_random_32_2_a | cblib | psd+int | 33 x 979 | **0.002406** (`INTEGER_OPTIMAL`) | N/A | N/A | N/A | N/A | 11.626202 | 7.1485454105 |
 | expdesign_A_8_4 | cblib | psd+int | 29 x 134 | 0.5519 | N/A | N/A | N/A | N/A | **0.0272** | 5.93682 |
 | expdesign_E_8_4 | cblib | psd+int | 26 x 50 | 0.0403 | N/A | N/A | N/A | N/A | **0.0247** | -0.344045 |
 | syn05m | cblib | exp+int | 24 x 65 | 0.5676 | N/A | N/A | N/A | N/A | **0.0512** | -837.732 |
@@ -1036,6 +1039,33 @@ sull'obiettivo entro `1.3e-9`. Il massimo residuo ricalcolato sui CBF
 è `9.01e-10`. La tolleranza di fattibilità di Pajarito è `1e-9` per
 `a_1` e `1e-8` per `b_1`. Sul 16×12×4 Pajarito termina con
 `TIME_LIMIT` dopo 75 s.
+
+### Verifica CBLIB selezione binaria con PSD del 2026-11-26
+
+Primal verifica l'ottimo intero sui due CBF originali con tolleranze
+di fattibilità e gap a `1e-8`. I tempi sono mediane di 21 solve
+a un thread dopo il riscaldamento. Build `-O2`, lettura esclusa.
+[Derivazione e implementazione](algorithms/mixed_integer_optimization.md#binary-selection-in-affine-psd-constraints)
+
+| Istanza | Primal (ms) | Pajarito (ms) | Obiettivo Primal | Gap assoluto Primal |
+|---|---:|---:|---:|---:|
+| `clsq_random_32_2_a` | **2.406** | 11626.202 | 7.148545410477668 | 1.15e-11 |
+| `rt_2x4_3bars` | 30.947 | — | 3.081138830080000 | 4.65e-13 |
+
+Su `clsq_random_32_2_a`, i maggioranti di rango uno riducono la
+ricerca a 3.300 nodi e nove fattorizzazioni delle matrici originali.
+Su `rt_2x4_3bars`, l'enumerazione per costo chiude dopo 17.756
+supporti. Il ricalcolo indipendente sui coefficienti dei CBF dà
+violazioni al più `7.53e-16`, mentre la massima violazione
+pubblicata è `8.89e-16`.
+
+Per `clsq_random_32_2_a`, Pajarito 0.8.3 con HiGHS 1.26.0 e
+Clarabel 0.11.1 ottiene `OPTIMAL` a `7.148545410339251` in due
+prove dopo il riscaldamento. Il massimo residuo originale è
+`3.96e-11`. Su `rt_2x4_3bars`, la nuova misura di Pajarito termina
+con un errore LAPACK sia con Clarabel sia con Hypatia 0.11.0.
+L'enumerazione indipendente dei supporti fino al costo trovato
+conferma l'ottimo di Primal.
 
 ## 3. Come estendere
 

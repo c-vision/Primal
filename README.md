@@ -40,7 +40,10 @@ point and a status you can check rather than trust.
 - **Mixed-integer conic** — branch and bound with conic relaxations.
   For cardinality-constrained portfolios with separate SOC, EXP and PSD
   risk blocks, Primal can certify a global bound from the individual blocks.
-  [Portfolio algorithm](algorithms/mixed_integer_optimization.md#cardinality-constrained-portfolios-with-separate-risk-blocks).
+  The solver also certifies small binary selection problems with affine
+  PSD constraints.
+  [Portfolio algorithm](algorithms/mixed_integer_optimization.md#cardinality-constrained-portfolios-with-separate-risk-blocks) ·
+  [Binary PSD selection](algorithms/mixed_integer_optimization.md#binary-selection-in-affine-psd-constraints).
 - **QCQP** — quadratic constraints encoded exactly as rotated quadratic cones.
 - **Modeling** — affine conic constraints (ACC), disjunctive constraints
   (DJC), SOS1/SOS2, semi-continuous and semi-integer variables.
@@ -328,7 +331,8 @@ use five interleaved solves on **2026-11-25**, with MIP gap set to zero
 and `1e-8`, respectively. The portfolio comparisons use five Primal
 and two Pajarito solves per instance on **2026-11-25**, after a warm-up
 for each solver. The remaining rows use five solves, with three warm
-batches for the Julia references.
+batches for the Julia references. The `clsq_random_32_2_a` comparison
+uses 21 Primal and two Pajarito solves on **2026-11-26** after warm-up.
 
 | instance | set | class | vars x cons | fastest in single run | Primal median (s) | reference median (s) | obj |
 |---|---|---|---:|---|---:|---:|---:|
@@ -342,6 +346,7 @@ batches for the Julia references.
 | expdesign_D_8_4 | CBLIB | exp + PSD + int | 61 x 148 | Pajarito | **0.000938** | 0.045817 (Pajarito) | 0.8433069245 |
 | port_12_9_3_a_1 | CBLIB | SOC + EXP + PSD + int | 90 x 169 | Pajarito | **0.004568** | 17.246444 (Pajarito) | -0.0332185523 |
 | port_12_9_3_b_1 | CBLIB | SOC + EXP + PSD + int | 91 x 170 | Pajarito | **0.003490** | 6.600786 (Pajarito) | -0.0347049507 |
+| clsq_random_32_2_a | CBLIB | PSD + int | 33 x 979 | Pajarito | **0.002406** | 11.626202 (Pajarito) | 7.1485454105 |
 | HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
 | afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
 | sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
@@ -361,7 +366,8 @@ for SCS. [PRIMAL1 results](BENCHMARKS.md#verifica-primal1-del-2026-11-26)
 [CBLIB power results](BENCHMARKS.md#verifica-power-cblib-del-2026-11-24) ·
 [MIPLIB p0201 results](BENCHMARKS.md#verifica-miplib-p0201-del-2026-11-25) ·
 [CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25) ·
-[CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25)
+[CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25) ·
+[CBLIB binary PSD selection results](BENCHMARKS.md#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)
 
 On **2026-11-25**, Primal returned `OPTIMAL` on the original SDPLIB
 models `control1` and `hinf1` in 21 solves per instance. The median

@@ -23034,8 +23034,109 @@ static void test_t332(void) {
     }
 }
 
+static void t333_route(void *handle, const char *message) {
+    int *route = handle;
+    if (strstr(message,"PSD selection bound certified")) *route = 1;
+    if (strstr(message,"PSD group selection optimality certified")) *route = 2;
+}
+
+static void t333_bar_links(PRIMALtask_t t, int dim, int first, const double *constant) {
+    PRIMAL_appendbarvars(t,1,&dim);
+    int r = first;
+    for (int i = 0; i < dim; i++) for (int j = 0; j <= i; j++, r++) {
+        int sym;
+        double one = 1.0, scale = i == j ? -1.0 : -0.5;
+        double rhs = -constant[r-first];
+        PRIMAL_appendsparsesymmat(t,dim,1,&j,&i,&one,&sym);
+        PRIMAL_putbaraij(t,r,0,1,&sym,&scale);
+        PRIMAL_putconbound(t,r,PRIMAL_BK_FX,rhs,rhs);
+    }
+}
+
+/* With one choice, the rounded rank-one update diag(3,0.001) gives
+ * 1/4 + 1/1.001. In the second model the continuous diagonal increases
+ * up to 1. The two cheapest updates in the first group would make the
+ * matrix PSD together, but at most one of them can be selected. */
+static void test_t333(void) {
+    for (int variant = 0; variant < 4; variant++) {
+        cur_name = "T333 integer selection in an affine PSD block";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int group = variant >= 2, guard = variant%2;
+        int n = group ? 4 : 3, scalar = group ? 7 : 4, total = scalar+(group ? 3 : 6);
+        PRIMAL_appendvars(t,n+1);
+        PRIMAL_appendcons(t,total+(!group && guard));
+        PRIMAL_putvarbound(t,n,PRIMAL_BK_FR,0.0,0.0);
+        for (int j = 0; j < n; j++) {
+            PRIMAL_putvarbound(t,j,PRIMAL_BK_LO,0.0,0.0);
+            PRIMAL_putvartype(t,j,PRIMAL_VAR_TYPE_INT);
+            PRIMAL_putconbound(t,j,PRIMAL_BK_LO,-1.0,0.0);
+            PRIMAL_putaij(t,j,j,-1.0);
+        }
+        if (!group) {
+            PRIMAL_putcj(t,n,1.0);
+            PRIMAL_putconbound(t,3,PRIMAL_BK_LO,-1.0,0.0);
+            PRIMAL_putarow(t,3,3,(int[]){0,1,2},(double[]){-1.0,-1.0,-1.0});
+            t333_bar_links(t,3,4,(double[]){1.0,0.0,1.0,1.0,1.0,0.0});
+            PRIMAL_putaij(t,4,0,3.0);
+            PRIMAL_putaij(t,6,0,0.001);
+            PRIMAL_putaij(t,6,1,1.0);
+            PRIMAL_putaij(t,4,2,1.0);
+            PRIMAL_putaij(t,9,3,1.0);
+            if (guard) {
+                PRIMAL_putconbound(t,total,PRIMAL_BK_UP,0.0,0.0);
+                PRIMAL_putaij(t,total,0,1.0);
+            }
+        } else {
+            PRIMAL_putclist(t,4,(int[]){0,1,2,3},(double[]){0.6,0.8,0.9,1.6});
+            PRIMAL_putconbound(t,4,PRIMAL_BK_LO,-1.0,0.0);
+            PRIMAL_putaij(t,4,4,-1.0);
+            for (int j = 0; j < 2; j++) {
+                int a = 2*j, b = a+1;
+                if (guard && j == 1) a = 1; /* Overlapping groups must be rejected. */
+                PRIMAL_putconbound(t,5+j,PRIMAL_BK_LO,-1.0,0.0);
+                PRIMAL_putarow(t,5+j,2,(int[]){a,b},(double[]){-1.0,-1.0});
+            }
+            t333_bar_links(t,2,7,(double[]){0.0,1.0,0.0});
+            PRIMAL_putaij(t,7,4,1.0);
+            PRIMAL_putarow(t,9,4,(int[]){0,1,2,3},(double[]){0.5,0.5,0.3,1.0});
+        }
+        PRIMAL_putdouparam(t,PRIMAL_DPAR_MIP_TOL_FEAS,1e-8);
+        PRIMAL_putdouparam(t,PRIMAL_DPAR_MIP_TOL_REL_GAP,1e-8);
+        if (guard) {
+            PRIMAL_putintparam(t,PRIMAL_IPAR_INTPNT_MAX_ITERATIONS,1);
+            PRIMAL_putintparam(t,PRIMAL_IPAR_MIP_MAX_NODES,1);
+            PRIMAL_putdouparam(t,PRIMAL_DPAR_MIO_MAX_TIME,0.05);
+        }
+        int route = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&route,t333_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(route == (guard ? 0 : 1+group),"admit only the verified structure");
+        if (!guard) {
+            check_rc(rc,PRIMAL_RES_OK,"PSD selection solve");
+            PRIMALsolstae status = PRIMAL_SOL_STA_UNKNOWN;
+            PRIMAL_getsolsta(t,PRIMAL_SOL_ITG,&status);
+            check(status == PRIMAL_SOL_STA_INTEGER_OPTIMAL,"integer optimum certified");
+            double obj = NAN, rows = INFINITY, vars = INFINITY, bar = INFINITY, ints = INFINITY;
+            double bound = NAN;
+            check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITG,&obj,&rows,&vars,&bar,NULL,&ints,
+                                            NULL,NULL,NULL,NULL,NULL),
+                     PRIMAL_RES_OK,"original primal point");
+            double expected = group ? 1.6 : 0.25+1.0/1.001;
+            check(fabs(obj-expected) <= 1e-8,"analytic objective");
+            check(fmax(fmax(rows,vars),fmax(bar,ints)) <= 1e-8,"original feasibility");
+            check_rc(PRIMAL_getdouinf(t,PRIMAL_DINF_MIO_OBJ_BOUND,&bound),PRIMAL_RES_OK,
+                     "original objective bound");
+            check(bound <= expected && obj-bound <= 1e-8,"global bound closes the gap");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t333();
     test_t332();
     test_t331();
     test_t330();

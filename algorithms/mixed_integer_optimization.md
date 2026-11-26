@@ -479,6 +479,70 @@ publishing. A structure mismatch, an infeasible reconstructed point,
 a search limit or an open gap returns control to branch and bound.
 T332 covers the shared indicator, a binding budget and an extra row.
 
+### Binary selection in affine PSD constraints
+
+Two structures allow PRIMAL to certify an integer optimum by inspecting
+small subsets of binary variables. Both reconstruct the full matrix and
+validate the original constraints before returning a solution.
+
+In the first structure, choose at most $K$ matrices $H_j$ and minimize
+$t$ subject to the arrow constraint
+
+$$
+\begin{pmatrix} A_S & b \\ b^T & t \end{pmatrix}\succeq 0,
+\qquad A_S=I+\sum_{j\in S} H_j.
+$$
+
+For $A_S\succ 0$, the Schur complement gives the optimum for this
+support as $b^T A_S^{-1}b$. The input matrices can be rounded versions
+of rank-one matrices. PRIMAL constructs $u_j$ from a pivot column of
+$H_j$ and sets $e_j$ to a bound on the maximum absolute row sum of
+$H_j-u_ju_j^T$. As this difference is symmetric, its spectral norm is
+at most $e_j$. If $E$ is the sum of the $K$ largest $e_j$, then
+
+$$
+(1-E)I \preceq A_S \preceq (1+E)I+\sum_{j\in S}u_ju_j^T.
+$$
+
+The right-hand side gives a cheaper lower bound on the objective.
+For any vector $y$, its contribution is
+$2b^Ty-(1+E)\lVert y\rVert^2-\sum_{j\in S}(u_j^Ty)^2$.
+To bound all completions of a partial support, subtract the largest
+remaining squared inner products up to the unused budget. PRIMAL
+chooses $y$ with a Woodbury solve on the partial support, so this
+linear system has dimension at most $K$. Any $y$ gives a valid bound.
+
+A support that survives is evaluated with the original matrices.
+If $r=b-A_Sy$, completing the square gives
+
+$$
+b^TA_S^{-1}b =
+2b^Ty-y^TA_Sy+r^TA_S^{-1}r.
+$$
+
+The final term lies between $0$ and $\lVert r\rVert^2/(1-E)$.
+Each surviving support therefore supplies an interval, with a
+rounding margin. The smallest lower bound over the complete search
+proves the gap to the best original feasible point.
+
+In the second structure, the items form disjoint groups and at most
+one item can be selected from each group. The only continuous variable
+$s$ has a finite upper bound and a PSD coefficient in the affine matrix.
+Increasing $s$ enlarges the matrix in PSD order, so testing each support
+at the upper endpoint covers the entire allowable interval. PRIMAL sorts
+items by positive cost and enumerates supports in a priority queue.
+Each step either replaces the last item with the next allowable one
+or appends that item. Both operations have nondecreasing cost and
+together cover all allowable supports. Negative principal minors and checked
+negative Rayleigh quotients exclude infeasible supports. The first
+feasible support provides the global optimum.
+
+[`mip_psd_select_solve`](../primal_mip_psd_select.c) handles these
+structures with up to 32 and 64 binary choices, respectively.
+Both searches can be exponential in the worst case and honor the
+node and time budgets. T333 covers the original matrix check, a
+rounded rank-one update and the exclusion of shared groups.
+
 ## The relaxation solver and the slack-basis start
 
 For an LP relaxation PRIMAL solves the standard form with the simplex method:
