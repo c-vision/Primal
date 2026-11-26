@@ -810,7 +810,11 @@ Julia, Primal risulta primo in due delle cinque righe ricontrollate.
 | `afiro` | 0.000131 | Clarabel 0.000116 | **Clarabel primo** |
 | `sc50a` | 0.000347 | HiGHS 0.000221 | **HiGHS primo** |
 
-Il README riporta l'esito del singolo run e le mediane più recenti.
+La tabella `Public instance sets` del README raccoglie le vittorie
+confermate nei confronti ripetuti. Ogni riga mostra il riferimento più
+rapido fra quelli che raggiungono lo stesso obiettivo verificato o lo
+stesso verdetto di inammissibilità. Le mediane di `afiro` e `sc50a`
+restano qui insieme agli altri esiti del confronto.
 [Public instance sets nel README](README.md#public-instance-sets)
 
 ### Verifica mirata del 2026-11-24

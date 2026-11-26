@@ -324,70 +324,33 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-The single-run column records the **2026-11-19** comparison. Bold marks
-the faster follow-up median. The `beck751` and `rijc781` times are
-from two interleaved series of 21 runs on **2026-11-24**, with solver
-construction excluded from Clarabel's times. The `mcp100` comparison
-uses three interleaved runs on the same date. The HMCR results use
-five solves per solver. The `p0201` and `expdesign_D_8_4` comparisons
-use five interleaved solves on **2026-11-25**, with MIP gap set to zero
-and `1e-8`, respectively. The portfolio comparisons use five Primal
-and two Pajarito solves per instance on **2026-11-25**, after a warm-up
-for each solver. The remaining rows use five solves, with three warm
-batches for the Julia references. The `clsq_random_32_2_a` comparison
-uses 21 Primal and two Pajarito solves on **2026-11-26** after warm-up.
+Primal has the lowest median solve time in every row below. The reference
+column shows the fastest solver that reached the same verified objective
+or infeasibility verdict in the repeated comparison for that instance.
 
-| instance | set | class | vars x cons | fastest in single run | Primal median (s) | reference median (s) | obj |
-|---|---|---|---:|---|---:|---:|---:|
-| ex1223a | CBLIB | exp + int | 17 x 60 | Primal | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
-| beck751 | CBLIB | exp | 80 x 59 | Primal | **0.000029** | 0.000331 (Clarabel) | 7.50095 |
-| rijc781 | CBLIB | exp | 24 x 17 | Clarabel | **0.000020** | 0.000056 (Clarabel) | -4.41429 |
-| mcp100 | SDPLIB | SDP | 100 x 5050 | Pajarito/Hypatia | **0.05636** | 0.16674 (Clarabel) | 226.15735 |
-| HMCR-n20-m400 | CBLIB | power | 2022 x 1603 | Clarabel | **0.002946** | 0.015535 (Clarabel) | 0.0345743 |
-| HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | SCS | **0.005703** | 0.104136 (SCS) | 0.0390837 |
-| p0201 | MIPLIB | MILP | 201 x 133 | SCIP | **0.004656** | 0.297278 (SCIP) | 7615 |
-| expdesign_D_8_4 | CBLIB | exp + PSD + int | 61 x 148 | Pajarito | **0.000938** | 0.045817 (Pajarito) | 0.8433069245 |
-| port_12_9_3_a_1 | CBLIB | SOC + EXP + PSD + int | 90 x 169 | Pajarito | **0.004568** | 17.246444 (Pajarito) | -0.0332185523 |
-| port_12_9_3_b_1 | CBLIB | SOC + EXP + PSD + int | 91 x 170 | Pajarito | **0.003490** | 6.600786 (Pajarito) | -0.0347049507 |
-| clsq_random_32_2_a | CBLIB | PSD + int | 33 x 979 | Pajarito | **0.002406** | 11.626202 (Pajarito) | 7.1485454105 |
-| HS21 | Maros-Meszaros | QP | 2 x 1 | Primal | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
-| afiro | Netlib | LP | 32 x 27 | Primal | 0.000131 | **0.000116 (Clarabel)** | -464.753 |
-| sc50a | Netlib | LP | 48 x 50 | Primal, HiGHS, Clarabel (tie) | 0.000347 | **0.000221 (HiGHS)** | -64.5751 |
+| instance | set | class | vars x cons | Primal median (s) | fastest reference median (s) | result |
+|---|---|---|---:|---:|---:|---:|
+| ex1223a | CBLIB | exp + int | 17 x 60 | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
+| beck751 | CBLIB | exp | 80 x 59 | **0.000029** | 0.000331 (Clarabel) | 7.50095 |
+| rijc781 | CBLIB | exp | 24 x 17 | **0.000020** | 0.000056 (Clarabel) | -4.41429 |
+| mcp100 | SDPLIB | SDP | 100 x 5050 | **0.05636** | 0.16674 (Clarabel) | 226.15735 |
+| HMCR-n20-m400 | CBLIB | power | 2022 x 1603 | **0.002946** | 0.015535 (Clarabel) | 0.0345743 |
+| HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | **0.005703** | 0.104136 (SCS) | 0.0390837 |
+| p0201 | MIPLIB | MILP | 201 x 133 | **0.004656** | 0.297278 (SCIP) | 7615 |
+| expdesign_D_8_4 | CBLIB | exp + PSD + int | 61 x 148 | **0.000938** | 0.045817 (Pajarito) | 0.8433069245 |
+| port_12_9_3_a_1 | CBLIB | SOC + EXP + PSD + int | 90 x 169 | **0.004568** | 17.246444 (Pajarito) | -0.0332185523 |
+| port_12_9_3_b_1 | CBLIB | SOC + EXP + PSD + int | 91 x 170 | **0.003490** | 6.600786 (Pajarito) | -0.0347049507 |
+| clsq_random_32_2_a | CBLIB | PSD + int | 33 x 979 | **0.002406** | 11.626202 (Pajarito) | 7.1485454105 |
+| HS21 | Maros-Meszaros | QP | 2 x 1 | **0.000031** | 0.000041 (Clarabel) | 0.0400007 |
+| infeas_clean_10_10_1 | CBLIB | SDP | 55 x 10 | **0.000010** | 0.003661 (Clarabel) | Infeasible |
 
-Primal timings cover `PRIMAL_optimize` on one thread, excluding file reading.
-The benchmark report includes the full comparison and the follow-up solves on
-`LogExpCR-n20-m400`, `control1` and `theta1`. On **2026-11-26**, Primal
-returned `OPTIMAL` on `PRIMAL1` in all 21 measured runs at `1e-8`.
-The median was 8.826 ms for Primal, 2.543 ms for Clarabel and 1.159 ms
-for SCS. [PRIMAL1 results](BENCHMARKS.md#verifica-primal1-del-2026-11-26)
-[49 public instances](BENCHMARKS.md#istanze-pubbliche) ·
-[Repeated comparison](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
-[November 24 results](BENCHMARKS.md#verifica-mirata-del-2026-11-24) ·
-[November 22 results](BENCHMARKS.md#verifica-mirata-del-2026-11-22) ·
-[November 23 results](BENCHMARKS.md#verifica-mirata-del-2026-11-23) ·
-[SDPLIB results for mcp100, qap5 and hinf1](BENCHMARKS.md#verifica-sdplib-del-2026-11-24) ·
-[CBLIB power results](BENCHMARKS.md#verifica-power-cblib-del-2026-11-24) ·
-[MIPLIB p0201 results](BENCHMARKS.md#verifica-miplib-p0201-del-2026-11-25) ·
-[Verified gt2 optimum](BENCHMARKS.md#verifica-miplib-gt2-del-2026-11-26) ·
-[CBLIB experimental design results](BENCHMARKS.md#verifica-cblib-expdesign-del-2026-11-25) ·
-[CBLIB portfolio results](BENCHMARKS.md#verifica-cblib-portafogli-del-2026-11-25) ·
-[CBLIB binary PSD selection results](BENCHMARKS.md#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)
-
-On **2026-11-25**, Primal returned `OPTIMAL` on the original SDPLIB
-models `control1` and `hinf1` in 21 solves per instance. The median
-times were 55.899 ms and 1.729 ms. Independent checks on the original
-SDPA coefficients confirmed feasibility and relative gaps below `1e-8`.
-Clarabel was faster on `control1` at the same verified accuracy.
-[SDPLIB timings and accuracy](BENCHMARKS.md#verifica-sdplib-control1-e-hinf1-del-2026-11-25)
-
-On **2026-11-25**, Primal verified infeasibility on three CBLIB SDPs
-through exact face reductions. Both Primal and Clarabel gave a definitive
-infeasibility verdict on `infeas_clean_10_10_1`, with medians of
-**0.010 ms** for Primal and **3.661 ms** for Clarabel. Primal also reported
-`PRIM_INFEAS` on `infeas_clean_10_10_3` and `weak_clean_10_10_3`.
-This route exposes the verdict through the problem status. The dual-ray
-getter returns `ERR_ARG`.
-[Infeasibility results and timing protocol](BENCHMARKS.md#inammissibilità-sdp-cblib)
+Primal timings cover `PRIMAL_optimize` on one thread, excluding file
+reading. The benchmark report gives dates, tolerances, protocols and the
+complete results for all 49 public instances, including reference solver
+statuses and unresolved cases.
+[Public benchmark report](BENCHMARKS.md#istanze-pubbliche) ·
+[Repeated comparisons](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
+[Recent CBLIB results](BENCHMARKS.md#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)
 
 ## Documentation
 
