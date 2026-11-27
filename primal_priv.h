@@ -380,6 +380,9 @@ int mip_point_measures(PRIMALtask_t t, const double *lx, const double *ux,
 int mip_cover_incumbent(PRIMALtask_t t, const double *lc, const double *uc,
                          double *lx, double *ux, double *candidate,
                          double *scratch, double *objective);
+void mip_minimax_incumbent(PRIMALtask_t t, const double *lx, const double *ux,
+                           const double *lc, const double *uc, double *x,
+                           double *best);
 /* Solves a recognized binary choice sequence by exact dynamic programming. */
 int mip_plan_solve(PRIMALtask_t t);
 /* Certifies small integer log-determinant designs from the original cones. */

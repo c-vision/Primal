@@ -23255,8 +23255,59 @@ static void test_t335(void) {
     }
 }
 
+static void t336_route(void *handle, const char *message) {
+    if (strstr(message,"binary minimax incumbent")) *(int *)handle = 1;
+}
+
+static void test_t336(void) {
+    cur_name = "T336 binary minimax incumbent";
+    enum { nb = 32, m = 4, nv = nb+2*m+1, nr = 3*m+1 };
+    for (int guard = 0; guard < 2; guard++) {
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t,nv);
+        PRIMAL_appendcons(t,nr);
+        PRIMAL_putconbound(t,0,PRIMAL_BK_FR,0.0,0.0);
+        PRIMAL_putcj(t,0,1.0);
+        PRIMAL_putvarbound(t,0,PRIMAL_BK_LO,0.0,0.0);
+        for (int j = 1; j <= nb; j++) {
+            PRIMAL_putvartype(t,j,PRIMAL_VAR_TYPE_INT);
+            PRIMAL_putvarbound(t,j,PRIMAL_BK_RA,0.0,1.0);
+        }
+        for (int i = 0; i < m; i++) {
+            int row = 3*i+1, plus = nb+1+2*i, minus = plus+1;
+            PRIMAL_putconbound(t,row,PRIMAL_BK_FX,16.0,16.0);
+            PRIMAL_putconbound(t,row+1,PRIMAL_BK_LO,0.0,0.0);
+            PRIMAL_putconbound(t,row+2,PRIMAL_BK_LO,0.0,0.0);
+            for (int j = 1; j <= nb; j++) PRIMAL_putaij(t,row,j,1.0);
+            PRIMAL_putvarbound(t,plus,guard && i == 0 ? PRIMAL_BK_FX : PRIMAL_BK_LO,0.0,0.0);
+            PRIMAL_putvarbound(t,minus,PRIMAL_BK_LO,0.0,0.0);
+            PRIMAL_putaij(t,row,plus,-1.0);
+            PRIMAL_putaij(t,row,minus,1.0);
+            PRIMAL_putarow(t,row+1,2,(int[]){0,plus},(double[]){1.0,-1.0});
+            PRIMAL_putarow(t,row+2,2,(int[]){0,minus},(double[]){1.0,-1.0});
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t336_route);
+        check_rc(PRIMAL_optimize(t),PRIMAL_RES_OK,"original MIP solved");
+        check(used == !guard,"heuristic requires unrestricted nonnegative error slacks");
+        PRIMALsolstae status;
+        PRIMAL_getsolsta(t,PRIMAL_SOL_ITG,&status);
+        check(status == PRIMAL_SOL_STA_INTEGER_OPTIMAL,"tree certifies optimum");
+        double obj=NAN, row=INFINITY, var=INFINITY, integer=INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITG,&obj,&row,&var,NULL,NULL,
+                                       &integer,NULL,NULL,NULL,NULL,NULL),PRIMAL_RES_OK,
+                 "original model checks");
+        check(fabs(obj)<=1e-8 && fmax(fmax(row,var),integer)<=1e-8,
+              "zero minimax residual with 16 selected binaries");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t336();
     test_t335();
     test_t334();
     test_t333();

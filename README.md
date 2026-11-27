@@ -22,8 +22,10 @@ solves report feasible incumbents and optimality status.
 - **MILP, MIQP** — branch & bound with cutting planes, strong branching,
   probing and primal heuristics. For some integer covers with shared
   capacity, Primal can certify the exact optimum using a cost cutoff
-  and an aggregate bound on free stock.
-  [Integer covers](algorithms/mixed_integer_optimization.md#shared-capacity-integer-covers).
+  and an aggregate bound on free stock. In binary minimax models with
+  paired error slacks, a search over binary assignments supplies an incumbent.
+  [Integer covers](algorithms/mixed_integer_optimization.md#shared-capacity-integer-covers) ·
+  [Binary minimax](algorithms/mixed_integer_optimization.md#binary-minimax-incumbents)
 - **SOCP** — primal-dual conic interior point with Nesterov–Todd scaling.
   Primal can eliminate rotated epigraphs with one fixed positive member
   per block, including cases with up to four equalities on the tails.
@@ -196,12 +198,12 @@ Linux, macOS and the BSDs; on Windows use MinGW
 | LP / QP | yes | yes | yes | yes | yes | yes |
 | SOCP | yes | yes | yes | — | yes | yes |
 | SDP | yes | yes | — | — | yes | yes, first-order |
-| Exp / power cones | yes | yes | — | — | yes | yes, first-order |
+| Native exp / power cones | yes | yes | — | — | yes | yes, first-order |
 | MILP | yes | yes | yes | yes | — | — |
 | Convex MIQP | yes | yes | yes | — | — | — |
 | Mixed-integer conic | yes | yes, excluding SDP | quadratic cones via MIQCP | — | — | — |
 | Mixed-integer SDP | yes | — | — | — | — | — |
-| Continuous methods | simplex + IPM | interior point | simplex + IPM | simplex + IPM | interior point | first-order |
+| LP methods | simplex + IPM | simplex + IPM | simplex + IPM | simplex + IPM | interior point | first-order |
 | Licence | Apache-2.0 | commercial | commercial | MIT | Apache-2.0 | MIT |
 
 Primal covers Clarabel's main continuous problem classes and also supports
@@ -209,6 +211,7 @@ integer decisions, simplex, and discrete modeling constructs. The API uses
 the environment and task model familiar to MOSEK users. See the supported
 features and numerical methods in the [algorithm guide](algorithms/README.md).
 [MOSEK problem classes](https://docs.mosek.com/latest/pythonapi/prob-def.html) ·
+[MOSEK LP optimizers](https://docs.mosek.com/latest/pythonapi/solving-linear.html) ·
 [Clarabel capabilities](https://clarabel.org/stable/) ·
 [HiGHS capabilities](https://highs.dev/)
 
@@ -339,9 +342,10 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-Primal has the lowest median solve time in every row below. The reference
-column shows the fastest solver that reached the same verified objective
-or infeasibility verdict in the repeated comparison for that instance.
+Primal has the lowest verified median solve time on the **14 of 49 public
+instances** listed below. The reference column shows the fastest solver
+that reached the same verified objective or infeasibility verdict in the
+repeated comparison for that instance.
 
 | instance | set | class | vars x cons | Primal median (s) | fastest reference median (s) | result |
 |---|---|---|---:|---:|---:|---:|

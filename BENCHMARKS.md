@@ -543,7 +543,7 @@ Residui pubblici e gap relativo sotto 1e-8 in entrambe le serie.
 
 ## 3-quater. Istanze pubbliche
 
-### Stato verificato al 2026-11-26
+### Stato verificato al 2026-11-27
 
 Primal ha ora un verdetto verificato per **22 dei 24 casi** che nella
 rilevazione originale erano rimasti senza risposta. Per gli SDP CBLIB
@@ -560,16 +560,18 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | CBLIB portafogli misti-interi | `port_12_9_3_a_1`, `port_12_9_3_b_1`, `port_16_12_4_b_1` | `INTEGER_OPTIMAL` |
 | CBLIB selezione binaria con PSD | `clsq_random_32_2_a`, `rt_2x4_3bars` | `INTEGER_OPTIMAL` |
 
-Restano 2 casi senza un verdetto conclusivo. Nella verifica a 60 s del
-26 novembre, `pk1` trova un punto a costo 12 (ottimo noto 11) e
-`rsyn0805m` trova un punto a costo −1069.245983 (riferimento −1296.12).
-Entrambi terminano al limite di tempo con un punto intero ammissibile.
+Restano due casi senza un verdetto conclusivo. Su `pk1`, la ricerca
+minimax trova un punto a costo 11, pari all'ottimo provato da SCIP, e
+la ricerca termina a 60 s con stato `PRIM_FEAS`. Su `rsyn0805m`, la
+verifica del 26 novembre trova un punto a costo −1069.245983 al limite
+di tempo, contro il riferimento −1296.12.
 
 | Famiglia | Casi aperti |
 |---|---|
 | CBLIB misto-intero conico | `rsyn0805m` |
 | MIPLIB MILP | `pk1` |
 
+[Verifica di `pk1`](#verifica-di-pk1-del-2026-11-27) ·
 [Verifica dei timeout](#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
 [Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
@@ -591,7 +593,8 @@ Per `PRIMAL1`, le colonne Primal, Clarabel e SCS riportano il confronto
 del 26 novembre. Le righe `clsq_random_32_2_a`, `rt_2x4_3bars` e
 `gt2` riportano le verifiche dello stesso giorno. La verifica dei timeout
 aggiorna i tempi di Primal su otto istanze e i riferimenti indicati nella
-relativa sezione. Le altre misure risalgono al 19 novembre.
+relativa sezione. Le colonne Primal e SCIP di `pk1` sono del 27 novembre.
+Le altre misure risalgono al 19 novembre.
 Il trattino nella colonna Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
@@ -666,7 +669,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | flugpl | miplib | milp | 18 x 18 | 1.1447 | 0.0408 | N/A | N/A | **0.0066** | 0.0872 | 1.2015e+06 |
 | p0201 | miplib | milp | 201 x 133 | **0.004542** | 0.6562 | N/A | N/A | 0.297278 | 0.5229 | 7615 |
 | gt2 | miplib | milp | 188 x 29 | 0.044372 (`INTEGER_OPTIMAL`) | 0.024667 | N/A | N/A | **0.014623** | 0.0400 | 21166 |
-| pk1 | miplib | milp | 86 x 45 | TIME_LIMIT (12) | >60s | N/A | N/A | **57.1295** | >60s | 11 |
+| pk1 | miplib | milp | 86 x 45 | TIME_LIMIT (11) | >60s | N/A | N/A | **52.768** | >60s | 11 |
 
 **Note misurate** (le celle con ✗ sono riferimenti che discordano dal valore
 pubblicato, non risposte di Primal; `N/A` nella colonna SCIP sulle righe CBF
@@ -728,6 +731,26 @@ Il limite interno di 60 s viene controllato durante la ricerca. Il
 tempo totale include il completamento dell'ultimo passo e la
 pubblicazione dell'incumbent. I due punti sono interi e ammissibili,
 con stato `PRIM_FEAS`.
+
+### Verifica di pk1 del 2026-11-27
+
+MPS originale, un thread, build `-O2`. Le prove Primal usano
+ammissibilità, interezza e gap relativo a `1e-8`. La sonda a 5 s
+intercala la stessa build con la ricerca minimax attiva e disattivata.
+Il tempo al punto iniziale include la preparazione della radice.
+
+| Configurazione | Limite (s) | Esito | Incumbent | Tempo al punto iniziale (s) | Tempo solve (s) |
+|---|---:|---|---:|---:|---:|
+| Primal, ricerca disattivata | 5 | TIME_LIMIT | 15 | — | 5.073 |
+| Primal, ricerca minimax | 5 | TIME_LIMIT, 2/2 run | 11 | 1.671–1.716 | 5.070–5.098 |
+| Primal, ricerca minimax | 60 | TIME_LIMIT | 11 | 1.788 | 62.292 |
+| SCIP 10.0.2 | 60 | OPTIMAL | 11 | — | 52.768 |
+
+Il ricalcolo indipendente sul MPS conferma zero violazioni di righe,
+bound e interezza per i punti di Primal. SCIP usa ammissibilità a
+`1e-8` e gap obiettivo zero e chiude con limite globale 11 dopo
+342588 nodi. A 60 s Primal consegna l'incumbent con stato `PRIM_FEAS`.
+[Ricerca minimax](algorithms/mixed_integer_optimization.md#binary-minimax-incumbents)
 
 ### Verifica mirata del 2026-11-22
 

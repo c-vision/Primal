@@ -261,6 +261,8 @@ PRIMALrescodee optimize_mip(PRIMALtask_t t, int s) {
     t->has_warm = 0;
     int cover_proven = s > 0 && best == INF && t->num_threads <= 1 &&
                        mip_cover_incumbent(t, lc, uc, flx, flux, bestx, xs, &best);
+    if (s > 0 && best == INF)
+        mip_minimax_incumbent(t, lx, ux, lc, uc, bestx, &best);
 
     /* Parallel B&B (num_threads > 1): solve the root, branch on the most
      * fractional and solve the two children in two threads (clone of the task

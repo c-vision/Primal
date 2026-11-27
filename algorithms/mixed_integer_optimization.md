@@ -290,6 +290,42 @@ available. That unit supplies 5.5 to either row and costs 1. Giving it to
 the second row leaves two items of 2.5 for the first, at cost 2 each.
 The total cost is 5, and both demand rows and the shared stock are feasible.
 
+### Binary minimax incumbents
+
+In a balancing model, selecting items creates one residual per criterion.
+For binary selections $x_j$ and target $b_i$, write $r_i = \sum_j a_{ij}x_j-b_i$.
+The epigraph formulation introduces two nonnegative error slacks per
+criterion and a common upper bound $t$.
+
+$$
+\min t,\qquad r_i=p_i-q_i,\qquad 0\le p_i,q_i\le t.
+$$
+
+For fixed selections the smallest possible epigraph is
+$t=\max_i |r_i|$. The choice $p_i=\max(0,r_i)$ and
+$q_i=\max(0,-r_i)$ recovers a feasible point in the original variables.
+For example, residuals $(2,-3)$ give $(p_1,p_2)=(2,0)$,
+$(q_1,q_2)=(0,3)$ and $t=3$.
+
+PRIMAL recognizes dense positive-integer coefficient matrices with
+private error slacks and uses the average weight to estimate the number
+of selected items. Each restart takes a nearby cardinality. Within the
+restart, exchanging a selected item $j$ for an unselected item $k$
+updates the residual to $r_i-a_{ij}+a_{ik}$ in $O(m)$ for $m$ criteria.
+The search minimizes the sum of squared residual excesses over a target
+radius. A cooling schedule sometimes accepts a worse step so that the
+search can escape locally optimal exchanges. When it finds a smaller
+radius, it lowers the next target.
+
+The search has a finite budget. The reconstructed vector must pass the
+original bounds, rows and integrality checks before it becomes an
+incumbent. Branch and bound then uses its objective as an upper bound and
+establishes optimality through its own lower bounds. In MIPLIB `pk1` this
+finds an incumbent of 11 within two seconds, while the search tree still
+has open nodes at 60 seconds.
+[`primal_mip_minimax.c`](../primal_mip_minimax.c) ·
+[Public-instance measurement](../BENCHMARKS.md#verifica-di-pk1-del-2026-11-27)
+
 ### Exact dynamic programming for choice sequences
 
 Some binary models choose exactly one option $x_g$ from each ordered
