@@ -1,11 +1,15 @@
 # PrimalSolver
 
-A convex optimization solver written from scratch in portable C99. No external
-dependencies — `libc` and `libm`, nothing else.
+PrimalSolver aims to be an open-source alternative to MOSEK for convex and
+mixed-integer optimization. Its portable C99 core uses only `libc` and `libm`
+and is available through a C API, Python, Julia, and a command-line interface.
 
-It solves **LP, MILP, QP, QCQP, SOCP, SDP, exponential and power cones, and
-mixed-integer conic problems**, and it hands back the primal point, the dual
-point and a status you can check rather than trust.
+One solver covers **LP, convex QP and QCQP, SOCP, SDP, exponential and power
+cones, MILP, MIQP, and mixed-integer conic problems**, including models with
+both integer variables and positive-semidefinite constraints. It combines
+continuous conic optimization with simplex and integer search. Continuous
+solutions expose primal and dual quantities for checking accuracy. Integer
+solves report feasible incumbents and optimality status.
 
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤-ea4aaa)](https://github.com/sponsors/c-vision)
 [![PyPI](https://img.shields.io/pypi/v/primalsolver)](https://pypi.org/project/primalsolver/)
@@ -185,7 +189,7 @@ Everything the build produces goes to `out/`. It builds with `gcc` or `clang` on
 Linux, macOS and the BSDs; on Windows use MinGW
 ([how to build on Windows](docs/windows.md)).
 
-## How it compares
+## Solver capabilities
 
 | | PrimalSolver | MOSEK | Gurobi | HiGHS | Clarabel | SCS |
 |---|---|---|---|---|---|---|
@@ -193,11 +197,20 @@ Linux, macOS and the BSDs; on Windows use MinGW
 | SOCP | yes | yes | yes | — | yes | yes |
 | SDP | yes | yes | — | — | yes | yes, first-order |
 | Exp / power cones | yes | yes | — | — | yes | yes, first-order |
-| MIP / MIQP | yes | yes | yes | yes | — | — |
+| MILP | yes | yes | yes | yes | — | — |
+| Convex MIQP | yes | yes | yes | — | — | — |
+| Mixed-integer conic | yes | yes, excluding SDP | quadratic cones via MIQCP | — | — | — |
+| Mixed-integer SDP | yes | — | — | — | — | — |
 | Continuous methods | simplex + IPM | interior point | simplex + IPM | simplex + IPM | interior point | first-order |
-| Typical accuracy | ~1e-8 | ~1e-8 | ~1e-8 | ~1e-9 | ~1e-8 | ~1e-4 |
-| Dependencies | libm | — | — | C++ | Rust | C |
 | Licence | Apache-2.0 | commercial | commercial | MIT | Apache-2.0 | MIT |
+
+Primal covers Clarabel's main continuous problem classes and also supports
+integer decisions, simplex, and discrete modeling constructs. The API uses
+the environment and task model familiar to MOSEK users. See the supported
+features and numerical methods in the [algorithm guide](algorithms/README.md).
+[MOSEK problem classes](https://docs.mosek.com/latest/pythonapi/prob-def.html) ·
+[Clarabel capabilities](https://clarabel.org/stable/) ·
+[HiGHS capabilities](https://highs.dev/)
 
 ## Benchmarks
 
