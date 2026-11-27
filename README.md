@@ -342,10 +342,9 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-Primal has the lowest verified median solve time on the **14 of 49 public
-instances** listed below. The reference column shows the fastest solver
-that reached the same verified objective or infeasibility verdict in the
-repeated comparison for that instance.
+The table covers **14 verified wins across 49 public instances**. The
+reference column shows the fastest solver in the repeated comparison
+that reached the same verified objective or infeasibility verdict.
 
 | instance | set | class | vars x cons | Primal median (s) | fastest reference median (s) | result |
 |---|---|---|---:|---:|---:|---:|
@@ -370,6 +369,7 @@ complete results for all 49 public instances, including reference solver
 statuses and unresolved cases.
 [Public benchmark report](BENCHMARKS.md#istanze-pubbliche) ·
 [Public timeout recheck](BENCHMARKS.md#verifica-dei-timeout-pubblici-del-2026-11-26) ·
+[Latest MIPLIB `pk1` result](BENCHMARKS.md#verifica-di-pk1-del-2026-11-27) ·
 [Repeated comparisons](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
 [Recent CBLIB results](BENCHMARKS.md#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)
 

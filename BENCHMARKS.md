@@ -594,6 +594,11 @@ del 26 novembre. Le righe `clsq_random_32_2_a`, `rt_2x4_3bars` e
 `gt2` riportano le verifiche dello stesso giorno. La verifica dei timeout
 aggiorna i tempi di Primal su otto istanze e i riferimenti indicati nella
 relativa sezione. Le colonne Primal e SCIP di `pk1` sono del 27 novembre.
+Le righe `ex1223a` e `HS21` usano anche i confronti ripetuti riportati
+più sotto. Le colonne Primal e Clarabel di `beck751` e `rijc781`
+sono del 24 novembre, come il confronto tra Primal, Clarabel e SCS
+su `HMCR-n20-m400`. Il tempo SCS di `mcp100` e quello HiGHS di
+`p0201` provengono dalle rispettive verifiche ripetute.
 Le altre misure risalgono al 19 novembre.
 Il trattino nella colonna Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
@@ -636,14 +641,14 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | syn10m | cblib | exp+int | 42 x 120 | 6.9118 | N/A | N/A | N/A | N/A | **0.0304** | -1267.35 |
 | rsyn0805m | cblib | exp+int | 174 x 537 | TIME_LIMIT (−1069.245983) | N/A | N/A | N/A | N/A | **1.9644** | -1296.12 |
 | batchdes | cblib | exp+int | 25 x 73 | 0.6263 | N/A | N/A | N/A | N/A | **0.0170** | 167428 |
-| ex1223a | cblib | exp+int | 17 x 60 | **0.0097** | N/A | N/A | N/A | N/A | 0.0127 | 4.57958 |
+| ex1223a | cblib | exp+int | 17 x 60 | **0.0110** | N/A | N/A | N/A | N/A | 0.0167 | 4.57958 |
 | synthes2 | cblib | exp+int | 16 x 47 | 0.3661 | N/A | N/A | N/A | N/A | **0.0306** | 73.0353 |
-| beck751 | cblib | exp | 80 x 59 | **0.0010** | N/A | 0.0014 | 0.0012 | N/A | 0.0038 | 7.50095 |
+| beck751 | cblib | exp | 80 x 59 | **0.000029** | N/A | 0.000331 | 0.0012 | N/A | 0.0038 | 7.50095 |
 | demb761 | cblib | exp | 131 x 93 | 0.0009 | N/A | **0.0007** | 0.2940 | N/A | 0.0043 | 22.3109 |
-| rijc781 | cblib | exp | 24 x 17 | 0.0072 | N/A | **0.0001** | 0.0002 | N/A | 0.0012 | -4.41429 |
+| rijc781 | cblib | exp | 24 x 17 | **0.000020** | N/A | 0.000056 | 0.0002 | N/A | 0.0012 | -4.41429 |
 | gp_dave_1 | cblib | exp | 705 x 988 | 39.8111 | N/A | **0.0081** | 0.0445 | N/A | 0.2190 | 5.50653 |
 | LogExpCR-n20-m400 | cblib | exp | 2022 x 1603 | **0.003069** | N/A | 0.020650 | 0.030101 | N/A | 2.6629 | 0.0164814 |
-| HMCR-n20-m400 | cblib | pow | 2022 x 1603 | 39.7349 | N/A | **0.0210** | 0.0608 | N/A | 2.5334 | 0.0345743 |
+| HMCR-n20-m400 | cblib | pow | 2022 x 1603 | **0.002946** | N/A | 0.015535 | 0.052495 | N/A | 2.5334 | 0.0345743 |
 | HMCR-n20-m800 | cblib | pow | 4022 x 3203 | **0.005792** | N/A | fail | 0.104136 | N/A | 10.0290 | 0.0390837 |
 | infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | **0.000010** (`PRIM_INFEAS`) | N/A | 0.003661 (`PrimalInfeasible`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
 | infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000009 (`PRIM_INFEAS`) | N/A | 0.003072 (`AlmostPrimalInfeasible`) | 5.4682 | N/A | fail (SLOW_PROGRESS) | infeasible |
@@ -653,8 +658,8 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | theta1 | sdplib | sdp | 104 x 1275 | 4.760287 | N/A | 0.4421 | **0.0445** | N/A | 0.2877 | 23 |
 | truss1 | sdplib | sdp | 6 x 19 | 0.0021 | N/A | **0.0003** | 0.0008 | N/A | 0.0026 | -9 |
 | qap5 | sdplib | sdp | 136 x 351 | 0.237235 | N/A | 0.0309 | **0.0115** | N/A | 0.0389 | -436 |
-| mcp100 | sdplib | sdp | 100 x 5050 | **0.058056** | N/A | 0.16674 | 0.5768 | N/A | 0.5324 | 226.157 |
-| HS21 | maros-meszaros | qp | 2 x 1 | **0.0000** | 0.0028 | 0.0001 | 0.0001 | 0.0073 | 0.0019 | 0.0400007 |
+| mcp100 | sdplib | sdp | 100 x 5050 | **0.058056** | N/A | 0.16674 | 0.851940 | N/A | 0.5324 | 226.157 |
+| HS21 | maros-meszaros | qp | 2 x 1 | **0.000031** | 0.0028 | 0.000041 | 0.0001 | 0.0073 | 0.0019 | 0.0400007 |
 | HS118 | maros-meszaros | qp | 15 x 17 | 0.0003 | 0.0006 | **0.0001** | 0.0003 | 0.0094 | 0.0026 | 664.82 |
 | QAFIRO | maros-meszaros | qp | 32 x 27 | 0.0005 | 0.0005 | **0.0002** | **0.0002** | 0.0042 | 0.0028 | -1.59078 |
 | DUAL1 | maros-meszaros | qp | 85 x 1 | 0.0021 | **0.0011** | 0.0022 | **0.0011** | 0.0784 | 0.0116 | 0.035013 |
@@ -667,7 +672,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | share2b | netlib | lp | 79 x 96 | 0.0012 | 0.0008 | **0.0006** | 0.0024 | 0.0021 | 0.0048 | -415.732 |
 | stocfor1 | netlib | lp | 111 x 117 | 0.0019 | **0.0007** | 0.0009 | 0.0035 | 0.0014 | 0.0045 | -41132 |
 | flugpl | miplib | milp | 18 x 18 | 1.1447 | 0.0408 | N/A | N/A | **0.0066** | 0.0872 | 1.2015e+06 |
-| p0201 | miplib | milp | 201 x 133 | **0.004542** | 0.6562 | N/A | N/A | 0.297278 | 0.5229 | 7615 |
+| p0201 | miplib | milp | 201 x 133 | **0.004542** | 0.514129 | N/A | N/A | 0.297278 | 0.5229 | 7615 |
 | gt2 | miplib | milp | 188 x 29 | 0.044372 (`INTEGER_OPTIMAL`) | 0.024667 | N/A | N/A | **0.014623** | 0.0400 | 21166 |
 | pk1 | miplib | milp | 86 x 45 | TIME_LIMIT (11) | >60s | N/A | N/A | **52.768** | >60s | 11 |
 
