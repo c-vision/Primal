@@ -37,8 +37,10 @@ point and a status you can check rather than trust.
   affine arguments in up to 64 free variables, Primal can use Newton's
   method on the reduced problem, including a single rotated quadratic
   penalty. Positive weighted sums of fixed-scale epigraphs can also be
-  reduced to log-sum-exp constraints on the free variables. Primal
-  verifies the reconstructed conic solution. For certain weighted
+  reduced to log-sum-exp constraints on the free variables. For a weighted
+  exponential sum of private hinge losses, Primal eliminates the losses
+  from the Newton system and verifies the reconstructed conic solution.
+  For certain weighted
   power-cone loss models, a penalty bound permits a reduction to LP.
 - **Mixed-integer conic** — branch and bound with conic relaxations.
   For cardinality-constrained portfolios with separate SOC, EXP and PSD
@@ -333,10 +335,11 @@ or infeasibility verdict in the repeated comparison for that instance.
 | ex1223a | CBLIB | exp + int | 17 x 60 | **0.0110** | 0.0167 (Pajarito) | 4.57958 |
 | beck751 | CBLIB | exp | 80 x 59 | **0.000029** | 0.000331 (Clarabel) | 7.50095 |
 | rijc781 | CBLIB | exp | 24 x 17 | **0.000020** | 0.000056 (Clarabel) | -4.41429 |
-| mcp100 | SDPLIB | SDP | 100 x 5050 | **0.05636** | 0.16674 (Clarabel) | 226.15735 |
+| mcp100 | SDPLIB | SDP | 100 x 5050 | **0.058056** | 0.16674 (Clarabel) | 226.15735 |
+| LogExpCR-n20-m400 | CBLIB | exp | 2022 x 1603 | **0.003069** | 0.020650 (Clarabel) | 0.01648143805 |
 | HMCR-n20-m400 | CBLIB | power | 2022 x 1603 | **0.002946** | 0.015535 (Clarabel) | 0.0345743 |
-| HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | **0.005703** | 0.104136 (SCS) | 0.0390837 |
-| p0201 | MIPLIB | MILP | 201 x 133 | **0.004656** | 0.297278 (SCIP) | 7615 |
+| HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | **0.005792** | 0.104136 (SCS) | 0.0390837 |
+| p0201 | MIPLIB | MILP | 201 x 133 | **0.004542** | 0.297278 (SCIP) | 7615 |
 | expdesign_D_8_4 | CBLIB | exp + PSD + int | 61 x 148 | **0.000938** | 0.045817 (Pajarito) | 0.8433069245 |
 | port_12_9_3_a_1 | CBLIB | SOC + EXP + PSD + int | 90 x 169 | **0.004568** | 17.246444 (Pajarito) | -0.0332185523 |
 | port_12_9_3_b_1 | CBLIB | SOC + EXP + PSD + int | 91 x 170 | **0.003490** | 6.600786 (Pajarito) | -0.0347049507 |
@@ -349,6 +352,7 @@ reading. The benchmark report gives dates, tolerances, protocols and the
 complete results for all 49 public instances, including reference solver
 statuses and unresolved cases.
 [Public benchmark report](BENCHMARKS.md#istanze-pubbliche) ·
+[Public timeout recheck](BENCHMARKS.md#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Repeated comparisons](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·
 [Recent CBLIB results](BENCHMARKS.md#verifica-cblib-selezione-binaria-con-psd-del-2026-11-26)
 

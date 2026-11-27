@@ -560,15 +560,17 @@ inammissibili il verdetto è nel problema, `PRIM_INFEAS`.
 | CBLIB portafogli misti-interi | `port_12_9_3_a_1`, `port_12_9_3_b_1`, `port_16_12_4_b_1` | `INTEGER_OPTIMAL` |
 | CBLIB selezione binaria con PSD | `clsq_random_32_2_a`, `rt_2x4_3bars` | `INTEGER_OPTIMAL` |
 
-Restano 2 casi senza un verdetto conclusivo. Su `pk1`, la prova
-mirata a 5 s trova un punto intero verificato a costo 15 e si ferma
-al limite di tempo.
+Restano 2 casi senza un verdetto conclusivo. Nella verifica a 60 s del
+26 novembre, `pk1` trova un punto a costo 12 (ottimo noto 11) e
+`rsyn0805m` trova un punto a costo −1069.245983 (riferimento −1296.12).
+Entrambi terminano al limite di tempo con un punto intero ammissibile.
 
 | Famiglia | Casi aperti |
 |---|---|
 | CBLIB misto-intero conico | `rsyn0805m` |
 | MIPLIB MILP | `pk1` |
 
+[Verifica dei timeout](#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
 [Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
 [SDPLIB](#verifica-sdplib-del-2026-11-24) ·
@@ -587,8 +589,9 @@ Per `infeas_clean_*`, `weak_clean_10_10_3`, `control1` e `hinf1`, le
 colonne Primal e Clarabel riportano i risultati del 25 novembre.
 Per `PRIMAL1`, le colonne Primal, Clarabel e SCS riportano il confronto
 del 26 novembre. Le righe `clsq_random_32_2_a`, `rt_2x4_3bars` e
-`gt2` riportano le verifiche dello stesso giorno. Le altre misure
-risalgono al 19 novembre.
+`gt2` riportano le verifiche dello stesso giorno. La verifica dei timeout
+aggiorna i tempi di Primal su otto istanze e i riferimenti indicati nella
+relativa sezione. Le altre misure risalgono al 19 novembre.
 Il trattino nella colonna Pajarito indica che manca un tempo valido per lo stesso ottimo.
 [Disegno sperimentale](#verifica-cblib-expdesign-del-2026-11-25) ·
 [Partizionamento](#verifica-cblib-kpart-del-2026-11-25) ·
@@ -628,7 +631,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | expdesign_E_8_4 | cblib | psd+int | 26 x 50 | 0.0403 | N/A | N/A | N/A | N/A | **0.0247** | -0.344045 |
 | syn05m | cblib | exp+int | 24 x 65 | 0.5676 | N/A | N/A | N/A | N/A | **0.0512** | -837.732 |
 | syn10m | cblib | exp+int | 42 x 120 | 6.9118 | N/A | N/A | N/A | N/A | **0.0304** | -1267.35 |
-| rsyn0805m | cblib | exp+int | 174 x 537 | >60s | N/A | N/A | N/A | N/A | **1.9644** | -1296.12 |
+| rsyn0805m | cblib | exp+int | 174 x 537 | TIME_LIMIT (−1069.245983) | N/A | N/A | N/A | N/A | **1.9644** | -1296.12 |
 | batchdes | cblib | exp+int | 25 x 73 | 0.6263 | N/A | N/A | N/A | N/A | **0.0170** | 167428 |
 | ex1223a | cblib | exp+int | 17 x 60 | **0.0097** | N/A | N/A | N/A | N/A | 0.0127 | 4.57958 |
 | synthes2 | cblib | exp+int | 16 x 47 | 0.3661 | N/A | N/A | N/A | N/A | **0.0306** | 73.0353 |
@@ -636,18 +639,18 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | demb761 | cblib | exp | 131 x 93 | 0.0009 | N/A | **0.0007** | 0.2940 | N/A | 0.0043 | 22.3109 |
 | rijc781 | cblib | exp | 24 x 17 | 0.0072 | N/A | **0.0001** | 0.0002 | N/A | 0.0012 | -4.41429 |
 | gp_dave_1 | cblib | exp | 705 x 988 | 39.8111 | N/A | **0.0081** | 0.0445 | N/A | 0.2190 | 5.50653 |
-| LogExpCR-n20-m400 | cblib | exp | 2022 x 1603 | >60s | N/A | **0.0199** | 0.0273 | N/A | 2.6629 | 0.0164814 |
+| LogExpCR-n20-m400 | cblib | exp | 2022 x 1603 | **0.003069** | N/A | 0.020650 | 0.030101 | N/A | 2.6629 | 0.0164814 |
 | HMCR-n20-m400 | cblib | pow | 2022 x 1603 | 39.7349 | N/A | **0.0210** | 0.0608 | N/A | 2.5334 | 0.0345743 |
-| HMCR-n20-m800 | cblib | pow | 4022 x 3203 | >60s | N/A | fail | **0.1044** | N/A | 10.0290 | 0.0390837 |
+| HMCR-n20-m800 | cblib | pow | 4022 x 3203 | **0.005792** | N/A | fail | 0.104136 | N/A | 10.0290 | 0.0390837 |
 | infeas_clean_10_10_1 | cblib | sdp-infeas | 55 x 10 | **0.000010** (`PRIM_INFEAS`) | N/A | 0.003661 (`PrimalInfeasible`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
 | infeas_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000009 (`PRIM_INFEAS`) | N/A | 0.003072 (`AlmostPrimalInfeasible`) | 5.4682 | N/A | fail (SLOW_PROGRESS) | infeasible |
 | weak_clean_10_10_3 | cblib | sdp-infeas | 55 x 10 | 0.000010 (`PRIM_INFEAS`) | N/A | 0.007492 (`AlmostSolved`) | >60s | N/A | fail (SLOW_PROGRESS) | infeasible |
 | control1 | sdplib | sdp | 21 x 70 | 0.055899 (`OPTIMAL`) | N/A | **0.003418** | >60s | N/A | 0.0039 | 17.7846267272 |
 | hinf1 | sdplib | sdp | 13 x 41 | 0.001729 (`OPTIMAL`) | N/A | 0.001320 ✗ | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326007779 |
-| theta1 | sdplib | sdp | 104 x 1275 | >60s | N/A | 0.4421 | **0.0445** | N/A | 0.2877 | 23 |
+| theta1 | sdplib | sdp | 104 x 1275 | 4.760287 | N/A | 0.4421 | **0.0445** | N/A | 0.2877 | 23 |
 | truss1 | sdplib | sdp | 6 x 19 | 0.0021 | N/A | **0.0003** | 0.0008 | N/A | 0.0026 | -9 |
-| qap5 | sdplib | sdp | 136 x 351 | >60s | N/A | 0.0309 | **0.0115** | N/A | 0.0389 | -436 |
-| mcp100 | sdplib | sdp | 100 x 5050 | >60s | N/A | 6.8169 | 0.5768 | N/A | **0.5324** | 226.157 |
+| qap5 | sdplib | sdp | 136 x 351 | 0.237235 | N/A | 0.0309 | **0.0115** | N/A | 0.0389 | -436 |
+| mcp100 | sdplib | sdp | 100 x 5050 | **0.058056** | N/A | 0.16674 | 0.5768 | N/A | 0.5324 | 226.157 |
 | HS21 | maros-meszaros | qp | 2 x 1 | **0.0000** | 0.0028 | 0.0001 | 0.0001 | 0.0073 | 0.0019 | 0.0400007 |
 | HS118 | maros-meszaros | qp | 15 x 17 | 0.0003 | 0.0006 | **0.0001** | 0.0003 | 0.0094 | 0.0026 | 664.82 |
 | QAFIRO | maros-meszaros | qp | 32 x 27 | 0.0005 | 0.0005 | **0.0002** | **0.0002** | 0.0042 | 0.0028 | -1.59078 |
@@ -661,9 +664,9 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | share2b | netlib | lp | 79 x 96 | 0.0012 | 0.0008 | **0.0006** | 0.0024 | 0.0021 | 0.0048 | -415.732 |
 | stocfor1 | netlib | lp | 111 x 117 | 0.0019 | **0.0007** | 0.0009 | 0.0035 | 0.0014 | 0.0045 | -41132 |
 | flugpl | miplib | milp | 18 x 18 | 1.1447 | 0.0408 | N/A | N/A | **0.0066** | 0.0872 | 1.2015e+06 |
-| p0201 | miplib | milp | 201 x 133 | >60s | 0.6562 | N/A | N/A | **0.2895** | 0.5229 | 7615 |
+| p0201 | miplib | milp | 201 x 133 | **0.004542** | 0.6562 | N/A | N/A | 0.297278 | 0.5229 | 7615 |
 | gt2 | miplib | milp | 188 x 29 | 0.044372 (`INTEGER_OPTIMAL`) | 0.024667 | N/A | N/A | **0.014623** | 0.0400 | 21166 |
-| pk1 | miplib | milp | 86 x 45 | >60s | >60s | N/A | N/A | **57.1295** | >60s | 11 |
+| pk1 | miplib | milp | 86 x 45 | TIME_LIMIT (12) | >60s | N/A | N/A | **57.1295** | >60s | 11 |
 
 **Note misurate** (le celle con ✗ sono riferimenti che discordano dal valore
 pubblicato, non risposte di Primal; `N/A` nella colonna SCIP sulle righe CBF
@@ -686,6 +689,45 @@ portano. Su MPS e MILP SCIP c'è):
   Le verifiche del 22 e 23 novembre riportano i risultati successivi per
   `PRIMAL1`, `LogExpCR-n20-m400`, `control1`, `theta1` e i tre SDP CBLIB
   inammissibili.
+
+### Verifica dei timeout pubblici del 2026-11-26
+
+Misure sui CBF e MPS originali a un thread, build `-O2`. I tempi di
+Primal coprono `PRIMAL_optimize`, senza lettura del modello. Sulle
+istanze già risolte dalla revisione `210a929` si riporta la mediana di
+tre misure dopo il riscaldamento. Su `LogExpCR-n20-m400` si riportano
+le mediane di 11 prove intercalate dopo il riscaldamento, senza lettura
+né costruzione del modello per tutti e tre i solver.
+
+| Istanza | Primal a `210a929` (s) | Primal verificato (s) | Obiettivo | Massimo residuo | Gap relativo |
+|---|---:|---:|---:|---:|---:|
+| LogExpCR-n20-m400 | 2.571418 | **0.003069** | 0.01648143805 | 4.62e-14 | 5.38e-9 |
+| HMCR-n20-m800 | 0.005792 | 0.005792 | 0.03908368729 | 2.49e-14 | 2.75e-11 |
+| theta1 | 4.760287 | 4.760287 | 23.0000000087 | 3.34e-9 | 2.06e-9 |
+| qap5 | 0.237235 | 0.237235 | −435.999999 | 5.12e-11 | 3.01e-9 |
+| mcp100 | 0.058056 | 0.058056 | 226.15735152 | 2.22e-16 | 1.51e-9 |
+| p0201 | 0.004542 | 0.004542 | 7615 | 0 | 0 |
+
+Sul CBF `LogExpCR-n20-m400`, Clarabel 0.11.1 impiega 0.020650 s e
+SCS 3.3.1 impiega 0.030101 s. Il controllo sui dati originali verifica
+ammissibilità primale e duale, stazionarietà e gap relativo entro
+`1e-8`. Lo scarto massimo tra gli obiettivi dei tre solver è inferiore
+a `5e-9`. [Derivazione del Newton ridotto](algorithms/exponential_cone.md#reducing-a-log-sum-exp-of-hinged-losses)
+
+La colonna SCS di `HMCR-n20-m800` e la colonna Clarabel di `mcp100`
+riusano i confronti ripetuti del 24 novembre. La colonna SCIP di
+`p0201` riusa il confronto del 25 novembre. I riferimenti per
+`theta1` e `qap5` sono quelli del 19 novembre.
+
+| Istanza | Tempo (s) | Esito | Obiettivo ammissibile | Violazione massima | Riferimento |
+|---|---:|---|---:|---:|---:|
+| rsyn0805m | 61.463 | TIME_LIMIT | −1069.2459830048 | 1.78e-15 | −1296.12 |
+| pk1 | 60.425 | TIME_LIMIT | 12 | 0 | 11 |
+
+Il limite interno di 60 s viene controllato durante la ricerca. Il
+tempo totale include il completamento dell'ultimo passo e la
+pubblicazione dell'incumbent. I due punti sono interi e ammissibili,
+con stato `PRIM_FEAS`.
 
 ### Verifica mirata del 2026-11-22
 

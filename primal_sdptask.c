@@ -1282,7 +1282,7 @@ static PRIMALrescodee optimize_sdp_ipm_impl(PRIMALtask_t t, int s) {
      * models to quad_encode_task, which carries the bar blocks with it (T86). */
     if (t->has_qobj || t->has_qcon > 0) return PRIMAL_RES_ERR_ARG;
     if (exp_reduced_solve(t, s)) return PRIMAL_RES_OK;
-    if (s > 0 && exp_sum_constraints_solve(t)) return PRIMAL_RES_OK;
+    if (s > 0 && (exp_sum_constraints_solve(t) || exp_hinge_solve(t))) return PRIMAL_RES_OK;
     if (s > 0 && power_zero_risk_solve(t)) return PRIMAL_RES_OK;
 
     /* ---- conic blocks: one per cone, its components are new variables z_i

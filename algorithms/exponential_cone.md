@@ -327,6 +327,56 @@ of the sum there is $-\sqrt5$. Test `T322` checks this value and the
 lifted multipliers for both a direct head and a free alias.
 [Implementation](../primal_gp.c)
 
+### Reducing a log-sum-exp of hinged losses
+
+A risk model can have many scenarios with a small common decision
+vector. For scenario $i$, a private loss $z_i$ satisfies
+$z_i\ge 0$ and $z_i\ge b_i-a_i^Tx-\eta$. A fixed-scale exponential
+cone gives $v_i\ge\exp(z_i-s)$, and one row imposes
+$\sum_i w_i v_i\le B$ with $w_i>0$ and $B>0$.
+For fixed $x,\eta,z$, the smallest feasible $s$ is
+
+$$
+s=\log\left(\sum_i w_i \exp(z_i)/B\right).
+$$
+
+When the objective is $\alpha\eta+\beta s$ with $\alpha,\beta>0$,
+eliminating $s$ gives a convex problem in the common variables
+$(x,\eta)$ and the private losses. Each optimal loss is
+$[b_i-a_i^Tx-\eta]_+$, but retaining $z_i$ allows Newton steps across
+the kink. The logarithmic barrier keeps both $z_i$ and
+$\ell_i=z_i+a_i^Tx+\eta-b_i$ positive.
+
+Let $p_i=w_i e^{z_i}/\sum_j w_j e^{z_j}$. The Hessian with respect
+to the private losses is $D-uu^T$, where
+
+$$
+D_{ii}=\beta p_i+\mu/z_i^2+\mu/\ell_i^2,
+\qquad u_i=\sqrt{\beta}\,p_i.
+$$
+
+One application of the inverse needs diagonal division and a rank-one
+correction. If $F$ is the common-variable block and $C$ the cross
+block, the Schur system has matrix $F-C(D-uu^T)^{-1}C^T$.
+PRIMAL accumulates this matrix from individual scenario slopes.
+With $m$ losses and $d$ common coordinates, one Newton step costs
+$O(md^2+d^3)$ and the factorization has dimension $d$.
+The step size preserves the original inequality slacks.
+
+On reconstruction, the original exponential cones are tight.
+A supporting plane at each cone gives the dual price of its
+exponential epigraph. A scenario's loss price lies between 0 and
+$\beta p_i$. PRIMAL uses the two barrier slacks to interpolate
+between those endpoints and adjusts the prices within their bounds
+so that their sum is $\alpha$. It then checks the original rows,
+scalar bounds, cone membership, stationarity and primal-dual gap.
+
+In [`primal_exp_hinge.c`](../primal_exp_hinge.c) this path recognizes
+private loss columns, unit exponential scales, one positive weighted
+sum and a small set of common linear inequalities. T335 checks a
+solution at the hinge, a strictly positive loss and rejection when a
+loss column occurs in an extra constraint.
+
 ## Routes in PRIMAL
 
 ```text
@@ -334,6 +384,7 @@ PRIMAL_optimize
   -> optimize_sdp_ipm               unless GMB_NO_EXP_IPM
        try reduced Newton for eligible PEXP epigraphs, with an optional RQUAD penalty
        try the reduced log-sum-exp inequalities for eligible grouped PEXP epigraphs
+       try the reduced Newton system for a weighted sum of hinged losses
        otherwise pass exp/power cones as native blocks to the interior-point method
        first attempt: Hessian-NT row
        if not solved and nb = 0:    retry in SECANT mode (Dahl-Andersen primal-dual secant scaling),

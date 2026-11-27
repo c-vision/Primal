@@ -23185,8 +23185,79 @@ static void test_t334(void) {
     }
 }
 
+static void t335_route(void *handle, const char *message) {
+    if (strstr(message,"reduced exponential loss epigraphs")) *(int *)handle = 1;
+}
+
+/* min eta + beta log((exp(z0)+exp(z1))/2),
+ * z0 >= max(0, x-eta), z1 >= max(0, 1-x-eta).
+ * At beta=3, Jensen gives the optimum x=eta=1/2. With x>=3/4
+ * and beta=1.8, the first loss is log(1.25) and the second is zero. */
+static void test_t335(void) {
+    for (int variant = 0; variant < 3; variant++) {
+        cur_name = "T335 reduced exponential loss epigraphs";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int smooth = variant == 1, guard = variant == 2;
+        double penalty = smooth ? 1.8 : 3.0;
+        PRIMAL_appendvars(t,13);
+        PRIMAL_appendcons(t,11+(smooth || guard));
+        for (int j = 0; j < 13; j++)
+            PRIMAL_putvarbound(t,j,j == 0 || j == 3 || j == 4 ? PRIMAL_BK_LO : PRIMAL_BK_FR,
+                              0.0,0.0);
+        PRIMAL_putcj(t,1,1.0);
+        PRIMAL_putcj(t,2,penalty);
+        PRIMAL_putconbound(t,0,PRIMAL_BK_UP,0.0,1.0);
+        PRIMAL_putarow(t,0,2,(int[]){5,6},(double[]){0.5,0.5});
+        for (int i = 0; i < 2; i++) {
+            int col = 7+3*i, row = 1+4*i;
+            PRIMAL_appendconeseq(t,PRIMAL_CT_PEXP,0.0,3,col);
+            PRIMAL_putconbound(t,row,PRIMAL_BK_FX,0.0,0.0);
+            PRIMAL_putarow(t,row,2,(int[]){5+i,col},(double[]){1.0,-1.0});
+            PRIMAL_putconbound(t,row+1,PRIMAL_BK_FX,-1.0,-1.0);
+            PRIMAL_putaij(t,row+1,col+1,-1.0);
+            PRIMAL_putconbound(t,row+2,PRIMAL_BK_FX,0.0,0.0);
+            PRIMAL_putarow(t,row+2,3,(int[]){3+i,2,col+2},(double[]){1.0,-1.0,-1.0});
+            PRIMAL_putconbound(t,row+3,PRIMAL_BK_LO,i,0.0);
+            PRIMAL_putarow(t,row+3,3,(int[]){0,1,3+i},(double[]){i ? 1.0 : -1.0,1.0,1.0});
+        }
+        PRIMAL_putconbound(t,9,PRIMAL_BK_UP,0.0,1.0);
+        PRIMAL_putaij(t,9,0,1.0);
+        PRIMAL_putconbound(t,10,PRIMAL_BK_LO,0.0,0.0);
+        PRIMAL_putaij(t,10,0,1.0);
+        if (smooth || guard) {
+            PRIMAL_putconbound(t,11,PRIMAL_BK_LO,smooth ? 0.75 : 0.0,0.0);
+            PRIMAL_putaij(t,11,smooth ? 0 : 3,1.0);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t335_route);
+        PRIMALrescodee rc = PRIMAL_optimize(t);
+        check(used == !guard,"admit only private loss columns");
+        if (!guard) {
+            check_rc(rc,PRIMAL_RES_OK,"reduced solve");
+            double po=NAN, du=NAN, pr=INFINITY, pv=INFINITY, pc=INFINITY;
+            double dr=INFINITY, dv=INFINITY, dc=INFINITY, x[13];
+            double expected = smooth ? 0.75-log(1.25)+1.8*log(1.125) : 0.5;
+            check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITR,&po,&pr,&pv,NULL,&pc,
+                                            NULL,&du,&dr,&dv,NULL,&dc),PRIMAL_RES_OK,
+                     "original primal and dual");
+            check(fabs(po-expected)<=1e-8,"analytic objective");
+            check(fabs(po-du)/(1+fabs(po)+fabs(du))<=1e-8,"original gap");
+            check(fmax(fmax(pr,pv),pc)<=1e-8,"original primal residuals");
+            check(fmax(fmax(dr,dv),dc)<=1e-8,"original dual residuals");
+            check_rc(PRIMAL_getxx(t,PRIMAL_SOL_ITR,x),PRIMAL_RES_OK,"original loss coordinates");
+            check(fabs(x[0]-(smooth ? 0.75 : 0.5))<=1e-7 &&
+                  fabs(x[3]-(smooth ? log(1.25) : 0.0))<=1e-7 && x[4]<=1e-7,
+                  "analytic primal point");
+        }
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t335();
     test_t334();
     test_t333();
     test_t332();
