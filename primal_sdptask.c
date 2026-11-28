@@ -1139,6 +1139,146 @@ static int sdp_affine_moment_solve(PRIMALtask_t t, int s) {
     return solved;
 }
 
+enum { SHARED_PSD_SCALARS = 24, SHARED_PSD_BLOCKS = 24 };
+
+/* Solve min a*u + c'z with shared diagonals 0 <= v <= V, u >= 0
+ * and |A_i z| <= sqrt(u*v), using an LP at unit radius. */
+static int sdp_shared_diagonal_solve(PRIMALtask_t t, int s) {
+    int nx = t->numvar, nr = t->numcon, nb = t->numbarvar, cap_block = -1;
+    if (nx < 3 || nx > SHARED_PSD_SCALARS || nb < 3 || nb > SHARED_PSD_BLOCKS ||
+        getenv("GMB_NO_SDP_SHARED_DIAGONAL") || getenv("GMB_SDP_DENSE") || getenv("GMB_SDP_SPARSE"))
+        return 0;
+    for (int b = 0; b < nb; b++) {
+        if (t->barDim[b] == 1 && cap_block < 0) cap_block = b;
+        else if (t->barDim[b] != 2) return 0;
+    }
+    if (cap_block < 0 || nr != 3*(nb-1)+1) return 0;
+    SdpAffineRow *rows = sdp_affine_rows(t, 0);
+    if (!rows) return 0;
+
+    int row_col[nr], count[nr], diag[2] = {-1,-1}, solved = 0, cap_row = -1;
+    double row_coefficient[nr], diagonal_scale[2] = {0.0,0.0};
+    memset(count,0,sizeof(count));
+    StdForm *sf = NULL;
+    double *storage = NULL;
+    for (int j = 0; j < nx; j++) {
+        const Col *col = &t->cols[j];
+        if (!isfinite(t->c[j])) goto done;
+        for (int k = 0; k < col->nz; k++) {
+            int r = col->sub[k];
+            if (!isfinite(col->val[k]) || col->val[k] == 0.0) goto done;
+            row_col[r] = j;
+            row_coefficient[r] = col->val[k];
+            count[r]++;
+        }
+    }
+    for (int r = 0; r < nr; r++) {
+        const SdpAffineRow *a = &rows[r];
+        if (a->block == cap_block) {
+            if (count[r] != 1) goto done;
+            cap_row = r;
+        } else {
+            if (t->blc[r] != 0.0) goto done;
+            if (a->p != a->q) continue;
+            if (count[r] != 1) goto done;
+            int p = a->p;
+            if (diag[p] < 0) {
+                diag[p] = row_col[r];
+                diagonal_scale[p] = row_coefficient[r];
+            } else if (diag[p] != row_col[r] || diagonal_scale[p] != row_coefficient[r]) goto done;
+        }
+    }
+    if (diag[0] < 0 || diag[1] < 0 || diag[0] == diag[1] || cap_row < 0) goto done;
+    int vslot = row_col[cap_row] == diag[0] ? 0 : 1;
+    int vvar = diag[vslot], uvar = diag[1-vslot];
+    double cap_scale = row_coefficient[cap_row]/diagonal_scale[vslot];
+    double cap = t->blc[cap_row]/cap_scale;
+    double unit_cost = s*t->c[uvar]/diagonal_scale[1-vslot];
+    if (row_col[cap_row] != vvar || !(cap_scale < 0.0) ||
+        !(cap > 0.0 && isfinite(cap) && unit_cost > 0.0 && isfinite(unit_cost)) ||
+        t->c[vvar] != 0.0)
+        goto done;
+
+    /* Build the small LP in its two-sided form and reuse the simplex route. */
+    int n = nx-2, m = nb-1;
+    int ptr[SHARED_PSD_SCALARS+1], sub[SHARED_PSD_SCALARS*SHARED_PSD_BLOCKS];
+    double val[SHARED_PSD_SCALARS*SHARED_PSD_BLOCKS];
+    double lo[SHARED_PSD_SCALARS], hi[SHARED_PSD_SCALARS], cost[SHARED_PSD_SCALARS];
+    double lower[SHARED_PSD_BLOCKS], upper[SHARED_PSD_BLOCKS];
+    for (int i = 0; i < m; i++) { lower[i] = -1.0; upper[i] = 1.0; }
+    int nz = 0, lp_col = 0;
+    for (int j = 0; j < nx; j++) {
+        const Col *col = &t->cols[j];
+        int diagonal = j == uvar || j == vvar;
+        if (!diagonal) {
+            ptr[lp_col] = nz;
+            lo[lp_col] = -INF;
+            hi[lp_col] = INF;
+            cost[lp_col] = s*t->c[j];
+        }
+        for (int k = 0; k < col->nz; k++) {
+            const SdpAffineRow *a = &rows[col->sub[k]];
+            if ((a->p == a->q) != diagonal) goto done;
+            if (diagonal) continue;
+            sub[nz] = a->block-(a->block > cap_block);
+            val[nz++] = col->val[k];
+        }
+        if (!diagonal) lp_col++;
+    }
+    ptr[n] = nz;
+    sf = stdform_build(n,m,cost,NULL,NULL,NULL,0,lo,hi,lower,upper,ptr,sub,val);
+    if (!sf) goto done;
+    storage = calloc(2*(size_t)sf->n + (size_t)sf->m, sizeof(*storage));
+    if (!storage) goto done;
+    double *xt = storage, *ystd = xt+sf->n, *zstd = ystd+sf->m;
+    if (solve_std_routed(sf->Aptr,sf->Arow,sf->Aval,NULL,NULL,NULL,sf->m,sf->n,sf->b,sf->c,t,
+                         xt,ystd,zstd,NULL,NULL,STD_METHOD_MIP_SLACK,NULL,NULL) != STD_OPT)
+        goto done;
+    double unit[SHARED_PSD_SCALARS], lp_y[SHARED_PSD_BLOCKS];
+    stdform_map_x(sf,xt,unit);
+    stdform_map_y(sf,ystd,lp_y);
+    double support = -dvec_dot(n,cost,unit);
+    double radius = 0.5*support*cap/unit_cost;
+    double u = radius*(radius/cap);
+    if (!(radius > 0.0 && isfinite(u))) goto done;
+
+    double x[SHARED_PSD_SCALARS], y[3*SHARED_PSD_BLOCKS], activity[3*SHARED_PSD_BLOCKS];
+    double primal[4*SHARED_PSD_BLOCKS], dual[4*SHARED_PSD_BLOCKS];
+    double *pblocks[SHARED_PSD_BLOCKS], *dblocks[SHARED_PSD_BLOCKS];
+    double weight = 0.0;
+    for (int i = 0; i < m; i++) weight += fabs(lp_y[i]);
+    lp_col = 0;
+    for (int j = 0; j < nx; j++) {
+        if (j == uvar) x[j] = u/diagonal_scale[1-vslot];
+        else if (j == vvar) x[j] = cap/diagonal_scale[vslot];
+        else x[j] = radius*unit[lp_col++];
+    }
+    int offset = 0;
+    for (int b = 0; b < nb; b++) {
+        pblocks[b] = primal+offset;
+        dblocks[b] = dual+offset;
+        offset += t->barDim[b]*t->barDim[b];
+    }
+    for (int r = 0; r < nr; r++) {
+        const SdpAffineRow *a = &rows[r];
+        if (r == cap_row) {
+            y[r] = s*weight*(u/(2.0*radius))/cap_scale;
+        } else {
+            double lambda = lp_y[a->block-(a->block > cap_block)];
+            if (a->p != a->q) y[r] = s*lambda;
+            else y[r] = -s*fabs(lambda)*((a->p == vslot ? u : cap)/(2.0*radius));
+        }
+    }
+    const SdpAffinePoint point = {x, y, activity, pblocks, dblocks};
+    solved = sdp_affine_lift(t, s, rows, &point);
+done:
+    free(storage);
+    stdform_free(sf);
+    free(rows);
+    if (solved) tlog(t,"optimal solution found (shared diagonal SDP)\n");
+    return solved;
+}
+
 /* Dual of min s*c'x with A_i x - X[p,q] = b_i and X PSD. The
  * original scalar coefficients are the entries of symmetric matrices. */
 static int sdp_affine_dual_solve(PRIMALtask_t t, int s) {
@@ -1309,6 +1449,7 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
         tlog(t, "primal infeasible (SDP coordinate faces)\n");
         r = PRIMAL_RES_ERR_INFEASIBLE;
     } else if (sdp_affine_theta_solve(t, s) || sdp_affine_moment_solve(t, s) ||
+               sdp_shared_diagonal_solve(t, s) ||
                sdp_affine_diagonal_solve(t, s) ||
                sdp_affine_dual_solve(t, s) ||
                (t->numbarvar == 1 && sdp_affine_barrier_solve(t, s)) ||

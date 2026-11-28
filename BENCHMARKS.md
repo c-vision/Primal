@@ -574,6 +574,7 @@ di tempo, contro il riferimento −1296.12.
 [Verifica di `pk1`](#verifica-di-pk1-del-2026-11-27) ·
 [Confronto EXP e SDP](#verifica-exp-e-sdp-del-2026-11-28) ·
 [`qap5`](#verifica-sdplib-qap5-del-2026-11-28) ·
+[`truss1`](#verifica-sdplib-truss1-del-2026-11-28) ·
 [Verifica dei timeout](#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
 [Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
@@ -596,7 +597,7 @@ del 26 novembre. Le righe `clsq_random_32_2_a`, `rt_2x4_3bars` e
 `gt2` riportano le verifiche dello stesso giorno. La verifica dei timeout
 aggiorna i tempi di Primal su otto istanze e i riferimenti indicati nella
 relativa sezione. Le colonne Primal e SCIP di `pk1` sono del 27 novembre.
-Le colonne Primal, Clarabel e SCS di `gp_dave_1`, `theta1` e `qap5`
+Le colonne Primal, Clarabel e SCS di `gp_dave_1`, `theta1`, `qap5` e `truss1`
 sono del 28 novembre.
 Le righe `ex1223a` e `HS21` usano anche i confronti ripetuti riportati
 più sotto. Le colonne Primal e Clarabel di `beck751` e `rijc781`
@@ -660,7 +661,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | control1 | sdplib | sdp | 21 x 70 | 0.055899 (`OPTIMAL`) | N/A | **0.003418** | >60s | N/A | 0.0039 | 17.7846267272 |
 | hinf1 | sdplib | sdp | 13 x 41 | 0.001729 (`OPTIMAL`) | N/A | 0.001320 ✗ | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326007779 |
 | theta1 | sdplib | sdp | 104 x 1275 | **0.001077** | N/A | 0.507051 ✗ | 0.043496 | N/A | 0.2877 | 23 |
-| truss1 | sdplib | sdp | 6 x 19 | 0.0021 | N/A | **0.0003** | 0.0008 | N/A | 0.0026 | -9 |
+| truss1 | sdplib | sdp | 6 x 19 | **0.000029** | N/A | 0.000132 | 0.000286 | N/A | 0.0026 | -8.9999963153 |
 | qap5 | sdplib | sdp | 136 x 351 | **0.001577** | N/A | 0.023732 | 0.012461 | N/A | 0.0389 | -436 |
 | mcp100 | sdplib | sdp | 100 x 5050 | **0.058056** | N/A | 0.16674 | 0.851940 | N/A | 0.5324 | 226.157 |
 | HS21 | maros-meszaros | qp | 2 x 1 | **0.000031** | 0.0028 | 0.000041 | 0.0001 | 0.0073 | 0.0019 | 0.0400007 |
@@ -820,6 +821,28 @@ I tempi coprono `PRIMAL_optimize` e `solve()`, esclusa la costruzione.
 Primal usa `1e-8` con fattore near-optimal pari a 1. Clarabel usa
 `1e-10` e SCS `1e-9` internamente per superare il controllo sullo SDPA.
 La mediana precedente di Primal era 237.235 ms.
+
+### Verifica SDPLIB truss1 del 2026-11-28
+
+I sei blocchi PSD 2×2 di `truss1` condividono le due diagonali.
+Il blocco scalare limita una diagonale a 1. Primal risolve un LP
+al raggio unitario, riscalando poi la soluzione e i moltiplicatori
+per ottenere il punto e i sette blocchi duali originali.
+[Derivazione](algorithms/semidefinite_programming.md#shared-diagonals-in-2-by-2-psd-blocks)
+
+| Solver | Mediana (µs) | Massimo residuo | Gap relativo |
+|---|---:|---:|---:|
+| Primal `0dfa381` | 334.0 | 1.78e-15 | 6.35e-9 |
+| Primal con riduzione | **29.0** | 7.78e-16 | 9.35e-17 |
+| Clarabel 0.11.1 | 132.5 | 1.13e-9 | 3.09e-11 |
+| SCS 3.3.1 | 286.2 | 9.77e-13 | 1.01e-14 |
+
+Mediane di 21 solve intercalate dopo il riscaldamento, build Primal
+`-O2`, un thread, lettura e costruzione escluse. Le tolleranze interne
+sono `1e-8` per Primal con fattore near-optimal pari a 1, `1e-10` per
+Clarabel e `1e-9` per SCS. Il controllo indipendente sui dati SDPA
+verifica stazionarietà, PSD primale e duale e gap entro `1e-8`.
+Il valore certificato è `-8.99999631528689`.
 
 ### Verifica mirata del 2026-11-22
 

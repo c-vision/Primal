@@ -23447,8 +23447,62 @@ static void test_t339(void) {
     }
 }
 
+static void t340_capture_route(void *handle, const char *message) {
+    if (strstr(message,"shared diagonal SDP")) *(int *)handle = 1;
+}
+
+/* u, v share two 2x2 PSD blocks with off-diagonals z and 2z.
+ * At v=1 the unit-radius LP has z=1/2 and gives u=z=1/4 after rescaling. */
+static void test_t340(void) {
+    for (int mode = 0; mode < 3; mode++) {
+        int guard = mode == 2, sign = mode == 1 ? -1 : 1;
+        cur_name = "T340 small PSD blocks with shared diagonals";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t,3);
+        PRIMAL_appendcons(t,7);
+        PRIMAL_appendbarvars(t,3,(int[]){2,2,1});
+        for (int j = 0; j < 3; j++) PRIMAL_putvarbound(t,j,PRIMAL_BK_FR,0.0,0.0);
+        PRIMAL_putobjsense(t,mode == 1 ? PRIMAL_OBJECTIVE_SENSE_MAXIMIZE
+                                      : PRIMAL_OBJECTIVE_SENSE_MINIMIZE);
+        PRIMAL_putcj(t,0,sign);
+        if (guard) PRIMAL_putcj(t,1,0.1);
+        PRIMAL_putcj(t,2,-2.0*sign);
+        int row = 0;
+        for (int block = 0; block < 3; block++) {
+            int d = block == 2 ? 1 : 2;
+            for (int i = 0; i < d; i++) for (int j = 0; j <= i; j++, row++) {
+                int matrix;
+                double a = i == j ? -1.0 : -0.5, one = 1.0;
+                double b = block == 2 ? -1.0 : 0.0;
+                PRIMAL_appendsparsesymmat(t,d,1,&i,&j,&a,&matrix);
+                PRIMAL_putbaraij(t,row,block,1,&matrix,&one);
+                PRIMAL_putconbound(t,row,PRIMAL_BK_FX,b,b);
+                if (block == 2) PRIMAL_putaij(t,row,1,-1.0);
+                else if (i == j) PRIMAL_putaij(t,row,1-i,1.0);
+                else PRIMAL_putaij(t,row,2,block+1.0);
+            }
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_putdouparam(t,PRIMAL_DPAR_INTPNT_TOL_NEAR_REL,1.0);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t340_capture_route);
+        check_rc(PRIMAL_optimize(t),PRIMAL_RES_OK,"solve original SDP");
+        check(used == !guard,"reduction requires no cost on the capped diagonal");
+        double obj = NAN, dual = NAN, pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITR,&obj,&pr,NULL,&pb,NULL,NULL,
+                                       &dual,NULL,&dv,&db,NULL),PRIMAL_RES_OK,"original solution");
+        check(fabs(obj-sign*(guard ? -0.15 : -0.25))<=1e-8 &&
+              fabs(obj-dual)<=1e-8*(1.0+fabs(obj)+fabs(dual)),
+              "analytic objective and gap");
+        check(fmax(fmax(pr,pb),fmax(dv,db))<=1e-8,"original primal and dual feasibility");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t340();
     test_t339();
     test_t338();
     test_t337();

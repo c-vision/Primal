@@ -38,6 +38,7 @@ solves report feasible incumbents and optimality status.
   in the original scalar coordinates. For some graph theta problems,
   an independent set and a clique partition certify the optimum directly.
   Some binary moment formulations also admit a rank-one dual certificate.
+  Certain 2×2 PSD blocks with shared diagonals reduce to a small LP.
   [Graph theta](algorithms/semidefinite_programming.md#clique-certificates-for-graph-theta-problems) ·
   [Binary moments](algorithms/semidefinite_programming.md#rank-one-certificates-for-binary-moment-sdps)
 - **Exponential and power cones** — native interior point with closed-form
@@ -347,7 +348,7 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-The table covers **17 verified wins across 49 public instances**. The
+The table covers **18 verified wins across 49 public instances**. The
 reference column shows the fastest solver in the repeated comparison
 that reached the same verified objective or infeasibility verdict.
 
@@ -360,6 +361,7 @@ that reached the same verified objective or infeasibility verdict.
 | mcp100 | SDPLIB | SDP | 100 x 5050 | **0.058056** | 0.16674 (Clarabel) | 226.15735 |
 | theta1 | SDPLIB | SDP | 104 x 1275 | **0.001077** | 0.043496 (SCS) | 23 |
 | qap5 | SDPLIB | SDP | 136 x 351 | **0.001577** | 0.012461 (SCS) | -436 |
+| truss1 | SDPLIB | SDP | 6 x 19 | **0.000029** | 0.000132 (Clarabel) | -8.9999963153 |
 | LogExpCR-n20-m400 | CBLIB | exp | 2022 x 1603 | **0.003069** | 0.020650 (Clarabel) | 0.01648143805 |
 | HMCR-n20-m400 | CBLIB | power | 2022 x 1603 | **0.002946** | 0.015535 (Clarabel) | 0.0345743 |
 | HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | **0.005792** | 0.104136 (SCS) | 0.0390837 |
@@ -378,6 +380,7 @@ statuses and unresolved cases.
 [Public benchmark report](BENCHMARKS.md#istanze-pubbliche) ·
 [EXP and SDP comparison](BENCHMARKS.md#verifica-exp-e-sdp-del-2026-11-28) ·
 [SDPLIB `qap5` comparison](BENCHMARKS.md#verifica-sdplib-qap5-del-2026-11-28) ·
+[SDPLIB `truss1` comparison](BENCHMARKS.md#verifica-sdplib-truss1-del-2026-11-28) ·
 [Public timeout recheck](BENCHMARKS.md#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Latest MIPLIB `pk1` result](BENCHMARKS.md#verifica-di-pk1-del-2026-11-27) ·
 [Repeated comparisons](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·

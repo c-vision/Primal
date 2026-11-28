@@ -486,6 +486,45 @@ the certified optimum $-436$.
 [`sdp_affine_moment_solve`](../primal_sdptask.c) ·
 [Measurements](../BENCHMARKS.md#verifica-sdplib-qap5-del-2026-11-28)
 
+## Shared diagonals in 2 by 2 PSD blocks
+
+Suppose a model minimizes $a u+c^\top z$ with $a>0$ and imposes
+
+$$
+\begin{pmatrix}v&A_i z\\A_i z&u\end{pmatrix}\succeq 0
+\quad\text{for every }i,\qquad v\le V,\qquad V>0.
+$$
+
+The matrix is PSD exactly when $u,v\ge0$ and $(A_i z)^2\le uv$.
+Since $v$ has zero cost, choosing $v=V$ preserves every feasible
+choice of $u,z$. Write $r=\sqrt{uV}$. The LP
+$\min\{c^\top \hat z: |A_i\hat z|\le1\}$ gives a value $-\kappa$.
+At radius $r$ the linear term is therefore $-r\kappa$, and the
+objective becomes $a r^2/V-r\kappa$. Its minimum for $\kappa>0$
+is at $r=V\kappa/(2a)$, with $u=r^2/V$ and $z=r\hat z$.
+
+If $\mu_i$ is the signed LP row multiplier, a nonzero $\mu_i$
+corresponds to $A_i z$ equal to $r$ or $-r$. The dual PSD block is
+
+$$
+Z_i=\frac{|\mu_i|}{2r}
+\begin{pmatrix}u&-A_i z\\-A_i z&V\end{pmatrix}.
+$$
+
+This block has zero inner product with the primal block. The LP
+equality $\sum_i|\mu_i|=\kappa$ makes the sum of the dual entries
+associated with $u$ equal to $a$. The multiplier of $v\le V$
+balances the remaining diagonal entries. PRIMAL maps these blocks
+to the original equality rows and checks primal and dual feasibility
+and the gap before returning the result.
+
+For $a=V=1$, two off-diagonals $z$ and $2z$ and linear cost $-2z$,
+the LP gives $\hat z=1/2$ and $\kappa=1$. The resulting
+$r=1/2$ gives $u=z=1/4$ and objective $-1/4$. Test `T340` checks this
+example and the general SDP route when $v$ has a cost.
+[`sdp_shared_diagonal_solve`](../primal_sdptask.c) ·
+[SDPLIB `truss1`](../BENCHMARKS.md#verifica-sdplib-truss1-del-2026-11-28)
+
 ## A log-det barrier for a free diagonal
 
 Suppose $X$ has fixed off-diagonal entries and its diagonal entries $v_i$
