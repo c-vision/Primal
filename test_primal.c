@@ -23305,8 +23305,104 @@ static void test_t336(void) {
     }
 }
 
+/* Minimize y with y >= x+1 and exp(x)+exp(-x) <= 3.
+ * A further affine bound x >= -1/4 moves the optimum away from the cone sum. */
+static void test_t337(void) {
+    for (int clipped = 0; clipped < 2; clipped++) {
+        cur_name = "T337 grouped exponential and affine upper rows";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        PRIMAL_appendvars(t,8);
+        PRIMAL_appendcons(t,6+clipped);
+        for (int j = 0; j < 8; j++) PRIMAL_putvarbound(t,j,PRIMAL_BK_FR,0.0,0.0);
+        PRIMAL_putcj(t,1,1.0);
+        for (int i = 0; i < 2; i++) {
+            int k = 2+3*i, r = 2*i;
+            PRIMAL_appendconeseq(t,PRIMAL_CT_PEXP,0.0,3,k);
+            PRIMAL_putarow(t,r,1,(int[]){k+1},(double[]){1.0});
+            PRIMAL_putconbound(t,r,PRIMAL_BK_FX,1.0,1.0);
+            PRIMAL_putarow(t,r+1,2,(int[]){0,k+2},(double[]){i ? 1.0 : -1.0,1.0});
+            PRIMAL_putconbound(t,r+1,PRIMAL_BK_FX,0.0,0.0);
+        }
+        PRIMAL_putarow(t,4,2,(int[]){2,5},(double[]){1.0,1.0});
+        PRIMAL_putconbound(t,4,PRIMAL_BK_UP,0.0,3.0);
+        PRIMAL_putarow(t,5,2,(int[]){0,1},(double[]){1.0,-1.0});
+        PRIMAL_putconbound(t,5,PRIMAL_BK_UP,0.0,-1.0);
+        if (clipped) {
+            PRIMAL_putaij(t,6,0,-1.0);
+            PRIMAL_putconbound(t,6,PRIMAL_BK_UP,0.0,0.25);
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t322_capture_route);
+        check_rc(PRIMAL_optimize(t),PRIMAL_RES_OK,"solve with affine inequalities");
+        check(used,"used reduced log-sum-exp route");
+        double x[8] = {0}, y[7] = {0}, obj = NAN, dual = NAN;
+        double pr = INFINITY, pc = INFINITY, dv = INFINITY, dc = INFINITY;
+        check_rc(PRIMAL_getxx(t,PRIMAL_SOL_ITR,x),PRIMAL_RES_OK,"original points");
+        check_rc(PRIMAL_gety(t,PRIMAL_SOL_ITR,y),PRIMAL_RES_OK,"original multipliers");
+        check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITR,&obj,&pr,NULL,NULL,&pc,NULL,
+                                       &dual,NULL,&dv,NULL,&dc),PRIMAL_RES_OK,
+                 "original quality");
+        double xmin = clipped ? -0.25 : -acosh(1.5);
+        check(fabs(x[0]-xmin)<=1e-8 && fabs(obj-(1.0+xmin))<=1e-8,"analytic optimum");
+        check(fmax(fmax(pr,pc),fmax(dv,dc))<=1e-8 && fabs(obj-dual)<=1e-8,
+              "feasibility and gap in original units");
+        check(fabs(y[5]-1.0)<=1e-8 && fabs(y[4]-(clipped?0.0:1.0/sqrt(5.0)))<=1e-8 &&
+              (!clipped || fabs(y[6]-1.0)<=1e-8),"multipliers of active affine rows");
+        pend(&p);
+    }
+}
+
+static void t338_capture_route(void *handle, const char *message) {
+    if (strstr(message,"theta clique certificate")) *(int *)handle = 1;
+}
+
+/* The partition K3 + K2 + K1 has three anchors. The 5-cycle has independent
+ * sets of size two and needs three cliques, so the general SDP route answers. */
+static void test_t338(void) {
+    for (int cycle = 0; cycle < 2; cycle++) {
+        cur_name = "T338 clique certificates for affine theta SDPs";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int d = cycle ? 5 : 6;
+        PRIMAL_appendvars(t,cycle ? 6 : 5);
+        PRIMAL_appendcons(t,d*(d+1)/2);
+        PRIMAL_appendbarvars(t,1,&d);
+        for (int j = 0; j < (cycle ? 6 : 5); j++) PRIMAL_putvarbound(t,j,PRIMAL_BK_FR,0.0,0.0);
+        PRIMAL_putcj(t,0,1.0);
+        int row = 0, edge = 1;
+        for (int i = 0; i < d; i++) {
+            for (int j = 0; j <= i; j++, row++) {
+                int matrix;
+                double coefficient = i == j ? -1.0 : -0.5, one = 1.0;
+                PRIMAL_appendsparsesymmat(t,d,1,&i,&j,&coefficient,&matrix);
+                PRIMAL_putbaraij(t,row,0,1,&matrix,&one);
+                PRIMAL_putconbound(t,row,PRIMAL_BK_FX,1.0,1.0);
+                if (i == j) PRIMAL_putaij(t,row,0,1.0);
+                else if (cycle ? (i-j == 1 || i-j == 4) : (i < 3 || (i == 4 && j == 3)))
+                    PRIMAL_putaij(t,row,edge++,0.5);
+            }
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t338_capture_route);
+        check_rc(PRIMAL_optimize(t),PRIMAL_RES_OK,"solve affine theta SDP");
+        check(used == !cycle,"only matching witnesses certify by clique partition");
+        double obj = NAN, dual = NAN, pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITR,&obj,&pr,NULL,&pb,NULL,NULL,
+                                       &dual,NULL,&dv,&db,NULL),PRIMAL_RES_OK,"public SDP solution");
+        double expected = cycle ? sqrt(5.0) : 3.0;
+        check(fabs(obj-expected)<=1e-7 && fabs(obj-dual)<=1e-7,"analytic theta value");
+        check(fmax(fmax(pr,pb),fmax(dv,db))<=1e-8,"original primal and dual feasibility");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t338();
+    test_t337();
     test_t336();
     test_t335();
     test_t334();

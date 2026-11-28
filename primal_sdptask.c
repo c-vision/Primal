@@ -758,6 +758,150 @@ done:
     return solved;
 }
 
+enum { THETA_DIM = 64, THETA_SEARCH_NODES = 4096 };
+
+typedef struct {
+    int dim, size, budget;
+    uint64_t edge[THETA_DIM], independent;
+} ThetaGraph;
+
+static int theta_count(uint64_t vertices) {
+    int count = 0;
+    for (; vertices; vertices &= vertices-1) count++;
+    return count;
+}
+
+static void theta_independent(ThetaGraph *g, uint64_t open, uint64_t chosen, int count) {
+    if (g->budget <= 0 || count + theta_count(open) <= g->size) return;
+    g->budget--;
+    if (!open) {
+        g->size = count;
+        g->independent = chosen;
+        return;
+    }
+    int vertex = -1, degree = -1;
+    for (int i = 0; i < g->dim; i++) {
+        if (!(open & (UINT64_C(1) << i))) continue;
+        int d = theta_count(open & g->edge[i]);
+        if (d > degree || d <= 1) { vertex = i; degree = d; }
+        if (d <= 1) break;
+    }
+    uint64_t bit = UINT64_C(1) << vertex;
+    open &= ~bit;
+    theta_independent(g, open & ~g->edge[vertex], chosen | bit, count+1);
+    /* An independent set can include a leaf by replacing its neighbor. */
+    if (degree > 1) theta_independent(g, open, chosen, count);
+}
+
+/* A partition matching the independent set has one selected vertex per
+ * clique. Assign every other vertex to an adjacent clique anchor. */
+static int theta_partition(ThetaGraph *g, uint64_t open, const uint64_t *domain,
+                           int *anchor) {
+    if (!open) return 1;
+    if (g->budget <= 0) return 0;
+    g->budget--;
+    int vertex = -1, smallest = g->dim+1;
+    for (int i = 0; i < g->dim; i++) {
+        if (!(open & (UINT64_C(1) << i))) continue;
+        int choices = theta_count(domain[i]);
+        if (choices == 0) return 0;
+        if (choices < smallest) { vertex = i; smallest = choices; }
+    }
+    open &= ~(UINT64_C(1) << vertex);
+    for (int k = 0; k < g->dim; k++) {
+        uint64_t bit = UINT64_C(1) << k;
+        if (!(domain[vertex] & bit)) continue;
+        uint64_t next[THETA_DIM];
+        memcpy(next, domain, (size_t)g->dim * sizeof(*next));
+        uint64_t conflicts = open & ~g->edge[vertex];
+        for (int i = 0; i < g->dim; i++)
+            if (conflicts & (UINT64_C(1) << i)) next[i] &= ~bit;
+        if (theta_partition(g, open, next, anchor)) {
+            anchor[vertex] = k;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* min t with t I plus free edge entries minus ee' positive semidefinite.
+ * Matching independent and clique partition sizes give both KKT points. */
+static int sdp_affine_theta_solve(PRIMALtask_t t, int s) {
+    int nr = t->numcon, nx = t->numvar;
+    if (s != 1 || t->numbarvar != 1 || t->barDim[0] < 2 || t->barDim[0] > THETA_DIM ||
+        getenv("GMB_NO_SDP_THETA") || getenv("GMB_SDP_DENSE") || getenv("GMB_SDP_SPARSE"))
+        return 0;
+    int d = t->barDim[0], diagonal = -1;
+    for (int j = 0; j < nx; j++) {
+        if (t->c[j] == 0.0) {
+            if (t->cols[j].nz != 1) return 0;
+        } else {
+            if (t->c[j] != 1.0 || diagonal >= 0 || t->cols[j].nz != d) return 0;
+            diagonal = j;
+        }
+    }
+    if (diagonal < 0 || nr != d*(d+1)/2) return 0;
+    for (int i = 0; i < nr; i++) if (t->blc[i] != 1.0) return 0;
+    SdpAffineRow *rows = sdp_affine_rows(t, 0);
+    if (!rows) return 0;
+
+    int solved = 0;
+    double *work = NULL;
+    ThetaGraph g = {.dim = d, .budget = THETA_SEARCH_NODES};
+    const Col *trace = &t->cols[diagonal];
+    for (int k = 0; k < d; k++) {
+        const SdpAffineRow *a = &rows[trace->sub[k]];
+        if (a->p != a->q || trace->val[k] != 1.0) goto done;
+    }
+    for (int j = 0; j < nx; j++) {
+        if (j == diagonal) continue;
+        const Col *col = &t->cols[j];
+        const SdpAffineRow *a = &rows[col->sub[0]];
+        uint64_t bit = UINT64_C(1) << a->q;
+        if (a->p == a->q || (g.edge[a->p] & bit) ||
+            !isfinite(col->val[0]) || col->val[0] == 0.0)
+            goto done;
+        g.edge[a->p] |= bit;
+        g.edge[a->q] |= UINT64_C(1) << a->p;
+    }
+    uint64_t vertices = UINT64_MAX >> (THETA_DIM-d);
+    theta_independent(&g, vertices, 0, 0);
+    if (!g.independent) goto done;
+    uint64_t domain[THETA_DIM];
+    int anchor[THETA_DIM];
+    for (int i = 0; i < d; i++) {
+        domain[i] = g.edge[i] & g.independent;
+        anchor[i] = i;
+    }
+    g.budget = THETA_SEARCH_NODES;
+    if (!theta_partition(&g, vertices & ~g.independent, domain, anchor)) goto done;
+
+    work = calloc((size_t)nx+2*(size_t)(nr+d*d), sizeof(*work));
+    if (!work) goto done;
+    double *x = work, *y = x+nx, *activity = y+nr;
+    double *barx[] = {activity+nr}, *barsj[] = {barx[0]+d*d};
+    x[diagonal] = g.size;
+    for (int j = 0; j < nx; j++) {
+        if (j == diagonal) continue;
+        const Col *col = &t->cols[j];
+        const SdpAffineRow *a = &rows[col->sub[0]];
+        if (anchor[a->p] == anchor[a->q]) x[j] = g.size / col->val[0];
+    }
+    for (int r = 0; r < nr; r++) {
+        const SdpAffineRow *a = &rows[r];
+        if ((g.independent & (UINT64_C(1) << a->p)) &&
+            (g.independent & (UINT64_C(1) << a->q)))
+            y[r] = -(a->p == a->q ? 1.0 : 2.0)/g.size;
+    }
+    const SdpAffinePoint point = {x, y, activity, barx, barsj};
+    solved = sdp_affine_lift(t, s, rows, &point);
+done:
+    free(work);
+    free(rows);
+    if (solved) tlog(t,"optimal solution found (theta clique certificate)\n");
+    return solved;
+}
+
 /* Dual of min s*c'x with A_i x - X[p,q] = b_i and X PSD. The
  * original scalar coefficients are the entries of symmetric matrices. */
 static int sdp_affine_dual_solve(PRIMALtask_t t, int s) {
@@ -927,7 +1071,8 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
         t->prosta = PRIMAL_PRO_STA_PRIM_INFEAS;
         tlog(t, "primal infeasible (SDP coordinate faces)\n");
         r = PRIMAL_RES_ERR_INFEASIBLE;
-    } else if (sdp_affine_diagonal_solve(t, s) || sdp_affine_dual_solve(t, s) ||
+    } else if (sdp_affine_theta_solve(t, s) || sdp_affine_diagonal_solve(t, s) ||
+               sdp_affine_dual_solve(t, s) ||
                (t->numbarvar == 1 && sdp_affine_barrier_solve(t, s)) ||
                sdp_affine_solve(t, s) ||
                (t->numbarvar > 1 && sdp_affine_barrier_solve(t, s))) r = PRIMAL_RES_OK;

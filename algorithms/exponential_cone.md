@@ -302,29 +302,42 @@ $$
 H+\sum_g (\lambda_g/s_g)m_g m_g^\top .
 $$
 
+An additional affine inequality $a^\top x\le b$ contributes its own
+slack and multiplier. Its Hessian is zero, so the only addition to
+the matrix is $(\lambda/s)aa^\top$. The implementation accumulates
+these terms on each affine row's nonzero columns and accumulates each
+covariance on the union of its group's supports.
+
 PRIMAL factors this matrix once per iteration, computes an affine predictor
 and a centered corrector, and backtracks on positive slacks, multipliers
 and the residual merit. The matrix order is the number of free coordinates.
 For example, `beck751` retains eight free coordinates and five inequalities
-from 80 scalar columns and 59 rows. [Measurements](../BENCHMARKS.md#verifica-mirata-del-2026-11-24)
+from 80 scalar columns and 59 rows. On `gp_dave_1` the system has order
+101, with 16 log-sum-exp inequalities and 519 affine rows.
+[Small models](../BENCHMARKS.md#verifica-mirata-del-2026-11-24) ·
+[`gp_dave_1`](../BENCHMARKS.md#verifica-exp-e-sdp-del-2026-11-28)
 
 For the lift, set $S_g=\sum_{i\in g}w_i t_i$. The original upper-row
 multiplier is $y_g=\lambda_g/S_g$. For a term $i$ put $r=v_i/u_i$ and
 $d_0=w_i y_g$. Its dual cone triple in PRIMAL's order is
 $(d_0,\ d_0 e^r(r-1),\ -d_0 e^r)$, a supporting plane at the recovered
 primal triple. The equality coefficients convert this triple into the
-original scale, argument and alias multipliers. The implementation checks the
+original scale, argument and alias multipliers. Affine rows retain their
+Newton multipliers. The implementation checks the
 original rows, free-variable stationarity, primal and dual cone membership
 and the relative gap. The native conic route handles a failed check or
-factorization. The reduced path covers minimization models with up to 16
-free coordinates, 16 positive upper sums and 48 disjoint PEXP blocks.
+factorization. The reduced path covers minimization models with up to 128
+free coordinates, 32 positive upper sums, 640 affine upper inequalities and
+256 disjoint PEXP blocks.
 The scale of each block is fixed by a singleton equality.
 
 For example, minimize $x$ subject to $2e^{-x}+e^x/2\le3$. Setting $y=e^x$
 gives $y^2-6y+4\le0$, so the minimum is $x=\log(3-\sqrt5)$. The
 multiplier of the original upper row is $1/\sqrt5$ because the derivative
 of the sum there is $-\sqrt5$. Test `T322` checks this value and the
-lifted multipliers for both a direct head and a free alias.
+lifted multipliers for both a direct head and a free alias. Test `T337`
+adds an affine row $y\ge 1+x$ to a symmetric exponential sum and checks
+the multipliers before and after a further bound makes the sum inactive.
 [Implementation](../primal_gp.c)
 
 ### Reducing a log-sum-exp of hinged losses

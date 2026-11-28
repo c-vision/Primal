@@ -411,6 +411,46 @@ task tolerances. If the reconstructed pair fails a check, the dispatcher
 continues with the existing SDP routes.
 [`sdp_affine_dual_solve` and `sdp_affine_lift`](../primal_sdptask.c)
 
+## Clique certificates for graph theta problems
+
+The Lovász theta bound of a graph can be computed by minimizing $t$
+subject to $tI+\sum_{ij\in E} u_{ij}F_{ij}-ee^\top\succeq0$, where
+$e$ is the all-ones vector and $F_{ij}$ places ones at the symmetric
+positions of an edge. The coefficients $u_{ij}$ are free.
+
+Suppose the graph has an independent set $S$ of size $k$ and a
+partition into $k$ cliques. Let $v$ indicate $S$ and $b_i$ indicate
+clique $i$. A primal and dual pair is
+
+$$
+X=k\sum_{i=1}^k b_i b_i^\top-ee^\top,
+\qquad Z=vv^\top/k.
+$$
+
+The diagonal parameter is $t=k$. Each entry changed by a clique
+lies on an edge, and Cauchy–Schwarz gives
+$k\sum_i (b_i^\top w)^2\ge (e^\top w)^2$ for all $w$, so $X$ is PSD.
+The dual matrix is PSD, has trace one and vanishes on edges because
+$S$ is independent. Its objective is $e^\top Ze=k$. Both objectives
+therefore agree.
+
+PRIMAL recognizes the complete affine entrywise formulation for a
+single PSD block of order at most 64. It searches a bounded number
+of graph states for an independent set, then uses its vertices as
+clique anchors. Every remaining vertex must share a clique with
+exactly one adjacent anchor. Two nonadjacent vertices assigned to
+the same anchor would violate the clique condition, so their shared
+anchor is removed during propagation. The solver rebuilds the original
+PSD blocks and checks the original rows, stationarity and gap.
+
+For a triangle, an edge and an isolated vertex, taking one vertex
+from each component proves $t=3$. A five-cycle has independent sets
+of size two and needs three cliques. Test `T338` checks that the
+general SDP route handles the latter. The SDPLIB instance `theta1`
+has a certificate with $k=23$.
+[`sdp_affine_theta_solve`](../primal_sdptask.c) ·
+[Measurements](../BENCHMARKS.md#verifica-exp-e-sdp-del-2026-11-28)
+
 ## A log-det barrier for a free diagonal
 
 Suppose $X$ has fixed off-diagonal entries and its diagonal entries $v_i$
