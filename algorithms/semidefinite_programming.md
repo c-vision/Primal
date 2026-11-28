@@ -451,6 +451,41 @@ has a certificate with $k=23$.
 [`sdp_affine_theta_solve`](../primal_sdptask.c) ·
 [Measurements](../BENCHMARKS.md#verifica-exp-e-sdp-del-2026-11-28)
 
+## Rank-one certificates for binary moment SDPs
+
+Consider an affine SDP with $X=\sum_j x_j A_j-B\succeq0$ and dual
+constraints $\langle A_j,Z\rangle=c_j$. Some binary moment formulations
+include the equalities $Z_{ii}=Z_{ia}$ for an anchor index $a$.
+If we try a rank-one dual matrix $Z=vv^\top$ with $v_a=1$, these
+equalities give $v_i^2=v_i$, so the remaining coordinates are Boolean.
+A constraint on the sum of the entries away from the anchor fixes
+the number of selected indices, since that sum is $(\sum_{i\ne a}v_i)^2$.
+Each constraint $Z_{ij}=0$ forbids selecting both $i$ and $j$.
+
+PRIMAL searches a bounded number of these supports, checking the
+original equalities for each candidate that improves the dual objective.
+For example, if the support has one selected index and the only nonzero
+entries of $B$ are trailing diagonal weights $(3,2,1)$, choosing the
+index with weight 3 yields dual value 3. Optimality follows once the
+solver finds a primal feasible block with the same value.
+
+For a verified $v$, imposing $Xv=0$ gives linear equations in $x$.
+The solver alternates two projections using Douglas–Rachford splitting.
+The first is a Frobenius-norm least-squares projection onto the affine
+space $X=\sum_j x_j A_j-B$, $Xv=0$. The affine factorization is reused.
+The second projects a reflected iterate into the PSD cone on $v^\perp$
+by setting its negative eigenvalues to zero. When an affine iterate
+is PSD, $\langle X,Z\rangle=v^\top Xv=0$ gives zero duality gap.
+PRIMAL checks both PSD blocks, stationarity and the gap in the
+original model before publishing the result.
+
+Test `T339` checks the certificate for the three-weight example and
+the general SDP route when one Boolean moment equality changes.
+On `qap5` a support with one anchor and five selected entries gives
+the certified optimum $-436$.
+[`sdp_affine_moment_solve`](../primal_sdptask.c) ·
+[Measurements](../BENCHMARKS.md#verifica-sdplib-qap5-del-2026-11-28)
+
 ## A log-det barrier for a free diagonal
 
 Suppose $X$ has fixed off-diagonal entries and its diagonal entries $v_i$

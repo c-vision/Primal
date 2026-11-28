@@ -765,14 +765,14 @@ typedef struct {
     uint64_t edge[THETA_DIM], independent;
 } ThetaGraph;
 
-static int theta_count(uint64_t vertices) {
+static int sdp_vertex_count(uint64_t vertices) {
     int count = 0;
     for (; vertices; vertices &= vertices-1) count++;
     return count;
 }
 
 static void theta_independent(ThetaGraph *g, uint64_t open, uint64_t chosen, int count) {
-    if (g->budget <= 0 || count + theta_count(open) <= g->size) return;
+    if (g->budget <= 0 || count + sdp_vertex_count(open) <= g->size) return;
     g->budget--;
     if (!open) {
         g->size = count;
@@ -782,7 +782,7 @@ static void theta_independent(ThetaGraph *g, uint64_t open, uint64_t chosen, int
     int vertex = -1, degree = -1;
     for (int i = 0; i < g->dim; i++) {
         if (!(open & (UINT64_C(1) << i))) continue;
-        int d = theta_count(open & g->edge[i]);
+        int d = sdp_vertex_count(open & g->edge[i]);
         if (d > degree || d <= 1) { vertex = i; degree = d; }
         if (d <= 1) break;
     }
@@ -803,7 +803,7 @@ static int theta_partition(ThetaGraph *g, uint64_t open, const uint64_t *domain,
     int vertex = -1, smallest = g->dim+1;
     for (int i = 0; i < g->dim; i++) {
         if (!(open & (UINT64_C(1) << i))) continue;
-        int choices = theta_count(domain[i]);
+        int choices = sdp_vertex_count(domain[i]);
         if (choices == 0) return 0;
         if (choices < smallest) { vertex = i; smallest = choices; }
     }
@@ -899,6 +899,243 @@ done:
     free(work);
     free(rows);
     if (solved) tlog(t,"optimal solution found (theta clique certificate)\n");
+    return solved;
+}
+
+enum { MOMENT_SEARCH_NODES = 32768, MOMENT_PROJECTIONS = 64 };
+
+typedef struct {
+    PRIMALtask_t task;
+    const SdpAffineRow *rows;
+    int dim, budget;
+    uint64_t conflict[SDP_AFFINE_BARRIER_ORDER], best;
+    double value;
+} SdpMomentSearch;
+
+static int moment_selected(uint64_t mask, int i) {
+    return (mask & (UINT64_C(1) << i)) != 0;
+}
+
+static int moment_pair_selected(uint64_t mask, const SdpAffineRow *row) {
+    uint64_t pair = (UINT64_C(1) << row->p) | (UINT64_C(1) << row->q);
+    return (mask & pair) == pair;
+}
+
+static void moment_consider(SdpMomentSearch *search, uint64_t mask) {
+    PRIMALtask_t t = search->task;
+    double value = 0.0;
+    for (int r = 0; r < t->numcon; r++) {
+        const SdpAffineRow *a = &search->rows[r];
+        if (moment_pair_selected(mask, a)) value += (a->p == a->q ? 1.0 : 2.0)*t->blc[r];
+    }
+    if (!isfinite(value) || value <= search->value) return;
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *col = &t->cols[j];
+        double dot = 0.0;
+        for (int k = 0; k < col->nz; k++) {
+            const SdpAffineRow *a = &search->rows[col->sub[k]];
+            if (moment_pair_selected(mask, a)) dot += (a->p == a->q ? 1.0 : 2.0)*col->val[k];
+        }
+        if (!(fabs(dot-t->c[j]) <= fmin(1e-9,t->tol_co_dfeas))) return;
+    }
+    search->value = value;
+    search->best = mask;
+}
+
+static void moment_enumerate(SdpMomentSearch *search, uint64_t pool, uint64_t mask,
+                            int remaining) {
+    if (search->budget <= 0 || sdp_vertex_count(pool) < remaining) return;
+    search->budget--;
+    if (!remaining) { moment_consider(search, mask); return; }
+    for (int i = 0; i < search->dim && search->budget > 0; i++) {
+        uint64_t bit = UINT64_C(1) << i;
+        if (!(pool & bit)) continue;
+        pool &= ~bit;
+        moment_enumerate(search, pool & ~search->conflict[i], mask | bit, remaining-1);
+    }
+}
+
+/* The relations Z_ii = Z_ia allow Boolean rank-one candidates anchored
+ * at v_a = 1. A sum over the trailing square fixes the cardinality. */
+static uint64_t sdp_moment_support(PRIMALtask_t t, const SdpAffineRow *rows, int d) {
+    uint64_t links[SDP_AFFINE_BARRIER_ORDER] = {0};
+    SdpMomentSearch search = {t, rows, d, MOMENT_SEARCH_NODES, {0}, 0, -INFINITY};
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *col = &t->cols[j];
+        if (t->c[j] != 0.0 || col->nz == 0 || col->nz > 2) continue;
+        const SdpAffineRow *a = &rows[col->sub[0]];
+        if (col->nz == 1) {
+            if (a->p != a->q && col->val[0] != 0.0) {
+                search.conflict[a->p] |= UINT64_C(1) << a->q;
+                search.conflict[a->q] |= UINT64_C(1) << a->p;
+            }
+            continue;
+        }
+        const SdpAffineRow *b = &rows[col->sub[1]];
+        const SdpAffineRow *diag = a->p == a->q ? a : b;
+        const SdpAffineRow *off = diag == a ? b : a;
+        int k = diag == a ? 0 : 1;
+        if (diag->p != diag->q || off->p == off->q || col->val[k] == 0.0 ||
+            col->val[k] != -2.0*col->val[1-k]) continue;
+        int pivot = off->p == diag->p ? off->q : off->q == diag->p ? off->p : -1;
+        if (pivot >= 0) links[pivot] |= UINT64_C(1) << diag->p;
+    }
+    int anchor = 0;
+    while (anchor < d && sdp_vertex_count(links[anchor]) != d-1) anchor++;
+    if (anchor == d) return 0;
+    for (int j = 0; j < t->numvar; j++) {
+        const Col *col = &t->cols[j];
+        if (col->nz != (d-1)*d/2 || !(t->c[j] > 0.0) || !(col->val[0] > 0.0)) continue;
+        int same = 1;
+        for (int k = 0; k < col->nz; k++) {
+            const SdpAffineRow *a = &rows[col->sub[k]];
+            if (a->p == anchor || a->q == anchor || col->val[k] != col->val[0]) same = 0;
+        }
+        double count = sqrt(t->c[j]/col->val[0]);
+        if (!same || !(count >= 1.0 && count <= d-1) || count != floor(count)) continue;
+        uint64_t pool = links[anchor] & ~search.conflict[anchor];
+        moment_enumerate(&search, pool, UINT64_C(1) << anchor, (int)count);
+        return search.best;
+    }
+    return 0;
+}
+
+/* Project a symmetric matrix onto the PSD cone in v's orthogonal complement. */
+static int moment_psd_projection(int d, const double *v, double norm, double *matrix,
+                                 double *projected) {
+    double mv[d], values[d], vectors[d*d];
+    for (int i = 0; i < d; i++) mv[i] = dvec_dot(d, matrix+i*d, v)/norm;
+    double center = dvec_dot(d, mv, v)/norm;
+    for (int i = 0; i < d; i++) {
+        values[i] = NAN;
+        for (int j = 0; j < d; j++)
+            matrix[i*d+j] += center*v[i]*v[j] - mv[i]*v[j] - v[i]*mv[j];
+    }
+    dmat_eig_jacobi(d, matrix, values, vectors);
+    for (int i = 0; i < d; i++) if (!isfinite(values[i])) return 0;
+    for (int i = 0; i < d; i++) for (int j = 0; j <= i; j++) {
+        double z = 0.0;
+        for (int k = 0; k < d; k++)
+            z += fmax(values[k], 0.0)*vectors[i*d+k]*vectors[j*d+k];
+        projected[i*d+j] = projected[j*d+i] = z;
+    }
+    return 1;
+}
+
+/* Douglas–Rachford on the affine space X = A(x)-B, Xv=0 and the
+ * complementary PSD face. Factor the two affine projection systems once. */
+static int sdp_moment_project(PRIMALtask_t t, const SdpAffineRow *rows, int d,
+                              uint64_t mask) {
+    int n = t->numvar, nr = t->numcon;
+    size_t dn = (size_t)d*n;
+    double *storage = calloc((size_t)nr*n + (size_t)n*n + 2*dn, sizeof(*storage));
+    if (!storage) return 0;
+    double *a = storage, *gram = a+(size_t)nr*n, *kernel = gram+(size_t)n*n;
+    double *right_inverse = kernel+dn;
+    double x[n], y[nr], activity[nr], v[d], bv[d], mat[d*d], w[d*d], tmp[d*d], psd[d*d];
+    double *grows[n], *srows[d], *xrows[d], schur[d*d];
+    DMat G = {n,n,grows}, S = {d,d,srows}, lifted = {d,d,xrows};
+    for (int j = 0; j < n; j++) grows[j] = gram+(size_t)j*n;
+    for (int i = 0; i < d; i++) {
+        srows[i] = schur+i*d;
+        xrows[i] = tmp+i*d;
+        v[i] = moment_selected(mask, i);
+        bv[i] = 0.0;
+    }
+    double norm = sdp_vertex_count(mask), scale = 1.0;
+    for (int r = 0; r < nr; r++) {
+        const SdpAffineRow *p = &rows[r];
+        double b = t->blc[r];
+        bv[p->p] += b*v[p->q];
+        if (p->p != p->q) bv[p->q] += b*v[p->p];
+        y[r] = moment_pair_selected(mask, p) ? (p->p == p->q ? -1.0 : -2.0) : 0.0;
+        scale = fmax(scale, 2.0*fabs(b));
+    }
+    if (!isfinite(scale)) { free(storage); return 0; }
+    for (int j = 0; j < n; j++) {
+        const Col *col = &t->cols[j];
+        for (int i = 0; i < col->nz; i++) {
+            int row = col->sub[i];
+            const SdpAffineRow *p = &rows[row];
+            double b = col->val[i];
+            a[(size_t)row*n+j] = b;
+            kernel[(size_t)p->p*n+j] += b*v[p->q];
+            if (p->p != p->q) kernel[(size_t)p->q*n+j] += b*v[p->p];
+        }
+    }
+    for (int j = 0; j < n; j++) {
+        const Col *col = &t->cols[j];
+        for (int i = 0; i < col->nz; i++) {
+            int row = col->sub[i];
+            double b = col->val[i]*(rows[row].p == rows[row].q ? 1.0 : 2.0);
+            dvec_axpy(j+1, b, a+(size_t)row*n, grows[j]);
+        }
+    }
+    int solved = 0;
+    if (dmat_cholesky(&G, n)) goto done;
+    for (int i = 0; i < d; i++) {
+        double *dst = right_inverse+(size_t)i*n;
+        memcpy(dst, kernel+(size_t)i*n, (size_t)n*sizeof(*dst));
+        dmat_chol_solve(&G, dst, n);
+    }
+    for (int i = 0; i < d; i++) for (int j = 0; j <= i; j++)
+        srows[i][j] = dvec_dot(n, kernel+(size_t)i*n, right_inverse+(size_t)j*n);
+    if (dmat_cholesky(&S, d)) goto done;
+    for (int i = 0; i < d; i++) for (int j = 0; j < d; j++)
+        w[i*d+j] = scale*((i == j ? 1.0 : 0.0)-v[i]*v[j]/norm);
+
+    int limit = iter_cap(t->max_iter_intpnt);
+    if (limit > MOMENT_PROJECTIONS) limit = MOMENT_PROJECTIONS;
+    for (int it = 0; it < limit; it++) {
+        for (int r = 0; r < nr; r++) {
+            const SdpAffineRow *p = &rows[r];
+            mat[p->p*d+p->q] = mat[p->q*d+p->p] = w[p->p*d+p->q]+t->blc[r];
+        }
+        for (int j = 0; j < n; j++) x[j] = sdp_affine_trace(rows, &t->cols[j], d, mat);
+        dmat_chol_solve(&G, x, n);
+        double rhs[d];
+        for (int i = 0; i < d; i++) rhs[i] = bv[i]-dvec_dot(n, kernel+(size_t)i*n, x);
+        dmat_chol_solve(&S, rhs, d);
+        for (int i = 0; i < d; i++) dvec_axpy(n, rhs[i], right_inverse+(size_t)i*n, x);
+        sdp_affine_matrix(t, rows, x, mat, d, 1);
+        for (int i = 0; i < d; i++) for (int j = 0; j < d; j++)
+            tmp[i*d+j] = mat[i*d+j]+v[i]*v[j]/norm;
+        if (dmat_cholesky(&lifted, d) == 0) {
+            double *primal[] = {mat}, *dual[] = {psd};
+            const SdpAffinePoint point = {x, y, activity, primal, dual};
+            if (sdp_affine_lift(t, 1, rows, &point)) { solved = 1; break; }
+        }
+        for (int i = 0; i < d*d; i++) {
+            tmp[i] = 2.0*mat[i]-w[i];
+            if (!isfinite(tmp[i])) goto done;
+        }
+        if (!moment_psd_projection(d, v, norm, tmp, psd)) goto done;
+        for (int i = 0; i < d*d; i++) w[i] += 1.9*(psd[i]-mat[i]);
+    }
+done:
+    free(storage);
+    return solved;
+}
+
+static int sdp_affine_moment_solve(PRIMALtask_t t, int s) {
+    if (s != 1 || t->numbarvar != 1 || t->barDim[0] < 4 ||
+        t->barDim[0] > SDP_AFFINE_BARRIER_ORDER || t->numvar > SDP_AFFINE_BARRIER_VARS ||
+        getenv("GMB_NO_SDP_MOMENT") || getenv("GMB_SDP_DENSE") || getenv("GMB_SDP_SPARSE"))
+        return 0;
+    int d = t->barDim[0];
+    if (t->numcon != d*(d+1)/2) return 0;
+    int links = 0, cardinality = 0;
+    for (int j = 0; j < t->numvar; j++) {
+        if (t->cols[j].nz == 2 && t->c[j] == 0.0) links++;
+        if (t->cols[j].nz == (d-1)*d/2 && t->c[j] > 0.0) cardinality = 1;
+    }
+    if (links < d-1 || !cardinality) return 0;
+    SdpAffineRow *rows = sdp_affine_rows(t, 0);
+    if (!rows) return 0;
+    uint64_t mask = sdp_moment_support(t, rows, d);
+    int solved = mask && sdp_moment_project(t, rows, d, mask);
+    free(rows);
+    if (solved) tlog(t, "optimal solution found (rank-one moment certificate)\n");
     return solved;
 }
 
@@ -1071,7 +1308,8 @@ PRIMALrescodee optimize_sdp_ipm(PRIMALtask_t t, int s) {
         t->prosta = PRIMAL_PRO_STA_PRIM_INFEAS;
         tlog(t, "primal infeasible (SDP coordinate faces)\n");
         r = PRIMAL_RES_ERR_INFEASIBLE;
-    } else if (sdp_affine_theta_solve(t, s) || sdp_affine_diagonal_solve(t, s) ||
+    } else if (sdp_affine_theta_solve(t, s) || sdp_affine_moment_solve(t, s) ||
+               sdp_affine_diagonal_solve(t, s) ||
                sdp_affine_dual_solve(t, s) ||
                (t->numbarvar == 1 && sdp_affine_barrier_solve(t, s)) ||
                sdp_affine_solve(t, s) ||

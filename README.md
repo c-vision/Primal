@@ -37,7 +37,9 @@ solves report feasible incumbents and optimality status.
   Specialized log-det barriers solve free-diagonal and small affine SDPs
   in the original scalar coordinates. For some graph theta problems,
   an independent set and a clique partition certify the optimum directly.
-  [Graph theta certificates](algorithms/semidefinite_programming.md#clique-certificates-for-graph-theta-problems)
+  Some binary moment formulations also admit a rank-one dual certificate.
+  [Graph theta](algorithms/semidefinite_programming.md#clique-certificates-for-graph-theta-problems) ·
+  [Binary moments](algorithms/semidefinite_programming.md#rank-one-certificates-for-binary-moment-sdps)
 - **Exponential and power cones** — native interior point with closed-form
   barriers. Mixed SOC and primal exponential models, and larger models with
   only primal exponential cones, can use a higher-order corrector and a
@@ -345,7 +347,7 @@ includes sizes up to 64 free coordinates.
 
 ### Public instance sets
 
-The table covers **16 verified wins across 49 public instances**. The
+The table covers **17 verified wins across 49 public instances**. The
 reference column shows the fastest solver in the repeated comparison
 that reached the same verified objective or infeasibility verdict.
 
@@ -357,6 +359,7 @@ that reached the same verified objective or infeasibility verdict.
 | gp_dave_1 | CBLIB | exp | 705 x 988 | **0.001684** | 0.006903 (Clarabel) | 5.5065265164 |
 | mcp100 | SDPLIB | SDP | 100 x 5050 | **0.058056** | 0.16674 (Clarabel) | 226.15735 |
 | theta1 | SDPLIB | SDP | 104 x 1275 | **0.001077** | 0.043496 (SCS) | 23 |
+| qap5 | SDPLIB | SDP | 136 x 351 | **0.001577** | 0.012461 (SCS) | -436 |
 | LogExpCR-n20-m400 | CBLIB | exp | 2022 x 1603 | **0.003069** | 0.020650 (Clarabel) | 0.01648143805 |
 | HMCR-n20-m400 | CBLIB | power | 2022 x 1603 | **0.002946** | 0.015535 (Clarabel) | 0.0345743 |
 | HMCR-n20-m800 | CBLIB | power | 4022 x 3203 | **0.005792** | 0.104136 (SCS) | 0.0390837 |
@@ -374,6 +377,7 @@ complete results for all 49 public instances, including reference solver
 statuses and unresolved cases.
 [Public benchmark report](BENCHMARKS.md#istanze-pubbliche) ·
 [EXP and SDP comparison](BENCHMARKS.md#verifica-exp-e-sdp-del-2026-11-28) ·
+[SDPLIB `qap5` comparison](BENCHMARKS.md#verifica-sdplib-qap5-del-2026-11-28) ·
 [Public timeout recheck](BENCHMARKS.md#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Latest MIPLIB `pk1` result](BENCHMARKS.md#verifica-di-pk1-del-2026-11-27) ·
 [Repeated comparisons](BENCHMARKS.md#vittorie-confermate-sulle-istanze-pubbliche) ·

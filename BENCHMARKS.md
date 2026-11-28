@@ -573,6 +573,7 @@ di tempo, contro il riferimento −1296.12.
 
 [Verifica di `pk1`](#verifica-di-pk1-del-2026-11-27) ·
 [Confronto EXP e SDP](#verifica-exp-e-sdp-del-2026-11-28) ·
+[`qap5`](#verifica-sdplib-qap5-del-2026-11-28) ·
 [Verifica dei timeout](#verifica-dei-timeout-pubblici-del-2026-11-26) ·
 [Verifiche del 22 novembre](#verifica-mirata-del-2026-11-22) ·
 [Verifiche del 23 novembre](#verifica-mirata-del-2026-11-23) ·
@@ -595,7 +596,8 @@ del 26 novembre. Le righe `clsq_random_32_2_a`, `rt_2x4_3bars` e
 `gt2` riportano le verifiche dello stesso giorno. La verifica dei timeout
 aggiorna i tempi di Primal su otto istanze e i riferimenti indicati nella
 relativa sezione. Le colonne Primal e SCIP di `pk1` sono del 27 novembre.
-Le colonne Primal, Clarabel e SCS di `gp_dave_1` e `theta1` sono del 28 novembre.
+Le colonne Primal, Clarabel e SCS di `gp_dave_1`, `theta1` e `qap5`
+sono del 28 novembre.
 Le righe `ex1223a` e `HS21` usano anche i confronti ripetuti riportati
 più sotto. Le colonne Primal e Clarabel di `beck751` e `rijc781`
 sono del 28 novembre. Il confronto tra Primal, Clarabel e SCS
@@ -659,7 +661,7 @@ Pajarito/Hypatia, che girano in Julia 1.13.2 con Hypatia 0.11.0 e Pajarito 0.8.3
 | hinf1 | sdplib | sdp | 13 x 41 | 0.001729 (`OPTIMAL`) | N/A | 0.001320 ✗ | 0.1340 ✗ | N/A | 0.0029 ✗ | 2.0326007779 |
 | theta1 | sdplib | sdp | 104 x 1275 | **0.001077** | N/A | 0.507051 ✗ | 0.043496 | N/A | 0.2877 | 23 |
 | truss1 | sdplib | sdp | 6 x 19 | 0.0021 | N/A | **0.0003** | 0.0008 | N/A | 0.0026 | -9 |
-| qap5 | sdplib | sdp | 136 x 351 | 0.237235 | N/A | 0.0309 | **0.0115** | N/A | 0.0389 | -436 |
+| qap5 | sdplib | sdp | 136 x 351 | **0.001577** | N/A | 0.023732 | 0.012461 | N/A | 0.0389 | -436 |
 | mcp100 | sdplib | sdp | 100 x 5050 | **0.058056** | N/A | 0.16674 | 0.851940 | N/A | 0.5324 | 226.157 |
 | HS21 | maros-meszaros | qp | 2 x 1 | **0.000031** | 0.0028 | 0.000041 | 0.0001 | 0.0073 | 0.0019 | 0.0400007 |
 | HS118 | maros-meszaros | qp | 15 x 17 | 0.0003 | 0.0006 | **0.0001** | 0.0003 | 0.0094 | 0.0026 | 664.82 |
@@ -727,7 +729,7 @@ a `5e-9`. [Derivazione del Newton ridotto](algorithms/exponential_cone.md#reduci
 La colonna SCS di `HMCR-n20-m800` e la colonna Clarabel di `mcp100`
 riusano i confronti ripetuti del 24 novembre. La colonna SCIP di
 `p0201` riusa il confronto del 25 novembre. I riferimenti per
-`theta1` e `qap5` sono quelli del 19 novembre.
+`theta1` e `qap5` di quella verifica sono quelli del 19 novembre.
 
 | Istanza | Tempo (s) | Esito | Obiettivo ammissibile | Violazione massima | Riferimento |
 |---|---:|---|---:|---:|---:|
@@ -796,6 +798,28 @@ prove intercalate, Primal e Clarabel hanno mediane di 40 e 347 µs su
 `1e-10` per rispettare il criterio originale. In entrambe le prove,
 i residui massimi, i gap e gli scarti scalati dell'obiettivo sono entro
 `1e-8` per entrambi i solver.
+
+### Verifica SDPLIB qap5 del 2026-11-28
+
+Il CBF di `qap5` deriva dallo SDPA originale. Primal trova un
+certificato duale di rango uno di valore `-436`. Ricostruisce il
+blocco primale con proiezioni sullo spazio affine e sul cono PSD
+con lo stesso nucleo. Il ricalcolo indipendente sullo SDPA verifica
+entrambi i blocchi, la stazionarietà e il gap a `1e-8`.
+[Derivazione](algorithms/semidefinite_programming.md#rank-one-certificates-for-binary-moment-sdps)
+
+| Solver | Mediana (ms) | Massimo residuo | Gap relativo |
+|---|---:|---:|---:|
+| Primal `-O2` | **1.577** | 1.14e-13 | 1.05e-15 |
+| Clarabel 0.11.1 | 23.732 | 3.32e-10 | 7.15e-13 |
+| SCS 3.3.1 | 12.461 | 4.36e-10 | 8.35e-13 |
+
+Mediane di 11 prove intercalate, a un thread, dopo il riscaldamento.
+Tutti dichiarano l'ottimo e concordano con il riferimento `-436`.
+I tempi coprono `PRIMAL_optimize` e `solve()`, esclusa la costruzione.
+Primal usa `1e-8` con fattore near-optimal pari a 1. Clarabel usa
+`1e-10` e SCS `1e-9` internamente per superare il controllo sullo SDPA.
+La mediana precedente di Primal era 237.235 ms.
 
 ### Verifica mirata del 2026-11-22
 

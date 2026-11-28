@@ -23399,8 +23399,57 @@ static void test_t338(void) {
     }
 }
 
+static void t339_capture_route(void *handle, const char *message) {
+    if (strstr(message,"rank-one moment certificate")) *(int *)handle = 1;
+}
+
+/* The dual moment matrix has Z_00=1, trace(Z_tail)=1 and zero tail
+ * off-diagonals. Its objective 3Z_11+2Z_22+Z_33 is at most 3. */
+static void test_t339(void) {
+    for (int guard = 0; guard < 2; guard++) {
+        cur_name = "T339 rank-one moment certificate for affine SDP";
+        P p; pbegin(&p);
+        PRIMALtask_t t = p.task;
+        int d = 4;
+        PRIMAL_appendvars(t,8);
+        PRIMAL_appendcons(t,10);
+        PRIMAL_appendbarvars(t,1,&d);
+        for (int j = 0; j < 8; j++) PRIMAL_putvarbound(t,j,PRIMAL_BK_FR,0.0,0.0);
+        PRIMAL_putcj(t,0,1.0);
+        PRIMAL_putcj(t,1,1.0);
+        int row = 0, edge = 5;
+        for (int i = 0; i < d; i++) for (int j = 0; j <= i; j++, row++) {
+            int matrix;
+            double a = i == j ? -1.0 : -0.5, one = 1.0;
+            double b = i == j && i > 0 ? 4-i : 0.0;
+            PRIMAL_appendsparsesymmat(t,d,1,&i,&j,&a,&matrix);
+            PRIMAL_putbaraij(t,row,0,1,&matrix,&one);
+            PRIMAL_putconbound(t,row,PRIMAL_BK_FX,b,b);
+            if (i == 0) PRIMAL_putaij(t,row,1,1.0);
+            else if (j == 0) PRIMAL_putaij(t,row,1+i,1.0);
+            else {
+                PRIMAL_putaij(t,row,0,1.0);
+                if (i == j) PRIMAL_putaij(t,row,1+i,guard && i == 1 ? -1.0 : -2.0);
+                else PRIMAL_putaij(t,row,edge++,1.0);
+            }
+        }
+        int used = 0;
+        PRIMAL_putintparam(t,PRIMAL_IPAR_LOG,1);
+        PRIMAL_linkfunctotaskstream(t,PRIMAL_STREAM_LOG,&used,t339_capture_route);
+        check_rc(PRIMAL_optimize(t),PRIMAL_RES_OK,"solve binary-moment SDP");
+        check(used == !guard,"routing requires each Boolean moment relation");
+        double obj = NAN, dual = NAN, pr = INFINITY, pb = INFINITY, dv = INFINITY, db = INFINITY;
+        check_rc(PRIMAL_getsolutioninfo(t,PRIMAL_SOL_ITR,&obj,&pr,NULL,&pb,NULL,NULL,
+                                       &dual,NULL,&dv,&db,NULL),PRIMAL_RES_OK,"public SDP solution");
+        check(fabs(obj-3.0)<=1e-7 && fabs(obj-dual)<=1e-7,"analytic objective");
+        check(fmax(fmax(pr,pb),fmax(dv,db))<=1e-8,"check original KKT pair");
+        pend(&p);
+    }
+}
+
 /* test runner: executes all tests and prints the pass/fail summary. */
 int main(void) {
+    test_t339();
     test_t338();
     test_t337();
     test_t336();
